@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
-import { clipboardParagraphHtml, explicitParagraphTextWrap } from '../../src/lib/devTextDom';
+import { clipboardParagraphHtml, explicitParagraphTextWrap, readParagraphsValue, readPlainDomText, PARAGRAPH_PLACEHOLDER_ATTRIBUTE } from '../../src/lib/devTextDom';
+import { insertRightIndentTab, removeRightIndentTab, breakRightIndentTab } from '../../src/lib/devTextRightTab';
+import { createHistory } from '../../src/lib/devHistory';
 
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const start = source.indexOf('    const bindTextState =');
@@ -30,7 +32,7 @@ function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle', incl
   return includeParagraph ? paragraph.outerHTML : paragraph.innerHTML;
 }
 
-function setup(markup = '<p>Before</p><p>After</p>') {
+function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory = false) {
   const window = new Window();
   const document = window.document;
   const element = document.createElement('div');
@@ -39,18 +41,42 @@ function setup(markup = '<p>Before</p><p>After</p>') {
   document.body.append(element);
   const commands: unknown[][] = [];
   let updates = 0, merges = 0, splits = 0;
+  let capture: (() => void) | undefined;
+  const history = createHistory();
+  const state = { element, kind: 'paragraphs', document: 'about', path: ['sections', 0, 'paragraphs'] };
   const env = {
-    window, document, Event: window.Event, editorSignal: new window.AbortController().signal,
+    window, document, Element: window.Element, Event: window.Event, editorSignal: new window.AbortController().signal,
     removeParagraphRootWhitespace() {},
     clipboardParagraphHtml,
-    stickyStatus: '', linkPanelOpen: false, pageHistory: { breakGroup() {} },
+    insertRightIndentTab, removeRightIndentTab, breakRightIndentTab,
+    isDevContentEditing: () => editing,
+    stickyStatus: '', linkPanelOpen: false, pageHistory: history,
     hideFormatBar() {}, setStickyStatus() {},
-    updateActions() { updates++; },
+    updateActions() { updates++; if (capture) queueMicrotask(capture); },
     tryMergeBlockAtCaret() { merges++; return false; },
     splitBlockAtCaret() { splits++; },
   };
+  if (withHistory) {
+    Object.assign(globalThis, { Element: window.Element });
+    const valueStart = source.indexOf('    const createParagraphPlaceholderBreak =');
+    const valueScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+      source.slice(valueStart, source.indexOf('    const textStates =', valueStart)) + '\nreturn { readValue, renderValue, valuesMatch };',
+    );
+    Object.assign(env, new Function('env', `with(env) { ${valueScript} }`)({
+      ...env, PARAGRAPH_PLACEHOLDER_ATTRIBUTE, readParagraphsValue, readPlainDomText,
+    }), {
+      textStates: [state], spacingStates: [], textHistoryValues: new WeakMap(),
+      historyReady: true, historyCaptureQueued: false, suppressHistory: false, actionsBusy: false,
+    });
+    const captureStart = source.indexOf('    const captureFieldHistory =');
+    const captureScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+      source.slice(captureStart, source.indexOf('    const updateActions =', captureStart)) + '\nreturn captureFieldHistory;',
+    );
+    capture = new Function('env', `with(env) { ${captureScript} }`)(env);
+    capture!();
+  }
   document.execCommand = (...args: unknown[]) => { commands.push(args); return true; };
-  new Function('env', `with(env) { ${script} }`)(env)({ element, kind: 'paragraphs' });
+  new Function('env', `with(env) { ${script} }`)(env)(state);
   const select = (node = element.lastChild!.firstChild!, offset = node.textContent!.length) => {
     window.getSelection().setPosition(node, offset);
   };
@@ -59,8 +85,63 @@ function setup(markup = '<p>Before</p><p>After</p>') {
     element.dispatchEvent(event);
     return event;
   };
-  return { window, document, element, commands, select, key, counts: () => ({ updates, merges, splits }) };
+  return { window, document, element, commands, select, key, history, counts: () => ({ updates, merges, splits }) };
 }
+
+test('Shift+Tab inserts a saved right run only at an editable explicit line end', () => {
+  const { element, select, key, counts } = setup('<p><strong>Vicente Cruz</strong><br>Design Engineer</p>');
+  select(element.querySelector('strong')!.firstChild!);
+  expect(key('Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+  expect(element.querySelector('[data-text-right-tab="true"]')).not.toBeNull();
+  expect(element.textContent).toBe('Vicente CruzDesign Engineer');
+  expect(counts().updates).toBe(1);
+});
+
+test('ordinary Tab and Shift+Tab away from line ends or outside Edit retain navigation', () => {
+  const f = setup('<p>Vicente Cruz</p>');
+  f.select(f.element.firstChild!.firstChild!, 3);
+  expect(f.key('Tab', { shiftKey: true }).defaultPrevented).toBe(false);
+  f.select();
+  expect(f.key('Tab').defaultPrevented).toBe(false);
+  expect(f.key('Tab', { shiftKey: true, ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(f.key('Tab', { shiftKey: true, isComposing: true }).defaultPrevented).toBe(false);
+  const view = setup('<p>Vicente Cruz</p>', false);
+  view.select();
+  expect(view.key('Tab', { shiftKey: true }).defaultPrevented).toBe(false);
+  expect(view.element.querySelector('[data-text-right-tab]')).toBeNull();
+});
+
+test('right-run gap deletion and line exit notify the shared editor history', () => {
+  const f = setup('<p>Left<span data-text-right-tab="true">Right</span></p>');
+  f.select(f.element.querySelector('span')!.firstChild!, 0);
+  expect(f.key('Backspace').defaultPrevented).toBe(true);
+  expect(f.counts().updates).toBe(1);
+  expect(f.element.querySelector('[data-text-right-tab]')).toBeNull();
+  const enter = setup('<p>Left<span data-text-right-tab="true">Right</span><br>Next line</p>');
+  enter.select(enter.element.querySelector('span')!.firstChild!, 3);
+  expect(enter.key('Enter').defaultPrevented).toBe(true);
+  expect(enter.counts().updates).toBe(1);
+  expect(enter.element.children).toHaveLength(2);
+});
+
+test('shared editor history restores the right run separately from its typed text', async () => {
+  const f = setup('<p><strong>Role</strong></p>', true, true);
+  f.select(f.element.querySelector('strong')!.firstChild!);
+  expect(f.key('Tab', { shiftKey: true }).defaultPrevented).toBe(true);
+  await Promise.resolve();
+  const run = f.element.querySelector('[data-text-right-tab]')!;
+  run.textContent = '2024–2025';
+  f.element.dispatchEvent(new f.window.Event('input'));
+  await Promise.resolve();
+  const saved = readParagraphsValue(f.element);
+  await f.history.undo();
+  expect(readParagraphsValue(f.element)).toEqual(['<strong>Role</strong><span data-text-right-tab="true"></span>']);
+  await f.history.undo();
+  expect(readParagraphsValue(f.element)).toEqual(['<strong>Role</strong>']);
+  await f.history.redo();
+  await f.history.redo();
+  expect(readParagraphsValue(f.element)).toEqual(saved);
+});
 
 test('click, Delete and input do not relocate a caret inside native pasted DIVs', () => {
   const { window, element, select, key } = setup('<p>First</p><div>Design Engineer</div><div>Last</div>');

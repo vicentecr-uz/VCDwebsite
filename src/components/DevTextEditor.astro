@@ -126,6 +126,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
   import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, explicitParagraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, readPlainDomText, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
+  import { insertRightIndentTab, removeRightIndentTab, breakRightIndentTab } from '../lib/devTextRightTab';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
     initMountedSectionCovers,
@@ -2563,6 +2564,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (element.closest('[data-dev-project-details]')) {
           if (event.key === 'Enter') event.preventDefault();
           return;
+        }
+        if (state.kind === 'paragraphs' && isDevContentEditing()
+          && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          const changed = event.key === 'Tab' && event.shiftKey
+            ? insertRightIndentTab(element)
+            : (event.key === 'Backspace' || event.key === 'Delete') && !event.shiftKey
+              ? removeRightIndentTab(element, event.key === 'Backspace' ? 'backward' : 'forward')
+              : event.key === 'Enter' ? breakRightIndentTab(element, event.shiftKey) : false;
+          if (changed) {
+            event.preventDefault();
+            if (linkPanelOpen) hideFormatBar();
+            pageHistory.breakGroup();
+            notifyTextInput();
+            queueMicrotask(() => pageHistory.breakGroup());
+            return;
+          }
         }
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
