@@ -37,7 +37,7 @@ const intentOptions = [
         <strong data-image-description-title></strong>
         <span data-image-description-path></span>
       </div>
-      <TextArea label="Description" rows={3} data-image-description-text />
+      <TextArea label="Description" rows={3} maxlength={300} data-image-description-text />
       <label class="dev-field">
         <span class="dev-field__label">Mode</span>
         <span class="dev-field__value">
@@ -66,13 +66,27 @@ const intentOptions = [
     path: Array<string | number>;
     pathLabel: string;
     src: string;
+    alt: string;
     intent: Intent;
     description: string;
     status: string;
     error?: string;
     baseToken: string;
   };
-  type LocalRow = Row & { dirty: boolean; conflict?: boolean };
+  type LocalRow = Row & { dirty: boolean; conflict?: boolean; sourceIntent: Intent };
+  type RowView = {
+    article: HTMLElement;
+    image: HTMLImageElement;
+    title: HTMLElement;
+    path: HTMLElement;
+    text: HTMLTextAreaElement;
+    intent: HTMLSelectElement;
+    status: HTMLElement;
+    save: HTMLButtonElement;
+    retry: HTMLButtonElement;
+    refresh: HTMLButtonElement;
+    revert: HTMLButtonElement;
+  };
 
   const root = document.querySelector<HTMLElement>('[data-dev-image-descriptions]');
   const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
@@ -84,15 +98,17 @@ const intentOptions = [
   if (!root || !panel || !pageSelect || !statusEl || !rowsEl || !template || !checkButton) throw new Error('Image descriptions panel failed to mount.');
 
   const localRows = new Map<string, LocalRow>();
+  const rowViews = new Map<string, RowView>();
   let checking = false;
   let pollTimer: number | undefined;
-  let pageFilter = '';
+  let pageFilter: string | null = null;
   let requestGeneration = 0;
 
   const pathText = (row: Row) => row.pathLabel || row.path.join(' › ');
   const pageSlug = () => {
     const segment = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
-    return new Set(['', 'about', 'analytics', 'play', 'styles', 'work']).has(segment) ? '' : segment;
+    if (!segment) return 'home';
+    return segment;
   };
   const imageUrl = (src: string) => {
     if (src.startsWith('/')) return src;
@@ -107,16 +123,15 @@ const intentOptions = [
   const updatePageOptions = () => {
     const documents = [...new Map([...localRows.values()].map((row) => [row.document, row.title])).entries()]
       .sort(([a], [b]) => a.localeCompare(b));
-    const selected = pageFilter;
+    const selected = pageFilter ?? '';
     pageSelect.replaceChildren(new Option('All pages', ''));
     documents.forEach(([value, label]) => pageSelect.append(new Option(label || value, value)));
     pageSelect.value = documents.some(([value]) => value === selected) ? selected : '';
-    pageFilter = pageSelect.value;
-    pageSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    if (pageFilter !== null && pageSelect.value !== pageFilter) pageFilter = pageSelect.value;
   };
 
   const visibleRows = () => [...localRows.values()]
-    .filter((row) => !pageFilter || row.document === pageFilter)
+    .filter((row) => pageFilter === null || pageFilter === '' || row.document === pageFilter)
     .sort((a, b) => `${a.document}:${a.pathLabel}`.localeCompare(`${b.document}:${b.pathLabel}`));
 
   const currentImageMatches = (row: Row, image: HTMLImageElement) => {
@@ -128,7 +143,10 @@ const intentOptions = [
     const path = JSON.stringify(row.path);
     document.querySelectorAll<HTMLElement>('[data-dev-image-path]').forEach((node) => {
       if (node.dataset.devDocument !== row.document || node.dataset.devImagePath !== path) return;
-      node.querySelectorAll<HTMLImageElement>('img[data-image-original]').forEach((image) => {
+      const images = node.matches('img[data-image-original]')
+        ? [node as HTMLImageElement]
+        : [...node.querySelectorAll<HTMLImageElement>('img[data-image-original]')];
+      images.forEach((image) => {
         if (!currentImageMatches(row, image)) return;
         image.alt = row.description;
         image.setAttribute('aria-label', `Open image: ${row.description || 'image'}`);
@@ -138,75 +156,135 @@ const intentOptions = [
 
   const refreshRow = (row: Row) => {
     const existing = localRows.get(row.key);
-    localRows.set(row.key, { ...row, dirty: existing?.dirty ?? false, conflict: false });
+    if (existing) {
+      Object.assign(existing, row, { dirty: false, conflict: false, sourceIntent: row.intent });
+    } else {
+      localRows.set(row.key, { ...row, dirty: false, conflict: false, sourceIntent: row.intent });
+    }
   };
 
   const mergeRows = (rows: Row[]) => {
     const seen = new Set(rows.map((row) => row.key));
     rows.forEach((row) => {
       const existing = localRows.get(row.key);
-      if (existing?.dirty) {
-        localRows.set(row.key, { ...row, description: existing.description, intent: existing.intent, dirty: true, conflict: existing.conflict });
-      } else {
-        refreshRow(row);
+      if (!existing) {
+        localRows.set(row.key, { ...row, dirty: false, conflict: false, sourceIntent: row.intent });
+        return;
       }
+      if (existing.dirty) {
+        const sourceChanged = existing.baseToken !== row.baseToken
+          || existing.document !== row.document
+          || existing.title !== row.title
+          || JSON.stringify(existing.path) !== JSON.stringify(row.path)
+          || existing.pathLabel !== row.pathLabel
+          || existing.src !== row.src
+          || existing.alt !== row.alt
+          || existing.sourceIntent !== row.intent;
+        Object.assign(existing, {
+          status: row.status,
+          error: row.error,
+          conflict: existing.conflict || sourceChanged,
+        });
+        return;
+      }
+      refreshRow(row);
     });
-    [...localRows.keys()].forEach((key) => {
-      if (!seen.has(key)) localRows.delete(key);
+    [...localRows.entries()].forEach(([key, row]) => {
+      if (seen.has(key) || !row.dirty) {
+        if (!seen.has(key)) localRows.delete(key);
+        return;
+      }
+      row.conflict = true;
+      row.status = 'Failed';
+      row.error = 'Refresh to load the latest source';
     });
   };
 
   const rowStatus = (row: LocalRow) => row.error || (row.conflict ? 'Refresh to load the latest source' : statusText(row));
+  const canSave = (row: LocalRow) => row.dirty || row.description !== row.alt || row.intent !== row.sourceIntent;
+
+  const updateRowView = (view: RowView, row: LocalRow) => {
+    const nextImage = imageUrl(row.src);
+    if (view.image.getAttribute('src') !== nextImage) view.image.src = nextImage;
+    view.image.alt = row.description || row.title;
+    view.title.textContent = row.title;
+    view.path.textContent = pathText(row);
+    if (!row.dirty) {
+      view.text.value = row.description;
+      view.intent.value = row.intent;
+    }
+    view.text.disabled = row.intent === 'decorative';
+    view.status.textContent = rowStatus(row);
+    view.retry.hidden = row.status !== 'Failed';
+    view.retry.disabled = checking;
+    view.refresh.hidden = !row.conflict;
+    view.revert.hidden = !row.dirty || !!row.conflict;
+    view.save.disabled = !canSave(row);
+  };
+
+  const createRowView = (row: LocalRow): RowView => {
+    const fragment = template.content.cloneNode(true) as DocumentFragment;
+    const article = fragment.querySelector<HTMLElement>('[data-image-description-row]')!;
+    const image = fragment.querySelector<HTMLImageElement>('[data-image-description-image]')!;
+    const title = fragment.querySelector<HTMLElement>('[data-image-description-title]')!;
+    const path = fragment.querySelector<HTMLElement>('[data-image-description-path]')!;
+    const text = fragment.querySelector<HTMLTextAreaElement>('textarea[data-image-description-text]')!;
+    const intent = fragment.querySelector<HTMLSelectElement>('select[data-image-description-intent]')!;
+    const status = fragment.querySelector<HTMLElement>('[data-image-description-status]')!;
+    const save = fragment.querySelector<HTMLButtonElement>('[data-image-description-save]')!;
+    const retry = fragment.querySelector<HTMLButtonElement>('[data-image-description-retry]')!;
+    const refresh = fragment.querySelector<HTMLButtonElement>('[data-image-description-refresh]')!;
+    const revert = fragment.querySelector<HTMLButtonElement>('[data-image-description-revert]')!;
+    const controlId = `image-description-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`;
+    const view = { article, image, title, path, text, intent, status, save, retry, refresh, revert };
+
+    article.dataset.imageDescriptionKey = row.key;
+    text.id = `${controlId}-text`;
+    text.setAttribute('aria-label', 'Description');
+    text.maxLength = 300;
+    text.addEventListener('input', () => {
+      row.description = text.value.slice(0, 300);
+      row.dirty = true;
+      updateRowView(view, row);
+    });
+    intent.addEventListener('change', () => {
+      row.intent = intent.value as Intent;
+      row.dirty = true;
+      updateRowView(view, row);
+    });
+    save.addEventListener('click', () => void saveRow(row));
+    retry.addEventListener('click', () => void retryRow(row));
+    refresh.addEventListener('click', () => void loadRows({ resetKey: row.key }));
+    revert.addEventListener('click', () => void loadRows({ resetKey: row.key }));
+
+    updateRowView(view, row);
+    return view;
+  };
 
   const renderRows = () => {
-    rowsEl.replaceChildren();
-    visibleRows().forEach((row) => {
-      const fragment = template.content.cloneNode(true) as DocumentFragment;
-      const article = fragment.querySelector<HTMLElement>('[data-image-description-row]')!;
-      const image = fragment.querySelector<HTMLImageElement>('[data-image-description-image]')!;
-      const title = fragment.querySelector<HTMLElement>('[data-image-description-title]')!;
-      const path = fragment.querySelector<HTMLElement>('[data-image-description-path]')!;
-      const text = fragment.querySelector<HTMLTextAreaElement>('textarea[data-image-description-text]')!;
-      const intent = fragment.querySelector<HTMLSelectElement>('select[data-image-description-intent]')!;
-      const status = fragment.querySelector<HTMLElement>('[data-image-description-status]')!;
-      const save = fragment.querySelector<HTMLButtonElement>('[data-image-description-save]')!;
-      const retry = fragment.querySelector<HTMLButtonElement>('[data-image-description-retry]')!;
-      const refresh = fragment.querySelector<HTMLButtonElement>('[data-image-description-refresh]')!;
-      const revert = fragment.querySelector<HTMLButtonElement>('[data-image-description-revert]')!;
-
-      article.dataset.imageDescriptionKey = row.key;
-      image.src = imageUrl(row.src);
-      image.alt = row.description || row.title;
-      title.textContent = row.title;
-      path.textContent = pathText(row);
-      text.value = row.description;
-      intent.value = row.intent;
-      text.disabled = row.intent === 'decorative';
-      status.textContent = rowStatus(row);
-      retry.hidden = row.status !== 'Failed';
-      refresh.hidden = !row.conflict;
-      revert.hidden = !row.conflict;
-      save.disabled = !row.dirty;
-
-      text.addEventListener('input', () => {
-        row.description = text.value.slice(0, 300);
-        row.dirty = true;
-        save.disabled = false;
-      });
-      intent.addEventListener('change', () => {
-        row.intent = intent.value as Intent;
-        text.disabled = row.intent === 'decorative';
-        row.dirty = true;
-        save.disabled = false;
-      });
-      save.addEventListener('click', () => void saveRow(row, status, save));
-      retry.addEventListener('click', () => void retryRow(row));
-      refresh.addEventListener('click', () => void loadRows({ resetKey: row.key }));
-      revert.addEventListener('click', () => void loadRows({ resetKey: row.key }));
-      rowsEl.append(fragment);
+    const rows = visibleRows();
+    const visibleKeys = new Set(rows.map((row) => row.key));
+    [...rowViews.entries()].forEach(([key, view]) => {
+      if (visibleKeys.has(key)) return;
+      view.article.remove();
+      rowViews.delete(key);
     });
-    if (!visibleRows().length) setStatus('No image descriptions on this page.');
-    else setStatus(checking ? 'Checking…' : `${visibleRows().length} image${visibleRows().length === 1 ? '' : 's'}`);
+    rows.forEach((row) => {
+      let view = rowViews.get(row.key);
+      if (!view) {
+        view = createRowView(row);
+        rowViews.set(row.key, view);
+      }
+      updateRowView(view, row);
+      if (view.article.parentElement !== rowsEl) rowsEl.append(view.article);
+    });
+    rows.forEach((row, index) => {
+      const view = rowViews.get(row.key)!;
+      if (rowsEl.children[index] !== view.article) rowsEl.insertBefore(view.article, rowsEl.children[index] ?? null);
+    });
+    if (!rows.length) setStatus('No image descriptions on this page.');
+    else setStatus(checking ? 'Checking…' : `${rows.length} image${rows.length === 1 ? '' : 's'}`);
+    checkButton.disabled = checking;
   };
 
   const loadRows = async ({ resetKey }: { resetKey?: string } = {}) => {
@@ -219,13 +297,21 @@ const intentOptions = [
       if (resetKey) {
         const latest = payload.rows?.find((row) => row.key === resetKey);
         if (latest) refreshRow(latest);
+        else {
+          const existing = localRows.get(resetKey);
+          if (existing?.dirty) {
+            existing.conflict = true;
+            existing.status = 'Failed';
+            existing.error = 'Refresh to load the latest source';
+          } else localRows.delete(resetKey);
+        }
       } else {
         mergeRows(payload.rows ?? []);
       }
       checking = payload.checking === true;
-      if (!pageFilter) {
+      if (pageFilter === null) {
         const current = pageSlug();
-        if (current && [...localRows.values()].some((row) => row.document === current)) pageFilter = current;
+        pageFilter = current && [...localRows.values()].some((row) => row.document === current) ? current : '';
       }
       updatePageOptions();
       renderRows();
@@ -236,8 +322,11 @@ const intentOptions = [
     }
   };
 
-  const saveRow = async (row: LocalRow, status: HTMLElement, save: HTMLButtonElement) => {
-    save.disabled = true;
+  const saveRow = async (row: LocalRow) => {
+    const generation = ++requestGeneration;
+    const view = rowViews.get(row.key);
+    if (!view) return;
+    view.save.disabled = true;
     try {
       const response = await fetch('/api/image-description-save', {
         method: 'POST',
@@ -245,11 +334,12 @@ const intentOptions = [
         body: JSON.stringify({ key: row.key, baseToken: row.baseToken, alt: row.intent === 'decorative' ? '' : row.description.slice(0, 300), intent: row.intent }),
       });
       const payload = await response.json() as { ok?: boolean; row?: Row; error?: string };
+      if (generation !== requestGeneration) return;
       if (response.status === 409) {
         row.conflict = true;
         row.dirty = true;
-        status.textContent = 'Refresh to load the latest source';
-        save.disabled = false;
+        view.save.disabled = false;
+        updateRowView(view, row);
         return;
       }
       if (!response.ok || !payload.ok || !payload.row) throw new Error(payload.error || 'Could not save description.');
@@ -258,12 +348,14 @@ const intentOptions = [
       renderRows();
       window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
     } catch (error) {
-      status.textContent = error instanceof Error ? error.message : 'Could not save description.';
-      save.disabled = false;
+      if (generation !== requestGeneration) return;
+      view.status.textContent = error instanceof Error ? error.message : 'Could not save description.';
+      view.save.disabled = false;
     }
   };
 
   const retryRow = async (row: LocalRow) => {
+    const generation = ++requestGeneration;
     try {
       const response = await fetch('/api/image-descriptions', {
         method: 'POST',
@@ -272,16 +364,20 @@ const intentOptions = [
       });
       if (!response.ok) throw new Error('Could not retry description.');
       const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      if (generation !== requestGeneration) return;
       mergeRows(payload.rows ?? []);
       checking = payload.checking === true;
       renderRows();
       syncPolling();
     } catch (error) {
+      if (generation !== requestGeneration) return;
       setStatus(error instanceof Error ? error.message : 'Could not retry description.');
     }
   };
 
   const checkRows = async () => {
+    if (checking) return;
+    const generation = ++requestGeneration;
     checkButton.disabled = true;
     try {
       const response = await fetch('/api/image-descriptions', {
@@ -291,23 +387,25 @@ const intentOptions = [
       });
       if (!response.ok) throw new Error('Could not check image descriptions.');
       const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      if (generation !== requestGeneration) return;
       mergeRows(payload.rows ?? []);
       checking = payload.checking === true;
       updatePageOptions();
       renderRows();
       syncPolling();
     } catch (error) {
+      if (generation !== requestGeneration) return;
       setStatus(error instanceof Error ? error.message : 'Could not check image descriptions.');
     } finally {
-      checkButton.disabled = false;
+      if (generation === requestGeneration) checkButton.disabled = checking;
     }
   };
 
   const syncPolling = () => {
     const visible = !panel.hidden;
-    if (visible && checking && pollTimer === undefined) {
-      pollTimer = window.setInterval(() => void loadRows(), 1200);
-    } else if ((!visible || !checking) && pollTimer !== undefined) {
+    if (visible && pollTimer === undefined) {
+      pollTimer = window.setInterval(() => void loadRows(), 3000);
+    } else if (!visible && pollTimer !== undefined) {
       window.clearInterval(pollTimer);
       pollTimer = undefined;
     }
@@ -318,7 +416,13 @@ const intentOptions = [
     renderRows();
   });
   checkButton.addEventListener('click', () => void checkRows());
-  new MutationObserver(syncPolling).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+  let wasHidden = panel.hidden;
+  new MutationObserver(() => {
+    const nowHidden = panel.hidden;
+    if (wasHidden && !nowHidden) void loadRows();
+    wasHidden = nowHidden;
+    syncPolling();
+  }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
   window.addEventListener('vcd:dev-content-written', () => void loadRows());
   void loadRows();
 </script>
