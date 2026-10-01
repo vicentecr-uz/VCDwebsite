@@ -88,6 +88,13 @@ const serializeNode = (node: Node, preserveWrap = true): string => {
   if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
   if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
   if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
+  if (tag === 'SPAN' && node.getAttribute('data-text-right-tab') === 'true') {
+    const className = node.classList.contains('text-emphasis') ? ' class="text-emphasis"'
+      : node.classList.contains('text-subtle') ? ' class="text-subtle"' : '';
+    const wrap = preserveWrap ? normalizeTextWrap(node.getAttribute('data-text-wrap')) : null;
+    const wrapAttribute = wrap ? ` data-text-wrap="${wrap}"` : '';
+    return `<span${className} data-text-right-tab="true"${wrapAttribute}>${inner}</span>`;
+  }
   if (tag === 'SPAN' && preserveWrap) {
     const wrap = normalizeTextWrap(node.getAttribute('data-text-wrap'));
     if (wrap) {
