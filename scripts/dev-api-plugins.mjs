@@ -392,7 +392,7 @@ export async function convertHeicUpload(data, options = {}) {
 
 export async function buildImageSection(documentKey, filenames) {
   const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  return {
+  return markAutomaticImageAltIntent({
     type: 'image',
     id,
     src: filenames[0],
@@ -400,7 +400,7 @@ export async function buildImageSection(documentKey, filenames) {
     spacing: 'group',
     ...(await readImageDimsFromSrc(filenames[0]) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
-  };
+  });
 }
 
 /** Build an image section from an existing canonical src token. */
@@ -408,7 +408,7 @@ export async function buildImageSectionFromSrcs(srcs) {
   const src = normalizeAssetSrc(srcs[0]);
   if (!src) throw new Error('An image file is required.');
   const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  return {
+  return markAutomaticImageAltIntent({
     type: 'image',
     id,
     src,
@@ -416,7 +416,7 @@ export async function buildImageSectionFromSrcs(srcs) {
     spacing: 'group',
     ...(await readImageDimsFromSrc(src) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
-  };
+  });
 }
 
 export const buildPlaceholderItem = (id) => ({
@@ -531,7 +531,7 @@ export async function buildImageGridSection(documentKey, filenames) {
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   const visible = items.map((item) => item.id);
-  return {
+  return markAutomaticImageAltIntent({
     type: 'imageGrid',
     id,
     columns: Math.min(2, Math.max(1, filenames.length)),
@@ -542,7 +542,7 @@ export async function buildImageGridSection(documentKey, filenames) {
       desktop: { visible: [...visible] },
       mobile: { visible: [...visible] },
     },
-  };
+  });
 }
 
 /** Build an image grid from existing canonical src tokens. */
@@ -558,7 +558,7 @@ export async function buildImageGridSectionFromSrcs(srcs) {
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   const visible = items.map((item) => item.id);
-  return {
+  return markAutomaticImageAltIntent({
     type: 'imageGrid',
     id,
     columns: Math.min(2, Math.max(1, tokens.length)),
@@ -569,7 +569,7 @@ export async function buildImageGridSectionFromSrcs(srcs) {
       desktop: { visible: [...visible] },
       mobile: { visible: [...visible] },
     },
-  };
+  });
 }
 
 export async function buildImageCarouselSection(documentKey, filenames) {
@@ -581,7 +581,7 @@ export async function buildImageCarouselSection(documentKey, filenames) {
     ...(await readImageDimsFromSrc(filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
-  return {
+  return markAutomaticImageAltIntent({
     type: 'imageCarousel',
     id,
     orientation: 'horizontal',
@@ -591,7 +591,7 @@ export async function buildImageCarouselSection(documentKey, filenames) {
     spacing: 'group',
     items,
     visible: items.map((item) => item.id),
-  };
+  });
 }
 
 /** Build an image carousel from existing canonical src tokens. */
@@ -606,7 +606,7 @@ export async function buildImageCarouselSectionFromSrcs(srcs) {
     ...(await readImageDimsFromSrc(src) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
-  return {
+  return markAutomaticImageAltIntent({
     type: 'imageCarousel',
     id,
     orientation: 'horizontal',
@@ -616,7 +616,7 @@ export async function buildImageCarouselSectionFromSrcs(srcs) {
     spacing: 'group',
     items,
     visible: items.map((item) => item.id),
-  };
+  });
 }
 
 function slugifyTitle(value) {
