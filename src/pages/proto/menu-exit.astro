@@ -14,7 +14,6 @@ if (import.meta.env.PROD) return Astro.redirect('/404');
 const project = loadProjectBySlug('goodhome-painting-tools');
 if (!project) return Astro.redirect('/404');
 
-const initialModel = Astro.url.searchParams.get('v') === '2' ? 'faster' : 'current';
 const modelPayload = JSON.stringify({ current: currentTitleModel, faster: fasterTitleModel });
 ---
 
@@ -24,8 +23,8 @@ const modelPayload = JSON.stringify({ current: currentTitleModel, faster: faster
   columnStyle={pageColumnStyle(project.sections)}
 >
   <div class="project-page flex flex-col min-h-dvh">
-    <script is:inline define:vars={{ initialModel }}>
-      window.__menuExitTitleModel = initialModel;
+    <script is:inline>
+      window.__menuExitTitleModel = new URLSearchParams(window.location.search).get('v') === '2' ? 'faster' : 'current';
     </script>
     <PrototypeHeader title={project.title} navMenu wordmarkAsH1 />
     <main id="main-content" class="project-page__main flex-1">
@@ -38,8 +37,8 @@ const modelPayload = JSON.stringify({ current: currentTitleModel, faster: faster
 
   <nav class="proto-picker" aria-label="Prototype variants">
     <span class="proto-picker-highlight" aria-hidden="true"></span>
-    <button class:list={['proto-picker-item', initialModel === 'current' && 'is-initial-active']} data-active={initialModel === 'current' ? true : undefined} aria-current={initialModel === 'current' ? 'true' : undefined}>Current title</button>
-    <button class:list={['proto-picker-item', initialModel === 'faster' && 'is-initial-active']} data-active={initialModel === 'faster' ? true : undefined} aria-current={initialModel === 'faster' ? 'true' : undefined}>Faster close</button>
+    <button class="proto-picker-item" data-active aria-current="true">Current title</button>
+    <button class="proto-picker-item">Faster close</button>
     <span class="proto-picker-divider" aria-hidden="true"></span>
     <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
   </nav>
@@ -83,7 +82,7 @@ const modelPayload = JSON.stringify({ current: currentTitleModel, faster: faster
     replay?.addEventListener('click', () => setActive(current, true));
     window.addEventListener('resize', moveHighlight);
     document.addEventListener('keydown', (event) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const target = event.target;
       if (target instanceof HTMLElement && (
         target.matches('input, textarea, select') || target.isContentEditable
