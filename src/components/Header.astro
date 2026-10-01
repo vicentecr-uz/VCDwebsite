@@ -1222,23 +1222,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
-    const isWordmarkHoverActive = () =>
-      (startTrigger as HTMLElement).dataset.menuOpen === 'true' ||
-      startTrigger.matches(':hover') ||
-      startTrigger.contains(document.activeElement);
-
-    const syncWordmarkHover = () => {
-      if (isDevEditing()) return;
-
-      const hoverActive = isWordmarkHoverActive();
-
-      if (hoverActive && !wordmarkIsOpen) {
-        void runWordmarkOpen();
-      } else if (!hoverActive && wordmarkIsOpen) {
-        void runWordmarkClose();
-      }
-    };
-
     const runWordmarkOpen = () => {
       invalidateWordmarkRun();
       wordmarkIsOpen = true;
