@@ -10,6 +10,12 @@ function response(body, type = 'text/html', status = 200, headers = {}) {
   return new Response(body, { status, headers: { 'content-type': type, ...headers } });
 }
 
+async function waitForIdle(service, timeout = 2000) {
+  const started = Date.now();
+  while (service.isChecking() && Date.now() - started < timeout) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(service.isChecking(), false, 'image description check did not settle');
+}
+
 test('enumerates only reached public raster usages and saves with a source CAS', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-image-descriptions-'));
   try {
@@ -204,10 +210,12 @@ test('caches failed generation, supports explicit retry, and restores cache in a
     await fixture.service.check();
     assert.equal(fixture.modelCalls, 1);
     await fixture.service.retry(fixture.service.rows()[0].key);
+    await waitForIdle(fixture.service);
     assert.equal(fixture.modelCalls, 2);
     assert.equal(fixture.service.rows()[0].description, 'A restored subject.');
     const second = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'cache.json'), readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response(fixture.html || '<img data-image-original="/images/hero.png">') : response(fixture.image, 'image/png'), modelFetch: async () => response('{}', 'application/json') });
-    await second.refresh();
+    await second.check();
+    assert.equal(second.rows()[0].status, 'Ready');
     assert.equal(second.rows()[0].description, 'A restored subject.');
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
@@ -234,4 +242,96 @@ test('rejects media symlinks and parent symlink escapes', async () => {
     await fixture.service.check();
     assert.equal(fixture.modelCalls, 0);
   } finally { await rm(fixture.root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
+});
+
+test('processes one visible usage when the same source is hidden, parked, or nested in hidden ancestors', async () => {
+  const docs = { home: { sections: [
+    { type: 'image', id: 'visible', src: 'hero.png', alt: '', altIntent: 'auto' },
+    { type: 'image', id: 'hidden', src: 'hero.png', alt: '', altIntent: 'auto' },
+    { type: 'image', id: 'grid', src: 'hero.png', alt: '', altIntent: 'auto' },
+    { type: 'image', id: 'parked', src: 'hero.png', alt: '', altIntent: 'auto' },
+  ] } };
+  const fixture = await imageFixture({ docs, html: `<main>
+    <div data-image-content-id="visible"><img id="visible" data-image-original="/images/hero.png" alt=""></div>
+    <div hidden data-image-content-id="hidden"><img id="hidden" data-image-original="/images/hero.png" alt=""></div>
+    <div data-grid-hidden-desktop="true" data-grid-hidden-tablet="true" data-grid-hidden-mobile="true" data-image-content-id="grid"><div data-carousel-slide><img id="grid" data-image-original="/images/hero.png" alt=""></div></div>
+    <div data-carousel-parked="true" data-image-content-id="parked"><img id="parked" data-image-original="/images/hero.png" alt=""></div>
+  </main>` });
+  try {
+    await fixture.service.check();
+    const rows = fixture.service.rows();
+    assert.equal(rows.length, 4);
+    assert.equal(rows.find((row) => row.path[1] === 0).public, true);
+    assert.equal(rows.filter((row) => row.public).length, 1);
+    assert.equal(fixture.modelCalls, 1);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('discards a deferred proposal when source alt or node identity changes', async () => {
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' }] } },
+    html: '<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>',
+  });
+  let release;
+  const deferred = new Promise((resolve) => { release = resolve; });
+  const service = createImageDescriptionsService({
+    site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'deferred-cache.json'),
+    readDocument: async () => structuredClone(fixture.docs.home), writeDocument: async () => { throw new Error('must not write'); },
+    fetchImpl: async (url) => String(url) === 'https://example.test/' ? response('<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>') : response(fixture.image, 'image/png'),
+    modelFetch: async () => { await deferred; return response(JSON.stringify({ message: { content: 'Stale proposal.' } }), 'application/json'); },
+  });
+  try {
+    const checking = service.check();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    fixture.docs.home.sections[0].alt = 'Authored during generation';
+    release();
+    await checking;
+    assert.equal(service.rows()[0].status, 'Waiting for publication');
+    assert.equal(fixture.docs.home.sections[0].alt, 'Authored during generation');
+    const cache = await readFile(path.join(fixture.root, 'deferred-cache.json'), 'utf8').catch(() => '{}');
+    assert.doesNotMatch(cache, /Stale proposal/);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('discards a deferred failure when the node is deleted', async () => {
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' }] } },
+    html: '<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>',
+  });
+  let release;
+  const service = createImageDescriptionsService({
+    site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'deleted-cache.json'),
+    readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response('<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>') : response(fixture.image, 'image/png'),
+    modelFetch: async () => { await new Promise((resolve) => { release = resolve; }); throw new Error('Stale failure.'); },
+  });
+  try {
+    const checking = service.check();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    fixture.docs.home.sections = [];
+    release();
+    await checking;
+    assert.doesNotMatch(await readFile(path.join(fixture.root, 'deleted-cache.json'), 'utf8').catch(() => '{}'), /Stale failure/);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('rejects stale saves after reorder and deletion without changing documents', async () => {
+  const fixture = await imageFixture({
+    docs: { home: { sections: [
+      { type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' },
+      { type: 'image', id: 'other', src: 'other.png', alt: '', altIntent: 'auto' },
+    ] } },
+    imageNames: ['hero.png', 'other.png'],
+    html: '<main><img id="hero" data-image-original="/images/hero.png"><img id="other" data-image-original="/images/other.png"></main>',
+  });
+  try {
+    await fixture.service.refresh();
+    const row = fixture.service.rows().find((candidate) => candidate.path[1] === 0);
+    fixture.docs.home.sections.reverse();
+    const reordered = await fixture.service.save({ key: row.key, baseToken: row.baseToken, alt: 'Nope', intent: 'manual' });
+    assert.equal(reordered.status, 409);
+    fixture.docs.home.sections = [];
+    const deleted = await fixture.service.save({ key: row.key, baseToken: row.baseToken, alt: 'Nope', intent: 'manual' });
+    assert.equal(deleted.status, 409);
+    assert.equal(fixture.writes, 0);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
