@@ -19,6 +19,18 @@ export type HomeIntroConfig = { durationMs?: number };
 const controllerKey = '__vcdHomeIntroController';
 const introSeenStorageKey = 'vcd:home-intro-seen';
 
+export function syncHomeIntroActions(surface: HTMLElement, editing: boolean) {
+  const tag = editing ? 'span' : 'button';
+  surface.querySelectorAll<HTMLElement>('[data-home-intro-okay="true"]').forEach((action) => {
+    if (action.tagName.toLowerCase() === tag) return;
+    const replacement = surface.ownerDocument.createElement(tag);
+    replacement.setAttribute('data-home-intro-okay', 'true');
+    if (!editing) replacement.setAttribute('type', 'button');
+    replacement.textContent = action.textContent;
+    action.replaceWith(replacement);
+  });
+}
+
 const isInteractive = (target: EventTarget | null) => {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest('a, button, input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], [data-dev-mode-only], [data-dev-image-target], [data-dev-edit-trigger], [data-dev-panel-key], .dev-overlay, .dev-panel'));
@@ -46,6 +58,7 @@ export function createHomeIntroController(
   let disposed = false;
   let finishTimer: ReturnType<typeof setTimeout> | null = null;
   let dismissFocus = false;
+  let okay: HTMLElement | null = null;
   const originalInert = home.inert;
   const originalOverflow = document.body.style.overflow;
   const originalRootOverflow = root.style.overflow;
@@ -57,11 +70,14 @@ export function createHomeIntroController(
   }));
   const setState = (next: HomeIntroState) => {
     if (disposed) return;
-    hideCursor();
     state = next;
     surface.dataset.state = next;
     surface.hidden = next === 'dismissed';
     surface.inert = next === 'dismissed';
+    okay?.removeEventListener('click', onOkay);
+    syncHomeIntroActions(surface, next === 'editing');
+    okay = surface.querySelector<HTMLElement>('[data-home-intro-okay="true"]');
+    if (next !== 'editing') okay?.addEventListener('click', onOkay);
     const veilVisible = next !== 'dismissed';
     home.inert = veilVisible || originalInert;
     if (veilVisible) home.setAttribute('aria-hidden', 'true');
@@ -114,18 +130,6 @@ export function createHomeIntroController(
     event.stopPropagation();
     dismiss();
   };
-  const onPointerMove = (event: PointerEvent) => {
-    const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
-    if (event.pointerType !== 'mouse' || state !== 'active' || !surface.matches(':hover') || !cursor || !win.matchMedia('(pointer: fine)').matches) return;
-    if (isInteractive(event.target)) { cursor.style.display = 'none'; return; }
-    const rect = surface.getBoundingClientRect();
-    cursor.style.display = 'block';
-    cursor.style.transform = `translate(${event.clientX - rect.left}px, ${event.clientY - rect.top}px) translate(-50%, -50%)`;
-  };
-  const hideCursor = () => {
-    const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
-    if (cursor) cursor.style.display = 'none';
-  };
   const onModeChange = (event: Event) => {
     const active = (event as CustomEvent<{ active?: boolean }>).detail?.active === true;
     if (active) {
@@ -152,12 +156,8 @@ export function createHomeIntroController(
     if (disposed) return;
     disposed = true;
     cancelFinish();
-    hideCursor();
     surface.removeEventListener('click', onClick);
-    surface.querySelector('[data-home-intro-okay]')?.removeEventListener('click', onOkay);
-    surface.removeEventListener('pointermove', onPointerMove);
-    surface.removeEventListener('pointerleave', hideCursor);
-    surface.removeEventListener('pointercancel', hideCursor);
+    okay?.removeEventListener('click', onOkay);
     win.removeEventListener('vcd:dev-mode-change', onModeChange);
     win.removeEventListener('pagehide', onPageHide);
     win.removeEventListener('pageshow', onPageShow);
@@ -170,10 +170,6 @@ export function createHomeIntroController(
   const reset = () => { if (!disposed) { cancelFinish(); surface.hidden = false; setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active'); } };
 
   surface.addEventListener('click', onClick);
-  surface.querySelector('[data-home-intro-okay]')?.addEventListener('click', onOkay);
-  surface.addEventListener('pointermove', onPointerMove);
-  surface.addEventListener('pointerleave', hideCursor);
-  surface.addEventListener('pointercancel', hideCursor);
   win.addEventListener('vcd:dev-mode-change', onModeChange);
   win.addEventListener('pagehide', onPageHide);
   win.addEventListener('pageshow', onPageShow);

@@ -30,6 +30,7 @@ class FixtureElement {
     return event;
   }
   querySelector<T extends FixtureElement>(selector: string) { return this.children[selector] as T | undefined; }
+  querySelectorAll() { return []; }
   closest() { return this.tag === 'a' || this.tag === 'button' ? this : null; }
   contains(node: unknown): boolean { return node === this || Object.values(this.children).some((child) => child.contains(node)); }
   getAttribute(name: string) { return this.attrs.get(name) ?? null; }
@@ -96,7 +97,7 @@ const fixture = () => {
   const okay = new FixtureElement();
   okay.tag = 'button';
   const cursor = new FixtureElement();
-  surface.children['[data-home-intro-okay]'] = okay;
+  surface.children['[data-home-intro-okay="true"]'] = okay;
   surface.children['[data-home-intro-cursor]'] = cursor;
   const home = new FixtureElement();
   const root = new FixtureElement();
