@@ -78,7 +78,7 @@ function routeKey(route) {
 }
 
 /** @param {any} document */
-function documentInfo(document) {
+export function documentInfo(document) {
   const links = [];
   const resources = [];
   const inline = [];

@@ -38,6 +38,7 @@ import {
   devAuthoringActive,
   devAuthoringRequestQueue,
   writeAtomicJson,
+  markAutomaticImageAltIntent,
 } from './scripts/dev-api-plugins.mjs';
 import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
@@ -69,6 +70,7 @@ import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 import { isVideoSrc } from './src/lib/imageUpload.mjs';
+import { imageDescriptionsDevWriter } from './scripts/dev-image-descriptions.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -2088,6 +2090,7 @@ export function contentSectionDevWriter() {
                 variants,
                 srcs[0] || '',
               );
+              markAutomaticImageAltIntent(existing);
             } catch (error) {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not fill that placeholder.',
@@ -2248,6 +2251,7 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageSectionFromSrcs(srcs.slice(0, 1))
               : await buildImageSection(documentKey, filenames.slice(0, 1));
+            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageGrid') {
             if (!srcs.length && !filenames.length) {
@@ -2257,6 +2261,7 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageGridSectionFromSrcs(srcs)
               : await buildImageGridSection(documentKey, filenames);
+            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageCarousel') {
             if (!srcs.length && !filenames.length) {
@@ -2266,6 +2271,7 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageCarouselSectionFromSrcs(srcs)
               : await buildImageCarouselSection(documentKey, filenames);
+            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
@@ -2690,6 +2696,7 @@ export default defineConfig({
       contentHmrGate(),
       mediaDevServer(),
       uploadDevWriter(),
+      imageDescriptionsDevWriter(),
       assetsDevWriter(),
       projectCreateDevWriter(),
       projectDeleteDevWriter(),
