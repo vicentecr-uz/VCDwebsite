@@ -41,7 +41,7 @@ export type ProjectDocument = {
   description?: string;
   status?: ProjectStatus;
   stack?: ProjectStack;
-  listings?: Partial<Record<'home' | 'work' | 'play', ProjectListingCard>>;
+  listings?: Partial<Record<'home' | 'play', ProjectListingCard>>;
   teaser?: ProjectTeaserConfig;
   trailingSpacing?: ProjectStackSpacing;
   scrollFinale?: boolean;
@@ -76,7 +76,7 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
-export type PageDocumentKey = 'home' | 'home-intro' | 'work' | 'play' | 'about' | 'styles' | 'analytics';
+export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics';
 
 export type PageDocument = {
   title?: string;
@@ -187,7 +187,7 @@ export function getModernProjectSlugsForBuild(options: { dev?: boolean } = {}): 
 function listingCardForGrid(
   project: ProjectDocument,
   listing: ProjectListingCard,
-  grid: 'home' | 'work' | 'play',
+  grid: 'home' | 'play',
 ): ProjectGridListing | undefined {
   const dev = import.meta.env.DEV;
   const status = project.status ?? 'published';
@@ -225,7 +225,7 @@ function listingCardForGrid(
   };
 }
 
-export function getProjectGridListings(grid: 'home' | 'work' | 'play'): ProjectGridListing[] {
+export function getProjectGridListings(grid: 'home' | 'play'): ProjectGridListing[] {
   const projects = loadAllProjects();
   const listings: ProjectGridListing[] = [];
 
@@ -248,7 +248,7 @@ export function getProjectGridListings(grid: 'home' | 'work' | 'play'): ProjectG
 export function emptyModernProjectDocument(
   slug: string,
   title: string,
-  grid: 'home' | 'work' | 'play',
+  grid: 'home' | 'play',
 ): ProjectDocument {
   return {
     slug,
