@@ -136,7 +136,7 @@ function publicImages(document, pageUrl, site) {
     }
     const ids = [];
     for (let current = node; current; current = current.parentNode) {
-      for (const name of ['data-grid-item-id', 'data-outline-id', 'data-section-id', 'id']) {
+      for (const name of ['data-image-content-id', 'data-grid-item-id', 'data-outline-id', 'data-section-id', 'id']) {
         const id = attr(current, name);
         if (id && !ids.includes(id)) ids.unshift(id);
       }
@@ -147,8 +147,6 @@ function publicImages(document, pageUrl, site) {
   walk(document);
   return found;
 }
-
-function routeForDocument(document) { return document === 'home' ? '/' : `/${document}/`; }
 
 async function publicGraph({ fetchImpl, site, root = '/' }) {
   const origin = new URL(site || DEFAULT_SITE);
@@ -202,7 +200,7 @@ function statusFor(row) {
   if (row.intent === 'decorative') return 'Decorative';
   if (row.intent === 'manual') return 'Manual';
   if (row.state === 'failed' || row.error) return 'Failed';
-  if (row.description) return 'Ready';
+  if (row.description || row.alt.trim()) return 'Ready';
   if (row.state === 'describing') return 'Describing';
   return 'Waiting for publication';
 }
@@ -356,6 +354,10 @@ export function createImageDescriptionsService(options = {}) {
       const publicPages = await graph(true);
       await refresh(publicPages);
       const cache = await readCache(cacheFile);
+      for (const [key, saved] of Object.entries(cache)) {
+        const current = rows.find((row) => row.key === key);
+        if (!current || !current.public || current.baseToken !== saved.baseToken) delete cache[key];
+      }
       const candidates = rows.filter((row) => row.public && row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed');
       for (const queued of candidates) {
         await refresh(publicPages);
@@ -451,7 +453,9 @@ export function imageDescriptionsDevWriter(options = {}) {
         try { const result = await service.save(await bodyJson(req)); sendJson(res, result.status, result.payload); }
         catch { sendJson(res, 400, { error: 'Could not save image description.' }); }
       });
-      const timer = setInterval(() => { if (service.hasAutoCandidates()) service.check().catch(() => {}); }, 30_000);
+      const timer = setInterval(() => {
+        service.refresh().then(() => { if (service.hasAutoCandidates()) return service.check(); return null; }).catch(() => {});
+      }, 30_000);
       server.httpServer?.once('close', () => clearInterval(timer));
     },
   };
