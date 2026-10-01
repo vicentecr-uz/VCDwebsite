@@ -875,7 +875,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         prototypeReplayTimer = window.setTimeout(() => {
           prototypeReplayTimer = undefined;
           closeMenu(true);
-        }, 0.25 * 1000 + 100);
+        }, Math.max(
+          MENU_TIMELINE_OPEN_DURATION,
+          (window as Window & { __menuExitTitleEntrySeconds?: number }).__menuExitTitleEntrySeconds ?? 0,
+        ) * 1000 + 100);
       });
     };
     document.addEventListener('header:force-close', cancelPrototypeReplay);
@@ -1128,6 +1131,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     type TitleModel = 'current' | 'faster';
     const prototypeWindow = window as Window & {
       __menuExitTitleModel?: TitleModel;
+      __menuExitTitleEntrySeconds?: number;
     };
     let selectedTitleModel: TitleModel = prototypeWindow.__menuExitTitleModel === 'faster' ? 'faster' : 'current';
 
@@ -1229,6 +1233,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       new Promise<void>((resolve) => {
         window.setTimeout(resolve, durationSec * 1000 + 32);
       });
+
+    const syncPrototypeTitleTiming = () => {
+      prototypeWindow.__menuExitTitleEntrySeconds = selectedTitleModel === 'faster'
+        ? TITLE_OPEN_TOTAL
+        : Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
+    };
+    syncPrototypeTitleTiming();
 
     const applyWordmarkOpen = () => {
       setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
@@ -1507,6 +1518,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('menu-exit:remount', ((event: CustomEvent<{ model?: TitleModel }>) => {
       selectedTitleModel = event.detail?.model === 'faster' ? 'faster' : 'current';
       prototypeWindow.__menuExitTitleModel = selectedTitleModel;
+      syncPrototypeTitleTiming();
       forceCloseMenus();
     }) as EventListener);
   }
