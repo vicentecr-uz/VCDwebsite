@@ -19,6 +19,22 @@ export type HomeIntroConfig = { durationMs?: number };
 const controllerKey = '__vcdHomeIntroController';
 const introSeenStorageKey = 'vcd:home-intro-seen';
 
+const sourceLabel = (action: HTMLElement): string => {
+  const source = [...action.children].find((child) => child.tagName.toLowerCase() === 'span'
+    && child.getAttribute('data-home-intro-source-label') === 'true');
+  return source?.textContent ?? '';
+};
+
+const renderActionLabels = (document: Document, source: string): [HTMLElement, HTMLElement] => {
+  const sourceLabel = document.createElement('span');
+  sourceLabel.setAttribute('data-home-intro-source-label', 'true');
+  sourceLabel.textContent = source;
+  const desktopLabel = document.createElement('span');
+  desktopLabel.setAttribute('data-home-intro-desktop-label', 'true');
+  desktopLabel.textContent = 'Enter';
+  return [sourceLabel, desktopLabel];
+};
+
 export function syncHomeIntroActions(surface: HTMLElement, editing: boolean) {
   const tag = editing ? 'span' : 'button';
   surface.querySelectorAll<HTMLElement>('[data-home-intro-okay="true"]').forEach((action) => {
@@ -26,7 +42,8 @@ export function syncHomeIntroActions(surface: HTMLElement, editing: boolean) {
     const replacement = surface.ownerDocument.createElement(tag);
     replacement.setAttribute('data-home-intro-okay', 'true');
     if (!editing) replacement.setAttribute('type', 'button');
-    replacement.textContent = action.textContent;
+    if (editing) replacement.textContent = action.tagName.toLowerCase() === 'button' ? sourceLabel(action) : action.textContent;
+    else replacement.replaceChildren(...renderActionLabels(surface.ownerDocument, action.textContent ?? ''));
     action.replaceWith(replacement);
   });
 }
