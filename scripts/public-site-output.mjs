@@ -13,6 +13,7 @@ async function listFiles(dir) {
   const files = [];
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`public output: symlink is not allowed in dist: ${full}`);
     if (entry.isDirectory()) files.push(...await listFiles(full));
     else if (entry.isFile()) files.push(full);
   }
