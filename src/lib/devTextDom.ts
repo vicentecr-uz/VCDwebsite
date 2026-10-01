@@ -84,6 +84,11 @@ const serializeNode = (node: Node, preserveWrap = true): string => {
   if (tag === 'BR') {
     return node.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE) ? '' : '<br>';
   }
+  if ((tag === 'SPAN' || tag === 'BUTTON') && node.getAttribute('data-home-intro-okay') === 'true') {
+    const label = node.cloneNode(true) as Element;
+    label.querySelectorAll([...IGNORED_TAGS].join(',')).forEach((child) => child.remove());
+    return `<span data-home-intro-okay="true">${escapeTextHtml(label.textContent ?? '')}</span>`;
+  }
   const inner = [...node.childNodes].map((child) => serializeNode(child, preserveWrap)).join('');
   if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
   if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
