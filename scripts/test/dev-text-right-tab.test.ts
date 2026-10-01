@@ -104,3 +104,22 @@ test('normalizes formatted text-node ends before BR and preserves earlier right 
   expect(breakRightIndentTab(soft.root, true)).toBe(true);
   expect(soft.root.innerHTML).toBe('<p>Earlier<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span><br>Current<span data-text-right-tab="true">2025</span><br> later</p>');
 });
+
+test('maps a root-end caret into the last direct paragraph and keeps empty lines editable', () => {
+  const { window, root } = setup('<p>First</p><p>Last</p>');
+  window.getSelection()!.setPosition(root, root.childNodes.length);
+  expect(insertRightIndentTab(root)).toBe(true);
+  expect(root.innerHTML).toBe('<p>First</p><p>Last<span data-text-right-tab="true"><br data-dev-placeholder="true"></span></p>');
+
+  const hard = setup('<p><span data-text-right-tab="true">Right<br data-dev-placeholder="true"></span></p>');
+  const hardRun = hard.root.querySelector('span[data-text-right-tab]')!;
+  hard.window.getSelection()!.setPosition(hardRun.firstChild!, hardRun.firstChild!.textContent!.length);
+  expect(breakRightIndentTab(hard.root, false)).toBe(true);
+  expect(hard.root.innerHTML).toBe('<p><span data-text-right-tab="true">Right</span></p><p><br data-dev-placeholder="true"></p>');
+
+  const soft = setup('<p><span data-text-right-tab="true">Right<br data-dev-placeholder="true"></span></p>');
+  const softRun = soft.root.querySelector('span[data-text-right-tab]')!;
+  soft.window.getSelection()!.setPosition(softRun.firstChild!, softRun.firstChild!.textContent!.length);
+  expect(breakRightIndentTab(soft.root, true)).toBe(true);
+  expect(soft.root.innerHTML).toBe('<p><span data-text-right-tab="true">Right</span><br><br data-dev-placeholder="true"></p>');
+});
