@@ -1,6 +1,7 @@
 // @ts-check
 import { readdir, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parse } from 'parse5';
 
 const GENERATED_EXTENSIONS = new Set(['.html', '.css', '.js']);
@@ -8,8 +9,7 @@ const URL_ATTRIBUTES = new Set(['src', 'href', 'poster', 'data', 'action', 'srcs
 
 /** @param {string} dir @returns {Promise<string[]>} */
 async function listFiles(dir) {
-  let entries;
-  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return []; }
+  const entries = await readdir(dir, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
@@ -136,9 +136,9 @@ function redirectInfo(document, base, site) {
   return { href, destination, external: false };
 }
 
-/** @param {string} raw @param {string} file @param {string} distDir @param {URL} site */
-function resolveAssetFile(raw, file, distDir, site) {
-  const base = new URL(`file://${file}`);
+/** @param {string} raw @param {string} file @param {string} distDir @param {URL} site @param {string} assetsDir @param {Set<string>} knownFiles */
+function resolveAssetFile(raw, file, distDir, site, assetsDir, knownFiles) {
+  const base = pathToFileURL(file);
   const value = cleanReference(raw);
   if (!value || /^(?:data|mailto|javascript|tel|blob):/i.test(value)) return null;
   let candidate;
@@ -147,14 +147,23 @@ function resolveAssetFile(raw, file, distDir, site) {
       const url = new URL(value);
       if (url.protocol !== site.protocol || url.host !== site.host) return null;
       candidate = path.join(distDir, decodeURIComponent(url.pathname).replace(/^\//, ''));
+    } else if (value.startsWith('//')) {
+      const url = new URL(value, site);
+      if (url.protocol !== site.protocol || url.host !== site.host) return null;
+      candidate = path.join(distDir, decodeURIComponent(url.pathname).replace(/^\//, ''));
     } else if (value.startsWith('/')) candidate = path.join(distDir, decodeURIComponent(value.slice(1)));
-    else if (value.startsWith('_astro/')) candidate = path.join(distDir, decodeURIComponent(value));
     else if (file.endsWith('.html')) {
       const route = routeForFile(file, distDir) || '/';
       const url = resolveUrl(value, new URL(route, site), site);
       if (!url) return null;
       candidate = path.join(distDir, decodeURIComponent(url.pathname).replace(/^\//, ''));
-    } else candidate = decodeURIComponent(new URL(value, base).pathname);
+    } else {
+      const relative = decodeURIComponent(new URL(value, base).pathname);
+      const rootFallback = path.join(distDir, decodeURIComponent(value));
+      candidate = knownFiles.has(path.resolve(relative)) || !value.startsWith(`${assetsDir}/`)
+        ? relative
+        : rootFallback;
+    }
   } catch { return null; }
   const resolved = path.resolve(candidate);
   const root = path.resolve(distDir) + path.sep;
@@ -171,9 +180,11 @@ function codeReferences(contents) {
 
 /** @param {string} distDir @param {{site?: string|URL, assetsDir?: string}} options */
 export async function prunePublicOutput(distDir, options = {}) {
+  distDir = path.resolve(distDir);
   const site = new URL(String(options.site || 'http://localhost/'));
   const assetsDir = options.assetsDir || '_astro';
   const allFiles = await listFiles(distDir);
+  const knownFiles = new Set(allFiles.map((file) => path.resolve(file)));
   const htmlFiles = allFiles.filter((file) => path.extname(file).toLowerCase() === '.html');
   const routeFiles = new Map();
   for (const file of htmlFiles) {
@@ -227,7 +238,7 @@ export async function prunePublicOutput(distDir, options = {}) {
   const assetRoot = path.resolve(distDir, assetsDir);
   const addRefs = (file, refs) => {
     for (const raw of refs) {
-      const resolved = resolveAssetFile(raw, file, distDir, site);
+      const resolved = resolveAssetFile(raw, file, distDir, site, assetsDir, knownFiles);
       if (resolved && (resolved === assetRoot || resolved.startsWith(assetRoot + path.sep))) retainedAssets.add(resolved);
     }
   };
@@ -241,7 +252,7 @@ export async function prunePublicOutput(distDir, options = {}) {
     const file = assetQueue.shift();
     if (!file || !assetFiles.includes(file) || !GENERATED_EXTENSIONS.has(path.extname(file).toLowerCase())) continue;
     for (const raw of codeReferences(await readFile(file, 'utf8'))) {
-      const resolved = resolveAssetFile(raw, file, distDir, site);
+      const resolved = resolveAssetFile(raw, file, distDir, site, assetsDir, knownFiles);
       if (resolved && assetFiles.includes(resolved) && !retainedAssets.has(resolved)) { retainedAssets.add(resolved); assetQueue.push(resolved); }
     }
   }
