@@ -1,7 +1,6 @@
 import { parseFragment, serialize, type DefaultTreeAdapterMap } from 'parse5';
 
 type HtmlNode = DefaultTreeAdapterMap['node'];
-type HtmlElement = DefaultTreeAdapterMap['element'];
 
 const labelText = (node: HtmlNode): string => {
   if ('value' in node) return node.value;
@@ -18,25 +17,7 @@ export function renderHomeIntroAction(html: string): string {
       const value = labelText(node);
       node.nodeName = node.tagName = 'button';
       node.attrs = [{ name: 'type', value: 'button' }, { name: 'data-home-intro-okay', value: 'true' }];
-      const sourceLabel: HtmlElement = {
-        nodeName: 'span',
-        tagName: 'span',
-        attrs: [{ name: 'data-home-intro-source-label', value: 'true' }],
-        namespaceURI: node.namespaceURI,
-        childNodes: [],
-        parentNode: node,
-      };
-      sourceLabel.childNodes = [{ nodeName: '#text', value, parentNode: sourceLabel }];
-      const desktopLabel: HtmlElement = {
-        nodeName: 'span',
-        tagName: 'span',
-        attrs: [{ name: 'data-home-intro-desktop-label', value: 'true' }],
-        namespaceURI: node.namespaceURI,
-        childNodes: [],
-        parentNode: node,
-      };
-      desktopLabel.childNodes = [{ nodeName: '#text', value: 'Enter', parentNode: desktopLabel }];
-      node.childNodes = [sourceLabel, desktopLabel];
+      node.childNodes = [{ nodeName: '#text', value, parentNode: node }];
     }
     if ('childNodes' in node) node.childNodes.forEach(visit);
   };

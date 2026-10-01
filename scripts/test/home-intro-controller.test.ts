@@ -104,7 +104,7 @@ const fixture = () => {
   const win = fixtureWindow();
   const controller = createHomeIntroController(surface, home, root, win);
   controllers.push(controller);
-  return { surface, okay, home, root, win, controller };
+  return { surface, okay, cursor, home, root, win, controller };
 };
 
 const waitForExit = () => new Promise((resolve) => setTimeout(resolve, 270));
@@ -246,5 +246,62 @@ describe('home intro controller', () => {
     f.controller.teardown();
     expect(f.root.style.overflow).toBe('');
     expect(fixtureDocument.body.style.overflow).toBe('');
+  });
+
+  test('mouse movement shows the decorative Enter cursor and records mouse mode', () => {
+    const f = fixture();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 120, clientY: 80 });
+    expect(f.surface.dataset.homeIntroPointer).toBe('mouse');
+    expect(f.surface.dataset.homeIntroCursorActive).toBe('true');
+    expect(f.cursor.style.display).toBe('block');
+    expect(f.cursor.style.transform).toBe('translate(120px, 80px) translate(-50%, -50%)');
+  });
+
+  test('touch and pen input hide the cursor and restore the inline action mode', () => {
+    const f = fixture();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.surface.emit('pointermove', { pointerType: 'touch', clientX: 20, clientY: 30 });
+    expect(f.surface.dataset.homeIntroPointer).toBe('touch');
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    expect(f.cursor.style.display).toBe('none');
+    f.surface.emit('pointermove', { pointerType: 'pen', clientX: 20, clientY: 30 });
+    expect(f.surface.dataset.homeIntroPointer).toBe('touch');
+  });
+
+  test('interactive links keep native cursor behavior while mouse mode remains active', () => {
+    const f = fixture();
+    const link = new FixtureElement();
+    link.tag = 'a';
+    f.surface.emit('pointermove', { pointerType: 'mouse', target: link, clientX: 20, clientY: 30 });
+    expect(f.surface.dataset.homeIntroPointer).toBe('mouse');
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    expect(f.cursor.style.display).toBe('none');
+  });
+
+  test('Tab hides the decorative cursor and restores keyboard action mode', () => {
+    const f = fixture();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.win.emit('keydown', { key: 'Tab' });
+    expect(f.surface.dataset.homeIntroPointer).toBe('keyboard');
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    expect(f.cursor.style.display).toBe('none');
+  });
+
+  test('scroll, blur, state changes and teardown hide the cursor', () => {
+    const f = fixture();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.win.emit('scroll');
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.win.emit('blur');
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.win.emit('vcd:dev-mode-change', { detail: { active: true } });
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    f.controller.teardown();
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
+    f.surface.emit('pointermove', { pointerType: 'mouse', clientX: 20, clientY: 30 });
+    expect(f.surface.dataset.homeIntroCursorActive).toBeUndefined();
   });
 });

@@ -39,6 +39,7 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
       </div>
     </div>
   </div>
+  <span data-home-intro-cursor aria-hidden="true">Enter</span>
 </section>
 
 <script is:inline>
@@ -112,23 +113,45 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     inset: -8px;
   }
 
-  #home-intro-surface :global([data-home-intro-desktop-label='true']) {
+  #home-intro-surface :global([data-home-intro-cursor]) {
+    position: fixed;
+    top: 0;
+    left: 0;
     display: none;
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    font: inherit;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
+    white-space: nowrap;
   }
 
-  @media (min-width: 40em), (any-hover: hover) and (any-pointer: fine) {
-    #home-intro-surface :global([data-home-intro-source-label='true']) {
-      display: none;
-    }
+  #home-intro-surface[data-home-intro-cursor-active='true'] {
+    cursor: none;
+  }
 
-    #home-intro-surface :global([data-home-intro-desktop-label='true']) {
-      display: inline;
-    }
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global(a),
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global(button),
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global(input),
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global(textarea),
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global(select),
+  #home-intro-surface[data-home-intro-cursor-active='true'] :global([contenteditable='true']) {
+    cursor: auto;
+  }
+
+  #home-intro-surface[data-home-intro-pointer='mouse'] :global(button[data-home-intro-okay]) {
+    opacity: 0;
+    pointer-events: none;
   }
 
   #home-intro-surface :global(button[data-home-intro-okay]):focus-visible {
     outline: 2px solid currentColor;
     outline-offset: 4px;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   #home-intro-surface[data-state='editing'] :global([data-home-intro-okay]) {

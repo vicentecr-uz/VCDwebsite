@@ -19,22 +19,6 @@ export type HomeIntroConfig = { durationMs?: number };
 const controllerKey = '__vcdHomeIntroController';
 const introSeenStorageKey = 'vcd:home-intro-seen';
 
-const sourceLabel = (action: HTMLElement): string => {
-  const source = [...action.children].find((child) => child.tagName.toLowerCase() === 'span'
-    && child.getAttribute('data-home-intro-source-label') === 'true');
-  return source?.textContent ?? '';
-};
-
-const renderActionLabels = (document: Document, source: string): [HTMLElement, HTMLElement] => {
-  const sourceLabel = document.createElement('span');
-  sourceLabel.setAttribute('data-home-intro-source-label', 'true');
-  sourceLabel.textContent = source;
-  const desktopLabel = document.createElement('span');
-  desktopLabel.setAttribute('data-home-intro-desktop-label', 'true');
-  desktopLabel.textContent = 'Enter';
-  return [sourceLabel, desktopLabel];
-};
-
 export function syncHomeIntroActions(surface: HTMLElement, editing: boolean) {
   const tag = editing ? 'span' : 'button';
   surface.querySelectorAll<HTMLElement>('[data-home-intro-okay="true"]').forEach((action) => {
@@ -42,8 +26,7 @@ export function syncHomeIntroActions(surface: HTMLElement, editing: boolean) {
     const replacement = surface.ownerDocument.createElement(tag);
     replacement.setAttribute('data-home-intro-okay', 'true');
     if (!editing) replacement.setAttribute('type', 'button');
-    if (editing) replacement.textContent = action.tagName.toLowerCase() === 'button' ? sourceLabel(action) : action.textContent;
-    else replacement.replaceChildren(...renderActionLabels(surface.ownerDocument, action.textContent ?? ''));
+    replacement.textContent = action.textContent;
     action.replaceWith(replacement);
   });
 }
@@ -76,11 +59,62 @@ export function createHomeIntroController(
   let finishTimer: ReturnType<typeof setTimeout> | null = null;
   let dismissFocus = false;
   let okay: HTMLElement | null = null;
+  const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
   const originalInert = home.inert;
   const originalOverflow = document.body.style.overflow;
   const originalRootOverflow = root.style.overflow;
   const originalAriaHidden = home.getAttribute('aria-hidden');
   let previousSurface = '';
+
+  const hideCursor = () => {
+    if (!cursor) return;
+    cursor.style.display = 'none';
+    cursor.style.transform = '';
+    delete surface.dataset.homeIntroCursorActive;
+  };
+  const setPointerMode = (mode: 'mouse' | 'touch' | 'keyboard') => {
+    surface.dataset.homeIntroPointer = mode;
+    if (mode !== 'mouse') hideCursor();
+  };
+  const showCursor = (event: PointerEvent) => {
+    if (!cursor || state !== 'active' || isInteractive(event.target) || win.getSelection?.()?.isCollapsed === false) {
+      hideCursor();
+      return;
+    }
+    cursor.style.display = 'block';
+    cursor.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-50%, -50%)`;
+    surface.dataset.homeIntroCursorActive = 'true';
+  };
+  const onPointerMove = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse') {
+      setPointerMode('touch');
+      return;
+    }
+    if (state !== 'active') return;
+    setPointerMode('mouse');
+    showCursor(event);
+  };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse') {
+      setPointerMode('touch');
+      return;
+    }
+    if (state !== 'active') return;
+    setPointerMode('mouse');
+    showCursor(event);
+  };
+  const onPointerLeave = (event: PointerEvent) => {
+    if (event.pointerType !== 'mouse') {
+      setPointerMode('touch');
+      return;
+    }
+    hideCursor();
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Tab') setPointerMode('keyboard');
+  };
+  const onScroll = () => hideCursor();
+  const onBlur = () => hideCursor();
 
   const announce = (name: string) => win.dispatchEvent(new CustomEvent(name, {
     detail: { surface: state === 'dismissed' ? 'home' : 'home-intro', state },
@@ -88,6 +122,7 @@ export function createHomeIntroController(
   const setState = (next: HomeIntroState) => {
     if (disposed) return;
     state = next;
+    hideCursor();
     surface.dataset.state = next;
     surface.hidden = next === 'dismissed';
     surface.inert = next === 'dismissed';
@@ -157,6 +192,7 @@ export function createHomeIntroController(
   };
   const restoreAfterPageHide = () => {
     cancelFinish();
+    hideCursor();
     home.inert = originalInert;
     if (originalAriaHidden === null) home.removeAttribute('aria-hidden');
     else home.setAttribute('aria-hidden', originalAriaHidden);
@@ -174,10 +210,19 @@ export function createHomeIntroController(
     disposed = true;
     cancelFinish();
     surface.removeEventListener('click', onClick);
+    surface.removeEventListener('pointermove', onPointerMove);
+    surface.removeEventListener('pointerdown', onPointerDown);
+    surface.removeEventListener('pointerleave', onPointerLeave);
+    surface.removeEventListener('pointercancel', onPointerLeave);
+    surface.removeEventListener('scroll', onScroll);
     okay?.removeEventListener('click', onOkay);
     win.removeEventListener('vcd:dev-mode-change', onModeChange);
     win.removeEventListener('pagehide', onPageHide);
     win.removeEventListener('pageshow', onPageShow);
+    win.removeEventListener('keydown', onKeyDown);
+    win.removeEventListener('scroll', onScroll);
+    win.removeEventListener('blur', onBlur);
+    hideCursor();
     home.inert = originalInert;
     if (originalAriaHidden === null) home.removeAttribute('aria-hidden');
     else home.setAttribute('aria-hidden', originalAriaHidden);
@@ -187,9 +232,17 @@ export function createHomeIntroController(
   const reset = () => { if (!disposed) { cancelFinish(); surface.hidden = false; setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active'); } };
 
   surface.addEventListener('click', onClick);
+  surface.addEventListener('pointermove', onPointerMove);
+  surface.addEventListener('pointerdown', onPointerDown);
+  surface.addEventListener('pointerleave', onPointerLeave);
+  surface.addEventListener('pointercancel', onPointerLeave);
+  surface.addEventListener('scroll', onScroll);
   win.addEventListener('vcd:dev-mode-change', onModeChange);
   win.addEventListener('pagehide', onPageHide);
   win.addEventListener('pageshow', onPageShow);
+  win.addEventListener('keydown', onKeyDown);
+  win.addEventListener('scroll', onScroll);
+  win.addEventListener('blur', onBlur);
   setState(introSeen ? 'dismissed' : root.classList.contains('is-dev-mode') ? 'editing' : 'active');
   announce('vcd:intro-layout-sync');
 
