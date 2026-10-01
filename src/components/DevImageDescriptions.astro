@@ -103,6 +103,7 @@ const intentOptions = [
   let pollTimer: number | undefined;
   let pageFilter: string | null = null;
   let requestGeneration = 0;
+  const savingKeys = new Set<string>();
 
   const pathText = (row: Row) => row.pathLabel || row.path.join(' › ');
   const pageSlug = () => {
@@ -213,13 +214,17 @@ const intentOptions = [
       view.text.value = row.description;
       view.intent.value = row.intent;
     }
-    view.text.disabled = row.intent === 'decorative';
+    const saving = savingKeys.has(row.key);
+    view.text.disabled = saving || row.intent === 'decorative';
+    view.intent.disabled = saving;
     view.status.textContent = rowStatus(row);
     view.retry.hidden = row.status !== 'Failed';
-    view.retry.disabled = checking;
+    view.retry.disabled = saving || checking;
     view.refresh.hidden = !row.conflict;
+    view.refresh.disabled = saving;
     view.revert.hidden = !row.dirty || !!row.conflict;
-    view.save.disabled = !canSave(row);
+    view.revert.disabled = saving;
+    view.save.disabled = saving || !canSave(row);
   };
 
   const createRowView = (row: LocalRow): RowView => {
@@ -288,6 +293,7 @@ const intentOptions = [
   };
 
   const loadRows = async ({ resetKey }: { resetKey?: string } = {}) => {
+    if (savingKeys.size) return;
     const generation = ++requestGeneration;
     try {
       const response = await fetch('/api/image-descriptions');
@@ -297,14 +303,7 @@ const intentOptions = [
       if (resetKey) {
         const latest = payload.rows?.find((row) => row.key === resetKey);
         if (latest) refreshRow(latest);
-        else {
-          const existing = localRows.get(resetKey);
-          if (existing?.dirty) {
-            existing.conflict = true;
-            existing.status = 'Failed';
-            existing.error = 'Refresh to load the latest source';
-          } else localRows.delete(resetKey);
-        }
+        else localRows.delete(resetKey);
       } else {
         mergeRows(payload.rows ?? []);
       }
@@ -323,10 +322,16 @@ const intentOptions = [
   };
 
   const saveRow = async (row: LocalRow) => {
+    if (savingKeys.has(row.key)) return;
+    savingKeys.add(row.key);
     const generation = ++requestGeneration;
     const view = rowViews.get(row.key);
-    if (!view) return;
-    view.save.disabled = true;
+    if (!view) {
+      savingKeys.delete(row.key);
+      return;
+    }
+    updateRowView(view, row);
+    let didSave = false;
     try {
       const response = await fetch('/api/image-description-save', {
         method: 'POST',
@@ -346,15 +351,21 @@ const intentOptions = [
       refreshRow(payload.row);
       updateRenderedImage(payload.row);
       renderRows();
-      window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
+      didSave = true;
     } catch (error) {
       if (generation !== requestGeneration) return;
       view.status.textContent = error instanceof Error ? error.message : 'Could not save description.';
-      view.save.disabled = false;
+    } finally {
+      savingKeys.delete(row.key);
+      const current = localRows.get(row.key);
+      const currentView = rowViews.get(row.key);
+      if (current && currentView) updateRowView(currentView, current);
+      if (didSave) window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
     }
   };
 
   const retryRow = async (row: LocalRow) => {
+    if (savingKeys.size) return;
     const generation = ++requestGeneration;
     try {
       const response = await fetch('/api/image-descriptions', {
@@ -376,7 +387,7 @@ const intentOptions = [
   };
 
   const checkRows = async () => {
-    if (checking) return;
+    if (checking || savingKeys.size) return;
     const generation = ++requestGeneration;
     checkButton.disabled = true;
     try {
