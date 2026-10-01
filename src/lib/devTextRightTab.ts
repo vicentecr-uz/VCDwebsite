@@ -13,7 +13,13 @@ const selectionInRoot = (root: HTMLElement) => {
   return { selection, range: selection.getRangeAt(0) };
 };
 
-const paragraphFor = (root: HTMLElement, node: Node | null): HTMLElement | null => {
+const paragraphFor = (root: HTMLElement, node: Node | null, offset = 0): HTMLElement | null => {
+  if (node === root) {
+    const directParagraphs = [...root.children].filter((child) => child.tagName === 'P' || child.tagName === 'DIV');
+    const preceding = directParagraphs.filter((child) => [...root.childNodes].indexOf(child) < offset).pop();
+    if (preceding) return preceding as HTMLElement;
+    if (directParagraphs.length === 1 && root.childNodes.length === 1) return directParagraphs[0] as HTMLElement;
+  }
   let current = node?.nodeType === 1 ? node as HTMLElement : node?.parentElement ?? null;
   while (current && current !== root) {
     if ((current.tagName === 'P' || current.tagName === 'DIV') && current.parentElement === root) return current;
@@ -71,17 +77,18 @@ const unwrap = (run: HTMLSpanElement) => {
   return index;
 };
 
-const removePlaceholderBreaks = (root: ParentNode) => {
-  root.querySelectorAll(`br[${PARAGRAPH_PLACEHOLDER_ATTRIBUTE}]`).forEach((br) => br.remove());
-};
-
-const unwrapRuns = (root: ParentNode) => {
-  root.querySelectorAll(`span[${RIGHT_TAB_ATTRIBUTE}="true"]`).forEach((node) => unwrap(node as HTMLSpanElement));
-};
-
 const removeOwnPlaceholder = (run: HTMLSpanElement) => {
   [...run.querySelectorAll(`br[${PARAGRAPH_PLACEHOLDER_ATTRIBUTE}]`)].forEach((br) => br.remove());
 };
+
+const appendPlaceholder = (parent: HTMLElement) => {
+  const placeholder = parent.ownerDocument.createElement('br');
+  placeholder.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
+  parent.append(placeholder);
+};
+
+const hasContent = (parent: ParentNode) => [...parent.childNodes].some((node) =>
+  node.nodeType === 1 || Boolean(node.textContent));
 
 const atBoundary = (doc: Document, caret: Range, node: Node, after: boolean) => {
   const point = doc.createRange();
@@ -117,7 +124,7 @@ export const insertRightIndentTab = (root: HTMLElement): boolean => {
   const state = selectionInRoot(root);
   if (!state) return false;
   const { range } = state;
-  const paragraph = paragraphFor(root, range.startContainer);
+  const paragraph = paragraphFor(root, range.startContainer, range.startOffset);
   if (!paragraph || rightRunFor(range.startContainer, root)) return false;
   const line = explicitLine(root.ownerDocument, paragraph, range);
   if (!line.toString().trim() || [...paragraph.querySelectorAll(`span[${RIGHT_TAB_ATTRIBUTE}="true"]`)]
@@ -181,20 +188,27 @@ export const breakRightIndentTab = (root: HTMLElement, softBreak: boolean): bool
   extract.setStart(range.startContainer, range.startOffset);
   extract.setEnd(paragraph, paragraph.childNodes.length);
   trailing.append(extract.extractContents());
-  unwrapRuns(trailing);
-  removePlaceholderBreaks(trailing);
+  const partialRun = trailing.querySelector(`span[${RIGHT_TAB_ATTRIBUTE}="true"]`);
+  if (partialRun) {
+    removeOwnPlaceholder(partialRun as HTMLSpanElement);
+    unwrap(partialRun as HTMLSpanElement);
+  }
   removeOwnPlaceholder(run);
 
   if (softBreak || paragraph === root) {
     const br = doc.createElement('br');
     run.after(br);
     br.after(...trailing.childNodes);
+    if (!hasContent(paragraph) || !br.nextSibling || (br.nextSibling.nodeType === 3 && !br.nextSibling.textContent)) {
+      appendPlaceholder(paragraph);
+    }
     putCaret(doc, br.parentNode ?? paragraph, [...(br.parentNode ?? paragraph).childNodes].indexOf(br) + 1);
     return true;
   }
 
   const next = doc.createElement(paragraph.tagName.toLowerCase());
   next.append(...trailing.childNodes);
+  if (!hasContent(next)) appendPlaceholder(next);
   paragraph.after(next);
   putCaret(doc, next);
   return true;
