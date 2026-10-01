@@ -10,6 +10,7 @@ const authoringComponents = new Set([
   'DevGalleryPages.astro',
   'DevGalleryReorder.astro',
   'DevImageDrop.astro',
+  'DevImageDescriptions.astro',
   'DevLogIssue.astro',
   'DevModeController.astro',
   'DevNewProject.astro',
