@@ -79,6 +79,10 @@ const unwrapRuns = (root: ParentNode) => {
   root.querySelectorAll(`span[${RIGHT_TAB_ATTRIBUTE}="true"]`).forEach((node) => unwrap(node as HTMLSpanElement));
 };
 
+const removeOwnPlaceholder = (run: HTMLSpanElement) => {
+  [...run.querySelectorAll(`br[${PARAGRAPH_PLACEHOLDER_ATTRIBUTE}]`)].forEach((br) => br.remove());
+};
+
 const atBoundary = (doc: Document, caret: Range, node: Node, after: boolean) => {
   const point = doc.createRange();
   if (after) point.setStartAfter(node);
@@ -92,9 +96,15 @@ const atBoundary = (doc: Document, caret: Range, node: Node, after: boolean) => 
 const normalizedPoint = (node: Node, offset: number): [Node, number] => {
   let current = node;
   let position = offset;
-  while (current.parentNode && current.nodeType === 3
-    && (position === 0 || position === current.textContent?.length)) {
+  while (current.parentNode && !(current.nodeType === 1 && (current as Element).tagName === 'BR')) {
+    const atStart = position === 0;
+    const atEnd = current.nodeType === 3
+      ? position === current.textContent?.length
+      : position === current.childNodes.length;
+    if (current.nodeType === 3 && position !== 0 && position !== current.textContent?.length) break;
+    if (!atStart && !atEnd) break;
     const parent = current.parentNode;
+    if (!parent) break;
     const index = [...parent.childNodes].indexOf(current);
     position = index + (position ? 1 : 0);
     current = parent;
@@ -124,8 +134,8 @@ export const insertRightIndentTab = (root: HTMLElement): boolean => {
   const placeholder = doc.createElement('br');
   placeholder.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
   lineEnd.insertNode(run);
-  run.after(placeholder);
-  putCaret(doc, run);
+  run.append(placeholder);
+  putCaret(doc, run, 0);
   return true;
 };
 
@@ -151,10 +161,8 @@ export const removeRightIndentTab = (root: HTMLElement, direction: 'backward' | 
   if (direction === 'forward' && !atBefore) return false;
   const parent = target.parentNode;
   if (!parent) return false;
+  removeOwnPlaceholder(target);
   const index = unwrap(target);
-  [...parent.childNodes].find((node) => node.nodeType === 1
-    && (node as Element).tagName === 'BR'
-    && (node as Element).hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE))?.remove();
   putCaret(root.ownerDocument, parent, index);
   return true;
 };
@@ -175,14 +183,11 @@ export const breakRightIndentTab = (root: HTMLElement, softBreak: boolean): bool
   trailing.append(extract.extractContents());
   unwrapRuns(trailing);
   removePlaceholderBreaks(trailing);
-  unwrapRuns(paragraph);
-  removePlaceholderBreaks(paragraph);
+  removeOwnPlaceholder(run);
 
   if (softBreak || paragraph === root) {
     const br = doc.createElement('br');
-    extract.setStart(range.startContainer, range.startOffset);
-    extract.collapse(true);
-    extract.insertNode(br);
+    run.after(br);
     br.after(...trailing.childNodes);
     putCaret(doc, br.parentNode ?? paragraph, [...(br.parentNode ?? paragraph).childNodes].indexOf(br) + 1);
     return true;

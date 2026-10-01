@@ -37,7 +37,7 @@ test('inserts before an explicit break and rejects duplicate, mid-line, outside,
   const text = paragraph.firstChild!;
   window.getSelection()!.setPosition(text, 4);
   expect(insertRightIndentTab(root)).toBe(true);
-  expect(paragraph.innerHTML).toContain('Role<span data-text-right-tab="true"></span><br data-dev-placeholder="true"><br>');
+  expect(paragraph.innerHTML).toContain('Role<span data-text-right-tab="true"><br data-dev-placeholder="true"></span><br>');
   expect(insertRightIndentTab(root)).toBe(false);
   window.getSelection()!.selectAllChildren(text);
   expect(insertRightIndentTab(root)).toBe(false);
@@ -57,13 +57,13 @@ test('supports native div and simple inline roots', () => {
 });
 
 test('backspace and delete at the right-run gap unwrap and retain text', () => {
-  const { window, root } = setup('<p>Role<span data-text-right-tab="true"><em>2024</em></span><br data-dev-placeholder="true"></p>');
+  const { window, root } = setup('<p>Role<span data-text-right-tab="true"><em>2024</em><br data-dev-placeholder="true"></span></p>');
   const run = root.querySelector('span[data-text-right-tab]')!;
   window.getSelection()!.setPosition(run, 0);
   expect(removeRightIndentTab(root, 'backward')).toBe(true);
   expect(root.innerHTML).toBe('<p>Role<em>2024</em></p>');
 
-  root.innerHTML = '<p>Role<span data-text-right-tab="true">2024</span><br data-dev-placeholder="true"></p>';
+  root.innerHTML = '<p>Role<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span></p>';
   const nextRun = root.querySelector('span[data-text-right-tab]')!;
   window.getSelection()!.setPosition(nextRun.parentNode!, 1);
   expect(removeRightIndentTab(root, 'forward')).toBe(true);
@@ -71,15 +71,36 @@ test('backspace and delete at the right-run gap unwrap and retain text', () => {
 });
 
 test('hard and soft enter leave right alignment while preserving later content', () => {
-  const hard = setup('<p>Role<span data-text-right-tab="true">2024 later</span><br data-dev-placeholder="true"></p>');
+  const hard = setup('<p>Role<span data-text-right-tab="true">2024 later<br data-dev-placeholder="true"></span></p>');
   const run = hard.root.querySelector('span[data-text-right-tab]')!;
   hard.window.getSelection()!.setPosition(run.firstChild!, 4);
   expect(breakRightIndentTab(hard.root, false)).toBe(true);
-  expect(hard.root.innerHTML).toBe('<p>Role2024</p><p> later</p>');
+  expect(hard.root.innerHTML).toBe('<p>Role<span data-text-right-tab="true">2024</span></p><p> later</p>');
 
-  const soft = setup('<p>Role<span data-text-right-tab="true">2024 later</span><br data-dev-placeholder="true"></p>');
+  const soft = setup('<p>Role<span data-text-right-tab="true">2024 later<br data-dev-placeholder="true"></span></p>');
   const softRun = soft.root.querySelector('span[data-text-right-tab="true"]')!;
   soft.window.getSelection()!.setPosition(softRun.firstChild!, 4);
   expect(breakRightIndentTab(soft.root, true)).toBe(true);
-  expect(soft.root.innerHTML).toBe('<p>Role2024<br> later</p>');
+  expect(soft.root.innerHTML).toBe('<p>Role<span data-text-right-tab="true">2024</span><br> later</p>');
+});
+
+test('normalizes formatted text-node ends before BR and preserves earlier right runs on Enter', () => {
+  const formatted = setup('<p><strong>Vicente Cruz</strong><br>Design Engineer</p>');
+  const formattedText = formatted.root.querySelector('strong')!.firstChild!;
+  formatted.window.getSelection()!.setPosition(formattedText, formattedText.textContent!.length);
+  expect(insertRightIndentTab(formatted.root)).toBe(true);
+  expect(formatted.root.querySelector('strong')!.nextElementSibling?.tagName).toBe('SPAN');
+  expect(formatted.root.querySelector('strong')!.nextElementSibling?.nextElementSibling?.tagName).toBe('BR');
+
+  const hard = setup('<p>Earlier<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span><br>Current<span data-text-right-tab="true">2025 later<br data-dev-placeholder="true"></span></p>');
+  const hardRun = hard.root.querySelectorAll('span[data-text-right-tab]')[1];
+  hard.window.getSelection()!.setPosition(hardRun.firstChild!, 4);
+  expect(breakRightIndentTab(hard.root, false)).toBe(true);
+  expect(hard.root.innerHTML).toBe('<p>Earlier<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span><br>Current<span data-text-right-tab="true">2025</span></p><p> later</p>');
+
+  const soft = setup('<p>Earlier<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span><br>Current<span data-text-right-tab="true">2025 later<br data-dev-placeholder="true"></span></p>');
+  const softRun = soft.root.querySelectorAll('span[data-text-right-tab]')[1];
+  soft.window.getSelection()!.setPosition(softRun.firstChild!, 4);
+  expect(breakRightIndentTab(soft.root, true)).toBe(true);
+  expect(soft.root.innerHTML).toBe('<p>Earlier<span data-text-right-tab="true">2024<br data-dev-placeholder="true"></span><br>Current<span data-text-right-tab="true">2025</span><br> later</p>');
 });
