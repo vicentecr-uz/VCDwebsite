@@ -85,7 +85,9 @@ const serializeNode = (node: Node, preserveWrap = true): string => {
     return node.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE) ? '' : '<br>';
   }
   if ((tag === 'SPAN' || tag === 'BUTTON') && node.getAttribute('data-home-intro-okay') === 'true') {
-    const label = node.cloneNode(true) as Element;
+    const source = [...node.children].find((child) => child.tagName === 'SPAN'
+      && child.getAttribute('data-home-intro-source-label') === 'true');
+    const label = (source ?? node).cloneNode(true) as Element;
     label.querySelectorAll([...IGNORED_TAGS].join(',')).forEach((child) => child.remove());
     return `<span data-home-intro-okay="true">${escapeTextHtml(label.textContent ?? '')}</span>`;
   }

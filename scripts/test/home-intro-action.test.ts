@@ -32,9 +32,11 @@ test('the saved name line renders one native button inside the right-indent run'
   const button = surface.querySelector('button[data-home-intro-okay]')!;
   expect(surface.querySelectorAll('button[data-home-intro-okay]')).toHaveLength(1);
   expect(button.getAttribute('type')).toBe('button');
-  expect(button.textContent).toBe('View work →');
+  expect(button.querySelector('[data-home-intro-source-label="true"]')!.textContent).toBe('View work →');
+  expect(button.querySelector('[data-home-intro-desktop-label="true"]')!.textContent).toBe('Enter');
+  expect(button.textContent).toBe('View work →Enter');
   expect(button.parentElement!.getAttribute('data-text-right-tab')).toBe('true');
-  expect(button.closest('p')!.textContent).toBe('Vicente CruzView work →Design Engineer');
+  expect(button.closest('p')!.textContent).toBe('Vicente CruzView work →EnterDesign Engineer');
   expect(button.hasAttribute('href')).toBe(false);
 });
 
@@ -42,7 +44,7 @@ test('removing the WIP notice keeps the action in the name paragraph', () => {
   const { body } = fixture(intro.sections[0].paragraphs.slice(1));
   const name = body.firstElementChild!;
   expect(name.querySelector('.text-emphasis')!.textContent).toBe('Vicente Cruz');
-  expect(name.querySelector('button')!.textContent).toBe('View work →');
+  expect(name.querySelector('[data-home-intro-source-label="true"]')!.textContent).toBe('View work →');
   expect(body.querySelectorAll('button')).toHaveLength(1);
 });
 
@@ -56,7 +58,8 @@ test('View markup saves as editable source and edited labels survive mode change
   const saved = readParagraphsValue(body);
   body.innerHTML = saved.map((p) => `<p>${p}</p>`).join('');
   syncHomeIntroActions(surface, false);
-  expect(surface.querySelector('button')!.textContent).toBe('See work →');
+  expect(surface.querySelector('[data-home-intro-source-label="true"]')!.textContent).toBe('See work →');
+  expect(surface.querySelector('[data-home-intro-desktop-label="true"]')!.textContent).toBe('Enter');
   expect(readParagraphsValue(body)).toEqual(saved);
 });
 
@@ -82,7 +85,7 @@ test('restored Edit markup rebinds the recreated button and preserves focus tran
 test('known action labels discard unsupported interactive markup and attributes', () => {
   const { surface } = fixture(['<span data-home-intro-okay="true" onclick="bad()"><a href="javascript:bad()">View work</a><script>bad()</script> →</span>']);
   const button = surface.querySelector('button')!;
-  expect(button.textContent).toBe('View work →');
+  expect(button.querySelector('[data-home-intro-source-label="true"]')!.textContent).toBe('View work →');
   expect(button.querySelector('a, script')).toBeNull();
   expect(button.hasAttribute('onclick')).toBe(false);
 });
@@ -93,4 +96,20 @@ test('only the known action marker survives Save as plain editable text', () => 
   expect(readParagraphsValue(body)).toEqual(['<span data-home-intro-okay="true">A &amp; B</span>Other']);
   syncHomeIntroActions(surface, false);
   expect(surface.querySelector('span[data-home-intro-okay="false"]')!.tagName).toBe('SPAN');
+});
+
+test('server render and Save retain the source label without persisting Enter', () => {
+  const { body } = fixture(['<span data-home-intro-okay="true">Custom action</span>']);
+  expect(readParagraphsValue(body)).toEqual(['<span data-home-intro-okay="true">Custom action</span>']);
+  expect(body.querySelector('button')!.textContent).toBe('Custom actionEnter');
+});
+
+test('View/Edit roundtrip retains a custom source label without persisting Enter', () => {
+  const { body, surface } = fixture(['<span data-home-intro-okay="true">Custom action</span>']);
+  syncHomeIntroActions(surface, true);
+  expect(readParagraphsValue(body)).toEqual(['<span data-home-intro-okay="true">Custom action</span>']);
+  body.innerHTML = '<p><span data-home-intro-okay="true">Renamed action</span></p>';
+  syncHomeIntroActions(surface, false);
+  expect(surface.querySelector('[data-home-intro-source-label="true"]')!.textContent).toBe('Renamed action');
+  expect(readParagraphsValue(body)).toEqual(['<span data-home-intro-okay="true">Renamed action</span>']);
 });
