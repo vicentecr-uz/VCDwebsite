@@ -1141,14 +1141,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const FADE_IN_STAGGER_START = 0.04;
     const FADE_IN_STAGGER_END = 0.09;
     const CLOSE_IN_BASE_DELAY = FADE_OUT_DURATION * 0.45;
-    const TITLE_OPEN_TOTAL = 0.25;
     const TITLE_CLOSE_TOTAL = 0.18;
     const TITLE_EXIT_EASING = 'cubic-bezier(0.75, 0, 0.75, 0.9)';
     const BLUR_PX = 4;
-
-    if (selectedTitleModel === 'faster') {
-      homeChars.forEach((char) => char.style.setProperty('--char-blur', `${BLUR_PX}px`));
-    }
 
     let wordmarkIsOpen = false;
     let wordmarkAnimating = false;
@@ -1235,9 +1230,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
 
     const syncPrototypeTitleTiming = () => {
-      prototypeWindow.__menuExitTitleEntrySeconds = selectedTitleModel === 'faster'
-        ? TITLE_OPEN_TOTAL
-        : Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
+      prototypeWindow.__menuExitTitleEntrySeconds = Math.max(
+        getFadeOutEnd(pageChars.length),
+        getFadeInEnd(homeChars.length, 0),
+      );
     };
     syncPrototypeTitleTiming();
 
@@ -1257,20 +1253,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
-    const getFastOpenDelay = (index: number) =>
-      progressiveStaggerDelay(index, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
-    const getFastOpenEnd = (count: number) =>
-      Math.max(
-        getFadeOutEnd(pageChars.length),
-        progressiveStaggerDelay(
-          Math.max(0, count - 1),
-          count,
-          FADE_IN_STAGGER_START,
-          FADE_IN_STAGGER_END,
-        ) + FADE_IN_DURATION,
-      );
-    const fastOriginalEnd = getFastOpenEnd(homeChars.length);
-    const fastOpenScale = TITLE_OPEN_TOTAL / fastOriginalEnd;
+    const fastOriginalEnd = Math.max(
+      getFadeOutEnd(pageChars.length),
+      getFadeInEnd(homeChars.length, 0),
+    );
     const fastCloseScale = TITLE_CLOSE_TOTAL / fastOriginalEnd;
 
     const setFastCharTransition = (
@@ -1288,32 +1274,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       char.style.opacity = opacity;
     };
 
-    const applyFastWordmarkOpen = () => {
-      startTrigger.classList.add('is-wordmark-swapped');
-      pageChars.forEach((char, i) => {
-        setFastCharTransition(
-          char,
-          i * FADE_OUT_STAGGER * fastOpenScale,
-          FADE_OUT_DURATION * fastOpenScale,
-          'ease',
-          '0',
-          `${BLUR_PX}px`,
-        );
-      });
-      homeChars.forEach((char, i) => {
-        setFastCharTransition(
-          char,
-          getFastOpenDelay(i) * fastOpenScale,
-          FADE_IN_DURATION * fastOpenScale,
-          'ease',
-          '1',
-          '0px',
-        );
-      });
-      pageWordmark?.setAttribute('aria-hidden', 'true');
-      homeWordmarkEl?.setAttribute('aria-hidden', 'false');
-    };
-
     const applyFastWordmarkClose = () => {
       pageChars.forEach((char, i) => {
         setFastCharTransition(
@@ -1328,7 +1288,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeChars.forEach((char, i) => {
         setFastCharTransition(
           char,
-          (fastOriginalEnd - (getFastOpenDelay(i) + FADE_IN_DURATION)) * fastCloseScale,
+          (fastOriginalEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * fastCloseScale,
           FADE_IN_DURATION * fastCloseScale,
           TITLE_EXIT_EASING,
           '0',
@@ -1369,11 +1329,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       invalidateWordmarkRun();
       const token = wordmarkRunToken;
       wordmarkIsOpen = true;
-      applyFastWordmarkOpen();
+      wordmarkAnimating = true;
+      startTrigger.classList.add('is-wordmark-swapped');
+      applyWordmarkOpen();
       window.setTimeout(() => {
         if (token !== wordmarkRunToken || selectedTitleModel !== 'faster') return;
         wordmarkAnimating = false;
-      }, TITLE_OPEN_TOTAL * 1000 + 32);
+      }, fastOriginalEnd * 1000 + 32);
     };
 
     const runFastWordmarkClose = () => {
@@ -1508,7 +1470,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeChars.forEach((char) => {
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
-        char.style.setProperty('--char-blur', selectedTitleModel === 'faster' ? `${BLUR_PX}px` : '0px');
+        char.style.setProperty('--char-blur', '0px');
         char.style.opacity = '0';
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');
