@@ -464,7 +464,7 @@ export function isPlaceholderImageSrc(src) {
 export function markAutomaticImageAltIntent(section) {
   const visit = (node) => {
     if (!node || typeof node !== 'object') return;
-    if (typeof node.src === 'string' && /\.(?:jpe?g|png|webp|avif|gif|bmp|tiff?)$/i.test(node.src.split(/[?#]/, 1)[0]) && !String(node.alt || '').trim()) node.altIntent = 'auto';
+    if (typeof node.src === 'string' && /\.(?:jpe?g|png|webp|avif|gif|bmp|tiff?)$/i.test(node.src.split(/[?#]/, 1)[0]) && !String(node.alt || '').trim() && (!node.altIntent || node.altIntent === 'auto')) node.altIntent = 'auto';
     for (const value of Object.values(node)) if (value && typeof value === 'object') visit(value);
   };
   visit(section);

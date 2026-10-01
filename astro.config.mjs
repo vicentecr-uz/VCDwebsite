@@ -2251,7 +2251,6 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageSectionFromSrcs(srcs.slice(0, 1))
               : await buildImageSection(documentKey, filenames.slice(0, 1));
-            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageGrid') {
             if (!srcs.length && !filenames.length) {
@@ -2261,7 +2260,6 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageGridSectionFromSrcs(srcs)
               : await buildImageGridSection(documentKey, filenames);
-            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageCarousel') {
             if (!srcs.length && !filenames.length) {
@@ -2271,7 +2269,6 @@ export function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageCarouselSectionFromSrcs(srcs)
               : await buildImageCarouselSection(documentKey, filenames);
-            markAutomaticImageAltIntent(section);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
