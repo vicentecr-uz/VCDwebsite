@@ -1,6 +1,6 @@
 // @ts-check
-import { createHash } from 'node:crypto';
-import { lstat, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'parse5';
 import sharp from 'sharp';
@@ -18,7 +18,7 @@ const RASTER = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.bmp
 const cleanPath = (value) => String(value || '').split(/[?#]/, 1)[0];
 const tokenFromUrl = (value) => decodeURIComponent(cleanPath(value).replace(/^\/images\//, ''));
 const isRaster = (value) => RASTER.has(path.extname(cleanPath(value)).toLowerCase());
-const plain = (value) => typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_DESCRIPTION && !/[<>]/.test(value);
+const plain = (value) => typeof value === 'string' && value.trim().length > 0 && value.length <= MAX_DESCRIPTION && !/[<>\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
 
 function sendJson(res, status, payload) {
   res.statusCode = status;
@@ -46,9 +46,30 @@ async function readBoundedBody(response, limit) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+async function readBoundedBytes(response, limit) {
+  const length = Number(response.headers?.get?.('content-length') || 0);
+  if (length > limit) return null;
+  if (!response.body?.getReader) {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    return bytes.length > limit ? null : bytes;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (true) {
+    const part = await reader.read();
+    if (part.done) break;
+    size += part.value.byteLength;
+    if (size > limit) { await reader.cancel(); return null; }
+    chunks.push(Buffer.from(part.value));
+  }
+  return Buffer.concat(chunks);
+}
+
 async function bodyJson(req) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) { size += chunk.length; if (size > 1_000_000) throw new Error('Request too large.'); chunks.push(chunk); }
   return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 }
 
@@ -63,21 +84,26 @@ function walkJson(value, pathParts, callback) {
 }
 
 function stableIds(data, nodePath, node) {
-  const sectionIndex = nodePath.indexOf('sections');
-  if (sectionIndex < 0) return [];
-  const section = data.sections?.[nodePath[sectionIndex + 1]];
-  const ids = section?.id ? [section.id] : [];
-  if (node?.id && node !== section) ids.push(node.id);
+  if (nodePath.indexOf('sections') < 0) return [];
+  const ids = [];
+  let current = data;
+  for (const part of nodePath) {
+    if (current && typeof current === 'object' && !Array.isArray(current) && current.id && !ids.includes(current.id)) ids.push(current.id);
+    current = current?.[part];
+  }
+  if (current?.id && !ids.includes(current.id)) ids.push(current.id);
+  if (node?.id && !ids.includes(node.id)) ids.push(node.id);
   return ids;
 }
 
+// Ceiling: known raster image/grid/carousel nodes only; extend this allowlist when new authored media shapes gain public image semantics.
 function sourceNodes(document, data) {
   const result = [];
   walkJson(data, [], (node, nodePath) => {
     const sectionIndex = nodePath.indexOf('sections');
     const section = sectionIndex >= 0 ? data.sections?.[nodePath[sectionIndex + 1]] : null;
     if (!['image', 'imageGrid', 'imageCarousel'].includes(String(node.type || ''))
-      && !['image', 'imageGrid', 'imageCarousel'].includes(String(section?.type || ''))) return;
+      && (!['imageGrid', 'imageCarousel'].includes(String(section?.type || '')) || !nodePath.includes('items'))) return;
     if (typeof node.src !== 'string' || !node.src.trim() || !isRaster(node.src) || node.src === 'black-token.svg') return;
     result.push({ document, node, path: nodePath, ids: stableIds(data, nodePath, node), src: node.src });
   });
@@ -98,13 +124,15 @@ function publicImages(document) {
     if (!original || !isRaster(original) || /placeholder|black-token/i.test(original)) return;
     if (node.attrs?.some((item) => item.name === 'hidden') || ancestor(node, (item) => item.attrs?.some((a) => a.name === 'hidden'))) return;
     const carousel = ancestor(node, (item) => item.attrs?.some((a) => a.name === 'data-carousel-slide'));
-    if (carousel && attr(carousel, 'aria-hidden') === 'true') return;
+    if (carousel && (attr(carousel, 'aria-hidden') === 'true' || attr(carousel, 'data-carousel-parked') === 'true')) return;
     const grid = ancestor(node, (item) => item.attrs?.some((a) => a.name === 'data-grid-item-id'));
     if (grid && ['desktop', 'tablet', 'mobile'].every((mode) => attr(grid, `data-grid-hidden-${mode}`) === 'true')) return;
     const ids = [];
     for (let current = node; current; current = current.parentNode) {
-      const id = attr(current, 'data-grid-item-id') || attr(current, 'data-outline-id') || attr(current, 'id');
-      if (id) ids.unshift(id);
+      for (const name of ['data-grid-item-id', 'data-outline-id', 'data-section-id', 'id']) {
+        const id = attr(current, name);
+        if (id && !ids.includes(id)) ids.unshift(id);
+      }
     }
     found.push({ src: tokenFromUrl(original), alt: attr(node, 'alt'), ids, node });
   };
@@ -125,7 +153,8 @@ async function publicGraph({ fetchImpl, site, root = '/' }) {
     const requestKey = url.href;
     if (url.origin !== origin.origin || visited.has(requestKey)) continue;
     visited.add(requestKey);
-    const response = await fetchImpl(url, { credentials: 'omit', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
+    let response;
+    try { response = await fetchImpl(url, { credentials: 'omit', redirect: 'manual', signal: AbortSignal.timeout(15_000) }); } catch { continue; }
     if (response.status >= 300 && response.status < 400) {
       try { const next = new URL(response.headers.get('location'), url); if (next.origin === origin.origin) queue.push(next); } catch {}
       continue;
@@ -137,7 +166,7 @@ async function publicGraph({ fetchImpl, site, root = '/' }) {
     if (html === null) continue;
     const document = parse(html);
     pages.set(url.pathname, { document, html });
-    if (/^\/404\/?$/.test(url.pathname)) continue;
+    if (/^\/404(?:\/?|\.html)$/.test(url.pathname)) continue;
     const info = documentInfo(document);
     for (const raw of info.links) {
       let next;
@@ -154,15 +183,17 @@ async function readCache(file) {
 
 async function writeCache(file, data) {
   await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  try { await writeFile(temp, `${JSON.stringify(data, null, 2)}\n`, 'utf8'); await rename(temp, file); }
+  finally { await rm(temp, { force: true }).catch(() => {}); }
 }
 
 function statusFor(row) {
   if (row.intent === 'decorative') return 'Decorative';
   if (row.intent === 'manual') return 'Manual';
-  if (row.status === 'failed' || row.error) return 'Failed';
+  if (row.state === 'failed' || row.error) return 'Failed';
   if (row.description) return 'Ready';
-  if (row.status === 'describing') return 'Describing';
+  if (row.state === 'describing') return 'Describing';
   return 'Waiting for publication';
 }
 
@@ -185,9 +216,18 @@ export function createImageDescriptionsService(options = {}) {
   });
   let rows = [];
   let checking = false;
-  async function enumerate() {
-    const graph = await publicGraph({ fetchImpl, site });
+  let graphCache = null;
+  let graphPromise = null;
+  async function graph(force = false) {
+    if (!force && graphCache) return graphCache;
+    if (graphPromise) return graphPromise;
+    graphPromise = publicGraph({ fetchImpl, site }).then((value) => { graphCache = value; return value; }).finally(() => { graphPromise = null; });
+    return graphPromise;
+  }
+  async function enumerate(forcePublic = false) {
+    const publicPages = await graph(forcePublic);
     const usage = new Map();
+    const duplicates = new Set();
     let documentKeys = options.documentKeys;
     if (!documentKeys) {
       const keys = [];
@@ -197,7 +237,7 @@ export function createImageDescriptionsService(options = {}) {
       documentKeys = keys;
     }
     const publicByDocument = new Map();
-    for (const [pathname, page] of graph) {
+    for (const [pathname, page] of publicPages) {
       const document = pathname === '/' ? 'home' : pathname.replace(/^\//, '').replace(/\/$/, '');
       publicByDocument.set(document, publicImages(page.document));
     }
@@ -211,8 +251,9 @@ export function createImageDescriptionsService(options = {}) {
         const matched = candidates.filter((image) => !node.ids.length || node.ids.some((id) => image.ids.includes(id)));
         const publicUse = matched.length === 1 ? matched[0] : (candidates.length === 1 ? candidates[0] : null);
         const key = `${document}:${node.ids.join('/') || node.path.join('.')}`;
-        if (usage.has(key)) continue;
-        usage.set(key, { key, document, title: data.title || document, pathLabel: publicUse?.ids.join(' / ') || node.ids.join(' / ') || 'Image', path: node.path, src: node.src, alt: String(node.node.alt || ''), intent: VALID_INTENTS.has(node.node.altIntent) ? node.node.altIntent : 'manual', public: Boolean(publicUse && (!data.status || data.status === 'published' || document === 'home')), node, sourceBytes: null });
+        if (duplicates.has(key)) continue;
+        if (usage.has(key)) { usage.delete(key); duplicates.add(key); continue; }
+        usage.set(key, { key, document, title: data.title || document, pathLabel: publicUse?.ids.join(' / ') || node.ids.join(' / ') || 'Image', path: node.path, ids: node.ids, src: node.src, alt: String(node.node.alt || ''), intent: VALID_INTENTS.has(node.node.altIntent) ? node.node.altIntent : 'manual', public: Boolean(publicUse && (!data.status || data.status === 'published' || document === 'home')), node, sourceBytes: null });
       }
     }
     return [...usage.values()];
@@ -222,30 +263,54 @@ export function createImageDescriptionsService(options = {}) {
     const token = cleanPath(src).replace(/^\//, '');
     const file = path.resolve(mediaDir, token);
     if (!file.startsWith(path.resolve(mediaDir) + path.sep)) throw new Error('Invalid image path.');
+    for (let current = path.dirname(file); current !== path.resolve(mediaDir); current = path.dirname(current)) {
+      if ((await lstat(current)).isSymbolicLink()) throw new Error('Image source symlinks are not allowed.');
+    }
     const info = await lstat(file);
     if (info.isSymbolicLink()) throw new Error('Image source symlinks are not allowed.');
     if (!info.isFile()) throw new Error('Image source is not a file.');
+    if (info.size > MAX_IMAGE) throw new Error('Image source is too large.');
     return file;
   }
 
   async function baseToken(row) {
     const file = await sourcePath(row.src);
     const bytes = await readFile(file);
-    return createHash('sha256').update(JSON.stringify({ src: row.src, alt: row.alt, intent: row.intent, bytes: createHash('sha256').update(bytes).digest('hex') })).digest('hex');
+    return createHash('sha256').update(JSON.stringify({ document: row.document, key: row.key, path: row.path, ids: row.ids, src: row.src, alt: row.alt, intent: row.intent, bytes: createHash('sha256').update(bytes).digest('hex') })).digest('hex');
   }
 
-  async function refresh() {
+  async function fetchPublicImage(src) {
+    let url = new URL(`/images/${encodeURIComponent(src).replace(/%2F/g, '/')}`, site);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      if (url.origin !== site.origin || !url.pathname.startsWith('/images/')) throw new Error('Invalid public image URL.');
+      const response = await fetchImpl(url, { credentials: 'omit', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
+      if (response.status >= 300 && response.status < 400) {
+        const next = new URL(response.headers.get('location'), url);
+        if (next.origin !== site.origin) throw new Error('Public image redirect crossed origin.');
+        url = next;
+        continue;
+      }
+      if (!response.ok) throw new Error('Public image is unavailable.');
+      const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+      if (!contentType.startsWith('image/') || contentType.includes('svg')) throw new Error('Public image is not a raster image.');
+      const body = await readBoundedBytes(response, MAX_IMAGE);
+      if (body === null) throw new Error('Public image is too large.');
+      return Buffer.from(body);
+    }
+    throw new Error('Too many public image redirects.');
+  }
+
+  async function refresh(forcePublic = false) {
     const cache = await readCache(cacheFile);
-    const next = await enumerate();
+    const next = await enumerate(forcePublic);
     for (const row of next) {
       row.baseToken = await baseToken(row).catch(() => '');
       const saved = cache[row.key];
-      if (saved && saved.baseToken === row.baseToken && saved.intent === row.intent && saved.alt === row.alt) {
+      if (row.public && saved && saved.baseToken === row.baseToken && saved.intent === row.intent && saved.alt === row.alt) {
         row.description = saved.description || '';
-        row.status = saved.status || '';
+        row.state = saved.state || '';
         row.error = saved.error;
       }
-      row.status = statusFor(row);
     }
     rows = next;
     return rows;
@@ -254,13 +319,8 @@ export function createImageDescriptionsService(options = {}) {
   async function describe(row) {
     const file = await sourcePath(row.src);
     const original = await readFile(file);
-    const publicResponse = await fetchImpl(new URL(`/images/${encodeURIComponent(row.src).replace(/%2F/g, '/')}`, site), { credentials: 'omit' });
-    if (!publicResponse.ok) throw new Error('Public image is unavailable.');
-    if (new URL(publicResponse.url || site, site).origin !== site.origin) throw new Error('Public image redirect crossed origin.');
-    const contentType = String(publicResponse.headers?.get?.('content-type') || '').toLowerCase();
-    if (!contentType.startsWith('image/') || contentType.includes('svg')) throw new Error('Public image is not a raster image.');
-    const publicBytes = Buffer.from(await publicResponse.arrayBuffer());
-    if (publicBytes.length > MAX_IMAGE || !original.equals(publicBytes)) throw new Error('Public image does not match the local source.');
+    const publicBytes = await fetchPublicImage(row.src);
+    if (!original.equals(publicBytes)) throw new Error('Public image does not match the local source.');
     const resized = await sharp(publicBytes).flatten({ background: '#ffffff' }).resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
     const response = await modelFetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal: AbortSignal.timeout(90_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma3:4b', stream: false, options: { temperature: 0, num_predict: 90 }, messages: [{ role: 'user', content: 'Identify primary visible objects or action. Omit incidental backgrounds, colours, materials, inferred relationships, and purpose. Use 25 words or fewer; do not begin with “image of” or “showcasing”.', images: [resized.toString('base64')] }] }) });
     if (!response.ok) throw new Error('The local vision model failed.');
@@ -274,24 +334,31 @@ export function createImageDescriptionsService(options = {}) {
     if (checking) return rows;
     checking = true;
     try {
-      await refresh();
+      await refresh(true);
       const cache = await readCache(cacheFile);
-      const candidates = rows.filter((row) => row.public && row.intent === 'auto' && !row.description && row.status !== 'failed');
+      const candidates = rows.filter((row) => row.public && row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed');
       for (const row of candidates) {
-        row.status = 'describing';
+        row.state = 'describing';
         try {
           const description = await describe(row);
           await refresh();
           const current = rows.find((candidate) => candidate.key === row.key);
           if (!current || current.baseToken !== row.baseToken) continue;
           current.description = description;
-          current.status = 'ready';
-          cache[row.key] = { description, status: current.status, baseToken: current.baseToken, alt: current.alt, intent: current.intent };
+          current.state = 'ready';
+          cache[row.key] = { description, state: current.state, baseToken: current.baseToken, alt: current.alt, intent: current.intent };
         }
-        catch (error) { row.status = 'failed'; row.error = error instanceof Error ? error.message : 'Generation failed.'; cache[row.key] = { status: row.status, error: row.error, baseToken: row.baseToken, alt: row.alt, intent: row.intent }; }
+        catch (error) {
+          await refresh();
+          const current = rows.find((candidate) => candidate.key === row.key);
+          if (current && current.baseToken === row.baseToken) {
+            current.state = 'failed';
+            current.error = error instanceof Error ? error.message : 'Generation failed.';
+            cache[row.key] = { state: current.state, error: current.error, baseToken: current.baseToken, alt: current.alt, intent: current.intent };
+          }
+        }
         await writeCache(cacheFile, cache);
       }
-      rows.forEach((row) => { row.status = statusFor(row); });
     } finally { checking = false; }
     return rows;
   }
@@ -302,14 +369,17 @@ export function createImageDescriptionsService(options = {}) {
     await refresh();
     const row = rows.find((item) => item.key === body.key);
     if (!row || row.baseToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
-    const intent = String(body.intent || '');
-    const alt = String(body.alt || '');
+    if (typeof body.intent !== 'string' || typeof body.alt !== 'string') return { status: 400, payload: { error: 'Invalid description.' } };
+    const intent = body.intent;
+    const alt = body.alt;
     if (!VALID_INTENTS.has(intent) || alt.length > MAX_DESCRIPTION || (intent !== 'decorative' && alt && !plain(alt))) return { status: 400, payload: { error: 'Invalid description.' } };
     let data;
     try { data = await readDocument(row.document); } catch { return { status: 404, payload: { error: 'Document not found.' } }; }
     let target;
     walkJson(data, [], (node, nodePath) => { if (!target && nodePath.join('.') === row.node.path.join('.') && node.src === row.node.src) target = node; });
     if (!target) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
+    const currentToken = await baseToken({ ...row, alt: String(target.alt || ''), intent: VALID_INTENTS.has(target.altIntent) ? target.altIntent : 'manual', node: target }).catch(() => '');
+    if (currentToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
     target.alt = intent === 'decorative' ? '' : alt;
     target.altIntent = intent;
     await writeDocument(row.document, data);
@@ -323,7 +393,7 @@ export function createImageDescriptionsService(options = {}) {
     delete cache[key];
     await writeCache(cacheFile, cache);
     const row = rows.find((item) => item.key === key);
-    if (row) { row.status = ''; row.error = undefined; }
+    if (row) { row.state = ''; row.error = undefined; }
     return check();
   }
   return { refresh, check, retry, save, rows: publicRows, isChecking: () => checking };
@@ -339,8 +409,8 @@ export function imageDescriptionsDevWriter(options = {}) {
           if (req.method === 'GET') { await service.refresh(); sendJson(res, 200, { rows: service.rows(), checking: service.isChecking() }); return; }
           if (req.method !== 'POST') { next(); return; }
           const body = await bodyJson(req);
-          if (body.action === 'check') { service.check(); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
-          if (body.action === 'retry') { service.retry(String(body.key || '')); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
+          if (body.action === 'check') { service.check().catch(() => {}); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
+          if (body.action === 'retry') { service.retry(String(body.key || '')).catch(() => {}); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
           sendJson(res, 400, { error: 'Unknown action.' });
         } catch { sendJson(res, 400, { error: 'Could not load image descriptions.' }); }
       });
@@ -349,7 +419,7 @@ export function imageDescriptionsDevWriter(options = {}) {
         try { const result = await service.save(await bodyJson(req)); sendJson(res, result.status, result.payload); }
         catch { sendJson(res, 400, { error: 'Could not save image description.' }); }
       });
-      const timer = setInterval(() => { service.check(); }, 30_000);
+      const timer = setInterval(() => { service.check().catch(() => {}); }, 30_000);
       server.httpServer?.once('close', () => clearInterval(timer));
     },
   };
