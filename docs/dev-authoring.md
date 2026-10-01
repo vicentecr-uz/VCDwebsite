@@ -47,7 +47,9 @@ curl -s "http://localhost:4321/src/components/Thing.astro?astro&type=style&index
 
 All authoring assets live under `media/`, regardless of project status. JSON stores normalized relative paths with no `draft:` prefix. Status changes never move files between draft and public folders.
 
-The build derives publication from emitted output. `scripts/collect-shipped-assets.mjs` scans generated HTML, CSS, and JavaScript for reachable `/images/...` references, generates requested derivatives, and copies only those assets from `media/` into `dist/images/`. Draft pages emit no production route, so their case-study media is unreachable and does not ship. A teaser's public gallery card can make its cover reachable without shipping the unreleased project body. Missing source media fails the build instead of creating a silent production 404.
+The build derives publication from navigation-reachable output. Before collecting media, `scripts/public-site-output.mjs` follows rendered internal links from Home, including links in text and embedded pages. It removes unreachable HTML pages and their unused generated assets. The technical 404 page and pure redirect aliases to reachable pages or external destinations remain available; they do not make other pages public.
+
+`scripts/collect-shipped-assets.mjs` then scans the retained HTML, CSS, and JavaScript for `/images/...` references, generates requested derivatives, and copies only those assets from `media/` into `dist/images/`. Draft and unlinked Public case-study media does not ship unless a retained output file also uses it. A teaser's public gallery card can publish its cover without shipping the unreleased project body. Missing source media fails the build instead of creating a silent production 404. Local uploads and Save alone do not make an image public.
 
 ## Save and publish lifecycle
 
@@ -104,11 +106,11 @@ The dev server must be restarted by its operator to mount newly pulled style-tok
 
 Modern projects live in `src/content/projects/{slug}.json`, use `stack: "modern"`, and render through `src/pages/[slug].astro`. Documents contain `sections`, `outline`, `listings`, and `status`.
 
-The production-gallery column below assumes the document has a `listings[grid]` entry for that gallery; status alone does not create a card. Dev mode also exposes Draft cards for authoring.
+The production-gallery column below assumes the document has a `listings[grid]` entry for a gallery reachable from Home; status alone does not create a card. A Public page ships only when visitors can reach it through rendered internal navigation, including ordinary text links. Disconnected groups of pages do not publish each other. Dev mode also exposes Draft cards for authoring.
 
 | Status | Production gallery | Production `/slug` | Dev `/slug` |
 | --- | --- | --- | --- |
-| `published` (UI: **Public**) | Visible and linked | Yes | Yes |
+| `published` (UI: **Public**) | Visible and linked | Only when navigation-reachable | Yes |
 | `teaser` | Visible but unlinked, with teaser treatment | No | Yes |
 | `draft` | Hidden | No | Yes |
 | `image` | Visible as a gallery-only image card | No | No |
@@ -130,6 +132,7 @@ Home, Work, and Play listing cards come from each project's `listings`. Dev-mode
 - `scripts/dev-commit-engine.mjs` — colour-token commit and Publish styles
 - `scripts/content-hmr-gate.mjs` — calm HMR and suppression window
 - `scripts/collect-shipped-assets.mjs` — reachable-asset collection into `dist/images`
+- `scripts/public-site-output.mjs` — navigation reachability and removal of unlinked production pages/generated assets
 
 ## Text save caveat
 
