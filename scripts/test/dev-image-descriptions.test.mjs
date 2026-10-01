@@ -16,6 +16,12 @@ async function waitForIdle(service, timeout = 2000) {
   assert.equal(service.isChecking(), false, 'image description check did not settle');
 }
 
+async function waitUntil(predicate, timeout = 2000) {
+  const started = Date.now();
+  while (!predicate() && Date.now() - started < timeout) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(predicate(), true, 'condition did not settle');
+}
+
 test('enumerates only reached public raster usages and saves with a source CAS', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-image-descriptions-'));
   try {
@@ -100,7 +106,7 @@ async function imageFixture({ docs, html = '<main></main>', modelContents = ['A 
     site: 'https://example.test', documentKeys: Object.keys(docs), mediaDir: root,
     cacheFile: path.join(root, 'cache.json'), readDocument, writeDocument, fetchImpl, modelFetch,
   });
-  return { root, image, service, docs, get modelCalls() { return modelCalls; }, get writes() { return writes; } };
+  return { root, image, html, service, docs, get modelCalls() { return modelCalls; }, get writes() { return writes; } };
 }
 
 test('keeps ready auto proposals out of source until explicit save and preserves fields', async () => {
@@ -139,7 +145,7 @@ test('honours authored and decorative intent and excludes non-raster media', asy
   try {
     await fixture.service.check();
     assert.equal(fixture.service.rows().length, 3);
-    assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 0).status, 'Waiting for publication');
+    assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 0).status, 'Ready');
     assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 1).status, 'Manual');
     assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 2).status, 'Decorative');
     assert.equal(fixture.modelCalls, 0);
@@ -213,8 +219,10 @@ test('caches failed generation, supports explicit retry, and restores cache in a
     await waitForIdle(fixture.service);
     assert.equal(fixture.modelCalls, 2);
     assert.equal(fixture.service.rows()[0].description, 'A restored subject.');
-    const second = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'cache.json'), readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response(fixture.html || '<img data-image-original="/images/hero.png">') : response(fixture.image, 'image/png'), modelFetch: async () => response('{}', 'application/json') });
+    let secondModelCalls = 0;
+    const second = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'cache.json'), readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response(fixture.html) : response(fixture.image, 'image/png'), modelFetch: async () => { secondModelCalls += 1; throw new Error('cached ready must not regenerate'); } });
     await second.check();
+    assert.equal(secondModelCalls, 0);
     assert.equal(second.rows()[0].status, 'Ready');
     assert.equal(second.rows()[0].description, 'A restored subject.');
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
@@ -252,10 +260,10 @@ test('processes one visible usage when the same source is hidden, parked, or nes
     { type: 'image', id: 'parked', src: 'hero.png', alt: '', altIntent: 'auto' },
   ] } };
   const fixture = await imageFixture({ docs, html: `<main>
-    <div data-image-content-id="visible"><img id="visible" data-image-original="/images/hero.png" alt=""></div>
-    <div hidden data-image-content-id="hidden"><img id="hidden" data-image-original="/images/hero.png" alt=""></div>
-    <div data-grid-hidden-desktop="true" data-grid-hidden-tablet="true" data-grid-hidden-mobile="true" data-image-content-id="grid"><div data-carousel-slide><img id="grid" data-image-original="/images/hero.png" alt=""></div></div>
-    <div data-carousel-parked="true" data-image-content-id="parked"><img id="parked" data-image-original="/images/hero.png" alt=""></div>
+    <div data-image-content-id="visible"><img data-image-original="/images/hero.png" alt=""></div>
+    <div hidden data-image-content-id="hidden"><img data-image-original="/images/hero.png" alt=""></div>
+    <div data-grid-hidden-desktop="true" data-grid-hidden-tablet="true" data-grid-hidden-mobile="true" data-image-content-id="grid"><div data-carousel-slide><img data-image-original="/images/hero.png" alt=""></div></div>
+    <div data-carousel-parked="true" data-image-content-id="parked"><img data-image-original="/images/hero.png" alt=""></div>
   </main>` });
   try {
     await fixture.service.check();
@@ -282,11 +290,12 @@ test('discards a deferred proposal when source alt or node identity changes', as
   });
   try {
     const checking = service.check();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitUntil(() => release !== undefined);
     fixture.docs.home.sections[0].alt = 'Authored during generation';
     release();
     await checking;
-    assert.equal(service.rows()[0].status, 'Waiting for publication');
+    assert.equal(service.rows()[0].status, 'Ready');
+    assert.equal(service.rows()[0].description, 'Authored during generation');
     assert.equal(fixture.docs.home.sections[0].alt, 'Authored during generation');
     const cache = await readFile(path.join(fixture.root, 'deferred-cache.json'), 'utf8').catch(() => '{}');
     assert.doesNotMatch(cache, /Stale proposal/);
@@ -306,7 +315,7 @@ test('discards a deferred failure when the node is deleted', async () => {
   });
   try {
     const checking = service.check();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await waitUntil(() => release !== undefined);
     fixture.docs.home.sections = [];
     release();
     await checking;
@@ -334,4 +343,48 @@ test('rejects stale saves after reorder and deletion without changing documents'
     assert.equal(deleted.status, 409);
     assert.equal(fixture.writes, 0);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('rejects a cross-origin image redirect without following the foreign URL', async () => {
+  let foreignCalls = 0;
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' }] } },
+    html: '<section id="hero"><img data-image-original="/images/hero.png"></section>',
+    fetchExtra: async (url) => {
+      if (!url.includes('/images/hero.png')) return undefined;
+      if (url.startsWith('https://other.test')) foreignCalls += 1;
+      return response('', 'text/plain', 302, { location: 'https://other.test/images/hero.png' });
+    },
+  });
+  try {
+    await fixture.service.check();
+    assert.equal(fixture.modelCalls, 0);
+    assert.equal(foreignCalls, 0);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('blocks an oversized public image body independently of the HTML limit', async () => {
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' }] } },
+    html: '<section id="hero"><img data-image-original="/images/hero.png"></section>',
+    fetchExtra: async (url) => url.includes('/images/hero.png')
+      ? response(fixture.image, 'image/png', 200, { 'content-length': String(16 * 1024 * 1024 + 1) })
+      : undefined,
+  });
+  try { await fixture.service.check(); assert.equal(fixture.modelCalls, 0); }
+  finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
+
+test('rejects a symlinked parent directory before model inference', async () => {
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'nested/hero.png', alt: '', altIntent: 'auto' }] } },
+    html: '<section id="hero"><img data-image-original="/images/nested/hero.png"></section>',
+  });
+  const outside = await mkdtemp(path.join(os.tmpdir(), 'vcd-image-descriptions-parent-'));
+  try {
+    await writeFile(path.join(outside, 'hero.png'), fixture.image);
+    await symlink(outside, path.join(fixture.root, 'nested'));
+    await fixture.service.check();
+    assert.equal(fixture.modelCalls, 0);
+  } finally { await rm(fixture.root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
