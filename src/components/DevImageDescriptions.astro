@@ -73,7 +73,7 @@ const intentOptions = [
     error?: string;
     baseToken: string;
   };
-  type LocalRow = Row & { dirty: boolean; conflict?: boolean; sourceIntent: Intent };
+  type LocalRow = Row & { dirty: boolean; conflict?: boolean; saveError?: string; sourceIntent: Intent };
   type RowView = {
     article: HTMLElement;
     image: HTMLImageElement;
@@ -158,9 +158,9 @@ const intentOptions = [
   const refreshRow = (row: Row) => {
     const existing = localRows.get(row.key);
     if (existing) {
-      Object.assign(existing, row, { dirty: false, conflict: false, sourceIntent: row.intent });
+      Object.assign(existing, row, { dirty: false, conflict: false, saveError: undefined, sourceIntent: row.intent });
     } else {
-      localRows.set(row.key, { ...row, dirty: false, conflict: false, sourceIntent: row.intent });
+      localRows.set(row.key, { ...row, dirty: false, conflict: false, saveError: undefined, sourceIntent: row.intent });
     }
   };
 
@@ -201,7 +201,7 @@ const intentOptions = [
     });
   };
 
-  const rowStatus = (row: LocalRow) => row.error || (row.conflict ? 'Refresh to load the latest source' : statusText(row));
+  const rowStatus = (row: LocalRow) => row.saveError || row.error || (row.conflict ? 'Refresh to load the latest source' : statusText(row));
   const canSave = (row: LocalRow) => row.dirty || row.description !== row.alt || row.intent !== row.sourceIntent;
 
   const updateRowView = (view: RowView, row: LocalRow) => {
@@ -250,11 +250,13 @@ const intentOptions = [
     text.addEventListener('input', () => {
       row.description = text.value.slice(0, 300);
       row.dirty = true;
+      row.saveError = undefined;
       updateRowView(view, row);
     });
     intent.addEventListener('change', () => {
       row.intent = intent.value as Intent;
       row.dirty = true;
+      row.saveError = undefined;
       updateRowView(view, row);
     });
     save.addEventListener('click', () => void saveRow(row));
@@ -322,7 +324,7 @@ const intentOptions = [
   };
 
   const saveRow = async (row: LocalRow) => {
-    if (savingKeys.has(row.key)) return;
+    if (savingKeys.size) return;
     savingKeys.add(row.key);
     const generation = ++requestGeneration;
     const view = rowViews.get(row.key);
@@ -330,6 +332,7 @@ const intentOptions = [
       savingKeys.delete(row.key);
       return;
     }
+    row.saveError = undefined;
     updateRowView(view, row);
     let didSave = false;
     try {
@@ -354,7 +357,7 @@ const intentOptions = [
       didSave = true;
     } catch (error) {
       if (generation !== requestGeneration) return;
-      view.status.textContent = error instanceof Error ? error.message : 'Could not save description.';
+      row.saveError = error instanceof Error ? error.message : 'Could not save description.';
     } finally {
       savingKeys.delete(row.key);
       const current = localRows.get(row.key);
