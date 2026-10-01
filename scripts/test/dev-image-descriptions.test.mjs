@@ -388,3 +388,27 @@ test('rejects a symlinked parent directory before model inference', async () => 
     assert.equal(fixture.modelCalls, 0);
   } finally { await rm(fixture.root, { recursive: true, force: true }); await rm(outside, { recursive: true, force: true }); }
 });
+
+test('purges cached drafts after public loss and regenerates after restoration', async () => {
+  let currentHtml = '<section id="hero"><img data-image-original="/images/hero.png"></section>';
+  const fixture = await imageFixture({
+    docs: { home: { sections: [{ type: 'image', id: 'hero', src: 'hero.png', alt: '', altIntent: 'auto' }] } },
+    modelContents: ['First draft.', 'Second draft.'],
+    fetchExtra: async (url) => url === 'https://example.test/' ? response(currentHtml) : undefined,
+  });
+  try {
+    await fixture.service.check();
+    const key = fixture.service.rows()[0].key;
+    assert.equal(fixture.modelCalls, 1);
+    assert.equal(fixture.service.rows()[0].status, 'Ready');
+    currentHtml = '<main><a href="/empty/">No image</a></main>';
+    await fixture.service.check();
+    assert.equal(fixture.service.rows()[0].status, 'Waiting for publication');
+    assert.doesNotMatch(await readFile(path.join(fixture.root, 'cache.json'), 'utf8'), new RegExp(key));
+    currentHtml = '<section id="hero"><img data-image-original="/images/hero.png"></section>';
+    await fixture.service.check();
+    assert.equal(fixture.modelCalls, 2);
+    assert.equal(fixture.service.rows()[0].description, 'Second draft.');
+    assert.equal(fixture.service.rows()[0].status, 'Ready');
+  } finally { await rm(fixture.root, { recursive: true, force: true }); }
+});
