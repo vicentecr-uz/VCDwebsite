@@ -99,6 +99,12 @@ test('sanitizes rich clipboard HTML and does not mutate it', () => {
   assert.equal(clipboardParagraphHtml('< & "', ''), '&lt; &amp; "');
 });
 
+test('preserves right tab markers while stripping invalid marker values and unsafe attributes', () => {
+  assert.equal(serializeInlineHtml(el('<span data-text-right-tab="true" onclick="bad()"><strong>2024</strong></span>')), '<span data-text-right-tab="true"><strong>2024</strong></span>');
+  assert.equal(serializeInlineHtml(el('<span data-text-right-tab="yes">unsafe marker</span>')), 'unsafe marker');
+  assert.equal(clipboardParagraphHtml('fallback', '<p><span data-text-right-tab="true">role</span></p>'), '<span data-text-right-tab="true">role</span>');
+});
+
 
 test('Save and reload preserve literal text and every unmarked trailing break', () => {
   const root = el('<p>Design &lt;engineer&gt; &amp; maker<br><br></p><p>Next</p>');
