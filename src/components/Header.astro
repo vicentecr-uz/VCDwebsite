@@ -1334,21 +1334,25 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   };
 
   const messageForClick = (count: number) => {
-    if (completionStored) return count <= 4 && count >= 3 ? 'You are on this page' :
-      count === 5 ? 'ah, you again' : count === 6 ? 'welcome back' : null;
-    if (count <= 9 && count >= 3) return 'You are on this page';
+    if (completionStored) return count === 2 ? 'ah, you again' : count === 3 ? 'welcome back' : null;
     return ({
-      10: 'chill out', 11: 'bro can you read',
-      22: "ahh, i see, you're curious", 23: 'how long this will go, right?',
-      24: 'well just stop', 25: "i'm not playing", 26: 'seriously',
-      27: "alright, that's it", 28: 'go on, click it again, see what happens',
-    } as Record<number, string>)[count] ?? (count >= 12 && count <= 21 ? 'are you dumb?' : null);
+      1: 'You are on this page', 2: 'You are on this page', 3: 'You are on this page',
+      4: 'chill out', 5: 'bro can you read', 6: 'are you dumb?',
+      7: "ahh, i see, you're curious", 8: 'how long this will go, right?',
+      9: 'well just stop', 10: "i'm not playing", 11: 'seriously',
+      12: "alright, that's it", 13: 'go on, click it again, see what happens',
+    } as Record<number, string>)[count] ?? null;
   };
 
   let currentPageRemoved = false;
   let idleTimer: number | null = null;
   let idlePhase: 'none' | 'good-boy' | 'hey' = 'none';
   let needsResume = false;
+  let readingReadyAt = 0;
+  let pendingReveal = false;
+  const now = () => performance.now();
+  const storyIsLocked = () => pendingReveal || now() < readingReadyAt;
+  const clearStoryLock = () => { pendingReveal = false; readingReadyAt = 0; };
   const noteTimers = new Map<HTMLElement, number>();
   const cancelAnimations = (element: HTMLElement) => element.getAnimations().forEach((animation) => animation.cancel());
   const animatePanelWidth = (trigger: HTMLElement, update: () => void, animate = true) => {
@@ -1379,14 +1383,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     setNote(note, text, weight, animate, stage);
   });
   const stageForClick = (count: number) => {
-    if (completionStored) return count <= 4 ? 'notice' : count === 5 ? 'again' : count === 6 ? 'welcome' : undefined;
-    if (count >= 3 && count <= 4) return 'notice';
-    if (count >= 5 && count <= 6) return 'notice-emphasis';
-    if (count >= 7 && count <= 9) return 'notice-strong';
+    if (completionStored) return count === 2 ? 'again' : count === 3 ? 'welcome' : undefined;
+    if (count === 1) return 'notice';
+    if (count === 2) return 'notice-emphasis';
+    if (count === 3) return 'notice-strong';
     return ({
-      10: 'chill', 11: 'read', 22: 'curious', 23: 'how-long', 24: 'stop',
-      25: 'not-playing', 26: 'seriously', 27: 'warning', 28: 'last-chance',
-    } as Record<number, string>)[count] ?? (count >= 12 && count <= 21 ? 'hold' : undefined);
+      4: 'chill', 5: 'read', 6: 'hold', 7: 'curious', 8: 'how-long', 9: 'stop',
+      10: 'not-playing', 11: 'seriously', 12: 'warning', 13: 'last-chance',
+    } as Record<number, string>)[count];
   };
   const scheduleIdle = () => {
     cancelIdle();
@@ -1411,6 +1415,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const open = trigger.dataset.menuOpen === 'true';
     const reveal = () => {
       noteTimers.delete(note);
+      const visible = trigger.dataset.menuOpen === 'true' && !document.hidden;
       animatePanelWidth(trigger, () => {
         note.textContent = text;
         note.style.fontWeight = String(weight);
@@ -1420,13 +1425,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         note.setAttribute('aria-hidden', String(!open));
         syncMenuSurfaceInlineSize(trigger);
       }, animate);
-      if (stage && trigger.dataset.menuOpen === 'true' && !document.hidden) trackStoryStage(stage);
+      if (stage && visible) trackStoryStage(stage);
+      if (stage && visible) {
+        pendingReveal = false;
+        readingReadyAt = now() + (animateText && open ? 150 : 0) + (text.length >= 25 ? 1500 : 1000);
+      }
       if (animateText && open) note.animate([
         { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
         { opacity: 0.48, filter: 'blur(0px)' },
       ], { duration: 150, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
     };
     if (animateText && open && note.classList.contains('is-visible')) {
+      if (stage && open && !document.hidden) pendingReveal = true;
       note.animate([
         { opacity: 0.48, filter: 'blur(0px)' },
         { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
@@ -1491,15 +1501,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }, focusFallback ? 0 : 100);
   };
 
-  const messageWeight = () => !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
-    !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
+  const messageWeight = () => !completionStored && currentPageClickCount === 3 ? 900 :
+    !completionStored && currentPageClickCount === 2 ? 700 : 400;
   const pauseMessages = () => {
     cancelIdle();
     if (idlePhase !== 'none') {
       idlePhase = 'none';
-      currentPageClickCount = 25;
+      currentPageClickCount = 10;
     }
-    needsResume = currentPageClickCount >= 3;
+    needsResume = currentPageClickCount >= (completionStored ? 2 : 1);
   };
   const trackExposure = (trigger: HTMLElement | null) => {
     if (trigger?.dataset.menuOpen === 'true' && !currentPageRemoved && !document.hidden &&
@@ -1508,6 +1518,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   currentPageNotes.forEach((note) => {
     const trigger = note.closest<HTMLElement>('.header-trigger');
     trigger?.addEventListener('header:trigger-close', () => {
+      clearStoryLock();
       pauseMessages();
       hideCurrentPageNote(note);
     });
@@ -1522,6 +1533,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
   });
   document.addEventListener('header:force-close', () => {
+    clearStoryLock();
     pauseMessages();
     currentPageNotes.forEach((note) => {
       cancelNote(note);
@@ -1531,6 +1543,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) return;
+    clearStoryLock();
     pauseMessages();
     currentPageNotes.forEach(hideCurrentPageNote);
   });
@@ -1544,17 +1557,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           suppressNextCurrentPageClick = false;
           return;
         }
+        if (storyIsLocked()) return;
         cancelIdle();
         if (needsResume) {
           needsResume = false;
           showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', messageWeight(), event.detail > 0,
             stageForClick(currentPageClickCount));
-          if (!completionStored && currentPageClickCount === 24) scheduleIdle();
+          if (!completionStored && currentPageClickCount === 9) scheduleIdle();
           return;
         }
         if (idlePhase === 'good-boy') {
           idlePhase = 'hey';
-          currentPageClickCount = 25;
+          currentPageClickCount = 10;
           showMessage('HEY', 400, event.detail > 0, 'idle-hey');
           idleTimer = window.setTimeout(() => {
             idleTimer = null;
@@ -1575,7 +1589,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         }
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
-        const shakeCutoff = completionStored ? 5 : 22;
+        const shakeCutoff = completionStored ? 2 : 7;
         if (label && currentPageClickCount >= shakeCutoff) {
           cancelAnimations(label);
           label.classList.remove('is-error-shaking');
@@ -1583,15 +1597,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if (event.detail > 0 && !reduceMotionMq.matches && label && currentPageClickCount < shakeCutoff) {
           cancelAnimations(label);
           label.classList.remove('is-error-shaking');
-          const strength = completionStored ? 0.45 : currentPageClickCount <= 9
-            ? 0.5 + (currentPageClickCount - 1) * 0.125 : 0.4;
+          const strength = completionStored ? 0.45 : currentPageClickCount <= 3
+            ? 0.5 + (currentPageClickCount - 1) * 0.5 : 0.4;
           label.style.setProperty('--current-shake-strength', String(strength));
-          label.style.setProperty('--current-shake-duration', completionStored || currentPageClickCount >= 10 ? '0.15s' : '0.24s');
+          label.style.setProperty('--current-shake-duration', completionStored || currentPageClickCount >= 4 ? '0.15s' : '0.24s');
           void label.offsetWidth;
           label.classList.add('is-error-shaking');
         }
-        if (completionStored && currentPageClickCount >= 7) return removeCurrentPage(event.detail === 0);
-        if (!completionStored && currentPageClickCount >= 29) return removeCurrentPage(event.detail === 0);
+        if (completionStored && currentPageClickCount >= 4) return removeCurrentPage(event.detail === 0);
+        if (!completionStored && currentPageClickCount >= 14) return removeCurrentPage(event.detail === 0);
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
         const weight = messageWeight();
@@ -1600,13 +1614,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
           setNote(note, message, weight, event.detail > 0, stage);
         });
-        if (!completionStored && currentPageClickCount === 24) scheduleIdle();
+        if (!completionStored && currentPageClickCount === 9) scheduleIdle();
       },
       true,
     );
     link.addEventListener('pointerdown', (event) => {
+      if (storyIsLocked()) return;
       if (event.pointerType === 'mouse' && event.button === 0 &&
-        ((completionStored && currentPageClickCount === 6) || (!completionStored && currentPageClickCount === 28)) && !needsResume) {
+        ((completionStored && currentPageClickCount === 3) || (!completionStored && currentPageClickCount === 13)) && !needsResume) {
         event.preventDefault();
         suppressNextCurrentPageClick = true;
         removeCurrentPage(false);
