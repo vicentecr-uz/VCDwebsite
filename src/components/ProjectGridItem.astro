@@ -27,7 +27,7 @@ import type { ProjectGridItem } from './ProjectGrid.astro';
 
 interface Props {
   item: ProjectGridItem;
-  variant: 'home' | 'work' | 'play';
+  variant: 'home' | 'play';
 }
 
 const { item, variant } = Astro.props;
@@ -52,7 +52,7 @@ const isImage = status === 'image';
 const showOpenPageChip = status === 'draft' || status === 'teaser';
 const isStatic = isPlayPlaceholder || isImage || (isTeaser && !isDev);
 const statusIconSvg = statusIcons[status as keyof typeof statusIcons] ?? statusIcons.published;
-const defaultAspects = listingCoverDefaultAspects(variant, Boolean(item.full));
+const defaultAspects = listingCoverDefaultAspects(variant);
 const srcDims = imageSourceDims(item);
 const hasCoverCrop = hasCropVariants(item.variants);
 const hasHoverCrop = hasCropVariants(item.hoverVariants);
@@ -71,7 +71,7 @@ const coverStyle = joinMediaStyles(
 const projectEditable = isDev && Boolean(item.slug);
 const isPlaceholderCover = isPlaceholderCoverSrc(item.image);
 const projectEditAttrs = projectEditable
-  ? listingCoverDevEditAttrs(item.slug!, variant, item, Boolean(item.full))
+  ? listingCoverDevEditAttrs(item.slug!, variant, item)
   : undefined;
 const editAttrs = projectEditAttrs;
 

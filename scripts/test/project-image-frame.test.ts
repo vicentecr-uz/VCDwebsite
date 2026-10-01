@@ -60,7 +60,7 @@ test('edit attrs preserve authored hover and width maps separately from resolved
     image: 'cover.jpg',
     variants: { desktop: { aspect: '3:2' } },
     hoverVariants: { desktop: { cx: 0.2, cy: 0.5, w: 1 } },
-  }, false);
+  });
   assert.deepEqual(JSON.parse(listing['data-dev-hover-variants-authored']), { desktop: { cx: 0.2, cy: 0.5, w: 1 } });
   const attrs = imageDevEditAttrs(true, {
     documentKey: 'demo', path: ['sections', 0], cropId: 'image', variants: {},
@@ -77,7 +77,7 @@ test('hover crops inherit the desktop crop while authored metadata stays sparse'
     image: 'cover.jpg',
     variants: { desktop: { aspect: '3:2' } },
     hoverVariants: { desktop: { aspect: '16:9', cx: 0.3, cy: 0.6, w: 1.2 } },
-  }, false);
+  });
   const resolved = JSON.parse(attrs['data-dev-hover-variants']);
   for (const viewport of ['tablet', 'mobile']) {
     assert.equal(resolved[viewport].cx, resolved.desktop.cx);
