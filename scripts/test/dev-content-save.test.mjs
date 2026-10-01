@@ -167,7 +167,7 @@ test('styles intro paragraphs save and reload without changing its outline', asy
   }
 });
 
-test('paragraph wrapping overrides survive the batch Save endpoint and disk reload', async () => {
+test('paragraph wrapping and right-indent runs survive the batch Save endpoint and disk reload', async () => {
   const previous = process.cwd();
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-content-wrapping-'));
   const directory = path.join(root, 'src/content/pages');
@@ -179,6 +179,8 @@ test('paragraph wrapping overrides survive the batch Save endpoint and disk relo
     '<span data-text-wrap="pretty">Supporting <em>copy</em></span>',
     '<span data-text-wrap="normal">Body <a href="/work">link</a></span>',
     '<span data-text-wrap="balance">Explicit balance</span>',
+    '<span class="text-emphasis">Role</span><span data-text-right-tab="true"><a href="/work">2024–2025</a></span><br>Design Engineer',
+    'Unfinished<span data-text-right-tab="true"></span>',
   ];
   await writeFile(file, JSON.stringify(source));
   process.chdir(root);

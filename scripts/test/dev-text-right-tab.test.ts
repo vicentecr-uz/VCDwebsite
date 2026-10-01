@@ -123,3 +123,19 @@ test('maps a root-end caret into the last direct paragraph and keeps empty lines
   expect(breakRightIndentTab(soft.root, true)).toBe(true);
   expect(soft.root.innerHTML).toBe('<p><span data-text-right-tab="true">Right</span><br><br data-dev-placeholder="true"></p>');
 });
+
+test('Enter unwraps the current tail while preserving right runs on later explicit lines', () => {
+  for (const soft of [false, true]) {
+    for (const atContainerEnd of [false, true]) {
+      const { window, root } = setup('<p>Role<span data-text-right-tab="true"><em>2024 later</em></span><br>Next<span data-text-right-tab="true">2025</span></p>');
+      const current = root.querySelector('span[data-text-right-tab]')!;
+      window.getSelection()!.setPosition(atContainerEnd ? current : current.querySelector('em')!.firstChild!, atContainerEnd ? current.childNodes.length : 4);
+      expect(breakRightIndentTab(root, soft)).toBe(true);
+      const values = readParagraphsValue(root);
+      expect(values.join('')).toContain('Next<span data-text-right-tab="true">2025</span>');
+      expect(values.join('')).toContain('<span data-text-right-tab="true"><em>2024');
+      expect(root.querySelectorAll('[data-text-right-tab]')).toHaveLength(2);
+      expect(window.getSelection()!.anchorNode!.parentElement?.closest('[data-text-right-tab]')).toBeNull();
+    }
+  }
+});
