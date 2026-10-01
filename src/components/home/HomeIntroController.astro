@@ -4,12 +4,16 @@ import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../lib/pageCo
 import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
 import type { PageDocument } from '../../lib/projects';
 import revealConfig from '../../lib/homeRevealConfig.json';
+import { renderHomeIntroAction } from '../../lib/homeIntroAction';
 
 interface Props {
   page: PageDocument;
 }
 
 const { page } = Astro.props;
+const sections = page.sections.map((section) => section.type === 'bodyText'
+  ? { ...section, paragraphs: (section.paragraphs as string[]).map(renderHomeIntroAction) }
+  : section);
 const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.sections) : undefined;
 const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { translateYPx?: number }).translateYPx ?? 0;
 ---
@@ -26,7 +30,7 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   <div class="home-intro-surface__column">
     <div class="listing-main">
       <div data-dev-project-drop-zone data-page-document="home-intro">
-        <ProjectSections documentKey="home-intro" sections={page.sections} introHeight={page.introHeight} />
+        <ProjectSections documentKey="home-intro" sections={sections} introHeight={page.introHeight} />
         <div
           class:list={[projectStackClass(page.trailingSpacing ?? 'none')]}
           {...(spacingDevAttrs('home-intro', ['sections', page.sections.length], page.trailingSpacing ?? 'none', { writePath: ['trailingSpacing'] }) ?? {})}
@@ -35,10 +39,6 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
       </div>
     </div>
   </div>
-  <button type="button" class="home-intro-surface__okay" data-home-intro-okay>
-    View work
-  </button>
-  <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">View work</span>
 </section>
 
 <script is:inline>
@@ -80,11 +80,6 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     pointer-events: none;
   }
 
-  #home-intro-surface[data-state='dismissing'] .home-intro-surface__okay,
-  #home-intro-surface[data-state='dismissing'] .home-intro-surface__cursor {
-    display: none;
-  }
-
   #home-intro-surface[data-state='dismissed'] {
     display: none;
   }
@@ -94,66 +89,41 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     padding-inline: var(--page-gutter);
   }
 
-  .home-intro-surface__okay {
-    position: fixed;
-    z-index: 1;
-    inset: auto 50% calc(var(--space-unit) + env(safe-area-inset-bottom)) auto;
-    transform: translateX(50%);
-    padding: 0.75rem;
+  #home-intro-surface :global([data-home-intro-okay]) {
+    position: relative;
+    padding: 0;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
+    letter-spacing: inherit;
+    white-space: nowrap;
     cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 10%, transparent);
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.15em;
+    transition: text-decoration-color 150ms ease;
   }
 
-  .home-intro-surface__okay::before {
+  #home-intro-surface :global(button[data-home-intro-okay])::before {
     content: '';
     position: absolute;
     inset: -8px;
   }
 
-  .home-intro-surface__cursor {
-    position: fixed;
-    z-index: 2;
-    top: 0;
-    left: 0;
-    display: none;
-    pointer-events: none;
-    transform: translate(-50%, -50%);
+  #home-intro-surface :global(button[data-home-intro-okay]):focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 4px;
   }
 
-  .home-intro-surface__okay,
-  .home-intro-surface__cursor {
-    font-size: var(--text-body-size);
-    font-weight: var(--text-body-weight);
-    line-height: var(--text-body-leading);
-    letter-spacing: var(--text-body-tracking);
-  }
-
-  #home-intro-surface[data-state='editing'] .home-intro-surface__okay,
-  #home-intro-surface[data-state='editing'] .home-intro-surface__cursor {
-    display: none;
-  }
-
-  #home-intro-surface[data-state='active'] .home-intro-surface__okay:focus-visible {
-    opacity: 1;
-  }
-
-  @media (hover: hover) and (pointer: fine) and (min-width: 40em) {
-    #home-intro-surface[data-state='active'] .home-intro-surface__okay {
-      opacity: 0;
-    }
+  #home-intro-surface[data-state='editing'] :global([data-home-intro-okay]) {
+    cursor: text;
   }
 
   @media (hover: hover) and (pointer: fine) {
-    #home-intro-surface[data-state='active'] {
-      cursor: none;
-    }
-
-    #home-intro-surface :global(a[href]),
-    #home-intro-surface :global([role='link']) {
-      cursor: pointer;
+    #home-intro-surface :global(button[data-home-intro-okay]):hover {
+      text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
     }
   }
 
