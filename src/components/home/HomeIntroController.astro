@@ -36,10 +36,9 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     </div>
   </div>
   <button type="button" class="home-intro-surface__okay" data-home-intro-okay>
-    <span class="home-intro-surface__okay-desktop">Enter</span>
-    <span class="home-intro-surface__okay-touch">Tap to enter</span>
+    View work
   </button>
-  <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">Enter</span>
+  <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">View work</span>
 </section>
 
 <script is:inline>
@@ -98,7 +97,7 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   .home-intro-surface__okay {
     position: fixed;
     z-index: 1;
-    inset: auto 50% var(--space-unit) auto;
+    inset: auto 50% calc(var(--space-unit) + env(safe-area-inset-bottom)) auto;
     transform: translateX(50%);
     padding: 0.75rem;
     border: 0;
@@ -106,6 +105,12 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     color: inherit;
     font: inherit;
     cursor: pointer;
+  }
+
+  .home-intro-surface__okay::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
   }
 
   .home-intro-surface__cursor {
@@ -131,26 +136,14 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     display: none;
   }
 
-  .home-intro-surface__okay-touch { display: none; }
-
   #home-intro-surface[data-state='active'] .home-intro-surface__okay:focus-visible {
     opacity: 1;
   }
 
-  @media (hover: hover) and (pointer: fine) {
+  @media (hover: hover) and (pointer: fine) and (min-width: 40em) {
     #home-intro-surface[data-state='active'] .home-intro-surface__okay {
       opacity: 0;
     }
-  }
-
-  @media (hover: none), (pointer: coarse) {
-    #home-intro-surface[data-state='active'] .home-intro-surface__okay {
-      bottom: calc(var(--space-unit) + env(safe-area-inset-bottom));
-      opacity: 1;
-    }
-
-    .home-intro-surface__okay-desktop { display: none; }
-    .home-intro-surface__okay-touch { display: inline; }
   }
 
   @media (hover: hover) and (pointer: fine) {
