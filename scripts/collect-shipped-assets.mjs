@@ -27,6 +27,7 @@ import {
   generateDerivativeBuffer,
   isDerivativeToken,
 } from './image-derivatives.mjs';
+import { prunePublicOutput } from './public-site-output.mjs';
 
 const SCAN_EXTENSIONS = new Set(['.html', '.css', '.js']);
 // Deliberately does NOT exclude ')' from the token body — filenames in this
@@ -159,12 +160,23 @@ export async function collectShippedAssets(distDir, mediaDir) {
 
 /** @returns {import('astro').AstroIntegration} */
 export function mediaCollectorIntegration(mediaDirName = 'media') {
+  let site;
+  let assetsDir = '_astro';
   return {
     name: 'vcd-media-collector',
     hooks: {
+      'astro:config:done': ({ config }) => {
+        site = config.site;
+        assetsDir = config.build?.assets || '_astro';
+      },
       'astro:build:done': async ({ dir }) => {
         const distDir = fileURLToPath(dir);
         const mediaDir = path.join(process.cwd(), mediaDirName);
+        const output = await prunePublicOutput(distDir, { site, assetsDir });
+        console.log(
+          `public output: retained ${output.retainedHtml.length} HTML page(s), `
+          + `removed ${output.removedHtml.length}; removed ${output.removedAssets.length} generated asset(s)`,
+        );
         await collectShippedAssets(distDir, mediaDir);
       },
     },
