@@ -124,6 +124,7 @@ test('keeps ready auto proposals out of source until explicit save and preserves
     assert.equal(saved.status, 200);
     assert.equal(fixture.writes, 1);
     assert.equal(fixture.docs.home.sections[0].alt, 'A camera on a table.');
+    assert.equal(Object.hasOwn(fixture.docs.home.sections[0], 'altIntent'), false);
     assert.equal(fixture.docs.home.sections[0].caption, 'Keep me');
     assert.deepEqual(fixture.docs.home.sections[0].variants, { desktop: { width: 2 } });
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
