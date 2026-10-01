@@ -116,17 +116,24 @@ function ancestor(node, predicate) {
   return null;
 }
 
-function publicImages(document) {
+function publicImages(document, pageUrl, site) {
   const found = [];
   const visit = (node) => {
     if (node.tagName !== 'img') return;
     const original = attr(node, 'data-image-original') || attr(node, 'src');
-    if (!original || !isRaster(original) || /placeholder|black-token/i.test(original)) return;
+    if (!original || /placeholder|black-token/i.test(original)) return;
+    let imageUrl;
+    try {
+      imageUrl = new URL(original, pageUrl);
+      if (imageUrl.origin !== site.origin || !imageUrl.pathname.startsWith('/images/')) return;
+      imageUrl.pathname = decodeURIComponent(imageUrl.pathname);
+    } catch { return; }
+    if (!isRaster(imageUrl.pathname)) return;
     if (node.attrs?.some((item) => item.name === 'hidden') || ancestor(node, (item) => item.attrs?.some((a) => a.name === 'hidden'))) return;
-    const carousel = ancestor(node, (item) => item.attrs?.some((a) => a.name === 'data-carousel-slide'));
-    if (carousel && (attr(carousel, 'aria-hidden') === 'true' || attr(carousel, 'data-carousel-parked') === 'true')) return;
-    const grid = ancestor(node, (item) => item.attrs?.some((a) => a.name === 'data-grid-item-id'));
-    if (grid && ['desktop', 'tablet', 'mobile'].every((mode) => attr(grid, `data-grid-hidden-${mode}`) === 'true')) return;
+    for (let current = node.parentNode; current; current = current.parentNode) {
+      if (attr(current, 'aria-hidden') === 'true' || attr(current, 'data-carousel-parked') === 'true') return;
+      if (['desktop', 'tablet', 'mobile'].every((mode) => attr(current, `data-grid-hidden-${mode}`) === 'true')) return;
+    }
     const ids = [];
     for (let current = node; current; current = current.parentNode) {
       for (const name of ['data-grid-item-id', 'data-outline-id', 'data-section-id', 'id']) {
@@ -134,7 +141,7 @@ function publicImages(document) {
         if (id && !ids.includes(id)) ids.unshift(id);
       }
     }
-    found.push({ src: tokenFromUrl(original), alt: attr(node, 'alt'), ids, node });
+    found.push({ src: tokenFromUrl(imageUrl.pathname), publicSrc: imageUrl.href, alt: attr(node, 'alt'), ids, node });
   };
   const walk = (node) => { visit(node); (node.childNodes || []).forEach(walk); };
   walk(document);
@@ -156,13 +163,16 @@ async function publicGraph({ fetchImpl, site, root = '/' }) {
     let response;
     try { response = await fetchImpl(url, { credentials: 'omit', redirect: 'manual', signal: AbortSignal.timeout(15_000) }); } catch { continue; }
     if (response.status >= 300 && response.status < 400) {
-      try { const next = new URL(response.headers.get('location'), url); if (next.origin === origin.origin) queue.push(next); } catch {}
+      const location = response.headers.get('location');
+      if (!location) continue;
+      try { const next = new URL(location, url); if (next.origin === origin.origin) queue.push(next); } catch {}
       continue;
     }
     if (!response.ok || new URL(response.url || url, origin).origin !== origin.origin) continue;
     const type = String(response.headers?.get?.('content-type') || '').toLowerCase();
     if (!type.includes('text/html')) continue;
-    const html = await readBoundedBody(response, MAX_HTML);
+    let html;
+    try { html = await readBoundedBody(response, MAX_HTML); } catch { continue; }
     if (html === null) continue;
     const document = parse(html);
     pages.set(url.pathname, { document, html });
@@ -218,14 +228,14 @@ export function createImageDescriptionsService(options = {}) {
   let checking = false;
   let graphCache = null;
   let graphPromise = null;
+  const inFlight = new Map();
   async function graph(force = false) {
     if (!force && graphCache) return graphCache;
     if (graphPromise) return graphPromise;
     graphPromise = publicGraph({ fetchImpl, site }).then((value) => { graphCache = value; return value; }).finally(() => { graphPromise = null; });
     return graphPromise;
   }
-  async function enumerate(forcePublic = false) {
-    const publicPages = await graph(forcePublic);
+  async function enumerate(publicPages = new Map()) {
     const usage = new Map();
     const duplicates = new Set();
     let documentKeys = options.documentKeys;
@@ -239,7 +249,7 @@ export function createImageDescriptionsService(options = {}) {
     const publicByDocument = new Map();
     for (const [pathname, page] of publicPages) {
       const document = pathname === '/' ? 'home' : pathname.replace(/^\//, '').replace(/\/$/, '');
-      publicByDocument.set(document, publicImages(page.document));
+    publicByDocument.set(document, publicImages(page.document, new URL(pathname, site), site));
     }
     for (const document of documentKeys) {
       let data;
@@ -248,19 +258,21 @@ export function createImageDescriptionsService(options = {}) {
       const images = publicByDocument.get(document) || [];
       for (const node of source) {
         const candidates = images.filter((image) => cleanPath(image.src) === cleanPath(node.src));
-        const matched = candidates.filter((image) => !node.ids.length || node.ids.some((id) => image.ids.includes(id)));
-        const publicUse = matched.length === 1 ? matched[0] : (candidates.length === 1 ? candidates[0] : null);
+        const matched = candidates.filter((image) => node.ids.length > 0 && node.ids.every((id) => image.ids.includes(id)));
+        const publicUse = matched.length === 1 ? matched[0] : null;
         const key = `${document}:${node.ids.join('/') || node.path.join('.')}`;
         if (duplicates.has(key)) continue;
         if (usage.has(key)) { usage.delete(key); duplicates.add(key); continue; }
-        usage.set(key, { key, document, title: data.title || document, pathLabel: publicUse?.ids.join(' / ') || node.ids.join(' / ') || 'Image', path: node.path, ids: node.ids, src: node.src, alt: String(node.node.alt || ''), intent: VALID_INTENTS.has(node.node.altIntent) ? node.node.altIntent : 'manual', public: Boolean(publicUse && (!data.status || data.status === 'published' || document === 'home')), node, sourceBytes: null });
+        usage.set(key, { key, document, title: data.title || document, pathLabel: publicUse?.ids.join(' / ') || node.ids.join(' / ') || 'Image', path: node.path, ids: node.ids, src: node.src, publicSrc: publicUse?.publicSrc || '', alt: String(node.node.alt || ''), intent: VALID_INTENTS.has(node.node.altIntent) ? node.node.altIntent : 'manual', public: Boolean(publicUse && (!data.status || data.status === 'published' || document === 'home')), node, sourceBytes: null });
       }
     }
     return [...usage.values()];
   }
 
   async function sourcePath(src) {
-    const token = cleanPath(src).replace(/^\//, '');
+    let token;
+    try { token = decodeURIComponent(cleanPath(src)).replace(/^\//, ''); } catch { throw new Error('Invalid image path.'); }
+    if (!token || token.split(/[\\/]/).includes('..') || path.isAbsolute(token)) throw new Error('Invalid image path.');
     const file = path.resolve(mediaDir, token);
     if (!file.startsWith(path.resolve(mediaDir) + path.sep)) throw new Error('Invalid image path.');
     for (let current = path.dirname(file); current !== path.resolve(mediaDir); current = path.dirname(current)) {
@@ -280,12 +292,16 @@ export function createImageDescriptionsService(options = {}) {
   }
 
   async function fetchPublicImage(src) {
-    let url = new URL(`/images/${encodeURIComponent(src).replace(/%2F/g, '/')}`, site);
+    let url;
+    try { url = new URL(src || '', site); } catch { throw new Error('Invalid public image URL.'); }
+    if (url.origin !== site.origin || !url.pathname.startsWith('/images/')) throw new Error('Invalid public image URL.');
     for (let attempt = 0; attempt < 5; attempt += 1) {
       if (url.origin !== site.origin || !url.pathname.startsWith('/images/')) throw new Error('Invalid public image URL.');
       const response = await fetchImpl(url, { credentials: 'omit', redirect: 'manual', signal: AbortSignal.timeout(15_000) });
       if (response.status >= 300 && response.status < 400) {
-        const next = new URL(response.headers.get('location'), url);
+        const location = response.headers.get('location');
+        if (!location) throw new Error('Public image redirect missing location.');
+        const next = new URL(location, url);
         if (next.origin !== site.origin) throw new Error('Public image redirect crossed origin.');
         url = next;
         continue;
@@ -300,9 +316,9 @@ export function createImageDescriptionsService(options = {}) {
     throw new Error('Too many public image redirects.');
   }
 
-  async function refresh(forcePublic = false) {
+  async function refresh(publicPages = null) {
     const cache = await readCache(cacheFile);
-    const next = await enumerate(forcePublic);
+    const next = await enumerate(publicPages ?? graphCache ?? new Map());
     for (const row of next) {
       row.baseToken = await baseToken(row).catch(() => '');
       const saved = cache[row.key];
@@ -311,6 +327,8 @@ export function createImageDescriptionsService(options = {}) {
         row.state = saved.state || '';
         row.error = saved.error;
       }
+      const active = inFlight.get(row.key);
+      if (active && active.baseToken === row.baseToken) { row.state = active.state; row.error = active.error; }
     }
     rows = next;
     return rows;
@@ -319,13 +337,14 @@ export function createImageDescriptionsService(options = {}) {
   async function describe(row) {
     const file = await sourcePath(row.src);
     const original = await readFile(file);
-    const publicBytes = await fetchPublicImage(row.src);
+    const publicBytes = await fetchPublicImage(row.publicSrc);
     if (!original.equals(publicBytes)) throw new Error('Public image does not match the local source.');
     const resized = await sharp(publicBytes).flatten({ background: '#ffffff' }).resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
     const response = await modelFetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal: AbortSignal.timeout(90_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma3:4b', stream: false, options: { temperature: 0, num_predict: 90 }, messages: [{ role: 'user', content: 'Identify primary visible objects or action. Omit incidental backgrounds, colours, materials, inferred relationships, and purpose. Use 25 words or fewer; do not begin with “image of” or “showcasing”.', images: [resized.toString('base64')] }] }) });
     if (!response.ok) throw new Error('The local vision model failed.');
-    const body = await response.json();
-    const text = String(body.message?.content || '').trim();
+    let body;
+    try { body = JSON.parse(await readBoundedBody(response, 64 * 1024) || ''); } catch { throw new Error('The model returned invalid JSON.'); }
+    const text = typeof body.message?.content === 'string' ? body.message.content.trim() : '';
     if (!plain(text)) throw new Error('The model returned invalid description text.');
     return text;
   }
@@ -334,28 +353,35 @@ export function createImageDescriptionsService(options = {}) {
     if (checking) return rows;
     checking = true;
     try {
-      await refresh(true);
+      const publicPages = await graph(true);
+      await refresh(publicPages);
       const cache = await readCache(cacheFile);
       const candidates = rows.filter((row) => row.public && row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed');
-      for (const row of candidates) {
+      for (const queued of candidates) {
+        await refresh(publicPages);
+        const row = rows.find((candidate) => candidate.key === queued.key);
+        if (!row || !row.public || row.intent !== 'auto' || row.alt.trim() || row.description || row.state === 'failed') continue;
         row.state = 'describing';
+        inFlight.set(row.key, { baseToken: row.baseToken, state: 'describing' });
         try {
           const description = await describe(row);
-          await refresh();
+          await refresh(publicPages);
           const current = rows.find((candidate) => candidate.key === row.key);
-          if (!current || current.baseToken !== row.baseToken) continue;
+          if (!current || current.baseToken !== row.baseToken || !current.public) { inFlight.delete(row.key); continue; }
           current.description = description;
           current.state = 'ready';
+          inFlight.delete(row.key);
           cache[row.key] = { description, state: current.state, baseToken: current.baseToken, alt: current.alt, intent: current.intent };
         }
         catch (error) {
-          await refresh();
+          await refresh(publicPages);
           const current = rows.find((candidate) => candidate.key === row.key);
-          if (current && current.baseToken === row.baseToken) {
+          if (current && current.baseToken === row.baseToken && current.public) {
             current.state = 'failed';
             current.error = error instanceof Error ? error.message : 'Generation failed.';
+            inFlight.delete(row.key);
             cache[row.key] = { state: current.state, error: current.error, baseToken: current.baseToken, alt: current.alt, intent: current.intent };
-          }
+          } else inFlight.delete(row.key);
         }
         await writeCache(cacheFile, cache);
       }
@@ -366,7 +392,8 @@ export function createImageDescriptionsService(options = {}) {
   function publicRows() { return rows.map(({ node, sourceBytes, ...row }) => ({ ...row, status: statusFor(row), description: row.description || row.alt })); }
 
   async function save(body) {
-    await refresh();
+    if (typeof body.baseToken !== 'string' || !body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
+    await refresh(graphCache || new Map());
     const row = rows.find((item) => item.key === body.key);
     if (!row || row.baseToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
     if (typeof body.intent !== 'string' || typeof body.alt !== 'string') return { status: 400, payload: { error: 'Invalid description.' } };
@@ -378,7 +405,9 @@ export function createImageDescriptionsService(options = {}) {
     let target;
     walkJson(data, [], (node, nodePath) => { if (!target && nodePath.join('.') === row.node.path.join('.') && node.src === row.node.src) target = node; });
     if (!target) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
-    const currentToken = await baseToken({ ...row, alt: String(target.alt || ''), intent: VALID_INTENTS.has(target.altIntent) ? target.altIntent : 'manual', node: target }).catch(() => '');
+    const latestIds = stableIds(data, row.path, target);
+    if (JSON.stringify(latestIds) !== JSON.stringify(row.ids)) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
+    const currentToken = await baseToken({ ...row, ids: latestIds, alt: String(target.alt || ''), intent: VALID_INTENTS.has(target.altIntent) ? target.altIntent : 'manual', node: target }).catch(() => '');
     if (currentToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
     target.alt = intent === 'decorative' ? '' : alt;
     target.altIntent = intent;
@@ -389,14 +418,17 @@ export function createImageDescriptionsService(options = {}) {
   }
 
   async function retry(key) {
+    if (checking) return { status: 409, payload: { error: 'A description check is already running.' } };
     const cache = await readCache(cacheFile);
     delete cache[key];
     await writeCache(cacheFile, cache);
     const row = rows.find((item) => item.key === key);
     if (row) { row.state = ''; row.error = undefined; }
-    return check();
+    check().catch(() => {});
+    return { status: 202, payload: { rows: publicRows(), checking: true } };
   }
-  return { refresh, check, retry, save, rows: publicRows, isChecking: () => checking };
+  function hasAutoCandidates() { return rows.some((row) => row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed'); }
+  return { refresh, check, retry, save, rows: publicRows, isChecking: () => checking, hasAutoCandidates };
 }
 
 export function imageDescriptionsDevWriter(options = {}) {
@@ -410,7 +442,7 @@ export function imageDescriptionsDevWriter(options = {}) {
           if (req.method !== 'POST') { next(); return; }
           const body = await bodyJson(req);
           if (body.action === 'check') { service.check().catch(() => {}); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
-          if (body.action === 'retry') { service.retry(String(body.key || '')).catch(() => {}); sendJson(res, 202, { rows: service.rows(), checking: true }); return; }
+          if (body.action === 'retry') { const result = await service.retry(String(body.key || '')); sendJson(res, result?.status || 202, result?.payload || { rows: service.rows(), checking: service.isChecking() }); return; }
           sendJson(res, 400, { error: 'Unknown action.' });
         } catch { sendJson(res, 400, { error: 'Could not load image descriptions.' }); }
       });
@@ -419,7 +451,7 @@ export function imageDescriptionsDevWriter(options = {}) {
         try { const result = await service.save(await bodyJson(req)); sendJson(res, result.status, result.payload); }
         catch { sendJson(res, 400, { error: 'Could not save image description.' }); }
       });
-      const timer = setInterval(() => { service.check().catch(() => {}); }, 30_000);
+      const timer = setInterval(() => { if (service.hasAutoCandidates()) service.check().catch(() => {}); }, 30_000);
       server.httpServer?.once('close', () => clearInterval(timer));
     },
   };
