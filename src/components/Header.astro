@@ -1102,11 +1102,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const FADE_IN_DURATION = 0.25;
     const FADE_IN_STAGGER_START = 0.04;
     const FADE_IN_STAGGER_END = 0.09;
-    const CLOSE_IN_BASE_DELAY = FADE_OUT_DURATION * 0.45;
     const BLUR_PX = 4;
 
     let wordmarkIsOpen = false;
-    let wordmarkAnimating = false;
+    let wordmarkRunToken = 0;
+    let wordmarkFadeInFrame: number | undefined;
+
+    const invalidateWordmarkRun = () => {
+      wordmarkRunToken += 1;
+      if (wordmarkFadeInFrame !== undefined) {
+        cancelAnimationFrame(wordmarkFadeInFrame);
+        wordmarkFadeInFrame = undefined;
+      }
+    };
 
     const setCharFadeOut = (chars: HTMLElement[], stagger: number, duration: number, baseDelay = 0) => {
       chars.forEach((char, i) => {
@@ -1136,6 +1144,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0) => {
       // Snap to blurred/invisible, then fade + deblur into place (staggered)
+      if (wordmarkFadeInFrame !== undefined) cancelAnimationFrame(wordmarkFadeInFrame);
+      const runToken = wordmarkRunToken;
       chars.forEach((char) => {
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
@@ -1143,7 +1153,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         char.style.opacity = '0';
       });
 
-      requestAnimationFrame(() => {
+      wordmarkFadeInFrame = requestAnimationFrame(() => {
+        wordmarkFadeInFrame = undefined;
+        if (runToken !== wordmarkRunToken) return;
         chars.forEach((char, i) => {
           const delay =
             baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
@@ -1170,10 +1182,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ) +
       FADE_IN_DURATION;
 
-    const waitForWordmarkTransition = (durationSec: number) =>
-      new Promise<void>((resolve) => {
-        window.setTimeout(resolve, durationSec * 1000 + 32);
-      });
+    const titleEntryEnd = Math.max(
+      getFadeOutEnd(pageChars.length),
+      getFadeInEnd(homeChars.length, 0),
+    );
+    const titleCloseScale = 0.18 / titleEntryEnd;
 
     const applyWordmarkOpen = () => {
       setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
@@ -1184,8 +1197,26 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const applyWordmarkClose = () => {
-      setCharFadeOut(homeChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
-      applyWordmarkFadeIn(pageChars, CLOSE_IN_BASE_DELAY);
+      homeChars.forEach((char, i) => {
+        char.style.setProperty(
+          '--char-delay',
+          `${Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale}s`,
+        );
+        char.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
+        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+        char.style.setProperty('--char-blur', `${BLUR_PX}px`);
+        char.style.opacity = '0';
+      });
+      pageChars.forEach((char, i) => {
+        char.style.setProperty(
+          '--char-delay',
+          `${Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale}s`,
+        );
+        char.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
+        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.opacity = '1';
+      });
 
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
@@ -1197,7 +1228,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       startTrigger.contains(document.activeElement);
 
     const syncWordmarkHover = () => {
-      if (wordmarkAnimating) return;
       if (isDevEditing()) return;
 
       const hoverActive = isWordmarkHoverActive();
@@ -1209,53 +1239,31 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
     };
 
-    const runWordmarkOpen = async () => {
-      if (wordmarkAnimating) return;
-
-      wordmarkAnimating = true;
+    const runWordmarkOpen = () => {
+      invalidateWordmarkRun();
+      wordmarkIsOpen = true;
       startTrigger.classList.add('is-wordmark-swapped');
       applyWordmarkOpen();
-
-      const duration = Math.max(
-        FADE_OUT_DURATION,
-        getFadeInEnd(homeChars.length, 0),
-      );
-
-      await waitForWordmarkTransition(duration);
-
-      wordmarkIsOpen = true;
-      wordmarkAnimating = false;
-      syncWordmarkHover();
     };
 
-    const runWordmarkClose = async () => {
-      if (wordmarkAnimating) return;
-
-      wordmarkAnimating = true;
-      applyWordmarkClose();
-
-      const duration = Math.max(
-        getFadeOutEnd(homeChars.length),
-        getFadeInEnd(pageChars.length, CLOSE_IN_BASE_DELAY),
-      );
-
-      await waitForWordmarkTransition(duration);
-
+    const runWordmarkClose = () => {
+      invalidateWordmarkRun();
+      const runToken = wordmarkRunToken;
       wordmarkIsOpen = false;
-      wordmarkAnimating = false;
-      startTrigger.classList.remove('is-wordmark-swapped');
-      syncWordmarkHover();
+      applyWordmarkClose();
+      window.setTimeout(() => {
+        if (runToken !== wordmarkRunToken) return;
+        startTrigger.classList.remove('is-wordmark-swapped');
+      }, 180 + 32);
     };
 
     const onWordmarkPointerActive = () => {
       if (isDevEditing()) return;
-      if (wordmarkAnimating) return;
-      if (!wordmarkIsOpen) void runWordmarkOpen();
+      if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
     const onWordmarkPointerInactive = () => {
-      if (wordmarkAnimating) return;
-      if (wordmarkIsOpen) void runWordmarkClose();
+      if (wordmarkIsOpen) runWordmarkClose();
     };
 
     startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
@@ -1291,7 +1299,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
     document.addEventListener('header:force-close', () => {
-      wordmarkAnimating = false;
+      invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
       pageChars.forEach((char) => {
