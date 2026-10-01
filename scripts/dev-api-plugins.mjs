@@ -83,6 +83,7 @@ const MUTATING_AUTHORING_PATHS = new Set([
   '/api/content-batch', '/api/content-section', '/api/content-spacing', '/api/content-nav',
   '/api/project-create', '/api/project-settings', '/api/content-section-order',
   '/api/gallery-membership', '/api/listing-order', '/api/project-delete', '/api/project-rename',
+  '/api/image-description-save',
 ]);
 
 export function isMutatingAuthoringRequest(req) {
@@ -458,6 +459,16 @@ export function buildPlaceholderImageCarouselSection() {
 export function isPlaceholderImageSrc(src) {
   const value = String(src || '');
   return value === 'placeholder.svg' || value.endsWith('/placeholder.svg');
+}
+
+export function markAutomaticImageAltIntent(section) {
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.src === 'string' && /\.(?:jpe?g|png|webp|avif|gif|bmp|tiff?)$/i.test(node.src.split(/[?#]/, 1)[0]) && !String(node.alt || '').trim()) node.altIntent = 'auto';
+    for (const value of Object.values(node)) if (value && typeof value === 'object') visit(value);
+  };
+  visit(section);
+  return section;
 }
 
 /** Replace a placeholder image section's src/dims with an uploaded draft file.
