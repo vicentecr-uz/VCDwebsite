@@ -8,7 +8,6 @@ import TextArea from './ui/TextArea.astro';
 const intentOptions = [
   { value: 'manual', label: 'Manual' },
   { value: 'auto', label: 'Automatic' },
-  { value: 'decorative', label: 'Decorative' },
 ];
 ---
 
@@ -59,7 +58,7 @@ const intentOptions = [
 </template>
 
 <script>
-  type Intent = 'auto' | 'manual' | 'decorative';
+  type Intent = 'auto' | 'manual';
   type Row = {
     key: string;
     document: string;
@@ -116,7 +115,7 @@ const intentOptions = [
     if (src.startsWith('/')) return src;
     return `/images/${src.split('/').map((part) => encodeURIComponent(part)).join('/')}`;
   };
-  const statusText = (row: Row) => row.status || (row.intent === 'decorative' ? 'Decorative' : row.intent === 'manual' ? 'Manual' : 'Waiting for publication');
+  const statusText = (row: Row) => row.status || (row.intent === 'manual' ? 'Manual' : 'Waiting for publication');
 
   const setStatus = (message: string) => {
     statusEl.textContent = message;
@@ -224,7 +223,7 @@ const intentOptions = [
       view.intent.value = row.intent;
     }
     const saving = savingKeys.has(row.key);
-    view.text.disabled = saving || row.intent === 'decorative';
+    view.text.disabled = saving;
     view.intent.disabled = saving;
     view.status.textContent = rowStatus(row);
     view.retry.hidden = row.status !== 'Failed';
@@ -275,10 +274,6 @@ const intentOptions = [
     });
     intent.addEventListener('change', () => {
       row.intent = intent.value as Intent;
-      if (row.intent === 'decorative') {
-        row.description = '';
-        text.value = '';
-      }
       row.dirty = true;
       row.saveError = undefined;
       updateRowView(view, row);
@@ -363,7 +358,7 @@ const intentOptions = [
       const response = await fetch('/api/image-description-save', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ key: row.key, baseToken: row.baseToken, alt: row.intent === 'decorative' ? '' : row.description.slice(0, 300), intent: row.intent }),
+        body: JSON.stringify({ key: row.key, baseToken: row.baseToken, alt: row.description.slice(0, 300), intent: row.intent }),
       });
       const payload = await response.json() as { ok?: boolean; row?: Row; error?: string };
       if (generation !== requestGeneration) return;
