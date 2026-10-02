@@ -38,14 +38,12 @@ const intentOptions = [
         <span data-image-description-path></span>
       </div>
       <TextArea label="Description" rows={3} maxlength={300} data-image-description-text />
-      <label class="dev-field">
-        <span class="dev-field__label">Mode</span>
-        <span class="dev-field__value">
-          <select class="dev-field__input" data-image-description-intent>
-            {intentOptions.map((option) => <option value={option.value}>{option.label}</option>)}
-          </select>
-        </span>
-      </label>
+      <SelectField
+        label="Mode"
+        id="image-description-mode"
+        options={intentOptions}
+        data-image-description-intent
+      />
       <p class="dev-image-descriptions__row-status" data-image-description-status aria-live="polite"></p>
       <PanelActions class="dev-image-descriptions__actions">
         <Button emphasis="ghost" label="Refresh" data-image-description-refresh />
@@ -124,9 +122,17 @@ const intentOptions = [
   const updatePageOptions = () => {
     const documents = [...new Map([...localRows.values()].map((row) => [row.document, row.title])).entries()]
       .sort(([a], [b]) => a.localeCompare(b));
+    const nextOptions = [
+      { value: '', label: 'All pages' },
+      ...documents.map(([value, label]) => ({ value, label: label || value })),
+    ];
+    const optionsChanged = nextOptions.length !== pageSelect.options.length
+      || nextOptions.some((option, index) => {
+        const current = pageSelect.options[index];
+        return !current || current.value !== option.value || current.textContent !== option.label;
+      });
+    if (optionsChanged) pageSelect.replaceChildren(...nextOptions.map((option) => new Option(option.label, option.value)));
     const selected = pageFilter ?? '';
-    pageSelect.replaceChildren(new Option('All pages', ''));
-    documents.forEach(([value, label]) => pageSelect.append(new Option(label || value, value)));
     pageSelect.value = documents.some(([value]) => value === selected) ? selected : '';
     if (pageFilter !== null && pageSelect.value !== pageFilter) pageFilter = pageSelect.value;
   };
@@ -241,6 +247,17 @@ const intentOptions = [
     const refresh = fragment.querySelector<HTMLButtonElement>('[data-image-description-refresh]')!;
     const revert = fragment.querySelector<HTMLButtonElement>('[data-image-description-revert]')!;
     const controlId = `image-description-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`;
+    const modeTemplatePrefix = 'image-description-mode';
+    const modeId = `${controlId}-mode`;
+    fragment.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
+      element.id = element.id.replaceAll(modeTemplatePrefix, modeId);
+    });
+    fragment.querySelectorAll<HTMLElement>('[for], [aria-labelledby], [aria-controls], [aria-activedescendant]').forEach((element) => {
+      ['for', 'aria-labelledby', 'aria-controls', 'aria-activedescendant'].forEach((attribute) => {
+        const value = element.getAttribute(attribute);
+        if (value) element.setAttribute(attribute, value.replaceAll(modeTemplatePrefix, modeId));
+      });
+    });
     const view = { article, image, title, path, text, intent, status, save, retry, refresh, revert };
 
     article.dataset.imageDescriptionKey = row.key;
@@ -446,7 +463,12 @@ const intentOptions = [
     display: flex;
     flex-direction: column;
     gap: var(--space-unit);
-    min-width: min(52rem, calc(100vw - 2 * var(--space-unit)));
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    container-type: inline-size;
   }
 
   .dev-image-descriptions__toolbar {
@@ -455,7 +477,11 @@ const intentOptions = [
     gap: var(--space-unit);
   }
 
-  .dev-image-descriptions__page-filter { flex: 1 1 auto; }
+  :global(.dev-image-descriptions__page-filter) {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .dev-image-descriptions__toolbar > [data-image-descriptions-check] { flex: none; }
   .dev-image-descriptions__status,
   .dev-image-descriptions__row-status {
     min-height: 1.2em;
@@ -470,6 +496,8 @@ const intentOptions = [
     max-height: min(60vh, 36rem);
     overflow: auto;
     padding-inline-end: 0.25rem;
+    min-width: 0;
+    min-height: 0;
   }
 
   .dev-image-descriptions__row {
@@ -477,6 +505,7 @@ const intentOptions = [
     grid-template-columns: 5rem minmax(0, 1fr);
     gap: var(--space-unit);
     align-items: start;
+    min-width: 0;
     padding-block-end: var(--space-unit);
     border-block-end: 1px solid var(--sys-color-outline-variant);
   }
@@ -489,27 +518,31 @@ const intentOptions = [
     background: var(--sys-color-srf-container);
   }
 
-  .dev-image-descriptions__content { min-width: 0; }
+  .dev-image-descriptions__content {
+    display: grid;
+    gap: var(--dev-panel-content-gap);
+    min-width: 0;
+  }
   .dev-image-descriptions__identity {
     display: flex;
     flex-direction: column;
-    gap: 0.2rem;
-    margin-block-end: 0.5rem;
+    gap: var(--dev-panel-label-gap);
+    min-width: 0;
   }
+  .dev-image-descriptions__identity strong { overflow-wrap: anywhere; }
   .dev-image-descriptions__identity span {
-    overflow: hidden;
+    overflow-wrap: anywhere;
     color: var(--sys-color-ink-soft);
     font-size: 0.8rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .dev-image-descriptions__actions {
-    justify-content: flex-end;
-    margin-block-start: 0.5rem;
+    flex-wrap: wrap;
+    gap: var(--dev-panel-spacing);
+    padding-top: 0;
+    margin-block-start: 0;
   }
 
-  @media (max-width: 40em) {
-    .dev-image-descriptions { min-width: 0; }
+  @container (max-width: 28rem) {
     .dev-image-descriptions__toolbar { align-items: stretch; flex-direction: column; }
     .dev-image-descriptions__row { grid-template-columns: 3.5rem minmax(0, 1fr); }
     .dev-image-descriptions__image { width: 3.5rem; }
