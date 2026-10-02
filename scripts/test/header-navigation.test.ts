@@ -21,11 +21,14 @@ class FakeElement {
   querySelectorAll() { return this.children; }
   replaceChildren(...children: FakeElement[]) { this.children = children; this.textContent = children.map((child) => child.textContent).join(''); }
   setAttribute(name: string, value: string) { this.attrs[name] = value; }
+  cloneNode() { const clone = new FakeElement(); clone.attrs = { ...this.attrs }; return clone; }
 }
 
 function runCarry(pending: unknown, href = 'https://vcd.test/work', rawOverride?: string, throwingStorage = false) {
   const slot = new FakeElement();
   const home = new FakeElement();
+  home.children = [...'Vicente Cruz'].map((char) => { const child = new FakeElement(); child.textContent = char; child.attrs['data-astro-cid'] = ''; return child; });
+  home.textContent = 'Vicente Cruz';
   const page = new FakeElement(); page.textContent = 'Project';
   page.children = [...'Project'].map((char) => { const child = new FakeElement(); child.textContent = char; return child; });
   const start = new FakeElement({ '.header-trigger__wordmark--home': home, '.header-trigger__wordmark--page': page });
@@ -44,6 +47,7 @@ test('valid carry restores visible layers with safe textContent chars', () => {
   expect(result.page.attrs['aria-hidden']).toBe('true');
   expect(result.home.children.length).toBe(11);
   expect(result.home.children.every((child) => child.style.opacity === '1')).toBe(true);
+  expect(result.home.children.every((child) => child.attrs['data-astro-cid'] === '')).toBe(true);
   expect(result.page.children.every((child) => child.style.opacity === '0')).toBe(true);
   expect(result.storage.value).toBeNull();
 });
@@ -57,7 +61,7 @@ test('mismatched, expired, future and oversized carries are ignored', () => {
   ]) {
     const result = runCarry(pending);
     expect(result.slot.dataset.headerCarriedNavigation).toBeUndefined();
-    expect(result.home.children.length).toBe(0);
+    expect(result.home.children.length).toBe(12);
   }
 });
 
@@ -91,6 +95,9 @@ function runtimeFixture(oldTitle: string, newTitle = 'Project', fontsReady = Pro
   const start = doc.querySelector('.header-trigger--start')!;
   const page = doc.querySelector('.header-trigger__wordmark--page')!;
   const home = doc.querySelector('.header-trigger__wordmark--home')!;
+  for (const text of 'Vicente Cruz') {
+    const char = doc.createElement('span'); char.className = 'header-trigger__char'; char.textContent = text; home.appendChild(char);
+  }
   for (const text of newTitle) {
     const char = doc.createElement('span'); char.className = 'header-trigger__char'; char.textContent = text;
     page.appendChild(char);
@@ -154,7 +161,7 @@ test('visible docked header captures with its flow slot offscreen; hidden header
   head.getBoundingClientRect = () => rect as any;
   f.home.getBoundingClientRect = () => rect as any;
   const getStyle = (el: any) => ({ display: 'block', visibility: 'visible', opacity: el === head ? el.style.opacity || '1' : '1' });
-  const runtime = new Function('document', 'sessionStorage', 'getComputedStyle', 'innerHeight', 'innerWidth', `${compiledCapture}; return {captureHeaderNavigation,clearHeaderNavigationState}`)(f.doc, f.win.sessionStorage, getStyle, 900, 1200);
+  const runtime = new Function('document', 'sessionStorage', 'getComputedStyle', 'innerHeight', 'innerWidth', 'CustomEvent', `${compiledCapture}; return {captureHeaderNavigation,clearHeaderNavigationState}`)(f.doc, f.win.sessionStorage, getStyle, 900, 1200, f.win.CustomEvent);
   const target = new URL('https://vcd.test/about');
   expect(runtime.captureHeaderNavigation(target)).toBe(true);
   expect(JSON.parse(f.win.sessionStorage.getItem('vcd:header-navigation')!).href).toBe(target.href);
