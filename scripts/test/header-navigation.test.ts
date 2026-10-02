@@ -5,6 +5,7 @@ import { test, expect } from 'bun:test';
 const root = resolve(import.meta.dir, '../..');
 const header = readFileSync(resolve(root, 'src/components/Header.astro'), 'utf8');
 const layout = readFileSync(resolve(root, 'src/layouts/Layout.astro'), 'utf8');
+const homePage = readFileSync(resolve(root, 'src/pages/index.astro'), 'utf8');
 const reveal = readFileSync(resolve(root, 'src/lib/homeReveal.ts'), 'utf8');
 const inline = header.match(/<script is:inline>\s*([\s\S]*?)\s*<\/script>/)?.[1] ?? '';
 
@@ -161,4 +162,26 @@ test('visible docked header captures with its flow slot offscreen; hidden header
   expect(f.win.sessionStorage.getItem('vcd:header-navigation')).toBeNull();
   head.style.opacity = '0';
   expect(runtime.captureHeaderNavigation(target)).toBe(false);
+});
+
+test('active carry releases the home stacking boundary while cold home remains at z-index zero', () => {
+  const win = new Window({ url: 'https://vcd.test/' });
+  const doc = win.document;
+  const critical = [
+    layout.match(/html\[data-header-navigation\] \.site-header-slot \{[^}]*\}/)?.[0],
+    layout.match(/html\[data-header-navigation\] \[data-home-page\] \{[^}]*\}/)?.[0],
+  ].filter(Boolean).join('\n');
+  const homeRule = homePage.match(/\.home-page\s*\{[\s\S]*?\}/)?.[0] ?? '';
+  const style = doc.createElement('style'); style.textContent = `${critical}\n${homeRule}`; doc.head.append(style);
+  doc.body.innerHTML = '<div data-home-page class="home-page"><div class="site-header-slot"></div></div>';
+  const home = doc.querySelector('[data-home-page]')!;
+  const slot = doc.querySelector('.site-header-slot')!;
+  expect(win.getComputedStyle(home).zIndex).toBe('0');
+  doc.documentElement.setAttribute('data-header-navigation', '');
+  const activeStyle = doc.createElement('style'); activeStyle.textContent = critical; doc.head.append(activeStyle);
+  const rules = [...(activeStyle.sheet?.cssRules ?? [])].map((rule) => (rule as CSSStyleRule).style?.zIndex).filter(Boolean);
+  expect(rules).toContain('auto');
+  expect(rules).toContain('110');
+  doc.documentElement.removeAttribute('data-header-navigation');
+  expect(win.getComputedStyle(home).zIndex).toBe('0');
 });
