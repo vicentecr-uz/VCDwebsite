@@ -130,25 +130,24 @@ test('keeps ready auto proposals out of source until explicit save and preserves
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });
 
-test('honours authored and decorative intent and excludes non-raster media', async () => {
+test('honours authored and manual intent and excludes non-raster media', async () => {
   const docs = { home: { sections: [
     { type: 'image', id: 'authored', src: 'authored.png', alt: 'Written already', altIntent: 'auto' },
     { type: 'image', id: 'manual', src: 'manual.png', alt: '', altIntent: 'manual' },
-    { type: 'image', id: 'decorative', src: 'decorative.png', alt: '', altIntent: 'decorative' },
     { type: 'image', id: 'vector', src: 'vector.svg', alt: '', altIntent: 'auto' },
     { type: 'video', id: 'video', src: 'video.mp4', alt: '', altIntent: 'auto' },
   ] } };
-  const fixture = await imageFixture({ docs, imageNames: ['authored.png', 'manual.png', 'decorative.png'], html: `<main>
+  const fixture = await imageFixture({ docs, imageNames: ['authored.png', 'manual.png'], html: `<main>
     <img id="authored" data-image-original="/images/authored.png" alt="Written already">
     <img id="manual" data-image-original="/images/manual.png" alt="">
-    <img id="decorative" data-image-original="/images/decorative.png" alt="">
   </main>` });
   try {
     await fixture.service.check();
-    assert.equal(fixture.service.rows().length, 3);
+    assert.equal(fixture.service.rows().length, 2);
     assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 0).status, 'Ready');
     assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 1).status, 'Manual');
-    assert.equal(fixture.service.rows().find((row) => row.path.at(-1) === 2).status, 'Decorative');
+    const manual = fixture.service.rows().find((row) => row.path.at(-1) === 1);
+    assert.equal((await fixture.service.save({ key: manual.key, baseToken: manual.baseToken, intent: 'decorative', alt: '' })).status, 400);
     assert.equal(fixture.modelCalls, 0);
   } finally { await rm(fixture.root, { recursive: true, force: true }); }
 });

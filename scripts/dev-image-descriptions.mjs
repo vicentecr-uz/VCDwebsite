@@ -12,7 +12,7 @@ const MAX_PAGES = 100;
 const MAX_HTML = 2 * 1024 * 1024;
 const MAX_IMAGE = 16 * 1024 * 1024;
 const MAX_DESCRIPTION = 300;
-const VALID_INTENTS = new Set(['auto', 'manual', 'decorative']);
+const VALID_INTENTS = new Set(['auto', 'manual']);
 const RASTER = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif', '.gif', '.bmp', '.tif', '.tiff']);
 
 const cleanPath = (value) => String(value || '').split(/[?#]/, 1)[0];
@@ -197,7 +197,6 @@ async function writeCache(file, data) {
 }
 
 function statusFor(row) {
-  if (row.intent === 'decorative') return 'Decorative';
   if (row.intent === 'manual') return 'Manual';
   if (row.state === 'failed' || row.error) return 'Failed';
   if (row.description || row.alt.trim()) return 'Ready';
@@ -402,7 +401,7 @@ export function createImageDescriptionsService(options = {}) {
     if (typeof body.intent !== 'string' || typeof body.alt !== 'string') return { status: 400, payload: { error: 'Invalid description.' } };
     const intent = body.intent;
     const alt = body.alt;
-    if (!VALID_INTENTS.has(intent) || alt.length > MAX_DESCRIPTION || (intent !== 'decorative' && alt && !plain(alt))) return { status: 400, payload: { error: 'Invalid description.' } };
+    if (!VALID_INTENTS.has(intent) || alt.length > MAX_DESCRIPTION || (alt && !plain(alt))) return { status: 400, payload: { error: 'Invalid description.' } };
     let data;
     try { data = await readDocument(row.document); } catch { return { status: 404, payload: { error: 'Document not found.' } }; }
     let target;
@@ -412,7 +411,7 @@ export function createImageDescriptionsService(options = {}) {
     if (JSON.stringify(latestIds) !== JSON.stringify(row.ids)) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
     const currentToken = await baseToken({ ...row, ids: latestIds, alt: String(target.alt || ''), intent: VALID_INTENTS.has(target.altIntent) ? target.altIntent : 'manual', node: target }).catch(() => '');
     if (currentToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
-    target.alt = intent === 'decorative' ? '' : alt;
+    target.alt = alt;
     if (intent === 'manual') delete target.altIntent;
     else target.altIntent = intent;
     await writeDocument(row.document, data);
