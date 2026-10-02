@@ -18,10 +18,11 @@ const AUTHORING_CONTROLS = [
   'data-dev-image-picker',
   'data-dev-new-project',
   'data-dev-asset-manager',
+  'data-dev-image-descriptions',
   'data-dev-gallery-pages',
   'data-dev-project-grid-editor',
 ];
-const AUTHORING_API = /\/api\/(?:content-[a-z-]+|project-[a-z-]+|dev-[a-z-]+|publish|upload|assets|gallery-membership|listing-order|style-token(?:-commit)?|commit-engine)(?=$|[/?#"'`\\\s])/;
+const AUTHORING_API = /\/api\/(?:content-[a-z-]+|project-[a-z-]+|dev-[a-z-]+|image-description(?:s|-save)|publish|upload|assets|gallery-membership|listing-order|style-token(?:-commit)?|commit-engine)(?=$|[/?#"'`\\\s])/;
 
 async function collectFiles(directory, root = directory) {
   const entries = await readdir(directory, { withFileTypes: true });
