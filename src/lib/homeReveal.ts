@@ -45,7 +45,10 @@ function collectUnits(home: HTMLElement, viewportHeight: number): HomeRevealUnit
     const rect = element.getBoundingClientRect();
     units.push({ element, kind, top: rect.top, left: rect.left });
   };
-  home.querySelectorAll<HTMLElement>('.site-header-slot').forEach((el) => add(el, 'header'));
+  home.querySelectorAll<HTMLElement>('.site-header-slot').forEach((el) => {
+    if (el.dataset.headerCarriedNavigation !== undefined) return;
+    add(el, 'header');
+  });
   home.querySelectorAll<HTMLElement>('.project-body-text, .project-section-title').forEach((el) => add(el, 'text'));
   const media = '.project-grid__cover, .project-image, .project-image-grid, .project-image-carousel';
   home.querySelectorAll<HTMLElement>(media).forEach((el) => { if (!el.parentElement?.closest(media)) add(el, 'media'); });

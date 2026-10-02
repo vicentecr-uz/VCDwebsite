@@ -59,7 +59,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
-      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
+      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']} data-header-title-swap={showWordmarkSwap ? 'true' : 'false'} data-header-home-title={homeWordmark}>
         <span class="header-trigger__sizer" aria-hidden="true">
           {showWordmarkSwap ? (
             <span class="header-trigger__sizer-track">
@@ -79,30 +79,44 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                 class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
                 aria-label="Home"
               >
-                {showWordmarkSwap ? (
-                  <span class="header-trigger__wordmark-stack">
-                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                      {pageChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </WordmarkTag>
-                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
-                      {homeChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </span>
+                <span class="header-trigger__wordmark-stack">
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                    {pageChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </WordmarkTag>
+                  <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                    {homeChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
                   </span>
-                ) : (
-                  <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
-                )}
-                {showWordmarkSwap && titleEditAttrs && (
+                </span>
+                {titleEditAttrs && (
                   <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
                     {wordmark}
                   </WordmarkTag>
                 )}
               </a>
             ) : (
-              <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
+              <>
+                <span class="header-trigger__wordmark-stack">
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                    {pageChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </WordmarkTag>
+                  <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                    {homeChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </span>
+                </span>
+                {titleEditAttrs && (
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
+                    {wordmark}
+                  </WordmarkTag>
+                )}
+              </>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -203,6 +217,46 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </header>
   </div>
 )}
+
+<script is:inline>
+  (() => {
+    const slot = document.querySelector('.site-header-slot');
+    const root = document.documentElement;
+    let pending = null;
+    try {
+      const raw = sessionStorage.getItem('vcd:header-navigation');
+      sessionStorage.removeItem('vcd:header-navigation');
+      if (raw) pending = JSON.parse(raw);
+    } catch { pending = null; }
+    if (!slot || !pending || typeof pending.href !== 'string' || pending.href !== location.href ||
+      typeof pending.title !== 'string' || !pending.title.trim() || pending.title.length > 300 ||
+      typeof pending.time !== 'number' || !Number.isFinite(pending.time) ||
+      Date.now() - pending.time < 0 || Date.now() - pending.time > 10000) return;
+
+    const start = document.querySelector('.header-trigger--start');
+    const home = start?.querySelector('.header-trigger__wordmark--home');
+    const page = start?.querySelector('.header-trigger__wordmark--page');
+    if (!start || !home || !page) return;
+    const carriedTitle = pending.title.replace(/ /g, '\u00a0');
+    home.replaceChildren(...[...carriedTitle].map((char) => {
+      const span = document.createElement('span');
+      span.className = 'header-trigger__char';
+      span.textContent = char;
+      return span;
+    }));
+    home.setAttribute('aria-hidden', 'false');
+    page.setAttribute('aria-hidden', 'true');
+    home.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.opacity = '1'; });
+    page.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.opacity = '0'; });
+    start.classList.add('is-wordmark-swapped');
+    slot.dataset.headerCarriedNavigation = '';
+    slot.dataset.headerNavigationTitle = pending.title;
+    root.dataset.headerNavigation = '';
+    if (pending.title.replace(/\s+/g, ' ').trim() === page.textContent?.replace(/\s+/g, ' ').trim()) {
+      slot.dataset.headerNavigationSame = '';
+    }
+  })();
+</script>
 
 <script>
   // Touch / no-hover devices open the menu on tap instead of on hover.
@@ -690,7 +744,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
-  const forceCloseMenus = () => {
+  const forceCloseMenus = (preserveNavigation = false) => {
     menuScrollClosed = false;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('.site-header--nav-menu')) {
@@ -977,7 +1031,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     if (event.persisted) forceCloseMenus();
   });
   window.addEventListener('pagehide', () => {
-    forceCloseMenus();
+    forceCloseMenus(true);
   });
 
   // Kerning for the split wordmark.
@@ -1093,7 +1147,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
     ];
     const homeWordmarkEl = wordmarkStack.querySelector('.header-trigger__wordmark--home');
-    const homeChars = [
+    let homeChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char'),
     ];
 
@@ -1107,9 +1161,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let wordmarkIsOpen = false;
     let wordmarkRunToken = 0;
     let wordmarkFadeInFrame: number | undefined;
+    let navigationRestoreTimer: number | undefined;
 
     const invalidateWordmarkRun = () => {
       wordmarkRunToken += 1;
+      if (navigationRestoreTimer !== undefined) {
+        window.clearTimeout(navigationRestoreTimer);
+        navigationRestoreTimer = undefined;
+      }
       if (wordmarkFadeInFrame !== undefined) {
         cancelAnimationFrame(wordmarkFadeInFrame);
         wordmarkFadeInFrame = undefined;
@@ -1222,6 +1281,89 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
+    const restoreHomeWordmark = () => {
+      if (!homeWordmarkEl) return;
+      const text = startTrigger.dataset.headerHomeTitle ?? '';
+      homeWordmarkEl.replaceChildren(...[...text].map((char) => {
+        const span = document.createElement('span');
+        span.className = 'header-trigger__char';
+        span.textContent = char;
+        span.style.setProperty('--char-duration', '0s');
+        span.style.setProperty('--char-delay', '0s');
+        span.style.setProperty('--char-blur', '0px');
+        span.style.opacity = '0';
+        return span;
+      }));
+      homeChars = [...homeWordmarkEl.querySelectorAll<HTMLElement>('.header-trigger__char')];
+      homeWordmarkEl.setAttribute('aria-hidden', 'true');
+    };
+
+    const clearNavigationState = () => {
+      document.documentElement.removeAttribute('data-header-navigation');
+      headerSlot?.removeAttribute('data-header-carried-navigation');
+      headerSlot?.removeAttribute('data-header-navigation-title');
+      headerSlot?.removeAttribute('data-header-navigation-same');
+    };
+    const clearNavigationTitleState = () => {
+      headerSlot?.removeAttribute('data-header-navigation-title');
+      headerSlot?.removeAttribute('data-header-navigation-same');
+    };
+
+    const runNavigationTitleSwap = () => {
+      if (!headerSlot?.dataset.headerNavigationTitle) return;
+      const carriedTitle = headerSlot?.dataset.headerNavigationTitle?.replace(/ /g, '\u00a0');
+      if (!carriedTitle || !pageWordmark || !homeWordmarkEl) return;
+      const sameTitle = headerSlot?.dataset.headerNavigationSame !== undefined;
+      const navigationToken = wordmarkRunToken;
+      const startSwap = () => {
+        if (navigationToken !== wordmarkRunToken || !headerSlot?.dataset.headerNavigationTitle) return;
+        if (sameTitle) {
+          restoreHomeWordmark();
+          startTrigger.classList.remove('is-wordmark-swapped');
+          pageWordmark.setAttribute('aria-hidden', 'false');
+          clearNavigationTitleState();
+          applyWordmarkKerning();
+          return;
+        }
+        invalidateWordmarkRun();
+        const runToken = wordmarkRunToken;
+        wordmarkIsOpen = false;
+        startTrigger.classList.add('is-wordmark-swapped');
+        setCharFadeOut(homeChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
+        applyWordmarkFadeIn(pageChars);
+        pageWordmark.setAttribute('aria-hidden', 'false');
+        homeWordmarkEl.setAttribute('aria-hidden', 'true');
+        navigationRestoreTimer = window.setTimeout(() => {
+          navigationRestoreTimer = undefined;
+          if (runToken !== wordmarkRunToken) return;
+          restoreHomeWordmark();
+          clearNavigationTitleState();
+          startTrigger.classList.remove('is-wordmark-swapped');
+          applyWordmarkKerning();
+        }, Math.ceil(getFadeInEnd(pageChars.length, 0) * 1000) + 40);
+      };
+      const afterNativeTransition = () => {
+        let settled = false;
+        let fallback: number | undefined;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          if (fallback !== undefined) window.clearTimeout(fallback);
+          window.removeEventListener('pagereveal', onReveal as EventListener);
+          requestAnimationFrame(() => requestAnimationFrame(startSwap));
+        };
+        const onReveal = (event: Event) => {
+          const transition = (event as Event & { viewTransition?: { finished?: Promise<unknown> } }).viewTransition;
+          if (transition?.finished) void transition.finished.then(finish, finish);
+          else finish();
+        };
+        window.addEventListener('pagereveal', onReveal as EventListener, { once: true });
+        fallback = window.setTimeout(finish, 'startViewTransition' in document ? 1000 : 0);
+      };
+      void document.fonts?.ready.then(afterNativeTransition, afterNativeTransition);
+      if (!document.fonts?.ready) afterNativeTransition();
+    };
+
     const runWordmarkOpen = () => {
       invalidateWordmarkRun();
       wordmarkIsOpen = true;
@@ -1242,6 +1384,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const onWordmarkPointerActive = () => {
       if (isDevEditing()) return;
+      if (startTrigger.dataset.headerTitleSwap !== 'true') return;
+      if (headerSlot?.dataset.headerNavigationTitle) {
+        invalidateWordmarkRun();
+        restoreHomeWordmark();
+        clearNavigationTitleState();
+      }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
@@ -1276,12 +1424,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         syncStartBrandForEdit(active);
         if (!active) return;
         startTrigger.dispatchEvent(new CustomEvent('header:request-close'));
-        document.dispatchEvent(new CustomEvent('header:force-close'));
+    document.dispatchEvent(new CustomEvent('header:force-close', { detail: { preserveNavigation } }));
       }) as EventListener);
     }
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
-    document.addEventListener('header:force-close', () => {
+    document.addEventListener('header:force-close', (event) => {
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
@@ -1299,7 +1447,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      restoreHomeWordmark();
+      if (!(event as CustomEvent<{ preserveNavigation?: boolean }>).detail?.preserveNavigation) clearNavigationState();
     });
+
+    window.addEventListener('vcd:initial-reveal-complete', () => {
+      document.documentElement.removeAttribute('data-header-navigation');
+    }, { once: true });
+    runNavigationTitleSwap();
   }
 
   const currentPageLinks = [
@@ -1753,6 +1908,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so
      .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
      which lives outside the row. Tree order already puts the row above the bg. */
+  :global(html[data-header-navigation]) .site-header__row {
+    view-transition-name: vcd-header;
+  }
+
   .site-header__row {
     /* The header reads as a pair with the block directly under it, so the row
        spans that first block's width (see pageColumnStyle in

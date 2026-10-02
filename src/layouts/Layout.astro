@@ -103,6 +103,12 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
       html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
+      @view-transition { navigation: auto; }
+      :root { view-transition-name: none; }
+      html[data-header-navigation] .site-header-slot { z-index: 110; }
+      ::view-transition-group(vcd-header) { animation-duration: 0s; }
+      ::view-transition-old(vcd-header) { animation: none; display: none; }
+      ::view-transition-new(vcd-header) { animation: none; }
       @keyframes transition-overlay-reveal {
         to { opacity: 0; visibility: hidden; }
       }
@@ -458,7 +464,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
           return images.filter((image) => intro.contains(image));
         };
-        const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+      const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
         for (const img of readinessImages) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
@@ -568,6 +574,36 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
 
       if (!initialRevealState) void revealPage();
 
+      const clearHeaderNavigationState = () => {
+        document.documentElement.removeAttribute?.('data-header-navigation');
+        const slot = document.querySelector('.site-header-slot');
+        slot?.removeAttribute?.('data-header-carried-navigation');
+        slot?.removeAttribute?.('data-header-navigation-title');
+        slot?.removeAttribute?.('data-header-navigation-same');
+        try { sessionStorage.removeItem('vcd:header-navigation'); } catch { /* Storage is optional. */ }
+      };
+
+      const captureHeaderNavigation = (target: URL) => {
+        const slot = document.querySelector<HTMLElement>('.site-header-slot');
+        const header = slot?.querySelector<HTMLElement>('.site-header');
+        const wordmark = header?.querySelector<HTMLElement>('.header-trigger__wordmark[aria-hidden="false"], .header-trigger__wordmark:not([aria-hidden="true"])');
+        if (!slot || !header || !wordmark) return false;
+        const visible = (element: HTMLElement, checkViewport = true) => {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 &&
+            (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) &&
+            rect.left < (innerWidth || document.documentElement.clientWidth)));
+        };
+        const title = wordmark.textContent?.trim() ?? '';
+        if (!visible(slot, false) || !visible(header) || !visible(wordmark) || !title || title.length > 300) return false;
+        try {
+          sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: target.href, title, time: Date.now() }));
+        } catch { return false; }
+        document.documentElement.dataset.headerNavigation = '';
+        return true;
+      };
+
       document.querySelectorAll('a').forEach((link) => {
         const anchor = link as HTMLAnchorElement;
         link.addEventListener('click', (e) => {
@@ -596,18 +632,20 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               // Recover a canceled or stalled navigation attempt after a bounded wait.
               navigationWatchdog = setTimeout(() => {
                 if (current !== generation) return;
+                clearHeaderNavigationState();
                 void revealPage();
               }, MAX_WAIT_MS);
               window.location.href = target.href;
             } catch {
+              clearHeaderNavigationState();
               void revealPage();
             }
           };
           if (visibleTransition) {
             target.searchParams.set('dev-transition', 'visible');
-            navigate();
-            return;
           }
+          captureHeaderNavigation(target);
+          if (visibleTransition) { navigate(); return; }
           try {
             overlay.hidden = false;
             activeTween = gsap.to(overlay, {
@@ -617,6 +655,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               onComplete: navigate,
             });
           } catch {
+            clearHeaderNavigationState();
             navigate();
           }
         });
