@@ -38,6 +38,7 @@ import {
   devAuthoringActive,
   devAuthoringRequestQueue,
   writeAtomicJson,
+  markAutomaticImageAltIntent,
 } from './scripts/dev-api-plugins.mjs';
 import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
@@ -69,6 +70,7 @@ import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 import { isVideoSrc } from './src/lib/imageUpload.mjs';
+import { imageDescriptionsDevWriter } from './scripts/dev-image-descriptions.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -2088,6 +2090,7 @@ export function contentSectionDevWriter() {
                 variants,
                 srcs[0] || '',
               );
+              markAutomaticImageAltIntent(existing);
             } catch (error) {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not fill that placeholder.',
@@ -2690,6 +2693,7 @@ export default defineConfig({
       contentHmrGate(),
       mediaDevServer(),
       uploadDevWriter(),
+      imageDescriptionsDevWriter(),
       assetsDevWriter(),
       projectCreateDevWriter(),
       projectDeleteDevWriter(),

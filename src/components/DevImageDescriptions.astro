@@ -1,0 +1,556 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+import SelectField from './ui/SelectField.astro';
+import TextArea from './ui/TextArea.astro';
+
+const intentOptions = [
+  { value: 'manual', label: 'Manual' },
+  { value: 'auto', label: 'Automatic' },
+];
+---
+
+<DevOverlay title="Image descriptions" storageKey="image-descriptions" panelKey="image-descriptions" layout="landscape" defaultHidden>
+  <div class="dev-image-descriptions" data-dev-image-descriptions>
+    <div class="dev-image-descriptions__toolbar">
+      <SelectField
+        label="Page"
+        class="dev-image-descriptions__page-filter"
+        id="image-descriptions-page"
+        data-image-descriptions-page
+        options={[{ value: '', label: 'All pages' }]}
+      />
+      <Button emphasis="ghost" label="Check" data-image-descriptions-check />
+    </div>
+    <p class="dev-image-descriptions__status" data-image-descriptions-status aria-live="polite">Loading…</p>
+    <div class="dev-image-descriptions__rows" data-image-descriptions-rows></div>
+  </div>
+</DevOverlay>
+
+<template data-image-descriptions-row-template>
+  <article class="dev-image-descriptions__row" data-image-description-row>
+    <img class="dev-image-descriptions__image" data-image-description-image alt="" loading="lazy" />
+    <div class="dev-image-descriptions__content">
+      <div class="dev-image-descriptions__identity">
+        <strong data-image-description-title></strong>
+        <span data-image-description-path></span>
+      </div>
+      <TextArea label="Description" rows={3} maxlength={300} data-image-description-text />
+      <SelectField
+        label="Mode"
+        id="image-description-mode"
+        options={intentOptions}
+        data-image-description-intent
+      />
+      <p class="dev-image-descriptions__row-status" aria-live="polite">
+        <span class="dev-image-descriptions__status-label">Status:</span>
+        <span data-image-description-status></span>
+      </p>
+      <PanelActions class="dev-image-descriptions__actions">
+        <Button emphasis="ghost" label="Refresh" data-image-description-refresh />
+        <Button emphasis="ghost" label="Revert" data-image-description-revert />
+        <Button emphasis="ghost" label="Retry" data-image-description-retry />
+        <Button emphasis="filled" label="Save" data-image-description-save />
+      </PanelActions>
+    </div>
+  </article>
+</template>
+
+<script>
+  type Intent = 'auto' | 'manual';
+  type Row = {
+    key: string;
+    document: string;
+    title: string;
+    path: Array<string | number>;
+    pathLabel: string;
+    src: string;
+    alt: string;
+    intent: Intent;
+    description: string;
+    status: string;
+    error?: string;
+    baseToken: string;
+  };
+  type LocalRow = Row & { dirty: boolean; conflict?: boolean; saveError?: string; sourceIntent: Intent };
+  type RowView = {
+    article: HTMLElement;
+    image: HTMLImageElement;
+    title: HTMLElement;
+    path: HTMLElement;
+    text: HTMLTextAreaElement;
+    intent: HTMLSelectElement;
+    status: HTMLElement;
+    save: HTMLButtonElement;
+    retry: HTMLButtonElement;
+    refresh: HTMLButtonElement;
+    revert: HTMLButtonElement;
+  };
+
+  const root = document.querySelector<HTMLElement>('[data-dev-image-descriptions]');
+  const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
+  const pageSelect = root?.querySelector<HTMLSelectElement>('select[data-image-descriptions-page]');
+  const statusEl = root?.querySelector<HTMLElement>('[data-image-descriptions-status]');
+  const rowsEl = root?.querySelector<HTMLElement>('[data-image-descriptions-rows]');
+  const template = document.querySelector<HTMLTemplateElement>('[data-image-descriptions-row-template]');
+  const checkButton = root?.querySelector<HTMLButtonElement>('[data-image-descriptions-check]');
+  if (!root || !panel || !pageSelect || !statusEl || !rowsEl || !template || !checkButton) throw new Error('Image descriptions panel failed to mount.');
+
+  const localRows = new Map<string, LocalRow>();
+  const rowViews = new Map<string, RowView>();
+  let checking = false;
+  let pollTimer: number | undefined;
+  let pageFilter: string | null = null;
+  let requestGeneration = 0;
+  const savingKeys = new Set<string>();
+
+  const pathText = (row: Row) => row.title;
+  const pageSlug = () => {
+    const segment = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
+    if (!segment) return 'home';
+    return segment;
+  };
+  const imageUrl = (src: string) => {
+    if (src.startsWith('/')) return src;
+    return `/images/${src.split('/').map((part) => encodeURIComponent(part)).join('/')}`;
+  };
+  const statusText = (row: Row) => row.status || (row.intent === 'manual' ? 'Manual' : 'Waiting for publication');
+
+  const setStatus = (message: string) => {
+    statusEl.textContent = message;
+  };
+
+  const updatePageOptions = () => {
+    const documents = [...new Map([...localRows.values()].map((row) => [row.document, row.title])).entries()]
+      .sort(([a], [b]) => a.localeCompare(b));
+    const nextOptions = [
+      { value: '', label: 'All pages' },
+      ...documents.map(([value, label]) => ({ value, label: label || value })),
+    ];
+    const optionsChanged = nextOptions.length !== pageSelect.options.length
+      || nextOptions.some((option, index) => {
+        const current = pageSelect.options[index];
+        return !current || current.value !== option.value || current.textContent !== option.label;
+      });
+    if (optionsChanged) pageSelect.replaceChildren(...nextOptions.map((option) => new Option(option.label, option.value)));
+    const selected = pageFilter ?? '';
+    pageSelect.value = documents.some(([value]) => value === selected) ? selected : '';
+    if (pageFilter !== null && pageSelect.value !== pageFilter) pageFilter = pageSelect.value;
+  };
+
+  const visibleRows = () => [...localRows.values()]
+    .filter((row) => pageFilter === null || pageFilter === '' || row.document === pageFilter)
+    .sort((a, b) => `${a.document}:${a.pathLabel}`.localeCompare(`${b.document}:${b.pathLabel}`));
+
+  const currentImageMatches = (row: Row, image: HTMLImageElement) => {
+    const expected = imageUrl(row.src);
+    return image.dataset.imageOriginal === expected || image.dataset.imageOriginal?.endsWith(`/${row.src}`) === true;
+  };
+
+  const updateRenderedImage = (row: Row) => {
+    const path = JSON.stringify(row.path);
+    document.querySelectorAll<HTMLElement>('[data-dev-image-path]').forEach((node) => {
+      if (node.dataset.devDocument !== row.document || node.dataset.devImagePath !== path) return;
+      const images = node.matches('img[data-image-original]')
+        ? [node as HTMLImageElement]
+        : [...node.querySelectorAll<HTMLImageElement>('img[data-image-original]')];
+      images.forEach((image) => {
+        if (!currentImageMatches(row, image)) return;
+        image.alt = row.description;
+        image.setAttribute('aria-label', `Open image: ${row.description || 'image'}`);
+      });
+    });
+  };
+
+  const refreshRow = (row: Row) => {
+    const existing = localRows.get(row.key);
+    if (existing) {
+      Object.assign(existing, row, { dirty: false, conflict: false, error: row.error, saveError: undefined, sourceIntent: row.intent });
+    } else {
+      localRows.set(row.key, { ...row, dirty: false, conflict: false, saveError: undefined, sourceIntent: row.intent });
+    }
+  };
+
+  const mergeRows = (rows: Row[]) => {
+    const seen = new Set(rows.map((row) => row.key));
+    rows.forEach((row) => {
+      const existing = localRows.get(row.key);
+      if (!existing) {
+        localRows.set(row.key, { ...row, dirty: false, conflict: false, sourceIntent: row.intent });
+        return;
+      }
+      if (existing.dirty) {
+        const sourceChanged = existing.baseToken !== row.baseToken
+          || existing.document !== row.document
+          || existing.title !== row.title
+          || JSON.stringify(existing.path) !== JSON.stringify(row.path)
+          || existing.pathLabel !== row.pathLabel
+          || existing.src !== row.src
+          || existing.alt !== row.alt
+          || existing.sourceIntent !== row.intent;
+        Object.assign(existing, {
+          status: row.status,
+          error: row.error,
+          conflict: existing.conflict || sourceChanged,
+        });
+        return;
+      }
+      refreshRow(row);
+    });
+    [...localRows.entries()].forEach(([key, row]) => {
+      if (seen.has(key) || !row.dirty) {
+        if (!seen.has(key)) localRows.delete(key);
+        return;
+      }
+      row.conflict = true;
+      row.status = 'Failed';
+      row.error = 'Refresh to load the latest source';
+    });
+  };
+
+  const rowStatus = (row: LocalRow) => row.saveError || row.error || (row.conflict ? 'Refresh to load the latest source' : statusText(row));
+  const canSave = (row: LocalRow) => row.dirty || row.description !== row.alt || row.intent !== row.sourceIntent;
+
+  const updateRowView = (view: RowView, row: LocalRow) => {
+    const nextImage = imageUrl(row.src);
+    if (view.image.getAttribute('src') !== nextImage) view.image.src = nextImage;
+    view.image.alt = row.description || row.title;
+    view.title.textContent = row.src.split('/').pop() || row.title;
+    view.path.textContent = pathText(row);
+    if (!row.dirty) {
+      view.text.value = row.description;
+      view.intent.value = row.intent;
+    }
+    const saving = savingKeys.has(row.key);
+    view.text.disabled = saving;
+    view.intent.disabled = saving;
+    view.status.textContent = rowStatus(row);
+    view.retry.hidden = row.status !== 'Failed';
+    view.retry.disabled = saving || checking;
+    view.refresh.hidden = !row.conflict;
+    view.refresh.disabled = saving;
+    view.revert.hidden = !row.dirty || !!row.conflict;
+    view.revert.disabled = saving;
+    view.save.disabled = saving || !canSave(row);
+  };
+
+  const createRowView = (row: LocalRow): RowView => {
+    const fragment = template.content.cloneNode(true) as DocumentFragment;
+    const article = fragment.querySelector<HTMLElement>('[data-image-description-row]')!;
+    const image = fragment.querySelector<HTMLImageElement>('[data-image-description-image]')!;
+    const title = fragment.querySelector<HTMLElement>('[data-image-description-title]')!;
+    const path = fragment.querySelector<HTMLElement>('[data-image-description-path]')!;
+    const text = fragment.querySelector<HTMLTextAreaElement>('textarea[data-image-description-text]')!;
+    const intent = fragment.querySelector<HTMLSelectElement>('select[data-image-description-intent]')!;
+    const status = fragment.querySelector<HTMLElement>('[data-image-description-status]')!;
+    const save = fragment.querySelector<HTMLButtonElement>('[data-image-description-save]')!;
+    const retry = fragment.querySelector<HTMLButtonElement>('[data-image-description-retry]')!;
+    const refresh = fragment.querySelector<HTMLButtonElement>('[data-image-description-refresh]')!;
+    const revert = fragment.querySelector<HTMLButtonElement>('[data-image-description-revert]')!;
+    const controlId = `image-description-${row.key.replace(/[^a-z0-9_-]/gi, '-')}`;
+    const modeTemplatePrefix = 'image-description-mode';
+    const modeId = `${controlId}-mode`;
+    fragment.querySelectorAll<HTMLElement>('[id]').forEach((element) => {
+      element.id = element.id.replaceAll(modeTemplatePrefix, modeId);
+    });
+    fragment.querySelectorAll<HTMLElement>('[for], [aria-labelledby], [aria-controls], [aria-activedescendant]').forEach((element) => {
+      ['for', 'aria-labelledby', 'aria-controls', 'aria-activedescendant'].forEach((attribute) => {
+        const value = element.getAttribute(attribute);
+        if (value) element.setAttribute(attribute, value.replaceAll(modeTemplatePrefix, modeId));
+      });
+    });
+    const view = { article, image, title, path, text, intent, status, save, retry, refresh, revert };
+
+    article.dataset.imageDescriptionKey = row.key;
+    text.id = `${controlId}-text`;
+    text.setAttribute('aria-label', 'Description');
+    text.maxLength = 300;
+    text.addEventListener('input', () => {
+      row.description = text.value.slice(0, 300);
+      row.dirty = true;
+      row.saveError = undefined;
+      updateRowView(view, row);
+    });
+    intent.addEventListener('change', () => {
+      row.intent = intent.value as Intent;
+      row.dirty = true;
+      row.saveError = undefined;
+      updateRowView(view, row);
+    });
+    save.addEventListener('click', () => void saveRow(row));
+    retry.addEventListener('click', () => void retryRow(row));
+    refresh.addEventListener('click', () => void loadRows({ resetKey: row.key }));
+    revert.addEventListener('click', () => void loadRows({ resetKey: row.key }));
+
+    updateRowView(view, row);
+    return view;
+  };
+
+  const renderRows = () => {
+    const rows = visibleRows();
+    const visibleKeys = new Set(rows.map((row) => row.key));
+    [...rowViews.entries()].forEach(([key, view]) => {
+      if (visibleKeys.has(key)) return;
+      view.article.remove();
+      rowViews.delete(key);
+    });
+    rows.forEach((row) => {
+      let view = rowViews.get(row.key);
+      if (!view) {
+        view = createRowView(row);
+        rowViews.set(row.key, view);
+      }
+      updateRowView(view, row);
+      if (view.article.parentElement !== rowsEl) rowsEl.append(view.article);
+    });
+    rows.forEach((row, index) => {
+      const view = rowViews.get(row.key)!;
+      if (rowsEl.children[index] !== view.article) rowsEl.insertBefore(view.article, rowsEl.children[index] ?? null);
+    });
+    if (!rows.length) setStatus('No image descriptions on this page.');
+    else setStatus(checking ? 'Checking…' : `${rows.length} image${rows.length === 1 ? '' : 's'}`);
+    checkButton.disabled = checking;
+  };
+
+  const loadRows = async ({ resetKey }: { resetKey?: string } = {}) => {
+    if (savingKeys.size) return;
+    const generation = ++requestGeneration;
+    try {
+      const response = await fetch('/api/image-descriptions');
+      if (!response.ok) throw new Error('Could not load image descriptions.');
+      const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      if (generation !== requestGeneration) return;
+      if (resetKey) {
+        const latest = payload.rows?.find((row) => row.key === resetKey);
+        if (latest) refreshRow(latest);
+        else localRows.delete(resetKey);
+      } else {
+        mergeRows(payload.rows ?? []);
+      }
+      checking = payload.checking === true;
+      if (pageFilter === null) {
+        const current = pageSlug();
+        pageFilter = current && [...localRows.values()].some((row) => row.document === current) ? current : '';
+      }
+      updatePageOptions();
+      renderRows();
+      syncPolling();
+    } catch (error) {
+      if (generation !== requestGeneration) return;
+      setStatus(error instanceof Error ? error.message : 'Could not load image descriptions.');
+    }
+  };
+
+  const saveRow = async (row: LocalRow) => {
+    if (savingKeys.size) return;
+    savingKeys.add(row.key);
+    const generation = ++requestGeneration;
+    const view = rowViews.get(row.key);
+    if (!view) {
+      savingKeys.delete(row.key);
+      return;
+    }
+    row.saveError = undefined;
+    updateRowView(view, row);
+    let didSave = false;
+    try {
+      const response = await fetch('/api/image-description-save', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ key: row.key, baseToken: row.baseToken, alt: row.description.slice(0, 300), intent: row.intent }),
+      });
+      const payload = await response.json() as { ok?: boolean; row?: Row; error?: string };
+      if (generation !== requestGeneration) return;
+      if (response.status === 409) {
+        row.conflict = true;
+        row.dirty = true;
+        view.save.disabled = false;
+        updateRowView(view, row);
+        return;
+      }
+      if (!response.ok || !payload.ok || !payload.row) throw new Error(payload.error || 'Could not save description.');
+      refreshRow(payload.row);
+      updateRenderedImage(payload.row);
+      renderRows();
+      didSave = true;
+    } catch (error) {
+      if (generation !== requestGeneration) return;
+      row.saveError = error instanceof Error ? error.message : 'Could not save description.';
+    } finally {
+      savingKeys.delete(row.key);
+      const current = localRows.get(row.key);
+      const currentView = rowViews.get(row.key);
+      if (current && currentView) updateRowView(currentView, current);
+      if (didSave) window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
+    }
+  };
+
+  const retryRow = async (row: LocalRow) => {
+    if (savingKeys.size) return;
+    const generation = ++requestGeneration;
+    try {
+      const response = await fetch('/api/image-descriptions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'retry', key: row.key }),
+      });
+      if (!response.ok) throw new Error('Could not retry description.');
+      const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      if (generation !== requestGeneration) return;
+      mergeRows(payload.rows ?? []);
+      checking = payload.checking === true;
+      renderRows();
+      syncPolling();
+    } catch (error) {
+      if (generation !== requestGeneration) return;
+      setStatus(error instanceof Error ? error.message : 'Could not retry description.');
+    }
+  };
+
+  const checkRows = async () => {
+    if (checking || savingKeys.size) return;
+    const generation = ++requestGeneration;
+    checkButton.disabled = true;
+    try {
+      const response = await fetch('/api/image-descriptions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'check' }),
+      });
+      if (!response.ok) throw new Error('Could not check image descriptions.');
+      const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      if (generation !== requestGeneration) return;
+      mergeRows(payload.rows ?? []);
+      checking = payload.checking === true;
+      updatePageOptions();
+      renderRows();
+      syncPolling();
+    } catch (error) {
+      if (generation !== requestGeneration) return;
+      setStatus(error instanceof Error ? error.message : 'Could not check image descriptions.');
+    } finally {
+      if (generation === requestGeneration) checkButton.disabled = checking;
+    }
+  };
+
+  const syncPolling = () => {
+    const visible = !panel.hidden;
+    if (visible && pollTimer === undefined) {
+      pollTimer = window.setInterval(() => void loadRows(), 3000);
+    } else if (!visible && pollTimer !== undefined) {
+      window.clearInterval(pollTimer);
+      pollTimer = undefined;
+    }
+  };
+
+  pageSelect.addEventListener('change', () => {
+    pageFilter = pageSelect.value;
+    renderRows();
+  });
+  checkButton.addEventListener('click', () => void checkRows());
+  let wasHidden = panel.hidden;
+  new MutationObserver(() => {
+    const nowHidden = panel.hidden;
+    if (wasHidden && !nowHidden) void loadRows();
+    wasHidden = nowHidden;
+    syncPolling();
+  }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+  window.addEventListener('vcd:dev-content-written', () => void loadRows());
+  void loadRows();
+</script>
+
+<style>
+  .dev-image-descriptions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-unit);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    container-type: inline-size;
+  }
+
+  .dev-image-descriptions__toolbar {
+    display: flex;
+    align-items: end;
+    gap: var(--space-unit);
+  }
+
+  :global(.dev-image-descriptions__page-filter) {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+  .dev-image-descriptions__toolbar > [data-image-descriptions-check] { flex: none; }
+  .dev-image-descriptions__status,
+  .dev-image-descriptions__row-status {
+    min-height: 1.2em;
+    margin: 0;
+    color: var(--sys-color-ink-soft);
+    font-size: 0.85rem;
+  }
+
+  .dev-image-descriptions__rows {
+    display: grid;
+    gap: var(--space-unit);
+    max-height: min(60vh, 36rem);
+    overflow: auto;
+    padding-inline-end: 0.25rem;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .dev-image-descriptions__status-label {
+    color: var(--comp-button-label-subtle);
+  }
+
+  .dev-image-descriptions__row {
+    display: grid;
+    grid-template-columns: 5rem minmax(0, 1fr);
+    gap: var(--space-unit);
+    align-items: start;
+    min-width: 0;
+    padding-block-end: var(--space-unit);
+    border-block-end: 1px solid var(--sys-color-outline-variant);
+  }
+
+  .dev-image-descriptions__image {
+    width: 5rem;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 0.35rem;
+    background: var(--sys-color-srf-container);
+  }
+
+  .dev-image-descriptions__content {
+    display: grid;
+    gap: var(--dev-panel-content-gap);
+    min-width: 0;
+  }
+  .dev-image-descriptions__identity {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-label-gap);
+    min-width: 0;
+  }
+  .dev-image-descriptions__identity strong { overflow-wrap: anywhere; }
+  .dev-image-descriptions__identity span {
+    overflow-wrap: anywhere;
+    color: var(--sys-color-ink-soft);
+    font-size: 0.8rem;
+  }
+  .dev-image-descriptions__actions {
+    flex-wrap: wrap;
+    gap: var(--dev-panel-spacing);
+    padding-top: 0;
+    margin-block-start: 0;
+  }
+
+  @container (max-width: 28rem) {
+    .dev-image-descriptions__toolbar { align-items: stretch; flex-direction: column; }
+    .dev-image-descriptions__row { grid-template-columns: 3.5rem minmax(0, 1fr); }
+    .dev-image-descriptions__image { width: 3.5rem; }
+  }
+</style>
