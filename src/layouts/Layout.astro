@@ -576,6 +576,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       if (!initialRevealState) void revealPage();
 
       const clearHeaderNavigationState = () => {
+        document.dispatchEvent(new CustomEvent('header:navigation-cancel'));
         document.documentElement.removeAttribute?.('data-header-navigation');
         const slot = document.querySelector('.site-header-slot');
         slot?.removeAttribute?.('data-header-carried-navigation');
@@ -598,8 +599,16 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         };
         const title = wordmark.textContent?.trim() ?? '';
         if (!visible(slot, false) || !visible(header) || !visible(wordmark) || !title || title.length > 300) return false;
+        const chars = [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
+        const codepoints = [...title.replace(/ /g, '\u00a0')];
+        const fontSize = parseFloat(getComputedStyle(wordmark).fontSize) || 0;
+        const margins = chars.length === codepoints.length && fontSize > 0
+          ? chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) / fontSize)
+          : [];
+        const safeMargins = margins.length === codepoints.length && margins.every((margin) => Number.isFinite(margin) && Math.abs(margin) <= 1)
+          ? margins : undefined;
         try {
-          sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: target.href, title, time: Date.now() }));
+          sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: target.href, title, time: Date.now(), margins: safeMargins }));
         } catch { return false; }
         document.documentElement.dataset.headerNavigation = '';
         return true;
@@ -626,6 +635,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           invalidate();
           const current = generation;
           destinationLocked = true;
+          document.dispatchEvent(new CustomEvent('header:navigation-start'));
           overlay.style.animation = 'none';
           const navigate = () => {
             if (current !== generation || !destinationLocked) return;
