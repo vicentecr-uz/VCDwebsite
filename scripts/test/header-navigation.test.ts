@@ -90,18 +90,19 @@ const compiledCapture = new Bun.Transpiler({ loader: 'ts' }).transformSync(captu
 function runtimeFixture(oldTitle: string, newTitle = 'Project', fontsReady = Promise.resolve()) {
   const win = new Window({ url: 'https://vcd.test/project' });
   const doc = win.document;
-  doc.body.innerHTML = '<div class="site-header-slot"><header class="site-header"><div class="header-trigger--start" data-header-title-swap="true" data-header-home-title="Vicente Cruz"><span class="header-trigger__wordmark-stack"><span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false"></span><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true"></span></span></div></header></div>';
+  doc.body.innerHTML = '<div class="site-header-slot"><header class="site-header"><div class="header-trigger--start" data-header-title-swap="true" ><span class="header-trigger__wordmark-stack"><span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false"></span><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true"></span></span></div></header></div>';
   const slot = doc.querySelector('.site-header-slot')!;
   const start = doc.querySelector('.header-trigger--start')!;
   const page = doc.querySelector('.header-trigger__wordmark--page')!;
   const home = doc.querySelector('.header-trigger__wordmark--home')!;
   for (const text of 'Vicente Cruz') {
-    const char = doc.createElement('span'); char.className = 'header-trigger__char'; char.textContent = text; home.appendChild(char);
+    const char = doc.createElement('span'); char.className = 'header-trigger__char'; char.textContent = text; char.setAttribute('data-astro-cid-fixture', ''); char.style.marginLeft = '0.02em'; home.appendChild(char);
   }
   for (const text of newTitle) {
     const char = doc.createElement('span'); char.className = 'header-trigger__char'; char.textContent = text;
     page.appendChild(char);
   }
+  const originalHomeChars = [...home.children];
   win.sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: win.location.href, title: oldTitle, time: Date.now() }));
   new Function('document', 'sessionStorage', 'location', 'window', inline)(doc, win.sessionStorage, win.location, win);
   Object.defineProperty(doc, 'fonts', { value: { ready: fontsReady } });
@@ -112,7 +113,7 @@ function runtimeFixture(oldTitle: string, newTitle = 'Project', fontsReady = Pro
   const clock = { setTimeout(callback: Function, delay: number) { timers.set(++sequence, { callback, delay }); return sequence; }, clearTimeout(id: number) { timers.delete(id); }, addEventListener: win.addEventListener.bind(win) };
   new Function('document', 'window', 'headerSlot', 'requestAnimationFrame', 'cancelAnimationFrame', 'applyWordmarkKerning', 'isDevEditing', compiledWordmark)(doc, clock, slot, requestFrame, (id: number) => frames.delete(id), () => {}, () => false);
   const frame = () => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((callback) => callback()); };
-  return { win, doc, slot, start, page, home, timers, frame };
+  return { win, doc, slot, start, page, home, timers, frame, originalHomeChars };
 }
 
 async function startAnimation(f: ReturnType<typeof runtimeFixture>) {
@@ -160,11 +161,13 @@ test('visible docked header captures with its flow slot offscreen; hidden header
   f.slot.getBoundingClientRect = () => ({ ...rect, top: -1000, bottom: -920 } as any);
   head.getBoundingClientRect = () => rect as any;
   f.home.getBoundingClientRect = () => rect as any;
-  const getStyle = (el: any) => ({ display: 'block', visibility: 'visible', opacity: el === head ? el.style.opacity || '1' : '1' });
+  const getStyle = (el: any) => ({ display: 'block', visibility: 'visible', opacity: el === head ? el.style.opacity || '1' : '1', fontSize: '20px', marginLeft: '2px' });
   const runtime = new Function('document', 'sessionStorage', 'getComputedStyle', 'innerHeight', 'innerWidth', 'CustomEvent', `${compiledCapture}; return {captureHeaderNavigation,clearHeaderNavigationState}`)(f.doc, f.win.sessionStorage, getStyle, 900, 1200, f.win.CustomEvent);
   const target = new URL('https://vcd.test/about');
   expect(runtime.captureHeaderNavigation(target)).toBe(true);
-  expect(JSON.parse(f.win.sessionStorage.getItem('vcd:header-navigation')!).href).toBe(target.href);
+  const carried = JSON.parse(f.win.sessionStorage.getItem('vcd:header-navigation')!);
+  expect(carried.href).toBe(target.href);
+  expect(carried.margins).toEqual(Array.from('Previous', () => 0.1));
   runtime.clearHeaderNavigationState();
   expect(f.win.sessionStorage.getItem('vcd:header-navigation')).toBeNull();
   head.style.opacity = '0';
@@ -191,4 +194,43 @@ test('active carry releases the home stacking boundary while cold home remains a
   expect(rules).toContain('110');
   doc.documentElement.removeAttribute('data-header-navigation');
   expect(win.getComputedStyle(home).zIndex).toBe('0');
+});
+
+
+test('carried letter margins are present before the deferred script runs', () => {
+  const margins = Array.from('Vicente Cruz', (_, i) => i / 100);
+  const f = runCarry({ href: 'https://vcd.test/work', title: 'Vicente Cruz', time: Date.now(), margins });
+  expect(f.home.children.map((char) => char.style.marginLeft)).toEqual(margins.map((margin) => `${margin}em`));
+});
+
+test('hover after a page handover uses original scoped nodes and slow letter timing', async () => {
+  const f = runtimeFixture('Previous');
+  expect([...f.home.children].every((char) => char.hasAttribute('data-astro-cid-fixture'))).toBe(true);
+  await startAnimation(f);
+  [...f.timers.values()][0].callback();
+  expect([...f.home.children]).toEqual(f.originalHomeChars);
+  expect([...f.home.children].every((char: any) => char.style.marginLeft === '0.02em')).toBe(true);
+  f.start.dispatchEvent(new f.win.Event('header:trigger-open'));
+  expect([...f.home.children].every((char: any) => char.style.opacity === '0')).toBe(true);
+  f.frame();
+  const chars = [...f.home.children] as any[];
+  expect(chars.every((char) => char.style.getPropertyValue('--char-duration') === '0.25s')).toBe(true);
+  expect(parseFloat(chars.at(-1).style.getPropertyValue('--char-delay'))).toBeGreaterThan(0.5);
+});
+
+test('accepted navigation prevents title reversal and canceled navigation permits it', async () => {
+  const f = runtimeFixture('Project');
+  await startAnimation(f);
+  f.start.dispatchEvent(new f.win.Event('header:trigger-open'));
+  f.frame();
+  f.doc.dispatchEvent(new f.win.Event('header:navigation-start'));
+  f.start.dispatchEvent(new f.win.Event('header:trigger-close'));
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:force-close', { detail: { preserveNavigation: true } }));
+  expect(f.home.getAttribute('aria-hidden')).toBe('false');
+  expect([...f.home.children].every((char: any) => char.style.opacity === '1')).toBe(true);
+  expect(f.timers.size).toBe(0);
+  f.doc.dispatchEvent(new f.win.Event('header:navigation-cancel'));
+  f.start.dispatchEvent(new f.win.Event('header:trigger-close'));
+  expect(f.page.getAttribute('aria-hidden')).toBe('false');
+  expect([...f.home.children].every((char: any) => char.style.opacity === '0')).toBe(true);
 });
