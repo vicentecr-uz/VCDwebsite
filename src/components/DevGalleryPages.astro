@@ -100,7 +100,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     let baselinePagesOrder: string[] = [];
     /** @type {'all' | 'on' | 'off'} */
     let filter = 'all';
-    /** @type {'home' | 'work' | 'play' | ''} */
+    /** @type {'home' | 'play' | ''} */
     let activeGrid = '';
     let loadedGrid = '';
     let loadPromise: Promise<void> | null = null;
@@ -206,20 +206,17 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       });
     };
 
-    const coverDefaultAspect = (full: boolean, grid: string) =>
-      listingCoverDefaultAspects(
-        grid as 'home' | 'work' | 'play',
-        full,
-      );
+    const coverDefaultAspect = (grid: string) =>
+      listingCoverDefaultAspects(grid as 'home' | 'play');
 
-    const currentGrid = (): 'home' | 'work' | 'play' | '' => {
+    const currentGrid = (): 'home' | 'play' | '' => {
       const grid = document.querySelector<HTMLElement>('[data-dev-project-grid]');
       const id = grid?.dataset.devProjectGrid;
-      return id === 'home' || id === 'work' || id === 'play' ? id : '';
+      return id === 'home' || id === 'play' ? id : '';
     };
 
     const gridLabel = (grid: string) => (
-      grid === 'home' ? 'Home' : grid === 'work' ? 'Work' : grid === 'play' ? 'Play' : 'Gallery'
+      grid === 'home' ? 'Home' : grid === 'play' ? 'Play' : 'Gallery'
     );
 
     const setStatus = (message: string) => {
@@ -471,7 +468,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       }
 
       const grid = activeGrid;
-      if (grid !== 'home' && grid !== 'work' && grid !== 'play') {
+      if (grid !== 'home' && grid !== 'play') {
         console.warn('[DevGalleryPages] No active grid when building card.');
         return null;
       }
@@ -480,7 +477,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const isTeaser = page.status === 'teaser';
       const isImage = page.status === 'image';
       const isUnlinked = isTeaser || isImage;
-      const defaultAspects = coverDefaultAspect(page.full, grid);
+      const defaultAspects = coverDefaultAspect(grid);
       const srcDims = imageSourceDims(page);
       const variants = page.variants;
       const hoverVariants = page.hoverVariants;
@@ -581,7 +578,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           srcWidth: page.srcWidth,
           srcHeight: page.srcHeight,
           mobileInset: page.mobileInset === true,
-        }, Boolean(page.full));
+        });
         for (const [key, value] of Object.entries(editAttrs)) {
           if (value === '') cover.removeAttribute(key);
           else cover.setAttribute(key, value);
