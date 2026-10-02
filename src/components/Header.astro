@@ -246,8 +246,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }));
     home.setAttribute('aria-hidden', 'false');
     page.setAttribute('aria-hidden', 'true');
-    home.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.opacity = '1'; });
-    page.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.opacity = '0'; });
+    home.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '1'; });
+    page.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '0'; });
     start.classList.add('is-wordmark-swapped');
     slot.dataset.headerCarriedNavigation = '';
     slot.dataset.headerNavigationTitle = pending.title;
@@ -255,6 +255,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     if (pending.title.replace(/\s+/g, ' ').trim() === page.textContent?.replace(/\s+/g, ' ').trim()) {
       slot.dataset.headerNavigationSame = '';
     }
+    window.addEventListener('pagereveal', (event) => {
+      window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
+    }, { once: true });
   })();
 </script>
 
@@ -769,7 +772,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
     });
 
-    document.dispatchEvent(new CustomEvent('header:force-close'));
+    document.dispatchEvent(new CustomEvent('header:force-close', { detail: { preserveNavigation } }));
   };
 
   document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
@@ -1321,6 +1324,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           restoreHomeWordmark();
           startTrigger.classList.remove('is-wordmark-swapped');
           pageWordmark.setAttribute('aria-hidden', 'false');
+          pageChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = '1'; });
           clearNavigationTitleState();
           applyWordmarkKerning();
           return;
@@ -1343,25 +1347,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         }, Math.ceil(getFadeInEnd(pageChars.length, 0) * 1000) + 40);
       };
       const afterNativeTransition = () => {
-        let settled = false;
-        let fallback: number | undefined;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          if (fallback !== undefined) window.clearTimeout(fallback);
-          window.removeEventListener('pagereveal', onReveal as EventListener);
-          requestAnimationFrame(() => requestAnimationFrame(startSwap));
-        };
-        const onReveal = (event: Event) => {
-          const transition = (event as Event & { viewTransition?: { finished?: Promise<unknown> } }).viewTransition;
-          if (transition?.finished) void transition.finished.then(finish, finish);
-          else finish();
-        };
-        window.addEventListener('pagereveal', onReveal as EventListener, { once: true });
-        fallback = window.setTimeout(finish, 'startViewTransition' in document ? 1000 : 0);
+        requestAnimationFrame(() => requestAnimationFrame(startSwap));
       };
-      void document.fonts?.ready.then(afterNativeTransition, afterNativeTransition);
-      if (!document.fonts?.ready) afterNativeTransition();
+      const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
+      const fontsReady = document.fonts?.ready ?? Promise.resolve();
+      void Promise.all([fontsReady, transitionFinished ?? Promise.resolve()]).then(afterNativeTransition, afterNativeTransition);
     };
 
     const runWordmarkOpen = () => {
@@ -1424,7 +1414,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         syncStartBrandForEdit(active);
         if (!active) return;
         startTrigger.dispatchEvent(new CustomEvent('header:request-close'));
-    document.dispatchEvent(new CustomEvent('header:force-close', { detail: { preserveNavigation } }));
+        document.dispatchEvent(new CustomEvent('header:force-close'));
       }) as EventListener);
     }
 
