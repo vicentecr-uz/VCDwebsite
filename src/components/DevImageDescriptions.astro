@@ -44,7 +44,10 @@ const intentOptions = [
         options={intentOptions}
         data-image-description-intent
       />
-      <p class="dev-image-descriptions__row-status" data-image-description-status aria-live="polite"></p>
+      <p class="dev-image-descriptions__row-status" aria-live="polite">
+        <span class="dev-image-descriptions__status-label">Status:</span>
+        <span data-image-description-status></span>
+      </p>
       <PanelActions class="dev-image-descriptions__actions">
         <Button emphasis="ghost" label="Refresh" data-image-description-refresh />
         <Button emphasis="ghost" label="Revert" data-image-description-revert />
@@ -272,6 +275,10 @@ const intentOptions = [
     });
     intent.addEventListener('change', () => {
       row.intent = intent.value as Intent;
+      if (row.intent === 'decorative') {
+        row.description = '';
+        text.value = '';
+      }
       row.dirty = true;
       row.saveError = undefined;
       updateRowView(view, row);
@@ -498,6 +505,10 @@ const intentOptions = [
     padding-inline-end: 0.25rem;
     min-width: 0;
     min-height: 0;
+  }
+
+  .dev-image-descriptions__status-label {
+    color: var(--comp-button-label-subtle);
   }
 
   .dev-image-descriptions__row {
