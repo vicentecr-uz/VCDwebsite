@@ -296,8 +296,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     return element.dataset.devIntro === 'true';
   };
 
-  /** Cursor must be within this distance of the control centre to reveal it. */
-  const SPACING_ACTIVATION_RADIUS_PX = 96;
+  /** Hidden pills require a close approach; visible pills allow more room to move. */
+  const SPACING_ENTRY_RADIUS_PX = 8;
+  const SPACING_RETENTION_RADIUS_PX = 24;
+  const SPACING_INTENT_DELAY_MS = 140;
+  const SPACING_FAST_POINTER_PX_PER_MS = 0.18;
 
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
@@ -915,6 +918,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
     let lastSpacingViewport = currentSpacingViewport();
     window.addEventListener('resize', () => {
+      cancelGapRevealIntent();
+      latestGapPointer = null;
       const viewport = currentSpacingViewport();
       if (viewport === lastSpacingViewport) return;
       lastSpacingViewport = viewport;
@@ -1098,6 +1103,36 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     // Esc hides gap chrome; pointermove must not re-reveal until the cursor
     // leaves every gap hitbox and activation radius.
     let suppressGapProximity = false;
+    let gapRevealTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let gapRevealTarget: EditableSpacingState | null = null;
+    let gapRevealReadyTarget: EditableSpacingState | null = null;
+    let latestGapPointer: { clientX: number; clientY: number; time: number } | null = null;
+
+    const cancelGapRevealIntent = () => {
+      if (gapRevealTimer !== null) window.clearTimeout(gapRevealTimer);
+      gapRevealTimer = null;
+      gapRevealTarget = null;
+      gapRevealReadyTarget = null;
+    };
+    editorSignal.addEventListener('abort', () => {
+      latestGapPointer = null;
+      cancelGapRevealIntent();
+    }, { once: true });
+
+    const scheduleGapRevealIntent = (target: EditableSpacingState) => {
+      if (gapRevealTarget === target && gapRevealTimer !== null) return;
+      if (gapRevealTimer !== null) window.clearTimeout(gapRevealTimer);
+      gapRevealTarget = target;
+      gapRevealReadyTarget = null;
+      gapRevealTimer = window.setTimeout(() => {
+        gapRevealTimer = null;
+        const readyTarget = gapRevealTarget;
+        if (!readyTarget || !latestGapPointer) return;
+        gapRevealReadyTarget = readyTarget;
+        syncSpacingProximity(latestGapPointer.clientX, latestGapPointer.clientY);
+        if (gapRevealReadyTarget === readyTarget) gapRevealReadyTarget = null;
+      }, SPACING_INTENT_DELAY_MS);
+    };
 
     const syncGapToolbarTopPin = (control: HTMLElement, pinned: boolean) => {
       if (pinned) {
@@ -1169,6 +1204,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const clearGapProximityAll = () => {
+      cancelGapRevealIntent();
       spacingStates.forEach(({ control }) => clearGapProximity(control));
       document.documentElement.classList.remove('is-page-top-gap-above-header');
     };
@@ -1194,7 +1230,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       spacingStates.forEach(({ control, element }) => {
         const suppressed = followsHiddenTitle(element);
         control.hidden = !devEnabled || suppressed;
-        if (suppressed) clearGapProximity(control);
+        if (suppressed) {
+          cancelGapRevealIntent();
+          clearGapProximity(control);
+        }
       });
       if (!devEnabled) document.documentElement.classList.remove('is-page-top-gap-above-header');
     };
@@ -1358,6 +1397,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         !isDevContentEditing()
         || gapsSuppressed()
       ) {
+        cancelGapRevealIntent();
         spacingStates.forEach(({ control }) => {
           if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
         });
@@ -1366,10 +1406,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       if (suppressGapProximity) {
+        cancelGapRevealIntent();
         const stillNear = spacingStates.some((state) => {
           if (state.control.hidden || !isActiveSpacingState(state)) return false;
           if (isPointerOverToolbarHitbox(state, clientX, clientY)) return true;
-          return distanceToToolbarPill(state, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX;
+          return distanceToToolbarPill(state, clientX, clientY) <= SPACING_RETENTION_RADIUS_PX;
         });
         if (stillNear) {
           closeSectionMenus();
@@ -1386,6 +1427,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         control.classList.contains('is-menu-open'),
       );
       if (openMenuState) {
+        cancelGapRevealIntent();
         spacingStates.forEach(({ control }) => {
           if (control === openMenuState.control) return;
           clearGapProximity(control);
@@ -1408,11 +1450,28 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (isAddControlPinned(state) || isSpacingControlPinned(state)) return;
 
         const distance = distanceToToolbarPill(state, clientX, clientY);
-        if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestDistance) {
+        const alreadyVisible =
+          state.control.classList.contains('is-near-add') ||
+          state.control.classList.contains('is-near-spacing') ||
+          state.control.classList.contains('is-menu-open');
+        const radius = alreadyVisible ? SPACING_RETENTION_RADIUS_PX : SPACING_ENTRY_RADIUS_PX;
+        if (distance <= radius && distance < nearestDistance) {
           nearest = state;
           nearestDistance = distance;
         }
       });
+
+      if (gapRevealReadyTarget && gapRevealReadyTarget !== nearest) gapRevealReadyTarget = null;
+      const nearestIsVisible = nearest && (
+        nearest.control.classList.contains('is-near-add')
+        || nearest.control.classList.contains('is-near-spacing')
+        || nearest.control.classList.contains('is-menu-open')
+      );
+      if (nearest && !nearestIsVisible && gapRevealReadyTarget !== nearest) {
+        scheduleGapRevealIntent(nearest);
+      } else if (!nearest || nearestIsVisible) {
+        cancelGapRevealIntent();
+      }
 
       spacingStates.forEach((state) => {
         const { control } = state;
@@ -1425,12 +1484,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           control.classList.contains('is-near-add') ||
           control.classList.contains('is-near-spacing') ||
           control.classList.contains('is-menu-open');
-        // Vicinity reveals the pill; freeze only while the pointer is on it.
+        const settledReveal = state === nearest && gapRevealReadyTarget === state;
+        // Intent reveals a hidden pill; retention keeps a visible pill available.
         const overHitbox = alreadyVisible && isPointerOverToolbarHitbox(state, clientX, clientY);
         const near = isAddControlPinned(state)
           || isSpacingControlPinned(state)
           || overHitbox
-          || (allowNear && state === nearest);
+          || (allowNear && state === nearest && (alreadyVisible || settledReveal));
         control.classList.toggle('is-near-add', near);
         control.classList.toggle('is-near-spacing', near);
         // Focus must not keep the freeze — chip clicks blur; pin follows the
@@ -1440,6 +1500,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           || control.classList.contains('is-menu-open');
         syncGapToolbarTopPin(control, keepPinned);
       });
+      if (gapRevealReadyTarget && gapRevealReadyTarget === nearest) gapRevealReadyTarget = null;
       syncPageTopGapStacking();
     };
 
@@ -1466,15 +1527,48 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       document.addEventListener(
         'pointermove',
         (event) => {
+          if (event.buttons !== 0) {
+            latestGapPointer = null;
+            cancelGapRevealIntent();
+            return;
+          }
+          const previous = latestGapPointer;
+          const timestamp = Number.isFinite(event.timeStamp) ? event.timeStamp : performance.now();
+          const speed = previous && timestamp > previous.time
+            ? Math.hypot(event.clientX - previous.clientX, event.clientY - previous.clientY)
+              / (timestamp - previous.time)
+            : 0;
+          latestGapPointer = {
+            clientX: event.clientX,
+            clientY: event.clientY,
+            time: timestamp,
+          };
+          if (speed > SPACING_FAST_POINTER_PX_PER_MS) cancelGapRevealIntent();
           syncSpacingProximity(event.clientX, event.clientY);
         }, { passive: true, signal: editorSignal });
       // While the pointer is on the pill/menu the page must not scroll — otherwise
       // the freeze and the gap diverge. Vicinity-only reveal still allows scroll.
-      document.addEventListener('wheel', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorSignal });
-      document.addEventListener('touchmove', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorSignal });
+      document.addEventListener('wheel', (event) => {
+        cancelGapRevealIntent();
+        preventScrollWhileGapToolbarHeld(event);
+      }, { passive: false, signal: editorSignal });
+      document.addEventListener('touchmove', (event) => {
+        cancelGapRevealIntent();
+        preventScrollWhileGapToolbarHeld(event);
+      }, { passive: false, signal: editorSignal });
+      window.addEventListener('scroll', () => {
+        cancelGapRevealIntent();
+        latestGapPointer = null;
+      }, { capture: true, signal: editorSignal });
       // Header mouseenter can beat the next pointermove — sync first so page-top
       // chips lift above the nav before openMenu hit-tests.
       document.addEventListener('dev:sync-gap-proximity', ((event: CustomEvent<{ clientX: number; clientY: number }>) => {
+        if (!latestGapPointer) return;
+        latestGapPointer = {
+          ...latestGapPointer,
+          clientX: event.detail.clientX,
+          clientY: event.detail.clientY,
+        };
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
       }) as EventListener, { signal: editorSignal });
       document.addEventListener('dev:clear-gap-proximity', () => {
@@ -1484,6 +1578,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         clearGapProximityAll();
       }, { signal: editorSignal });
       document.documentElement.addEventListener('pointerleave', () => {
+        latestGapPointer = null;
+        cancelGapRevealIntent();
         spacingStates.forEach(({ control }) => {
           if (control.classList.contains('is-menu-open')) {
             control.classList.remove('is-near-spacing');
@@ -1499,6 +1595,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       document.addEventListener(
         'pointerdown',
         (event) => {
+          latestGapPointer = null;
+          cancelGapRevealIntent();
           const target = event.target;
           if (!(target instanceof Node)) return;
           const open = spacingStates.find((state) => isSectionMenuOpen(state));
@@ -5512,6 +5610,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncDeleteButtons(enabled);
       syncSpacingControlVisibility();
       if (!enabled) {
+        cancelGapRevealIntent();
+        latestGapPointer = null;
         spacingStates.forEach(({ control }) => clearGapProximity(control));
         document.documentElement.classList.remove('is-dev-text-caret');
         hideFormatBar();
