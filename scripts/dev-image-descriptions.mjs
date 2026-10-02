@@ -439,7 +439,7 @@ export function imageDescriptionsDevWriter(options = {}) {
   return {
     name: 'image-descriptions-dev-writer', apply: 'serve',
     configureServer(server) {
-      const service = createImageDescriptionsService(options);
+      const service = createImageDescriptionsService({ ...options, site: options.site || server.config?.env?.PUBLIC_SITE_URL || process.env.PUBLIC_SITE_URL });
       server.middlewares.use('/api/image-descriptions', async (req, res, next) => {
         try {
           if (req.method === 'GET') { await service.refresh(); sendJson(res, 200, { rows: service.rows(), checking: service.isChecking() }); return; }
