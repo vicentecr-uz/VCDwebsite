@@ -144,7 +144,7 @@ export function devAuthoringRequestQueue() {
 }
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'image']);
-const LISTING_GRIDS = ['home', 'work', 'play'];
+const LISTING_GRIDS = ['home', 'play'];
 
 function validateStatus(status, fallback = 'draft') {
   const value = String(status || fallback);
@@ -900,7 +900,11 @@ export function projectCreateDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const title = String(body.title || '').trim();
-          const grid = ['home', 'work', 'play'].includes(body.grid) ? body.grid : 'work';
+          const grid = body.grid === undefined ? 'home' : String(body.grid);
+          if (!LISTING_GRIDS.includes(grid)) {
+            send(400, { error: 'That grid cannot be used for a new project.' });
+            return;
+          }
           const status = validateStatus(body.status, 'draft');
           let slug = String(body.slug || '').trim();
           if (status === 'image' && !slug) slug = slugifyTitle(title);
@@ -958,7 +962,7 @@ export function projectSettingsDevWriter() {
               return;
             }
             const data = JSON.parse(await readFile(path.join(process.cwd(), relativeFile), 'utf8'));
-            const grid = ['home', 'work', 'play'].find((key) => data.listings?.[key]) ?? 'work';
+            const grid = LISTING_GRIDS.find((key) => data.listings?.[key]) ?? 'home';
             const listing = data.listings?.[grid] ?? {};
             // Storage holds bare tokens; the client wants ready-to-use URLs for
             // live preview (it assigns these straight to <img src>).
@@ -1005,6 +1009,10 @@ export function projectSettingsDevWriter() {
           const chunks = [];
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          if (body.grid !== undefined && !LISTING_GRIDS.includes(String(body.grid))) {
+            send(400, { error: 'That gallery cannot be updated.' });
+            return;
+          }
           const slug = String(body.slug || '').trim();
           const relativeFile = resolveEditableDocument(slug);
           if (!relativeFile) {
@@ -1013,12 +1021,17 @@ export function projectSettingsDevWriter() {
           }
           const file = path.join(process.cwd(), relativeFile);
           const data = JSON.parse(await readFile(file, 'utf8'));
+          const submittedGrids = Object.keys(body.listings ?? {});
+          if (submittedGrids.some((grid) => !LISTING_GRIDS.includes(grid))) {
+            send(400, { error: 'That gallery cannot be updated.' });
+            return;
+          }
           data.title = String(body.title || data.title || '').trim();
           data.description = String(body.description || '').trim();
           data.status = validateStatus(body.status, validateStatus(data.status));
           data.slug = slug;
           const previousListings = data.listings ?? {};
-          // Merge — one-grid saves must not wipe Home/Work/Play siblings.
+          // Merge — one-grid saves must not wipe Home/Play siblings.
           data.listings = { ...previousListings };
           for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
@@ -1203,7 +1216,7 @@ function coverForGalleryPage(data, grid) {
   return cover;
 }
 
-/** Toggle which projects appear on Home / Work / Play (`listings[grid]` presence). */
+/** Toggle which projects appear on Home / Play (`listings[grid]` presence). */
 export function galleryMembershipDevWriter() {
   return {
     name: 'gallery-membership-dev-writer',
@@ -1394,7 +1407,7 @@ export function listingOrderDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const grid = String(body.grid || '');
-          if (!['home', 'work', 'play'].includes(grid)) {
+          if (!LISTING_GRIDS.includes(grid)) {
             send(400, { error: 'That grid cannot be updated.' });
             return;
           }

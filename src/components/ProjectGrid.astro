@@ -14,10 +14,10 @@ export type ProjectGridItem = {
   hoverDark?: boolean;
   bg: string;
   dark: boolean;
-  /** Year on home/work; optional meta line on play. */
+  /** Year on home; optional meta line on play. */
   subtitle?: string;
   href?: string;
-  /** Span both columns on home/work. */
+  /** Span both columns on home/play. */
   full?: boolean;
   slug?: string;
   status?: ProjectStatus;
@@ -32,11 +32,11 @@ export type ProjectGridItem = {
 
 interface Props {
   items: ProjectGridItem[];
-  /** Layout + motion preset — home, work, and play differ at tablet breakpoints. */
-  variant?: 'home' | 'work' | 'play';
+  /** Layout + motion preset — home and play differ at tablet breakpoints. */
+  variant?: 'home' | 'play';
 }
 
-const { items, variant = 'work' } = Astro.props;
+const { items, variant = 'home' } = Astro.props;
 const isDev = import.meta.env.DEV;
 
 /** Dev-only seed for Gallery Manager `buildGridCard` template clone. */
@@ -112,23 +112,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
     }
   }
 
-  @media (max-width: 480px) {
-    .project-grid--work .project-grid__item[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-grid__cover {
-      width: calc(100% - 2 * var(--page-gutter));
-      margin-inline: auto;
-    }
-
-    .project-grid--work .project-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-grid__meta {
-      padding: var(--page-gutter);
-    }
-  }
-
   .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped) {
     aspect-ratio: 16 / 12;
-  }
-
-  .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
-    aspect-ratio: 16 / 9;
   }
 
   .project-grid__item--full .project-grid__cover:not(.project-cropped) .project-grid__img {
@@ -521,13 +506,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
     aspect-ratio: 4 / 3;
   }
 
-  .project-grid--work .project-grid__item--new .project-grid__new-page,
   .project-grid--play .project-grid__item--new .project-grid__new-page {
     aspect-ratio: 4 / 3;
   }
 
   @media (max-width: 667px) {
-    .project-grid--work .project-grid__item--new .project-grid__new-page,
     .project-grid--play .project-grid__item--new .project-grid__new-page {
       aspect-ratio: 1 / 1;
     }
@@ -563,15 +546,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
       grid-column: span 1;
     }
 
-    .project-grid--work .project-grid__item--full,
-    .project-grid--play .project-grid__cover:not(.project-cropped),
-    .project-grid--work .project-grid__cover:not(.project-cropped),
-    .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
+    .project-grid--play .project-grid__cover:not(.project-cropped) {
       aspect-ratio: 1 / 1;
-    }
-
-    .project-grid--work .project-grid__item--full {
-      grid-column: span 1;
     }
 
   }

@@ -1,5 +1,5 @@
 ---
-/** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
+/** Singleton dev dialogs + handlers for Home / Play project grids. */
 import DevOverlay from './DevOverlay.astro';
 import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
@@ -107,7 +107,7 @@ const visibilityOptions = [
   // Must stay a plain <script>: Astro only bundles and rewrites imports for
   // unadorned tags. With type="module" it stayed inline and the browser
   // resolved `../scripts/coverLuminance` against the page URL
-  // (/work -> /scripts/coverLuminance, 404), so the module never ran and every
+  // (a gallery page -> /scripts/coverLuminance, 404), so the module never ran and every
   // drop silently took the `dark` fallback.
   import {
     isRegionDark,
@@ -237,7 +237,7 @@ const visibilityOptions = [
     deleteButton.removeAttribute('aria-disabled');
   };
 
-  let createActiveGrid = 'work';
+  let createActiveGrid = 'home';
   /** @type {string} */
   let panelSlug = '';
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
@@ -387,7 +387,7 @@ const visibilityOptions = [
   };
 
   const gridForItem = (item) =>
-    item.closest('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid') ?? 'work';
+    item.closest('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid') ?? 'home';
 
   const gridItemForSlug = (slug) =>
     document.querySelector(`[data-dev-project-slug="${CSS.escape(slug)}"]`);
@@ -626,7 +626,7 @@ const visibilityOptions = [
         titleNode.textContent = snapshot.title;
       }
     }
-    // Subtitle (Year on home/work, Meta on play) — must restore on Revert; title
+    // Subtitle (Year on home, Meta on play) — must restore on Revert; title
     // was handled above but this field was missed, so clearing Year then Revert
     // left the DOM empty while the draft snapshot had the saved year again.
     const subtitleNode = ensureSubtitleHost(item);
@@ -979,7 +979,7 @@ const visibilityOptions = [
       slugInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     }
     syncBgField(entry.draft.listing.bg || '#efefef');
-    const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
+    const gridLabel = entry.grid === 'home' ? 'Home' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
@@ -1652,7 +1652,7 @@ const visibilityOptions = [
       event.preventDefault();
       event.stopPropagation();
       const gridRoot = newButton.closest('[data-dev-project-grid]');
-      createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
+      createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'home';
       window.dispatchEvent(new CustomEvent('vcd:dev-new-project-open', {
         detail: {
           grid: createActiveGrid,
@@ -1978,8 +1978,8 @@ const visibilityOptions = [
     const grid =
       (gridItem ? gridForItem(gridItem) : null)
       ?? document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid')
-      ?? 'work';
-    navigateAway(grid === 'home' ? '/' : grid === 'play' ? '/play' : '/work');
+      ?? 'home';
+    navigateAway(grid === 'home' ? '/' : '/play');
   });
 
   disarmDelete();

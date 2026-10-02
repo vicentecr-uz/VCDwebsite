@@ -220,10 +220,9 @@ export interface ImageDevEditContext {
 
 /** Per-viewport default frame aspects for gallery listing covers (seed only). */
 export function listingCoverDefaultAspects(
-  grid: 'home' | 'work' | 'play',
-  full: boolean,
+  grid: 'home' | 'play',
 ): Record<ImageViewport, string> {
-  const desktopTablet = grid === 'work' && full ? '16:9' : '4:3';
+  const desktopTablet = '4:3';
   const mobile = grid === 'home' ? '4:3' : '1:1';
   return { desktop: desktopTablet, tablet: desktopTablet, mobile };
 }
@@ -251,7 +250,7 @@ function seedHoverVariants(
 /** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
 export function listingCoverDevEditAttrs(
   slug: string,
-  grid: 'home' | 'work' | 'play',
+  grid: 'home' | 'play',
   item: {
     image?: string;
     hoverImage?: string;
@@ -261,9 +260,8 @@ export function listingCoverDevEditAttrs(
     srcHeight?: unknown;
     mobileInset?: boolean;
   },
-  full: boolean,
 ): Record<string, string> {
-  const defaultAspects = listingCoverDefaultAspects(grid, full);
+  const defaultAspects = listingCoverDefaultAspects(grid);
   const srcDims = imageSourceDims(item);
   const seedCoverVariants = normalizeImageVariants(item.variants, defaultAspects, srcDims);
   const seededHoverVariants = seedHoverVariants(seedCoverVariants, item.hoverVariants, null);
