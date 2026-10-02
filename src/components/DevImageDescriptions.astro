@@ -105,7 +105,7 @@ const intentOptions = [
   let requestGeneration = 0;
   const savingKeys = new Set<string>();
 
-  const pathText = (row: Row) => row.pathLabel || row.path.join(' › ');
+  const pathText = (row: Row) => row.title;
   const pageSlug = () => {
     const segment = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
     if (!segment) return 'home';
@@ -208,7 +208,7 @@ const intentOptions = [
     const nextImage = imageUrl(row.src);
     if (view.image.getAttribute('src') !== nextImage) view.image.src = nextImage;
     view.image.alt = row.description || row.title;
-    view.title.textContent = row.title;
+    view.title.textContent = row.src.split('/').pop() || row.title;
     view.path.textContent = pathText(row);
     if (!row.dirty) {
       view.text.value = row.description;
