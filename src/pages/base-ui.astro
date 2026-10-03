@@ -1,0 +1,75 @@
+---
+import '../styles/global.css';
+import '../styles/dev-chrome.css';
+import '../styles/base-ui-comparison.css';
+import CurrentExample from '../components/base-ui/CurrentExample.astro';
+import BaseUiExample from '../components/base-ui/BaseUiExample';
+import { comparisons } from '../lib/baseUiComparison';
+---
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
+    <title>Base UI comparison — Vicente Cruz</title>
+  </head>
+  <body class="comparison-body">
+    <main class="comparison-page">
+      <header class="comparison-header">
+        <a href="/styles/">← Component library</a>
+        <p class="comparison-eyebrow">Component study · Base UI 1.8</p>
+        <h1>Base UI comparison</h1>
+        <p class="comparison-intro">Try our current controls beside their Base UI versions. Hold Alt while hovering, pause over an example for a second, or choose Changes to see the differences.</p>
+        <div class="comparison-toolbar"><label class="comparison-theme">Theme <select data-comparison-theme><option value="light">Light</option><option value="dark">Dark</option></select></label><a href="#coverage">Coverage</a><a href="#measurements">Measurements</a></div>
+      </header>
+      <nav class="comparison-index" aria-label="Components">{comparisons.map(item => <a href={`#${item.id}`}>{item.name}</a>)}</nav>
+      <div class="comparison-catalog">
+        {comparisons.map((item, index) => <section class="comparison-row" id={item.id} data-comparison-row>
+          <header class="comparison-row-heading"><div><span class="comparison-number">{String(index + 1).padStart(2, '0')}</span><h2>{item.name}</h2></div><span class="comparison-status">{item.status}</span><button type="button" class="dev-btn dev-btn--soft comparison-notes-trigger" aria-controls={`changes-${item.id}`} aria-expanded="false" data-comparison-notes>Changes<span class="sr-only"> to {item.name}</span></button></header>
+          <div class="comparison-pair">
+            <div class="comparison-cell"><h3>Current</h3><CurrentExample kind={item.id} /></div>
+            <div class="comparison-cell"><h3>{item.id === 'dev-panel-drag' ? 'Retained' : 'Base UI study'}</h3>{item.id === 'dev-panel-drag' ? <CurrentExample kind={item.id} instance="retained" /> : <BaseUiExample kind={item.id} client:load />}</div>
+          </div>
+          <aside id={`changes-${item.id}`} popover="auto" class="comparison-callout" aria-label={`${item.name} changes`}>
+            <h3>{item.name}</h3><dl><dt>Before</dt><dd>{item.before}</dd><dt>After</dt><dd>{item.after}</dd><dt>To consider</dt><dd>{item.tradeoff}</dd></dl>
+          </aside>
+        </section>)}
+      </div>
+      <section id="coverage" class="comparison-summary">
+        <p class="comparison-eyebrow">Coverage</p><h2>What this trial includes</h2>
+        <p>All 14 shared files in <code>components/ui</code>, plus the embedded overlay, are represented above. Dialog and action menu are additional candidates. The current examples use our actual Astro components; small page-only handlers make buttons and forms testable.</p>
+        <p>Project grids, media, page sections, navigation and bespoke animation stay in the <a href="/styles/">component library</a>. Base UI does not supply equivalents for those compositions. Badges, panel layout, titles and panel dragging are shown as retained pieces.</p>
+        <p>This page is a migration study. Editor callers, content saving, publishing and history have not been migrated. Values on this page are temporary.</p>
+      </section>
+      <section id="measurements" class="comparison-summary">
+        <p class="comparison-eyebrow">Maintenance & delivery</p><h2>What we can save</h2>
+        <p>The clearest candidate is the 621-line select controller. Base UI takes responsibility for keyboard handling, typeahead, focus and popup placement. Replacing that controller still requires migrating callers that write directly to native selects.</p>
+        <p>Native inputs and buttons offer much smaller savings. Styling, editor actions, caret-aware text fades, dragging, resizing and persistence remain application code. No current code has been removed by this study.</p>
+        <div class="comparison-measurements"><table><caption>Production JavaScript · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
+          <tr><th scope="row">React + Astro’s React renderer</th><td>45.9 KiB</td></tr>
+          <tr><th scope="row">Base UI + all study examples</th><td>69.4 KiB</td></tr>
+          <tr><th scope="row">Combined Base UI module cost</th><td>115.3 KiB</td></tr>
+          <tr><th scope="row">Astro hydration bootstrap, inline</th><td>1.5 KiB</td></tr>
+          <tr><th scope="row">Current controls + inline demo scripts</th><td>About 11 KiB</td></tr>
+        </tbody></table></div>
+        <p>The comparison page loads both versions. Module figures sum individually compressed production files; inline figures are separate compression estimates. Shared styles, fonts, HTML and comparison-page helpers are excluded. The Base UI figure includes the additional dialog and menu candidates. This is a whole-study cost, not a per-control cost or a measured network transfer.</p>
+        <p>No Base UI or React study modules remain in the ordinary public build: the existing publication filter removes this unlinked page and its exclusive assets. The total public JavaScript and CSS output is about 0.2 KiB smaller after compression because the bundler regrouped shared code; that is not a performance win to attribute to Base UI.</p>
+        <p>The select example is about 114 lines of React composition, plus shared Field markup and styling, against the current 621-line controller. These are not equivalent implementations: the example omits the editor’s native-select mutation bridge. Net maintenance savings can only be established when those callers are migrated.</p>
+      </section>
+    </main>
+    <script>
+      import { bindSafeVh } from '../lib/safeVh';
+      bindSafeVh();
+      import { initComparisonNotes } from '../lib/baseUiComparisonNotes';
+      const dispose = initComparisonNotes();
+      document.querySelector<HTMLSelectElement>('[data-comparison-theme]')?.addEventListener('change', event => {
+        document.documentElement.dataset.theme = (event.target as HTMLSelectElement).value;
+      });
+      if (import.meta.hot) import.meta.hot.dispose(dispose);
+    </script>
+  </body>
+</html>

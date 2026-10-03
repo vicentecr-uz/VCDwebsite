@@ -7,6 +7,7 @@ import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
 
 import tailwindcss from '@tailwindcss/vite';
+import react from '@astrojs/react';
 import {
   buildImageCarouselSection,
   buildImageCarouselSectionFromSrcs,
@@ -2671,7 +2672,7 @@ export default defineConfig({
   // change needed, just the env var in Cloudflare.
   site: process.env.PUBLIC_SITE_URL || 'https://wip.vcruzdesigns.com',
   devToolbar: { enabled: false },
-  integrations: [mediaCollectorIntegration()],
+  integrations: [react(), mediaCollectorIntegration()],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
   // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {
