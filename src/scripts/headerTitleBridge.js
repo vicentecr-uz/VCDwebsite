@@ -132,7 +132,16 @@
     element.style.fontKerning = metrics.fontKerning;
     element.style.fontFeatureSettings = metrics.fontFeatureSettings;
   };
-  const layer = (source, text, geometry, metrics, mode, startedAt, fixed) => {
+  const layer = (
+    source,
+    text,
+    geometry,
+    metrics,
+    mode,
+    startedAt,
+    fixed,
+    timings,
+  ) => {
     const result = source.cloneNode(false);
     result.style.cssText = "";
     result.className = "header-navigation-title-layer";
@@ -162,12 +171,54 @@
         whiteSpace: "nowrap",
         animation: fixed
           ? "none"
-          : `${mode === "out" ? "vcd-header-title-out" : "vcd-header-title-in"} ${mode === "out" ? 150 : 250}ms ease ${(mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length)) - (Date.now() - startedAt)}ms both`,
+          : `${mode === "out" ? "vcd-header-title-out" : "vcd-header-title-in"} ${timings?.[index]?.durationMs ?? (mode === "out" ? 150 : 250)}ms ease ${(timings?.[index]?.delayMs ?? (mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length))) - (Date.now() - startedAt)}ms both`,
       });
       result.append(char);
     });
     return result;
   };
+  const charTimings = (element, text, mode) =>
+    codepoints(text).map((_, index) => {
+      const char = element.querySelectorAll(".header-trigger__char")[index];
+      const opacity = Number(getComputedStyle(char).opacity);
+      const animation = char
+        .getAnimations?.()
+        .find((item) => item.transitionProperty === "opacity" && item.effect?.getTiming);
+      if (animation) {
+        const timing = animation.effect.getTiming();
+        const durationMs =
+          typeof timing.duration === "number"
+            ? timing.duration
+            : Number(timing.duration);
+        const delayMs =
+          typeof animation.currentTime === "number" &&
+          Number.isFinite(animation.currentTime)
+            ? Number(timing.delay || 0) - animation.currentTime
+            : NaN;
+        if (!finite(durationMs, 10000) || !finite(delayMs, 10000)) return null;
+        return { durationMs, delayMs };
+      }
+      if (opacity === (mode === "out" ? 0 : 1)) return { durationMs: 0, delayMs: 0 };
+      return {
+        durationMs: mode === "out" ? 150 : 250,
+        delayMs:
+          mode === "out"
+            ? index * 30
+            : progressiveDelay(index, codepoints(text).length),
+      };
+    });
+  const validTimings = (timings, count) =>
+    timings === undefined ||
+    (Array.isArray(timings) &&
+      timings.length === count &&
+      timings.every(
+        (item) =>
+          item &&
+          finite(item.durationMs, 10000) &&
+          item.durationMs >= 0 &&
+          finite(item.delayMs, 10000),
+      ));
+
   window.__vcdHeaderTitleBridge = (pending, outgoing = false) => {
     const source = visibleLayer();
     if (
@@ -177,12 +228,39 @@
       pending.targetTitle.length > 300
     )
       return null;
-    const sourceText = pending.title.replace(/\s+/g, " ").trim();
+    let sourceText = pending.title.replace(/\s+/g, " ").trim();
     const targetText = pending.targetTitle.replace(/\s+/g, " ").trim();
     if (!sourceText || !targetText || sourceText.length > 300) return null;
     if (outgoing) {
-      const fromGeometry = geometryFor(source, sourceText);
-      const toGeometry = targetGeometry(source, targetText);
+      let outgoingSource = source;
+      if (
+        source.classList.contains("header-trigger__wordmark--home") &&
+        sourceText === targetText
+      ) {
+        const partiallyFaded = [
+          ...source.querySelectorAll(".header-trigger__char"),
+        ].some(
+          (char) =>
+            Number(getComputedStyle(char).opacity) < 1 ||
+            char
+              .getAnimations?.()
+              .some((item) => item.transitionProperty === "opacity"),
+        );
+        const page = source.parentElement?.querySelector(
+          ".header-trigger__wordmark--page",
+        );
+        if (partiallyFaded && page && page.textContent?.trim() !== targetText) {
+          outgoingSource = page;
+          pending.title = page.textContent.trim();
+          sourceText = pending.title.replace(/\s+/g, " ").trim();
+        }
+      }
+      const outgoingText = pending.title.replace(/\s+/g, " ").trim();
+      const fromGeometry = geometryFor(outgoingSource, outgoingText);
+      const toGeometry =
+        outgoingSource !== source || sourceText === targetText
+          ? geometryFor(source, targetText)
+          : targetGeometry(outgoingSource, targetText);
       if (
         !fromGeometry ||
         !toGeometry ||
@@ -190,11 +268,17 @@
         !validGeometry(toGeometry, codepoints(targetText).length)
       )
         return null;
-      toGeometry.left = fromGeometry.left;
-      toGeometry.top = fromGeometry.top;
+      if (outgoingSource === source) {
+        toGeometry.left = fromGeometry.left;
+        toGeometry.top = fromGeometry.top;
+      }
       pending.fromGeometry = fromGeometry;
       pending.toGeometry = toGeometry;
       pending.fontMetrics = fromGeometry.metrics;
+      if (outgoingSource !== source) {
+        pending.fromCharTimings = charTimings(outgoingSource, outgoingText, "out");
+        pending.toCharTimings = charTimings(source, targetText, "in");
+      }
       pending.startedAt = Date.now();
     }
     if (
@@ -203,7 +287,9 @@
       Date.now() < pending.startedAt ||
       !validMetrics(pending.fontMetrics) ||
       !validGeometry(pending.fromGeometry, codepoints(sourceText).length) ||
-      !validGeometry(pending.toGeometry, codepoints(targetText).length)
+      !validGeometry(pending.toGeometry, codepoints(targetText).length) ||
+      !validTimings(pending.fromCharTimings, codepoints(sourceText).length) ||
+      !validTimings(pending.toCharTimings, codepoints(targetText).length)
     )
       return null;
     const stack = source.closest(".header-trigger__wordmark-stack");
@@ -230,6 +316,7 @@
         "out",
         pending.startedAt,
         fixed,
+        pending.fromCharTimings,
       ),
     );
     if (!fixed)
@@ -242,15 +329,17 @@
           "in",
           pending.startedAt,
           false,
+          pending.toCharTimings,
         ),
       );
     stack.append(overlay);
+    const timingEnd = (timings, fallback) =>
+      Array.isArray(timings)
+        ? Math.max(0, ...timings.map((item) => item.durationMs + item.delayMs))
+        : fallback;
     const endMs = Math.max(
-      (codepoints(sourceText).length - 1) * 30 + 150,
-      progressiveDelay(
-        codepoints(targetText).length - 1,
-        codepoints(targetText).length,
-      ) + 250,
+      timingEnd(pending.fromCharTimings, (codepoints(sourceText).length - 1) * 30 + 150),
+      timingEnd(pending.toCharTimings, progressiveDelay(codepoints(targetText).length - 1, codepoints(targetText).length) + 250),
     );
     const finishesAt =
       Date.now() +
