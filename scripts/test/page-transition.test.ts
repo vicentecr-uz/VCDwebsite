@@ -68,6 +68,7 @@ class Target {
 
 const sourceUrl = 'https://vcd.test/work/';
 class Anchor extends Target {
+  dataset: Record<string, string> = {};
   attributes: Record<string, string>;
   constructor(href: string, attributes: Record<string, string> = {}) {
     super();
@@ -273,6 +274,63 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+for (const options of [
+  {}, { initialController: true }, { visible: true }, { failTween: true }, { failUpgrade: true },
+]) {
+  test(`destination reveal notifies carried menus only after the veil is uncovered: ${JSON.stringify(options)}`, async () => {
+    const f = fixture(options);
+    let completions = 0;
+    f.window.addEventListener('vcd:initial-reveal-complete', () => {
+      completions++;
+      assert.equal(Number(f.overlay.style.opacity), 0);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    });
+    await f.paint();
+    await f.paint();
+    if (f.tweens.length) {
+      assert.equal(completions, 0);
+      f.tweens[0].finish();
+    }
+    await f.advance(250);
+    assert.equal(completions, 1);
+  });
+}
+
+test('open menu closes only once the outgoing veil is white and navigation waits for its timeline', async () => {
+  const f = fixture();
+  let covered = 0;
+  f.document.addEventListener('header:navigation-covered', (event: any) => {
+    covered++;
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    event.detail.waitMs = 212;
+  });
+  await f.paint();
+  f.tweens[0].finish();
+  f.click();
+  assert.equal(covered, 0);
+  f.tweens[1].finish();
+  assert.equal(covered, 1);
+  assert.equal(f.destinations.length, 0);
+  await f.advance(211);
+  assert.equal(f.destinations.length, 0);
+  await f.advance(1);
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
+});
+
+test('pagehide cancels the menu closure wait without following the stale destination', async () => {
+  const f = fixture();
+  f.document.addEventListener('header:navigation-covered', (event: any) => { event.detail.waitMs = 212; });
+  await f.paint();
+  f.tweens[0].finish();
+  f.click();
+  f.tweens[1].finish();
+  assert.equal(f.timers.size, 1);
+  f.window.emit('pagehide');
+  assert.equal(f.timers.size, 0);
+  await f.advance(212);
+  assert.equal(f.destinations.length, 0);
 });
 
 test('early initial controller reveals once and deferred module adopts its state', async () => {

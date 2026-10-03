@@ -103,6 +103,13 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
       html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
+      @view-transition { navigation: auto; }
+      :root { view-transition-name: none; }
+      html[data-header-navigation] .site-header-slot { z-index: 110; }
+      html[data-header-navigation] [data-home-page] { z-index: auto; }
+      ::view-transition-group(vcd-header) { animation-duration: 0s; }
+      ::view-transition-old(vcd-header) { animation: none; display: none; }
+      ::view-transition-new(vcd-header) { animation: none; }
       @keyframes transition-overlay-reveal {
         to { opacity: 0; visibility: hidden; }
       }
@@ -407,6 +414,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       let readinessAbort: AbortController | null = null;
       let readinessCleanup: (() => void) | null = null;
       let navigationWatchdog: ReturnType<typeof setTimeout> | null = null;
+      let navigationMenuTimer: ReturnType<typeof setTimeout> | null = null;
       let destinationLocked = false;
       let suspended = false;
 
@@ -425,6 +433,10 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         if (navigationWatchdog !== null) {
           clearTimeout(navigationWatchdog);
           navigationWatchdog = null;
+        }
+        if (navigationMenuTimer !== null) {
+          clearTimeout(navigationMenuTimer);
+          navigationMenuTimer = null;
         }
         destinationLocked = false;
       };
@@ -539,6 +551,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
             overlay.style.opacity = '0';
             emitTransitionMilestone('veil-fade-start');
             if (visibleTransition) emitTransitionMilestone('veil-fade-end');
+            overlay.dataset.vcdInitialReveal = 'complete';
+            window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
             return;
           }
           emitTransitionMilestone('veil-fade-start');
@@ -551,6 +565,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               if (current === generation) {
                 overlay.hidden = true;
                 activeTween = null;
+                overlay.dataset.vcdInitialReveal = 'complete';
+                window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
               }
             },
           });
@@ -562,11 +578,56 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
             readinessAbort = null;
             overlay.style.opacity = '0';
             overlay.hidden = true;
+            overlay.dataset.vcdInitialReveal = 'complete';
+            window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
           }
         }
       };
 
       if (!initialRevealState) void revealPage();
+
+      const clearHeaderNavigationState = () => {
+        document.dispatchEvent(new CustomEvent('header:navigation-cancel'));
+        document.documentElement.removeAttribute?.('data-header-navigation');
+        const slot = document.querySelector('.site-header-slot');
+        slot?.removeAttribute?.('data-header-carried-navigation');
+        slot?.removeAttribute?.('data-header-navigation-title');
+        slot?.removeAttribute?.('data-header-navigation-same');
+        try { sessionStorage.removeItem('vcd:header-navigation'); } catch { /* Storage is optional. */ }
+      };
+
+      const captureHeaderNavigation = (target: URL, pending: { href: string; title: string; time: number; targetTitle?: string; margins?: number[] } = { href: target.href, title: '', time: Date.now() }) => {
+        if (target.pathname === '/') {
+          let introSeen = false;
+          try { introSeen = sessionStorage.getItem('vcd:home-intro-seen') === 'true'; } catch { introSeen = false; }
+          if (!introSeen) {
+            clearHeaderNavigationState();
+            return false;
+          }
+        }
+        const slot = document.querySelector<HTMLElement>('.site-header-slot');
+        const header = slot?.querySelector<HTMLElement>('.site-header');
+        const wordmark = header?.querySelector<HTMLElement>('.header-trigger__wordmark[aria-hidden="false"], .header-trigger__wordmark:not([aria-hidden="true"])');
+        if (!slot || !header || !wordmark) return false;
+        const visible = (element: HTMLElement, checkViewport = true) => {
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 &&
+            (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) &&
+            rect.left < (innerWidth || document.documentElement.clientWidth)));
+        };
+        const title = wordmark.textContent?.trim() ?? '';
+        if (!visible(slot, false) || !visible(header) || !visible(wordmark) || !title || title.length > 300) return false;
+        const chars = [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
+        const codepoints = [...title.replace(/ /g, '\u00a0')];
+        const fontSize = parseFloat(getComputedStyle(wordmark).fontSize) || 0;
+        const margins = chars.length === codepoints.length && fontSize > 0 ? chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) / fontSize) : [];
+        pending.href = target.href; pending.title = title; pending.time = Date.now();
+        pending.margins = margins.length === codepoints.length && margins.every((margin) => Number.isFinite(margin) && Math.abs(margin) <= 1) ? margins : undefined;
+        try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { return false; }
+        document.documentElement.dataset.headerNavigation = '';
+        return true;
+      };
 
       document.querySelectorAll('a').forEach((link) => {
         const anchor = link as HTMLAnchorElement;
@@ -589,6 +650,14 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           invalidate();
           const current = generation;
           destinationLocked = true;
+          if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
+          const pending = { href: target.href, title: '', time: Date.now(), targetTitle: anchor.dataset.headerNavigationTitle || undefined };
+          const captured = captureHeaderNavigation(target, pending);
+          document.dispatchEvent(new CustomEvent('header:navigation-start', { detail: { pending: captured ? pending : undefined } }));
+          if (captured) {
+            try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); }
+            catch { clearHeaderNavigationState(); }
+          }
           overlay.style.animation = 'none';
           const navigate = () => {
             if (current !== generation || !destinationLocked) return;
@@ -596,27 +665,37 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               // Recover a canceled or stalled navigation attempt after a bounded wait.
               navigationWatchdog = setTimeout(() => {
                 if (current !== generation) return;
+                clearHeaderNavigationState();
                 void revealPage();
               }, MAX_WAIT_MS);
               window.location.href = target.href;
             } catch {
+              clearHeaderNavigationState();
               void revealPage();
             }
           };
-          if (visibleTransition) {
-            target.searchParams.set('dev-transition', 'visible');
-            navigate();
-            return;
-          }
+          const finishExit = () => {
+            if (current !== generation || !destinationLocked) return;
+            const detail = { waitMs: 0 };
+            document.dispatchEvent(new CustomEvent('header:navigation-covered', { detail }));
+            if (detail.waitMs > 0) {
+              navigationMenuTimer = setTimeout(() => {
+                navigationMenuTimer = null;
+                navigate();
+              }, detail.waitMs);
+            } else navigate();
+          };
+          if (visibleTransition) { finishExit(); return; }
           try {
             overlay.hidden = false;
             activeTween = gsap.to(overlay, {
               opacity: 1,
               duration: 0.25,
               ease: REVEAL_EASE,
-              onComplete: navigate,
+              onComplete: finishExit,
             });
           } catch {
+            clearHeaderNavigationState();
             navigate();
           }
         });

@@ -11,6 +11,7 @@ interface Props {
 
 import headerSettings from '../content/settings/header.json';
 import type { SvgComponent } from 'astro/types';
+import headerTitleBridgeSource from '../scripts/headerTitleBridge.js?raw';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
@@ -49,6 +50,8 @@ const isHome = currentPath === '/';
 const brandHref = isHome ? null : '/';
 const menuLinks = headerSettings.menuLinks.map((link) => ({
   ...link,
+  navigationTitle: (link.href.replace(/\/+$/, '') || '/') === '/' ? headerSettings.siteTitle :
+    link.href.replace(/\/+$/, '') === '/play' ? 'Play' : link.href.replace(/\/+$/, '') === '/about' ? headerSettings.siteTitle : undefined,
   isCurrent: (link.href.replace(/\/+$/, '') || '/') === currentPath,
 }));
 ---
@@ -59,7 +62,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
-      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
+      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']} data-header-title-swap={showWordmarkSwap ? 'true' : 'false'}>
         <span class="header-trigger__sizer" aria-hidden="true">
           {showWordmarkSwap ? (
             <span class="header-trigger__sizer-track">
@@ -76,33 +79,48 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
             {brandHref ? (
               <a
                 href={brandHref}
+                data-header-navigation-title={headerSettings.siteTitle}
                 class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
                 aria-label="Home"
               >
-                {showWordmarkSwap ? (
-                  <span class="header-trigger__wordmark-stack">
-                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                      {pageChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </WordmarkTag>
-                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
-                      {homeChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </span>
+                <span class="header-trigger__wordmark-stack">
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                    {pageChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </WordmarkTag>
+                  <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                    {homeChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
                   </span>
-                ) : (
-                  <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
-                )}
-                {showWordmarkSwap && titleEditAttrs && (
+                </span>
+                {titleEditAttrs && (
                   <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
                     {wordmark}
                   </WordmarkTag>
                 )}
               </a>
             ) : (
-              <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
+              <>
+                <span class="header-trigger__wordmark-stack">
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                    {pageChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </WordmarkTag>
+                  <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                    {homeChars.map((char) => (
+                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                    ))}
+                  </span>
+                </span>
+                {titleEditAttrs && (
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
+                    {wordmark}
+                  </WordmarkTag>
+                )}
+              </>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -110,6 +128,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
+                  data-header-navigation-title={link.navigationTitle}
                   class="header-menu__link"
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
@@ -136,7 +155,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand" data-dev-mode-trigger>
             {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
+              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home" data-header-navigation-title={headerSettings.siteTitle}>
                 <span class="header-trigger__logo" aria-hidden="true">
                   <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
                 </span>
@@ -156,6 +175,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
+                  data-header-navigation-title={link.navigationTitle}
                   class="header-menu__link"
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
@@ -203,6 +223,73 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </header>
   </div>
 )}
+
+<script is:inline set:html={headerTitleBridgeSource}></script>
+
+<script is:inline>
+  (() => {
+    const slot = document.querySelector('.site-header-slot');
+    const root = document.documentElement;
+    let pending = null;
+    try {
+      const raw = sessionStorage.getItem('vcd:header-navigation');
+      sessionStorage.removeItem('vcd:header-navigation');
+      if (raw) pending = JSON.parse(raw);
+    } catch { pending = null; }
+    if (!slot || !pending || typeof pending.href !== 'string' || pending.href !== location.href ||
+      typeof pending.title !== 'string' || !pending.title.trim() || pending.title.length > 300 ||
+      typeof pending.time !== 'number' || !Number.isFinite(pending.time) ||
+      Date.now() - pending.time < 0 || Date.now() - pending.time > 10000) return;
+
+    const start = document.querySelector('.header-trigger--start');
+    const home = start?.querySelector('.header-trigger__wordmark--home');
+    const page = start?.querySelector('.header-trigger__wordmark--page');
+    if (!start || !home || !page) return;
+    if (pending.targetTitle && pending.fromGeometry && pending.toGeometry && window.__vcdHeaderTitleBridge) {
+      const bridge = window.__vcdHeaderTitleBridge(pending, false);
+      if (bridge) {
+        slot.__vcdTitleBridge = bridge;
+        slot.dataset.headerCarriedNavigation = '';
+        slot.dataset.headerNavigationTitle = pending.title;
+        root.dataset.headerNavigation = '';
+        window.addEventListener('pagereveal', (event) => {
+          window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
+        }, { once: true });
+        return;
+      }
+    }
+    const carriedTitle = pending.title.replace(/ /g, '\u00a0');
+    const originalChars = home.__vcdOriginalHeaderChars ??= [...home.querySelectorAll('.header-trigger__char')];
+    if (!originalChars[0]) return;
+    const pendingMargins = Array.isArray(pending.margins) && pending.margins.length === [...carriedTitle].length &&
+      pending.margins.every((margin) => typeof margin === 'number' && Number.isFinite(margin) && Math.abs(margin) <= 1)
+      ? pending.margins : null;
+    home.replaceChildren(...[...carriedTitle].map((char, index) => {
+      const span = originalChars[0].cloneNode(false);
+      span.className = 'header-trigger__char';
+      span.textContent = char;
+      span.style.setProperty('--char-duration', '0s');
+      span.style.setProperty('--char-delay', '0s');
+      span.style.setProperty('--char-blur', '0px');
+      if (pendingMargins) span.style.marginLeft = `${pendingMargins[index]}em`;
+      return span;
+    }));
+    home.setAttribute('aria-hidden', 'false');
+    page.setAttribute('aria-hidden', 'true');
+    home.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '1'; });
+    page.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '0'; });
+    start.classList.add('is-wordmark-swapped');
+    slot.dataset.headerCarriedNavigation = '';
+    slot.dataset.headerNavigationTitle = pending.title;
+    root.dataset.headerNavigation = '';
+    if (pending.title.replace(/\s+/g, ' ').trim() === page.textContent?.replace(/\s+/g, ' ').trim()) {
+      slot.dataset.headerNavigationSame = '';
+    }
+    window.addEventListener('pagereveal', (event) => {
+      window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
+    }, { once: true });
+  })();
+</script>
 
 <script>
   // Touch / no-hover devices open the menu on tap instead of on hover.
@@ -440,10 +527,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       mobileHeader = isMobile;
     };
 
-    // The menu needs a whole header under it, so opening while the header is
-    // half scrolled out slides it down to docked. This has to hang off the
-    // open itself, not off a scroll frame: hovering the wordmark with the page
-    // stationary fires no scroll, so update() would never see it.
+    // Opening a menu or navigating with a partly visible header uses the
+    // same docking slide; neither interaction requires a scroll frame.
+    document.addEventListener('header:navigation-start', () => {
+      const rect = logicalHeaderRect();
+      if (rect.top < 0 && rect.bottom > 0 && document.documentElement.hasAttribute('data-header-navigation')) {
+        setMode('docked', false, true);
+      }
+    });
+
     header.addEventListener('header:trigger-open', () => {
       // Riding is always at or above the viewport top (it docks the moment its
       // top comes back down to 0), so both cases are "not fully in place".
@@ -690,7 +782,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
-  const forceCloseMenus = () => {
+  const forceCloseMenus = (preserveNavigation = false) => {
+    if (preserveNavigation && document.documentElement.hasAttribute('data-header-navigation')) return;
     menuScrollClosed = false;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('.site-header--nav-menu')) {
@@ -715,7 +808,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
     });
 
-    document.dispatchEvent(new CustomEvent('header:force-close'));
+    document.dispatchEvent(new CustomEvent('header:force-close', { detail: { preserveNavigation } }));
   };
 
   document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
@@ -746,6 +839,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const closeScale = MENU_TIMELINE_CLOSE_DURATION / timelineEnd;
     const closeLayoutMs = Math.ceil(MENU_TIMELINE_CLOSE_DURATION * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    let navigationClosing = false;
+    let navigationOutgoing = false;
 
     const clearCloseTimer = () => {
       if (closeTimer) clearTimeout(closeTimer);
@@ -803,7 +898,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let previewPinned = false;
 
     const openMenu = (event?: Event) => {
-      if (isOpen()) return;
+      if (navigationClosing || isOpen()) return;
       if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
       if (import.meta.env.DEV) {
         const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
@@ -841,7 +936,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
-      if (previewPinned) return;
+      if (previewPinned || navigationOutgoing) return;
       if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
       setCloseStagger();
@@ -850,9 +945,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
         delete trigger.dataset.menuCloseTimer;
-        if ((force || !trigger.matches(':hover')) && !trigger.contains(document.activeElement)) {
+        if ((force || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
           trigger.classList.remove('is-menu-open');
         }
+        if (!navigationOutgoing) navigationClosing = false;
       }, closeLayoutMs);
       trigger.dataset.menuCloseTimer = String(closeTimer);
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
@@ -881,6 +977,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
     }
 
+    document.addEventListener('header:force-close', () => {
+      navigationClosing = false;
+      navigationOutgoing = false;
+    });
+
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
     let lastPointerDownAt = -Infinity;
@@ -888,6 +989,24 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     trigger.addEventListener('pointerdown', () => {
       lastPointerDownAt = performance.now();
+    });
+
+    document.addEventListener('header:navigation-start', () => {
+      navigationClosing = true;
+      navigationOutgoing = true;
+    });
+    document.addEventListener('header:navigation-covered', (event) => {
+      if (!navigationOutgoing || !isOpen() || !document.documentElement.hasAttribute('data-header-navigation')) return;
+      navigationOutgoing = false;
+      closeMenu(true);
+      navigationOutgoing = true;
+      const detail = (event as CustomEvent<{ waitMs: number }>).detail;
+      detail.waitMs = Math.max(detail.waitMs, closeLayoutMs);
+    });
+    document.addEventListener('header:navigation-cancel', () => {
+      navigationClosing = false;
+      navigationOutgoing = false;
+      if (isOpen() && !trigger.matches(':hover') && !trigger.contains(document.activeElement)) closeMenu(true);
     });
 
     trigger.addEventListener('mouseenter', (event) => {
@@ -971,13 +1090,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   // pointer) leaves stale open state behind — reset it.
   tapModeMq.addEventListener('change', () => forceCloseMenus());
 
-  // Leave menu open during the exit fade (pointer is still over it). Close only when
-  // the page is actually unloaded / restored from bfcache so swipe-back isn't stuck open.
+  // Reset menu state when the document is restored from bfcache.
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) forceCloseMenus();
   });
   window.addEventListener('pagehide', () => {
-    forceCloseMenus();
+    forceCloseMenus(true);
   });
 
   // Kerning for the split wordmark.
@@ -1093,7 +1211,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
     ];
     const homeWordmarkEl = wordmarkStack.querySelector('.header-trigger__wordmark--home');
-    const homeChars = [
+    let homeChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char'),
     ];
 
@@ -1105,11 +1223,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const BLUR_PX = 4;
 
     let wordmarkIsOpen = false;
+    let navigationOutgoing = false;
     let wordmarkRunToken = 0;
     let wordmarkFadeInFrame: number | undefined;
+    let navigationRestoreTimer: number | undefined;
 
     const invalidateWordmarkRun = () => {
       wordmarkRunToken += 1;
+      if (navigationRestoreTimer !== undefined) {
+        window.clearTimeout(navigationRestoreTimer);
+        navigationRestoreTimer = undefined;
+      }
       if (wordmarkFadeInFrame !== undefined) {
         cancelAnimationFrame(wordmarkFadeInFrame);
         wordmarkFadeInFrame = undefined;
@@ -1222,6 +1346,95 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
+    const restoreHomeWordmark = () => {
+      if (!homeWordmarkEl) return;
+      const homeState = homeWordmarkEl as HTMLElement & { __vcdOriginalHeaderChars?: HTMLElement[] };
+      const originalChars = homeState.__vcdOriginalHeaderChars;
+      if (!originalChars) return;
+      homeWordmarkEl.replaceChildren(...originalChars);
+      delete homeState.__vcdOriginalHeaderChars;
+      homeChars = [...homeWordmarkEl.querySelectorAll<HTMLElement>('.header-trigger__char')];
+      homeWordmarkEl.setAttribute('aria-hidden', 'true');
+      homeChars.forEach((char) => {
+        char.style.setProperty('--char-duration', '0s');
+        char.style.setProperty('--char-delay', '0s');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.opacity = '0';
+      });
+      applyWordmarkKerning();
+    };
+
+    const clearNavigationState = () => {
+      document.documentElement.removeAttribute('data-header-navigation');
+      headerSlot?.removeAttribute('data-header-carried-navigation');
+      headerSlot?.removeAttribute('data-header-navigation-title');
+      headerSlot?.removeAttribute('data-header-navigation-same');
+    };
+    const clearNavigationTitleState = () => {
+      headerSlot?.removeAttribute('data-header-navigation-title');
+      headerSlot?.removeAttribute('data-header-navigation-same');
+    };
+
+    const runNavigationTitleSwap = () => {
+      const bridge = headerSlot?.__vcdTitleBridge as { cleanup: () => void; finishesAt: number } | undefined;
+      if (bridge) {
+        const token = wordmarkRunToken;
+        const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
+        const wait = Promise.all([document.fonts?.ready ?? Promise.resolve(), transitionFinished ?? Promise.resolve()]);
+        void wait.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))).then(() => {
+          if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
+          navigationRestoreTimer = window.setTimeout(() => {
+            navigationRestoreTimer = undefined;
+            if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
+            bridge.cleanup();
+            delete headerSlot.__vcdTitleBridge;
+            clearNavigationTitleState();
+            startTrigger.classList.remove('is-wordmark-swapped');
+          }, Math.max(0, bridge.finishesAt - Date.now()));
+        });
+        return;
+      }
+      if (!headerSlot?.dataset.headerNavigationTitle) return;
+      const carriedTitle = headerSlot?.dataset.headerNavigationTitle?.replace(/ /g, '\u00a0');
+      if (!carriedTitle || !pageWordmark || !homeWordmarkEl) return;
+      const sameTitle = headerSlot?.dataset.headerNavigationSame !== undefined;
+      const navigationToken = wordmarkRunToken;
+      const startSwap = () => {
+        if (navigationToken !== wordmarkRunToken || !headerSlot?.dataset.headerNavigationTitle) return;
+        if (sameTitle) {
+          restoreHomeWordmark();
+          startTrigger.classList.remove('is-wordmark-swapped');
+          pageWordmark.setAttribute('aria-hidden', 'false');
+          pageChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = '1'; });
+          clearNavigationTitleState();
+          applyWordmarkKerning();
+          return;
+        }
+        invalidateWordmarkRun();
+        const runToken = wordmarkRunToken;
+        wordmarkIsOpen = false;
+        startTrigger.classList.add('is-wordmark-swapped');
+        setCharFadeOut(homeChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
+        applyWordmarkFadeIn(pageChars);
+        pageWordmark.setAttribute('aria-hidden', 'false');
+        homeWordmarkEl.setAttribute('aria-hidden', 'true');
+        navigationRestoreTimer = window.setTimeout(() => {
+          navigationRestoreTimer = undefined;
+          if (runToken !== wordmarkRunToken) return;
+          restoreHomeWordmark();
+          clearNavigationTitleState();
+          startTrigger.classList.remove('is-wordmark-swapped');
+          applyWordmarkKerning();
+        }, Math.ceil(Math.max(getFadeOutEnd(homeChars.length), getFadeInEnd(pageChars.length, 0)) * 1000) + 40);
+      };
+      const afterNativeTransition = () => {
+        requestAnimationFrame(() => requestAnimationFrame(startSwap));
+      };
+      const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
+      const fontsReady = document.fonts?.ready ?? Promise.resolve();
+      void Promise.all([fontsReady, transitionFinished ?? Promise.resolve()]).then(afterNativeTransition, afterNativeTransition);
+    };
+
     const runWordmarkOpen = () => {
       invalidateWordmarkRun();
       wordmarkIsOpen = true;
@@ -1235,19 +1448,49 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       wordmarkIsOpen = false;
       applyWordmarkClose();
       window.setTimeout(() => {
-        if (runToken !== wordmarkRunToken) return;
+        if (runToken !== wordmarkRunToken || navigationOutgoing) return;
         startTrigger.classList.remove('is-wordmark-swapped');
       }, 180 + 32);
     };
 
     const onWordmarkPointerActive = () => {
       if (isDevEditing()) return;
+      if (navigationOutgoing) return;
+      if (startTrigger.dataset.headerTitleSwap !== 'true') return;
+      if (headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
+      if (headerSlot?.dataset.headerNavigationTitle) {
+        invalidateWordmarkRun();
+        restoreHomeWordmark();
+        clearNavigationTitleState();
+      }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
     const onWordmarkPointerInactive = () => {
+      if (navigationOutgoing) return;
       if (wordmarkIsOpen) runWordmarkClose();
     };
+
+    document.addEventListener('header:navigation-start', (event) => {
+      navigationOutgoing = true;
+      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
+      if (!pending?.targetTitle || !window.__vcdHeaderTitleBridge) return;
+      const bridge = window.__vcdHeaderTitleBridge(pending, true);
+      if (bridge) {
+        headerSlot.__vcdTitleBridge = bridge;
+        document.documentElement.dataset.headerNavigation = '';
+      }
+    });
+    document.addEventListener('header:navigation-cancel', () => {
+      navigationOutgoing = false;
+      if (headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
+    });
 
     startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
     startTrigger.addEventListener('focusin', onWordmarkPointerActive);
@@ -1281,7 +1524,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
-    document.addEventListener('header:force-close', () => {
+    document.addEventListener('header:force-close', (event) => {
+      const preserveNavigation = (event as CustomEvent<{ preserveNavigation?: boolean }>).detail?.preserveNavigation;
+      if (preserveNavigation && navigationOutgoing) return;
+      if (!preserveNavigation && headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
+      if (!preserveNavigation) navigationOutgoing = false;
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
@@ -1299,7 +1549,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      restoreHomeWordmark();
+      if (!preserveNavigation) clearNavigationState();
     });
+
+    window.addEventListener('vcd:initial-reveal-complete', () => {
+      document.documentElement.removeAttribute('data-header-navigation');
+    }, { once: true });
+    runNavigationTitleSwap();
   }
 
   const currentPageLinks = [
@@ -1753,6 +2010,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so
      .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
      which lives outside the row. Tree order already puts the row above the bg. */
+  :global(html[data-header-navigation]) .site-header__row {
+    view-transition-name: vcd-header;
+  }
+
   .site-header__row {
     /* The header reads as a pair with the block directly under it, so the row
        spans that first block's width (see pageColumnStyle in
@@ -2017,6 +2278,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     left: 0;
     align-items: flex-start;
     width: max-content;
+    /* Keep the padded hover corridor stable while the title swaps. */
+    min-width: calc(100% + 2 * var(--hitbox-pad));
   }
 
   .header-trigger--end .header-trigger__panel {
@@ -2195,6 +2458,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     transition:
       opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
       filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
+  }
+
+  :global(.header-navigation-title-char) {
+    display: inline;
+    margin: 0;
+    transition: none;
+  }
+
+  @keyframes vcd-header-title-out {
+    from { opacity: 1; filter: blur(0); }
+    to { opacity: 0; filter: blur(4px); }
+  }
+
+  @keyframes vcd-header-title-in {
+    from { opacity: 0; filter: blur(4px); }
+    to { opacity: 1; filter: blur(0); }
   }
 
   .header-trigger__wordmark--home .header-trigger__char {
