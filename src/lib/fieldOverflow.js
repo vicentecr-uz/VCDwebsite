@@ -1,6 +1,6 @@
 import { initTextField } from './devTextField.js';
 
-export function initFieldOverflow(field) {
+export function initFieldOverflow(field, { manageMarkup = true } = {}) {
   const value = field.querySelector('.dev-field__value');
   if (!value) return;
   const controller = new AbortController();
@@ -17,7 +17,8 @@ export function initFieldOverflow(field) {
   };
   const resize = new ResizeObserver(sync);
   const discover = () => {
-    for (const input of value.querySelectorAll('input')) {
+    for (const input of manageMarkup ? value.querySelectorAll('input') : []) {
+      if (input.hidden || input.getAttribute('aria-hidden') === 'true') continue;
       if (!['text', 'search', 'url', 'tel'].includes(input.type) || input.closest('.dev-text-field')) continue;
       const root = document.createElement('div');
       root.className = 'dev-text-field dev-text-field--native';
@@ -43,7 +44,7 @@ export function initFieldOverflow(field) {
       if (!inputs.has(root)) inputs.set(root, initTextField(root));
     }
     const candidates = [...value.querySelectorAll('.dev-select__trigger-label, .base-ui-select-value, input[type="email"], input[type="password"], input[type="number"], [data-field-overflow]')];
-    if (!value.querySelector('input, textarea, button, select, .dev-text-field')) {
+    if (manageMarkup && !value.querySelector('input, textarea, button, select, .dev-text-field, [data-field-overflow]')) {
       if (!readOnlyTrack || !value.contains(readOnlyTrack)) {
         readOnlyTrack = document.createElement('span');
         readOnlyTrack.className = 'dev-field__overflow-content';

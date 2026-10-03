@@ -8,6 +8,18 @@ test('shared fields fade clipped read-only values and select labels, then clean 
   const originals = names.map(name => Object.getOwnPropertyDescriptor(globalThis, name));
   names.forEach(name => Object.defineProperty(globalThis, name, { configurable: true, value: window[name] }));
   try {
+    window.document.body.innerHTML = '<div class="dev-field"><div class="dev-field__value"><input aria-hidden="true" name="status" value="draft"></div></div>';
+    const hiddenField = window.document.querySelector('.dev-field')!;
+    const hiddenInput = hiddenField.querySelector('input')!;
+    const parent = hiddenInput.parentElement;
+    const dispose = initFieldOverflow(hiddenField, { manageMarkup: false })!;
+    expect(hiddenInput.parentElement).toBe(parent);
+    expect(hiddenField.querySelector('.dev-text-field')).toBeNull();
+    dispose();
+    const disposeNative = initFieldOverflow(hiddenField)!;
+    expect(hiddenInput.parentElement).toBe(parent);
+    expect(hiddenField.querySelector('.dev-text-field')).toBeNull();
+    disposeNative();
     for (const content of ['A long read-only value', '<button><span class="dev-select__trigger-label">A long selected value</span></button>']) {
       window.document.body.innerHTML = `<div class="dev-field"><div class="dev-field__value">${content}</div></div>`;
       const field = window.document.querySelector('.dev-field')!;
