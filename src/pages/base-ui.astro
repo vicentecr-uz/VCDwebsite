@@ -1,0 +1,98 @@
+---
+import '../styles/global.css';
+import '../styles/dev-chrome.css';
+import '../styles/base-ui-comparison.css';
+import CurrentExample from '../components/base-ui/CurrentExample.astro';
+import BaseUiExample from '../components/base-ui/BaseUiExample';
+import EditorSelectField from '../components/ui/EditorSelectField.astro';
+const selectOptions = [
+  { label: 'Active', options: [{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }] },
+  { label: 'Other', options: [{ value: 'archived', label: 'Archived' }, { value: 'long', label: 'A deliberately long project status for overflow review' }] },
+];
+import { comparisons } from '../lib/baseUiComparison';
+---
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
+    <title>Base UI comparison — Vicente Cruz</title>
+  </head>
+  <body class="comparison-body">
+    <main class="comparison-page">
+      <header class="comparison-header">
+        <a href="/styles/">← Component library</a>
+        <p class="comparison-eyebrow">Component study · Base UI 1.8</p>
+        <h1>Base UI comparison</h1>
+        <p class="comparison-intro">Try our current controls beside their Base UI versions. Choose Changes to see the differences.</p>
+        <div class="comparison-toolbar"><label class="comparison-theme">Theme <select data-comparison-theme><option value="light">Light</option><option value="dark">Dark</option></select></label><a href="#coverage">Coverage</a><a href="#measurements">Measurements</a></div>
+      </header>
+      <nav class="comparison-index" aria-label="Components"><h2>Components</h2>{comparisons.map(item => <a href={`#${item.id}`}>{item.name}</a>)}</nav>
+      <div class="comparison-catalog">
+        {comparisons.map((item, index) => <section class="comparison-row" id={item.id} data-comparison-row>
+          <header class="comparison-row-heading"><div><span class="comparison-number">{String(index + 1).padStart(2, '0')}</span><h2>{item.name}</h2></div><span class="comparison-status">{item.status}</span><button type="button" class="dev-btn dev-btn--soft comparison-notes-trigger" aria-controls={`changes-${item.id}`} aria-expanded="false" data-comparison-notes>Changes<span class="sr-only"> to {item.name}</span></button></header>
+          <div class="comparison-pair">
+            <div class="comparison-cell"><h3>Current</h3><CurrentExample kind={item.id} /></div>
+            <div class="comparison-cell"><h3>{item.id === 'dev-panel-drag' ? 'Retained' : 'Base UI study'}</h3>{item.id === 'dev-panel-drag' ? <CurrentExample kind={item.id} instance="retained" /> : item.id === 'select-field' ? <form class="base-ui-stack" data-editor-select-demo>
+              <EditorSelectField label="Status" name="status" value="draft" options={selectOptions} />
+              <EditorSelectField label="Disabled" value="draft" options={selectOptions} disabled />
+              <div class="comparison-controls"><button type="submit" class="dev-btn dev-btn--soft">Submit</button><button type="reset" class="dev-btn dev-btn--soft">Reset</button></div>
+              <output aria-live="polite">Draft</output>
+            </form> : <BaseUiExample kind={item.id} client:load />}</div>
+          </div>
+          <aside id={`changes-${item.id}`} popover="auto" class="comparison-callout" aria-label={`${item.name} changes`}>
+            <h3>{item.name}</h3><dl><dt>Before</dt><dd>{item.before}</dd><dt>After</dt><dd>{item.after}</dd><dt>To consider</dt><dd>{item.tradeoff}</dd></dl>
+          </aside>
+        </section>)}
+      </div>
+      <section id="coverage" class="comparison-summary">
+        <p class="comparison-eyebrow">Coverage</p><h2>What this trial includes</h2>
+        <p>All 14 original shared files in <code>components/ui</code>, plus the embedded overlay, are represented above. Dialog and action menu are additional candidates. The current examples use our actual Astro components; small page-only handlers make buttons and forms testable.</p>
+        <p>Project grids, media, page sections, navigation and bespoke animation stay in the <a href="/styles/">component library</a>. Base UI does not supply equivalents for those compositions. Badges, panel layout, titles and panel dragging are shown as retained pieces.</p>
+        <p>This page is a migration study. Editor select callers now use Base UI through a bridge to their native values. Other controls retain their existing implementation. Values on this page are temporary.</p>
+      </section>
+      <section id="measurements" class="comparison-summary">
+        <p class="comparison-eyebrow">Maintenance & delivery</p><h2>What we can save</h2>
+        <p>The editor’s select callers now use Base UI for keyboard handling, typeahead, focus and popup placement. A 76-line bridge keeps their native values, dynamic options, disabled state and form reset synchronized. The wrapper and React composition add about 150 lines, for about 230 lines of application code.</p>
+        <p>The previous select wrapper and controller total 773 lines. They remain for public demos, so this first migration adds code overall. The editor delegates interaction behaviour to Base UI; removing the legacy implementation later would require migrating those demos too.</p>
+        <p>Native inputs and buttons offer much smaller savings. Styling, editor actions, caret-aware text fades, dragging, resizing and persistence remain application code. New complex editor controls can use Base UI as the editor grows.</p>
+        <div class="comparison-measurements"><table><caption>Production module graphs · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
+          <tr><th scope="row">React + Astro’s React renderer</th><td>45.9 KiB</td></tr>
+          <tr><th scope="row">Editor select + bridge beyond renderer</th><td>45.8 KiB</td></tr>
+          <tr><th scope="row">Editor select including renderer</th><td>91.7 KiB</td></tr>
+          <tr><th scope="row">All Base UI study examples including renderer</th><td>121.0 KiB</td></tr>
+          <tr><th scope="row">Astro hydration bootstrap, inline</th><td>1.5 KiB</td></tr>
+          <tr><th scope="row">Current controls + inline demo scripts</th><td>About 11.7 KiB</td></tr>
+        </tbody></table></div>
+        <p>Module figures sum individually compressed production files. Shared styles, fonts, HTML and comparison-page helpers are excluded; inline figures are separate estimates. The whole study includes dialog and menu candidates. These figures describe module cost, not measured network transfer or development-server payload. React and shared modules load once across controls.</p>
+        <p>The production build retains no editor select or React renderer modules. The publication filter removes this unlinked page and its exclusive assets, and the authoring boundary removes editor entrypoints. Public JavaScript and CSS size is effectively unchanged by the select migration.</p>
+      </section>
+    </main>
+    <script>
+      const demoForm = document.querySelector<HTMLFormElement>('[data-editor-select-demo]');
+      const demoSubmit = (event: Event) => {
+        event.preventDefault();
+        if (demoForm) demoForm.querySelector('output')!.textContent = `Submitted: ${new FormData(demoForm).get('status') ?? ''}`;
+      };
+      const demoReset = () => { if (demoForm) demoForm.querySelector('output')!.textContent = 'Draft'; };
+      demoForm?.addEventListener('submit', demoSubmit);
+      demoForm?.addEventListener('reset', demoReset);
+      import.meta.hot?.dispose(() => {
+        demoForm?.removeEventListener('submit', demoSubmit);
+        demoForm?.removeEventListener('reset', demoReset);
+      });
+      import { bindSafeVh } from '../lib/safeVh';
+      bindSafeVh();
+      import { initComparisonNotes } from '../lib/baseUiComparisonNotes';
+      const dispose = initComparisonNotes();
+      document.querySelector<HTMLSelectElement>('[data-comparison-theme]')?.addEventListener('change', event => {
+        document.documentElement.dataset.theme = (event.target as HTMLSelectElement).value;
+      });
+      if (import.meta.hot) import.meta.hot.dispose(dispose);
+    </script>
+  </body>
+</html>

@@ -10,7 +10,7 @@ import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
 import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
-import SelectField from './ui/SelectField.astro';
+import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
 import ProjectAward from './project/ProjectAward.astro';
 
@@ -364,6 +364,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
     if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !wrapStyleSelect || !emphasisStyleField || !formatInline) return;
+
+    const isFormatBarTarget = (node: Node | null) => {
+      if (!node) return false;
+      if (formatBar.contains(node)) return true;
+      const element = node instanceof Element ? node : node.parentElement;
+      const popup = element?.closest<HTMLElement>('[data-editor-select-popup]');
+      const trigger = popup?.dataset.editorSelectOwner ? document.getElementById(popup.dataset.editorSelectOwner) : null;
+      return Boolean(trigger && formatBar.contains(trigger));
+    };
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
@@ -4240,14 +4249,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       blockStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
       syncingBlockStyle = false;
-      const labelEl = formatBar.querySelector('[data-dev-select-label]');
-      const iconEl = formatBar.querySelector('[data-dev-select-icon]');
-      const selected = blockStyleSelect.selectedOptions[0];
-      if (labelEl) labelEl.textContent = selected?.textContent ?? '';
-      const optionIcon = formatBar.querySelector(
-        `.dev-select__option[data-value="${CSS.escape(blockStyleSelect.value)}"] .dev-select__option-icon`,
-      );
-      if (iconEl) iconEl.innerHTML = optionIcon ? optionIcon.innerHTML : '';
     };
 
     const syncFormatInlineVisibility = (state: EditableTextState) => {
@@ -4822,7 +4823,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       if (endpointLineOffscreen) {
         formatBar.hidden = false;
-        if (formatBar.contains(document.activeElement)) {
+        if (isFormatBarTarget(document.activeElement)) {
           owner?.focus({ preventScroll: true });
           restoreFormatRange();
         }
@@ -4923,7 +4924,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const active = document.activeElement;
       if (
         (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
-        && !formatBar.contains(active)
+        && !isFormatBarTarget(active)
       ) {
         hideFormatBar();
         return;
@@ -4937,7 +4938,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       // Don't steal focus from the format UI itself.
-      if (active instanceof Node && formatBar.contains(active) && !formatBar.hidden && savedFormatRange) {
+      if (active instanceof Node && isFormatBarTarget(active) && !formatBar.hidden && savedFormatRange) {
         const block = findBlockState(savedFormatRange.commonAncestorContainer);
         if (block) {
           syncBlockStyleSelect(block.state);
@@ -4949,7 +4950,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       const focusBlock = active instanceof Node ? findBlockState(active) : null;
-      if (!(active instanceof Node && formatBar.contains(active)) && !focusBlock) {
+      if (!(active instanceof Node && isFormatBarTarget(active)) && !focusBlock) {
         hideFormatBar();
         return;
       }
@@ -5127,10 +5128,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       wrapStyleSelect.value = value;
       wrapStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
       syncingTextWrap = false;
-      if (!value) {
-        const label = wrapStyleField?.querySelector('[data-dev-select-label]');
-        if (label) label.textContent = 'Mixed';
-      }
+      wrapStyleSelect.dataset.emptyLabel = value ? '' : 'Mixed';
     };
 
     const applyTextWrap = (value: string) => {
@@ -5378,7 +5376,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-text-format__wrap-style, .dev-select__listbox')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-text-format__wrap-style, .dev-select__listbox, [data-editor-select-popup]')) {
         return;
       }
       event.preventDefault();
@@ -5458,7 +5456,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
     window.addEventListener('scroll', (event) => {
       const target = event.target;
-      if (target instanceof Node && formatBar.contains(target)) return;
+      if (target instanceof Node && isFormatBarTarget(target)) return;
       scheduleFormatBarUpdate();
     }, { capture: true, signal: editorSignal });
     window.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
@@ -5470,7 +5468,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const target = event.target;
         if (!(target instanceof Node)) return;
         const targetEl = target instanceof Element ? target : target.parentElement;
-        if (formatBar.contains(target) || targetEl?.closest('.dev-select__listbox')) return;
+        if (isFormatBarTarget(target) || targetEl?.closest('.dev-select__listbox')) return;
         const targetBlock = findBlockState(target);
         if (targetBlock) {
           if (linkPanelOpen) hideFormatBar(event.pointerId);

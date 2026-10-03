@@ -1,0 +1,86 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
+import Field from '../ui/Field.astro';
+import TextField from '../ui/TextField.astro';
+import TextArea from '../ui/TextArea.astro';
+import SelectField from '../ui/SelectField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Badge from '../ui/Badge.astro';
+import Hairline from '../ui/Hairline.astro';
+import DevPanel from '../ui/DevPanel.astro';
+import DevPanelTitle from '../ui/DevPanelTitle.astro';
+import DevOverlay from '../DevOverlay.astro';
+import type { ComparisonKind } from '../../lib/baseUiComparison';
+
+interface Props { kind: ComparisonKind; instance?: string }
+const { kind, instance = 'current' } = Astro.props;
+const options = [
+  { label: 'Active', options: [{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }] },
+  { label: 'Other', options: [{ value: 'archived', label: 'Archived' }, { value: 'long', label: 'A deliberately long project status for overflow review' }] },
+];
+---
+<div class="comparison-current" data-current-example={kind}>
+  {kind === 'button' && <>
+    <div class="comparison-controls" data-count-buttons>{(['ghost', 'soft', 'filled', 'page', 'danger'] as const).map(emphasis => <Button emphasis={emphasis} label={emphasis[0].toUpperCase() + emphasis.slice(1)} />)}</div>
+    <div class="comparison-controls"><Button label="Disabled" disabled /><Button label="Selected" selected data-demo-toggle /></div>
+    <output aria-live="polite" data-demo-output>0 clicks</output>
+  </>}
+  {kind === 'segmented-control' && <SegmentedControl label="Alignment" data-demo-segments>{['Left', 'Centre', 'Right'].map((label, i) => <Button emphasis="ghost" width="fill" label={label} selected={i === 0} />)}</SegmentedControl>}
+  {kind === 'viewport-selector' && <ViewportSelector dataAttr="data-demo-viewport" data-demo-segments />}
+  {kind === 'field' && <form data-demo-form><Field label="Project name" labelFor={`${instance}-project-name`}><input id={`${instance}-project-name`} name="projectName" required class="dev-field__input" /></Field><Button label="Submit" type="submit" /><output aria-live="polite" data-demo-output /></form>}
+  {kind === 'text-field' && <><TextField label="Normal" value="Project name" /><TextField label="Prefixed" prefix="example.com/" value="project-name" /><TextField label="Disabled" value="Unavailable" disabled /></>}
+  {kind === 'text-area' && <><TextArea label="Notes" value={'First line of notes.\nSecond line with a bit more detail.\nThird line.'} aria-label="Notes" /><TextArea label="Disabled" value="Unavailable" disabled aria-label="Disabled notes" /></>}
+  {kind === 'select-field' && <form data-demo-form><SelectField label="Status" name="status" value="draft" options={options} /><SelectField label="Disabled" value="draft" options={options} disabled /><div class="comparison-controls"><Button label="Submit" type="submit" /><button type="reset" class="dev-btn dev-btn--soft">Reset</button></div><output aria-live="polite" data-demo-output>Draft</output></form>}
+  {kind === 'toggle-row' && <><ToggleRow label="Unchecked" /><ToggleRow label="Checked" checked /><ToggleRow label="Disabled" disabled /></>}
+  {kind === 'panel-actions' && <><PanelActions><Button label="Cancel" emphasis="ghost" data-demo-action="Cancelled" /><Button label="Revert" emphasis="ghost" data-demo-action="Reverted" /><Button label="Save" emphasis="filled" data-demo-action="Saved locally" /></PanelActions><output aria-live="polite" data-demo-output /></>}
+  {kind === 'badge' && <div class="comparison-controls"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div>}
+  {kind === 'hairline' && <><span>Line above</span><Hairline /><span>Line below</span><div class="comparison-controls"><span>Left</span><Hairline orientation="vertical" /><span>Right</span></div></>}
+  {kind === 'dev-panel' && <DevPanel title="Panel title"><ToggleRow label="Show caption" checked /></DevPanel>}
+  {kind === 'dev-panel-title' && <><DevPanelTitle panelKey="image" /><DevPanelTitle panelKey="caption" /><DevPanelTitle panelKey="grid" /></>}
+  {kind === 'dev-panel-drag' && <div class="comparison-drag-stage"><Button label="Open draggable panel" data-demo-show-drag /><DevPanel title="Drag this panel" draggable hidden><Badge label="Session only" /><Button label="Close" data-demo-close-drag data-drag-ignore /></DevPanel></div>}
+  {kind === 'dev-overlay' && <DevOverlay title="Panel title" embedded storageKey={`base-ui-${instance}`}><ToggleRow label="Show caption" checked /></DevOverlay>}
+  {(kind === 'dialog' || kind === 'menu') && <p class="comparison-empty">No shared {kind === 'dialog' ? 'dialog' : 'action-menu'} primitive. This is an additional candidate.</p>}
+</div>
+
+<script>
+  const controller = new AbortController();
+  document.querySelectorAll<HTMLElement>('[data-current-example]').forEach(root => {
+    const output = root.querySelector<HTMLOutputElement>('[data-demo-output]');
+    let clicks = 0;
+    root.addEventListener('click', event => {
+      const button = (event.target as Element).closest<HTMLButtonElement>('button');
+      if (!button || button.disabled) return;
+      if (button.closest('[data-count-buttons]') && output) output.value = `${++clicks} clicks`;
+      if (button.hasAttribute('data-demo-toggle')) {
+        const selected = button.getAttribute('aria-pressed') !== 'true';
+        button.setAttribute('aria-pressed', String(selected));
+        button.classList.toggle('is-selected', selected);
+      }
+      const group = button.closest('[data-demo-segments]');
+      group?.querySelectorAll('button').forEach(item => {
+        item.classList.toggle('is-selected', item === button);
+        item.classList.toggle('is-active', item === button);
+        item.setAttribute('aria-pressed', String(item === button));
+      });
+      if (button.dataset.demoAction && output) output.value = button.dataset.demoAction;
+      const panel = root.querySelector<HTMLElement>('[data-dev-panel-draggable]');
+      if (panel && button.hasAttribute('data-demo-show-drag')) panel.hidden = false;
+      if (panel && button.hasAttribute('data-demo-close-drag')) {
+        panel.hidden = true;
+        root.querySelector<HTMLButtonElement>('[data-demo-show-drag]')?.focus();
+      }
+    }, { signal: controller.signal });
+    root.querySelector<HTMLFormElement>('form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      if (output) output.value = `Submitted: ${[...new FormData(event.currentTarget as HTMLFormElement).values()].join(', ')}`;
+    }, { signal: controller.signal });
+    root.addEventListener('change', event => {
+      if (event.target instanceof HTMLSelectElement && output) output.value = event.target.selectedOptions[0]?.textContent ?? '';
+    }, { signal: controller.signal });
+    root.addEventListener('reset', () => { if (output) output.value = 'Draft'; }, { signal: controller.signal });
+  });
+  if (import.meta.hot) import.meta.hot.dispose(() => controller.abort());
+</script>

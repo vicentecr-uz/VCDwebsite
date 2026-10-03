@@ -1,0 +1,237 @@
+.base-ui-demo,
+.base-ui-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dev-panel-content-gap);
+}
+.base-ui-row {
+  flex-wrap: wrap;
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.base-ui-row--wrap {
+  flex-wrap: wrap;
+}
+.base-ui-control {
+  box-sizing: border-box;
+  width: calc(100% + 16px);
+}
+.base-ui-field {
+  min-width: 0;
+  gap: var(--dev-panel-label-gap);
+}
+.base-ui-label {
+  font: var(--dev-text-field-label);
+}
+.base-ui-error {
+  color: var(--sys-color-error, #b3261e);
+  font: var(--dev-text-status);
+  min-height: 1em;
+}
+.base-ui-status,
+.base-ui-note {
+  color: var(--sys-color-on-srf-variant);
+  font: var(--dev-text-status);
+}
+.base-ui-radio-group {
+  display: flex;
+  gap: 4px;
+}
+.base-ui-radio__control[data-checked] {
+  background: var(--comp-button-page-container-selected);
+  color: var(--sys-color-on-srf);
+}
+.base-ui-radio__control:focus-visible,
+.base-ui-checkbox__root:focus-visible,
+.base-ui-menu-item:focus-visible {
+  outline: 2px solid var(--sys-color-outline, currentColor);
+  outline-offset: 2px;
+}
+.base-ui-checkbox {
+  cursor: pointer;
+  font: var(--dev-text-label);
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+.base-ui-checkbox__root {
+  align-items: center;
+  appearance: none;
+  background: var(--sys-color-srf);
+  border: 1px solid var(--sys-color-outline);
+  border-radius: var(--dev-radius-checkbox);
+  display: inline-flex;
+  height: 16px;
+  justify-content: center;
+  padding: 0;
+  width: 16px;
+}
+.base-ui-checkbox__root[data-checked] {
+  background: var(--comp-button-filled-container);
+  border-color: var(--comp-button-filled-container);
+  color: var(--comp-button-filled-label);
+}
+.base-ui-checkbox:has([data-disabled]) {
+  opacity: var(--dev-opacity-disabled);
+}
+.base-ui-checkbox__indicator {
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--comp-button-filled-label);
+  transition: opacity 0.15s ease;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  line-height: 1;
+}
+.base-ui-checkbox__root[data-checked] .base-ui-checkbox__indicator {
+  opacity: 1;
+}
+.base-ui-select-positioner,
+.base-ui-menu-positioner {
+  z-index: 300;
+}
+.base-ui-select-popup,
+.base-ui-menu-popup {
+  background: var(--comp-field-container);
+  border: 1px solid var(--sys-color-outline-variant);
+  border-radius: var(--dev-radius-control-in-container);
+  box-shadow: var(--elevated-surface-shadow);
+  min-width: 180px;
+  padding: 4px;
+}
+.base-ui-select-popup {
+  max-height: min(360px, var(--available-height));
+  max-width: min(var(--anchor-width), calc(100vw - 32px));
+  overflow: auto;
+  width: max-content;
+}
+.base-ui-select-item,
+.base-ui-menu-item {
+  align-items: center;
+  border-radius: var(--dev-radius-control);
+  cursor: pointer;
+  display: flex;
+  font: var(--dev-text-label);
+  justify-content: space-between;
+  min-height: var(--dev-control-height);
+  padding: 6px 8px;
+}
+.base-ui-select-item:focus-visible { outline: none; }
+.base-ui-select-item[data-highlighted],
+.base-ui-menu-item[data-highlighted] {
+  background: var(--comp-button-soft-container-hover);
+}
+.base-ui-select-item[data-disabled],
+.base-ui-menu-item[data-disabled] {
+  cursor: default;
+  opacity: var(--dev-opacity-disabled);
+}
+.base-ui-select-item .base-ui-select-item__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.base-ui-collapsible__panel {
+  overflow: hidden;
+}
+.base-ui-dialog-backdrop {
+  background: color-mix(in srgb, #000 28%, transparent);
+  inset: 0;
+  position: fixed;
+  z-index: 250;
+}
+.base-ui-dialog-popup {
+  background: var(--sys-color-srf);
+  border-radius: var(--dev-radius-panel);
+  box-shadow: var(--elevated-surface-shadow);
+  display: grid;
+  gap: var(--dev-panel-content-gap);
+  left: 50%;
+  max-height: calc(var(--vh-safe, 1svh) * 100 - 32px);
+  max-width: min(352px, calc(100vw - 32px));
+  overflow: auto;
+  padding: var(--dev-panel-pad);
+  position: fixed;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  z-index: 251;
+}
+.base-ui-dialog-backdrop[data-starting-style],
+.base-ui-dialog-backdrop[data-ending-style] {
+  opacity: 0;
+}
+.base-ui-dialog-backdrop {
+  transition: opacity 180ms ease;
+}
+.base-ui-dialog-popup[data-starting-style],
+.base-ui-dialog-popup[data-ending-style],
+.base-ui-select-popup[data-starting-style],
+.base-ui-select-popup[data-ending-style],
+.base-ui-menu-popup[data-starting-style],
+.base-ui-menu-popup[data-ending-style] {
+  opacity: 0;
+}
+.base-ui-dialog-popup,
+.base-ui-select-popup,
+.base-ui-menu-popup {
+  transition: opacity 180ms ease;
+}
+.base-ui-hairlines {
+  align-items: center;
+  display: flex;
+  gap: 1rem;
+}
+
+.base-ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
+.base-ui-field .dev-field__input--select { display: flex; align-items: center; gap: 8px; padding-right: 36px; }
+.base-ui-select-item { overflow-wrap: anywhere; gap: 8px; }
+.base-ui-select-item > :first-child { min-width: 0; }
+.base-ui-field .dev-field__value { min-width: 0; }
+.base-ui-select-popup { min-width: min(180px, var(--anchor-width)); width: var(--anchor-width); }
+.base-ui-collapsible { width: min(var(--dev-panel-width), 100%); box-sizing: border-box; }
+
+.base-ui-select-popup { background: var(--sys-color-srf); border: 0; }
+.base-ui-select-item[data-highlighted] { background: var(--comp-field-container); }
+.base-ui-select-item { transition: background-color .2s ease, color .2s ease; }
+
+.base-ui-select-group + .base-ui-select-group { margin-top: 8px; }
+.base-ui-select-group-label { padding: 6px 8px; color: var(--sys-color-on-srf-variant); font: var(--dev-text-status); line-height: 1.4; }
+
+.base-ui-checkbox__root { cursor: pointer; flex: none; }
+.base-ui-checkbox__root:hover { background: var(--comp-button-ghost-container-hover); }
+.base-ui-checkbox__root[data-checked]:hover { background: var(--comp-button-filled-container-hover); border-color: var(--comp-button-filled-container-hover); }
+.base-ui-checkbox__root[data-disabled] { cursor: not-allowed; }
+
+.base-ui-collapsible[hidden] { display: none; }
+.base-ui-collapsible[data-panel-open="false"] { gap: 0; }
+.base-ui-collapsible[data-panel-open="false"] > .dev-panel__header { padding-bottom: 0; }
+.base-ui-panel-light { position: relative; display: grid; place-items: center; border: 0; padding: 0; cursor: pointer; color: transparent; }
+.base-ui-panel-light::before { content: ''; position: absolute; inset: calc(var(--dev-hit-inset) * -1); }
+.base-ui-panel-light svg { grid-area: 1 / 1; opacity: 0; filter: blur(0); transform: scale(1); pointer-events: none; transition: opacity 250ms ease-in-out, filter 250ms ease-in-out, transform 250ms ease-in-out; }
+.base-ui-collapsible[data-panel-open="false"] .base-ui-collapsible__panel { display: none; }
+.base-ui-collapsible .dev-panel__lights:hover .base-ui-panel-light:first-child,
+.base-ui-collapsible .base-ui-panel-light:first-child:focus-visible { background: var(--comp-traffic-light-minimize-hover); color: var(--comp-traffic-light-minimize-icon); }
+.base-ui-collapsible[data-panel-open="false"] .dev-panel__lights:hover .base-ui-panel-light:first-child,
+.base-ui-collapsible[data-panel-open="false"] .base-ui-panel-light:first-child:focus-visible { background: var(--comp-traffic-light-expand-hover); color: var(--comp-traffic-light-expand-icon); }
+.base-ui-collapsible .dev-panel__lights:hover .base-ui-panel-light:last-child,
+.base-ui-collapsible .base-ui-panel-light:last-child:focus-visible { background: var(--comp-traffic-light-hide-hover); color: var(--comp-traffic-light-hide-icon); }
+.base-ui-collapsible .dev-panel__lights:hover .base-ui-panel-light svg,
+.base-ui-collapsible .base-ui-panel-light:focus-visible svg { opacity: 1; }
+.base-ui-collapsible[data-panel-open="true"] .base-ui-panel-light svg[data-panel-glyph="plus"],
+.base-ui-collapsible[data-panel-open="false"] .base-ui-panel-light svg[data-panel-glyph="minus"] { opacity: 0; filter: blur(2px); transform: scale(.25); }
+@media (prefers-reduced-motion: reduce) {
+  .base-ui-collapsible[data-panel-open] .base-ui-panel-light svg[data-panel-glyph] { filter: none; transform: none; }
+}
+
+.base-ui-field .dev-field__value:has([data-selection-returned-focus]) { box-shadow: none; }
+
+.base-ui-select-item:active:not([data-disabled]) {
+  background: var(--comp-button-soft-container-pressed);
+  transition-duration: 0s;
+}
+.base-ui-select-check { flex: none; }
