@@ -5,6 +5,7 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 import TextField from '../ui/TextField.astro';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   label?: string;
@@ -14,6 +15,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
 }
 
 const {
@@ -24,6 +26,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
 } = Astro.props;
 const statusId = `signup-status-${sectionId ?? Math.random().toString(36).slice(2, 8)}`;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
@@ -35,6 +38,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
   data-signup-motion
   {...(spacingAttrs ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
   <form class="project-signup__form" data-project-signup-form novalidate>
@@ -71,6 +76,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       <p class="project-signup__status-message" data-signup-status-message></p>
     </div>
   </form>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>
 
 <script>

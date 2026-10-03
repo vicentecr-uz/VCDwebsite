@@ -1,5 +1,6 @@
 ---
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   title: string;
@@ -9,6 +10,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
 }
 
 const {
@@ -19,6 +21,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
 } = Astro.props;
 const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
 const path = (field: string | number) => JSON.stringify([...sectionPath, field]);
@@ -29,6 +32,8 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-details', projectStackClass(spacing), sectionId && 'section-block']}
   {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
   data-dev-section-deletable={editable ? "projectDetails" : undefined}
   data-dev-project-details={editable ? "" : undefined}
 >
@@ -60,4 +65,5 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
     ))}
   </dl>
   {editable && <button type="button" class="project-details__add" data-project-details-add data-dev-mode-only>Add row</button>}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>

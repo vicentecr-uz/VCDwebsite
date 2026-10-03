@@ -39,6 +39,11 @@ const PUBLISH_BRANCH = 'main';
  */
 const RENDERING_PATHS = [
   'src/components/project/',
+  'src/scripts/siteAnnotationPosition.ts',
+  'src/lib/siteAnnotations.ts',
+  'src/lib/siteAnnotationSvg.ts',
+  'src/styles/site-annotations.css',
+  'scripts/dev-annotations.mjs',
   'src/lib/devTextDom.ts',
   'src/components/ProjectGrid.astro',
   'src/components/GalleryMediaInk.astro',

@@ -18,6 +18,7 @@ import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
 import { introRun, resolveIntroHeight } from '../../lib/projectIntro';
 import { shouldUseProjectScrollFinale } from '../../lib/projectScrollFinale';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   documentKey: string;
@@ -66,7 +67,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
   const introHeight = intro?.introHeight as number | undefined;
 
   if (type === 'interactiveDemo') {
-    return <ProjectInteractiveDemo demo={section.demo} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} documentKey={documentKey} sectionPath={path} />;
+    return <ProjectInteractiveDemo demo={section.demo} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} annotations={section.annotations} documentKey={documentKey} sectionPath={path} />;
   }
 
   if (type === 'heroImage') {
@@ -87,6 +88,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         mobileInset={section.mobileInset === true}
         audio={section.audio as never}
+        annotations={section.annotations}
       />
     );
   }
@@ -105,6 +107,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -127,6 +130,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -144,6 +148,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         introHeight={introHeight}
         introHeightPath={intro ? ['introHeight'] : undefined}
         balance={section.balance === true}
+        annotations={section.annotations}
       />
     );
   }
@@ -158,6 +163,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -178,6 +184,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -193,6 +200,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -213,6 +221,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         intro={intro !== undefined}
         introHeight={introHeight}
         introHeightPath={intro ? ['introHeight'] : undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -245,6 +254,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         audio={section.audio as never}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -258,6 +268,11 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         autoplay={section.autoplay === true}
         aspectRatio={section.aspectRatio as string | undefined}
         spacing={spacing}
+        documentKey={documentKey}
+        sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
+        sectionPath={path}
+        annotations={section.annotations}
       />
     );
   }
@@ -273,6 +288,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         contentId={section.id as string | undefined}
         speed={section.speed as number | undefined}
         logoOpacity={section.logoOpacity as number | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -287,6 +303,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
         viewportMaxEm={section.viewportMaxEm as { desktop?: number; tablet?: number; mobile?: number } | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -306,6 +323,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
         contentId={section.id as string | undefined}
+        annotations={section.annotations}
       />
     );
   }
@@ -321,9 +339,12 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
     return (
       <section
         class:list={['project-block', projectStackClass(spacing)]}
+        data-site-annotation-section-id={section.id as string | undefined}
+        data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
         {...(spacingDevAttrs(documentKey, path, spacing, { contentId: section.id as string | undefined }) ?? {})}
       >
         <ProjectGrid variant={variant} items={getProjectGridListings(variant)} />
+        {section.id && (import.meta.env.DEV || (Array.isArray(section.annotations) && section.annotations.length > 0)) && <SiteAnnotationLayer sectionId={section.id as string} annotations={section.annotations} />}
       </section>
     );
   }
@@ -359,6 +380,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       contentId={finaleFadeSection.id as string | undefined}
       mobileInset={finaleFadeSection.mobileInset === true}
       scrollFinaleRole="fade"
+      annotations={finaleFadeSection.annotations}
     />
     <ProjectImage
       src={String(finaleTargetSection.src ?? '')}
@@ -386,6 +408,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       contentId={finaleTargetSection.id as string | undefined}
       mobileInset={finaleTargetSection.mobileInset === true}
       scrollFinaleRole="target"
+      annotations={finaleTargetSection.annotations}
     />
     <ProjectScrollFinale />
   </Fragment>
