@@ -467,7 +467,7 @@ function MenuDemo() {
       <Menu.Root>
         <Menu.Trigger className="dev-btn dev-btn--soft">Actions</Menu.Trigger>
         <Menu.Portal>
-          <Menu.Positioner className="base-ui-menu-positioner">
+          <Menu.Positioner className="base-ui-menu-positioner" sideOffset={8}>
             <Menu.Popup className="base-ui-menu-popup">
               <Menu.Item
                 className="base-ui-menu-item"
