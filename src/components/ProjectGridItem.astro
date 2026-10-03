@@ -79,6 +79,9 @@ const hoverDark = item.hoverDark ?? item.dark;
 
 const showHoverImg = item.hoverImage || projectEditable;
 const showAwardBadge = item.slug === 'goodhome-painting-tools' || (isDev && item.slug === '__template__');
+const normalizedItemHref = item.href?.replace(/\/+$/, '') || '';
+const navigationTitle = normalizedItemHref === '/styles' ? 'Design System' :
+  item.slug && normalizedItemHref === `/${item.slug}` ? item.title : undefined;
 ---
 
 <li
@@ -228,7 +231,7 @@ const showAwardBadge = item.slug === 'goodhome-painting-tools' || (isDev && item
       </div>
     </div>
   ) : (
-    <a href={item.href} class="project-grid__card block">
+    <a href={item.href} class="project-grid__card block" data-header-navigation-title={navigationTitle}>
       <div
         class:list={[
           'project-grid__cover',
