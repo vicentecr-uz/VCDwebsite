@@ -117,7 +117,7 @@ test('client-inserted text and heading blocks receive drawing metadata immediate
     });
     h.document.body.append(root);
     h.structure();
-    expect(root.querySelector('[data-site-draw-open]')).not.toBeNull();
+    expect(root.querySelector('[data-site-draw-manage]')).not.toBeNull();
     expect(root.dataset.siteAnnotationSectionId).toBe(`new-${type}`);
   }
 });
@@ -247,13 +247,6 @@ test('Alt D with one selected word opens an anchored highlight stage', () => {
   }));
   expect(h.document.querySelector<HTMLButtonElement>('.site-draw-stage__controls button')!.textContent)
     .toBe('Highlight');
-});
-
-test('the block control is explicitly a selection-free doodle action', () => {
-  const h = harness();
-  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-open]')!;
-  expect(button.textContent).toBe('Doodle');
-  expect(button.getAttribute('aria-label')).toBe('Draw a doodle on this block');
 });
 
 const preferences = {
