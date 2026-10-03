@@ -585,32 +585,25 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         try { sessionStorage.removeItem('vcd:header-navigation'); } catch { /* Storage is optional. */ }
       };
 
-      const captureHeaderNavigation = (target: URL) => {
+      const captureHeaderNavigation = (target: URL, pending: { href: string; title: string; time: number; targetTitle?: string; margins?: number[] } = { href: target.href, title: '', time: Date.now() }) => {
         const slot = document.querySelector<HTMLElement>('.site-header-slot');
         const header = slot?.querySelector<HTMLElement>('.site-header');
         const wordmark = header?.querySelector<HTMLElement>('.header-trigger__wordmark[aria-hidden="false"], .header-trigger__wordmark:not([aria-hidden="true"])');
         if (!slot || !header || !wordmark) return false;
         const visible = (element: HTMLElement, checkViewport = true) => {
-          const style = getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 &&
-            (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) &&
-            rect.left < (innerWidth || document.documentElement.clientWidth)));
+          const style = getComputedStyle(element); const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) && rect.left < (innerWidth || document.documentElement.clientWidth)));
         };
         const title = wordmark.textContent?.trim() ?? '';
         if (!visible(slot, false) || !visible(header) || !visible(wordmark) || !title || title.length > 300) return false;
         const chars = [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
         const codepoints = [...title.replace(/ /g, '\u00a0')];
         const fontSize = parseFloat(getComputedStyle(wordmark).fontSize) || 0;
-        const margins = chars.length === codepoints.length && fontSize > 0
-          ? chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) / fontSize)
-          : [];
-        const safeMargins = margins.length === codepoints.length && margins.every((margin) => Number.isFinite(margin) && Math.abs(margin) <= 1)
-          ? margins : undefined;
-        try {
-          sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: target.href, title, time: Date.now(), margins: safeMargins }));
-        } catch { return false; }
+        const margins = chars.length === codepoints.length && fontSize > 0 ? chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) / fontSize) : [];
+        pending.href = target.href; pending.title = title; pending.time = Date.now();
+        pending.margins = margins.length === codepoints.length && margins.every((margin) => Number.isFinite(margin) && Math.abs(margin) <= 1) ? margins : undefined;
         document.documentElement.dataset.headerNavigation = '';
+        try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { return false; }
         return true;
       };
 
@@ -635,7 +628,10 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           invalidate();
           const current = generation;
           destinationLocked = true;
-          document.dispatchEvent(new CustomEvent('header:navigation-start'));
+          const pending = { href: target.href, title: '', time: Date.now(), targetTitle: anchor.dataset.headerNavigationTitle || undefined };
+          captureHeaderNavigation(target, pending);
+          document.dispatchEvent(new CustomEvent('header:navigation-start', { detail: { pending } }));
+          try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { clearHeaderNavigationState(); }
           overlay.style.animation = 'none';
           const navigate = () => {
             if (current !== generation || !destinationLocked) return;
@@ -655,7 +651,6 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           if (visibleTransition) {
             target.searchParams.set('dev-transition', 'visible');
           }
-          captureHeaderNavigation(target);
           if (visibleTransition) { navigate(); return; }
           try {
             overlay.hidden = false;
