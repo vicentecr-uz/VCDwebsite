@@ -527,10 +527,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       mobileHeader = isMobile;
     };
 
-    // The menu needs a whole header under it, so opening while the header is
-    // half scrolled out slides it down to docked. This has to hang off the
-    // open itself, not off a scroll frame: hovering the wordmark with the page
-    // stationary fires no scroll, so update() would never see it.
+    // Opening a menu or navigating with a partly visible header uses the
+    // same docking slide; neither interaction requires a scroll frame.
+    document.addEventListener('header:navigation-start', () => {
+      const rect = logicalHeaderRect();
+      if (rect.top < 0 && rect.bottom > 0 && document.documentElement.hasAttribute('data-header-navigation')) {
+        setMode('docked', false, true);
+      }
+    });
+
     header.addEventListener('header:trigger-open', () => {
       // Riding is always at or above the viewport top (it docks the moment its
       // top comes back down to 0), so both cases are "not fully in place".
@@ -938,7 +943,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
         delete trigger.dataset.menuCloseTimer;
-        if ((force || navigationClosing || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
+        if ((force || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
           trigger.classList.remove('is-menu-open');
         }
       }, closeLayoutMs);
@@ -1008,7 +1013,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       closeMenu();
     });
-    // Scroll-driven close uses the normal reverse timeline.
+    // Scroll-driven close: run the normal animated close, not the instant
+    // force-close, so the menu fades/staggers out like a mouse-leave.
     trigger.addEventListener('header:request-close', () => {
       closeMenu(true);
     });
