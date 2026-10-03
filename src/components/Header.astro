@@ -11,6 +11,7 @@ interface Props {
 
 import headerSettings from '../content/settings/header.json';
 import type { SvgComponent } from 'astro/types';
+import headerTitleBridgeSource from '../scripts/headerTitleBridge.js?raw';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
@@ -49,6 +50,8 @@ const isHome = currentPath === '/';
 const brandHref = isHome ? null : '/';
 const menuLinks = headerSettings.menuLinks.map((link) => ({
   ...link,
+  navigationTitle: (link.href.replace(/\/+$/, '') || '/') === '/' ? headerSettings.siteTitle :
+    link.href.replace(/\/+$/, '') === '/play' ? 'Play' : link.href.replace(/\/+$/, '') === '/about' ? headerSettings.siteTitle : undefined,
   isCurrent: (link.href.replace(/\/+$/, '') || '/') === currentPath,
 }));
 ---
@@ -76,6 +79,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
             {brandHref ? (
               <a
                 href={brandHref}
+                data-header-navigation-title={headerSettings.siteTitle}
                 class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
                 aria-label="Home"
               >
@@ -124,6 +128,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
+                  data-header-navigation-title={link.navigationTitle}
                   class="header-menu__link"
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
@@ -150,7 +155,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand" data-dev-mode-trigger>
             {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
+              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home" data-header-navigation-title={headerSettings.siteTitle}>
                 <span class="header-trigger__logo" aria-hidden="true">
                   <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
                 </span>
@@ -170,6 +175,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
+                  data-header-navigation-title={link.navigationTitle}
                   class="header-menu__link"
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
@@ -218,6 +224,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </div>
 )}
 
+<script is:inline set:html={headerTitleBridgeSource}></script>
+
 <script is:inline>
   (() => {
     const slot = document.querySelector('.site-header-slot');
@@ -237,6 +245,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const home = start?.querySelector('.header-trigger__wordmark--home');
     const page = start?.querySelector('.header-trigger__wordmark--page');
     if (!start || !home || !page) return;
+    if (pending.targetTitle && pending.fromGeometry && pending.toGeometry && window.__vcdHeaderTitleBridge) {
+      const bridge = window.__vcdHeaderTitleBridge(pending, false);
+      if (bridge) {
+        slot.__vcdTitleBridge = bridge;
+        slot.dataset.headerCarriedNavigation = '';
+        slot.dataset.headerNavigationTitle = pending.title;
+        root.dataset.headerNavigation = '';
+        window.addEventListener('pagereveal', (event) => {
+          window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
+        }, { once: true });
+        return;
+      }
+    }
     const carriedTitle = pending.title.replace(/ /g, '\u00a0');
     const originalChars = home.__vcdOriginalHeaderChars ??= [...home.querySelectorAll('.header-trigger__char')];
     if (!originalChars[0]) return;
@@ -1324,6 +1345,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const runNavigationTitleSwap = () => {
+      const bridge = headerSlot?.__vcdTitleBridge as { cleanup: () => void; remainingMs: number } | undefined;
+      if (bridge) {
+        const token = wordmarkRunToken;
+        const wait = Promise.all([document.fonts?.ready ?? Promise.resolve(), (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition ?? Promise.resolve()]);
+        void wait.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))).then(() => {
+          if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
+          window.setTimeout(() => { if (headerSlot?.__vcdTitleBridge !== bridge) return; bridge.cleanup(); delete headerSlot.__vcdTitleBridge; clearNavigationTitleState(); startTrigger.classList.remove('is-wordmark-swapped'); }, bridge.remainingMs);
+        });
+        return;
+      }
       if (!headerSlot?.dataset.headerNavigationTitle) return;
       const carriedTitle = headerSlot?.dataset.headerNavigationTitle?.replace(/ /g, '\u00a0');
       if (!carriedTitle || !pageWordmark || !homeWordmarkEl) return;
@@ -1387,11 +1418,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (isDevEditing()) return;
       if (navigationOutgoing) return;
       if (startTrigger.dataset.headerTitleSwap !== 'true') return;
-      if (headerSlot?.dataset.headerNavigationTitle) {
-        invalidateWordmarkRun();
-        restoreHomeWordmark();
-        clearNavigationTitleState();
-      }
+      if (headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
+      if (headerSlot?.dataset.headerNavigationTitle) { invalidateWordmarkRun(); restoreHomeWordmark(); clearNavigationTitleState(); }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
@@ -1400,8 +1428,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (wordmarkIsOpen) runWordmarkClose();
     };
 
-    document.addEventListener('header:navigation-start', () => { navigationOutgoing = true; });
-    document.addEventListener('header:navigation-cancel', () => { navigationOutgoing = false; });
+    document.addEventListener('header:navigation-start', (event) => {
+      navigationOutgoing = true;
+      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending as any;
+      if (!pending?.targetTitle || !window.__vcdHeaderTitleBridge) return;
+      const bridge = window.__vcdHeaderTitleBridge(pending, true);
+      if (bridge) { headerSlot.__vcdTitleBridge = bridge; document.documentElement.dataset.headerNavigation = ''; }
+    });
+    document.addEventListener('header:navigation-cancel', () => {
+      navigationOutgoing = false;
+      if (headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
+    });
 
     startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
     startTrigger.addEventListener('focusin', onWordmarkPointerActive);
@@ -1438,6 +1475,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:force-close', (event) => {
       const preserveNavigation = (event as CustomEvent<{ preserveNavigation?: boolean }>).detail?.preserveNavigation;
       if (preserveNavigation && navigationOutgoing) return;
+      if (!preserveNavigation && headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
       if (!preserveNavigation) navigationOutgoing = false;
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
@@ -2363,6 +2401,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     transition:
       opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
       filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
+  }
+
+  :global(.header-navigation-title-char) {
+    display: inline;
+    margin: 0;
+    transition: none;
+  }
+
+  @keyframes vcd-header-title-out {
+    from { opacity: 1; filter: blur(0); }
+    to { opacity: 0; filter: blur(4px); }
+  }
+
+  @keyframes vcd-header-title-in {
+    from { opacity: 0; filter: blur(4px); }
+    to { opacity: 1; filter: blur(0); }
   }
 
   .header-trigger__wordmark--home .header-trigger__char {
