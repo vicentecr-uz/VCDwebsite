@@ -4,6 +4,11 @@ import '../styles/dev-chrome.css';
 import '../styles/base-ui-comparison.css';
 import CurrentExample from '../components/base-ui/CurrentExample.astro';
 import BaseUiExample from '../components/base-ui/BaseUiExample';
+import EditorSelectField from '../components/ui/EditorSelectField.astro';
+const selectOptions = [
+  { label: 'Active', options: [{ value: 'draft', label: 'Draft' }, { value: 'published', label: 'Published' }] },
+  { label: 'Other', options: [{ value: 'archived', label: 'Archived' }, { value: 'long', label: 'A deliberately long project status for overflow review' }] },
+];
 import { comparisons } from '../lib/baseUiComparison';
 ---
 <!doctype html>
@@ -32,7 +37,12 @@ import { comparisons } from '../lib/baseUiComparison';
           <header class="comparison-row-heading"><div><span class="comparison-number">{String(index + 1).padStart(2, '0')}</span><h2>{item.name}</h2></div><span class="comparison-status">{item.status}</span><button type="button" class="dev-btn dev-btn--soft comparison-notes-trigger" aria-controls={`changes-${item.id}`} aria-expanded="false" data-comparison-notes>Changes<span class="sr-only"> to {item.name}</span></button></header>
           <div class="comparison-pair">
             <div class="comparison-cell"><h3>Current</h3><CurrentExample kind={item.id} /></div>
-            <div class="comparison-cell"><h3>{item.id === 'dev-panel-drag' ? 'Retained' : 'Base UI study'}</h3>{item.id === 'dev-panel-drag' ? <CurrentExample kind={item.id} instance="retained" /> : <BaseUiExample kind={item.id} client:load />}</div>
+            <div class="comparison-cell"><h3>{item.id === 'dev-panel-drag' ? 'Retained' : 'Base UI study'}</h3>{item.id === 'dev-panel-drag' ? <CurrentExample kind={item.id} instance="retained" /> : item.id === 'select-field' ? <form class="base-ui-stack" data-editor-select-demo>
+              <EditorSelectField label="Status" name="status" value="draft" options={selectOptions} />
+              <EditorSelectField label="Disabled" value="draft" options={selectOptions} disabled />
+              <div class="comparison-controls"><button type="submit" class="dev-btn dev-btn--soft">Submit</button><button type="reset" class="dev-btn dev-btn--soft">Reset</button></div>
+              <output aria-live="polite">Draft</output>
+            </form> : <BaseUiExample kind={item.id} client:load />}</div>
           </div>
           <aside id={`changes-${item.id}`} popover="auto" class="comparison-callout" aria-label={`${item.name} changes`}>
             <h3>{item.name}</h3><dl><dt>Before</dt><dd>{item.before}</dd><dt>After</dt><dd>{item.after}</dd><dt>To consider</dt><dd>{item.tradeoff}</dd></dl>
@@ -41,27 +51,40 @@ import { comparisons } from '../lib/baseUiComparison';
       </div>
       <section id="coverage" class="comparison-summary">
         <p class="comparison-eyebrow">Coverage</p><h2>What this trial includes</h2>
-        <p>All 14 shared files in <code>components/ui</code>, plus the embedded overlay, are represented above. Dialog and action menu are additional candidates. The current examples use our actual Astro components; small page-only handlers make buttons and forms testable.</p>
+        <p>All 14 original shared files in <code>components/ui</code>, plus the embedded overlay, are represented above. Dialog and action menu are additional candidates. The current examples use our actual Astro components; small page-only handlers make buttons and forms testable.</p>
         <p>Project grids, media, page sections, navigation and bespoke animation stay in the <a href="/styles/">component library</a>. Base UI does not supply equivalents for those compositions. Badges, panel layout, titles and panel dragging are shown as retained pieces.</p>
-        <p>This page is a migration study. Editor callers, content saving, publishing and history have not been migrated. Values on this page are temporary.</p>
+        <p>This page is a migration study. Editor select callers now use Base UI through a bridge to their native values. Other controls retain their existing implementation. Values on this page are temporary.</p>
       </section>
       <section id="measurements" class="comparison-summary">
         <p class="comparison-eyebrow">Maintenance & delivery</p><h2>What we can save</h2>
-        <p>The clearest candidate is the 621-line select controller. Base UI takes responsibility for keyboard handling, typeahead, focus and popup placement. Replacing that controller still requires migrating callers that write directly to native selects.</p>
-        <p>Native inputs and buttons offer much smaller savings. Styling, editor actions, caret-aware text fades, dragging, resizing and persistence remain application code. No current code has been removed by this study.</p>
-        <div class="comparison-measurements"><table><caption>Initial study baseline · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
+        <p>The editor’s select callers now use Base UI for keyboard handling, typeahead, focus and popup placement. A 76-line bridge keeps their native values, dynamic options, disabled state and form reset synchronized. The wrapper and React composition add 148 lines, for 224 lines of application code.</p>
+        <p>The previous select wrapper and controller total 773 lines. They remain for public demos, so this first migration adds code overall. The editor delegates interaction behaviour to Base UI; removing the legacy implementation later would require migrating those demos too.</p>
+        <p>Native inputs and buttons offer much smaller savings. Styling, editor actions, caret-aware text fades, dragging, resizing and persistence remain application code. New complex editor controls can use Base UI as the editor grows.</p>
+        <div class="comparison-measurements"><table><caption>Production module graphs · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
           <tr><th scope="row">React + Astro’s React renderer</th><td>45.9 KiB</td></tr>
-          <tr><th scope="row">Base UI + all study examples</th><td>69.4 KiB</td></tr>
-          <tr><th scope="row">Combined Base UI module cost</th><td>115.3 KiB</td></tr>
+          <tr><th scope="row">Editor select + bridge beyond renderer</th><td>45.8 KiB</td></tr>
+          <tr><th scope="row">Editor select including renderer</th><td>91.7 KiB</td></tr>
+          <tr><th scope="row">All Base UI study examples including renderer</th><td>121.0 KiB</td></tr>
           <tr><th scope="row">Astro hydration bootstrap, inline</th><td>1.5 KiB</td></tr>
-          <tr><th scope="row">Current controls + inline demo scripts</th><td>About 11 KiB</td></tr>
+          <tr><th scope="row">Current controls + inline demo scripts</th><td>About 11.7 KiB</td></tr>
         </tbody></table></div>
-        <p>These figures predate the shared-field overflow refinements. The comparison page loads both versions. Module figures sum individually compressed production files; inline figures are separate compression estimates. Shared styles, fonts, HTML and comparison-page helpers are excluded. The Base UI figure includes the additional dialog and menu candidates. This is a whole-study cost, not a per-control cost or a measured network transfer.</p>
-        <p>No Base UI or React study modules remain in the ordinary public build: the existing publication filter removes this unlinked page and its exclusive assets. The total public JavaScript and CSS output is about 0.2 KiB smaller after compression because the bundler regrouped shared code; that is not a performance win to attribute to Base UI.</p>
-        <p>The select example is about 114 lines of React composition, plus shared Field markup and styling, against the current 621-line controller. These are not equivalent implementations: the example omits the editor’s native-select mutation bridge. Net maintenance savings can only be established when those callers are migrated.</p>
+        <p>Module figures sum individually compressed production files. Shared styles, fonts, HTML and comparison-page helpers are excluded; inline figures are separate estimates. The whole study includes dialog and menu candidates. These figures describe module cost, not measured network transfer or development-server payload. React and shared modules load once across controls.</p>
+        <p>The production build retains no editor select or React renderer modules. The publication filter removes this unlinked page and its exclusive assets, and the authoring boundary removes editor entrypoints. Public JavaScript and CSS size is effectively unchanged by the select migration.</p>
       </section>
     </main>
     <script>
+      const demoForm = document.querySelector<HTMLFormElement>('[data-editor-select-demo]');
+      const demoSubmit = (event: Event) => {
+        event.preventDefault();
+        if (demoForm) demoForm.querySelector('output')!.textContent = `Submitted: ${new FormData(demoForm).get('status') ?? ''}`;
+      };
+      const demoReset = () => { if (demoForm) demoForm.querySelector('output')!.textContent = 'Draft'; };
+      demoForm?.addEventListener('submit', demoSubmit);
+      demoForm?.addEventListener('reset', demoReset);
+      import.meta.hot?.dispose(() => {
+        demoForm?.removeEventListener('submit', demoSubmit);
+        demoForm?.removeEventListener('reset', demoReset);
+      });
       import { bindSafeVh } from '../lib/safeVh';
       bindSafeVh();
       import { initComparisonNotes } from '../lib/baseUiComparisonNotes';

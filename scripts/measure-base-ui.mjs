@@ -38,7 +38,7 @@ const assets = await readdir(join(snapshot, '_astro'));
 const island = html.match(/component-url="([^"]+)"[^>]*renderer-url="([^"]+)"/);
 if (!island) throw new Error('Expected a hydrated Base UI island in the generated comparison page.');
 const islandRoots = island.slice(1, 3).map(value => basename(value));
-const currentRoots = assets.filter(name => /^(CurrentExample|SelectField|TextField|DevOverlay|DevPanelDrag)\.astro_/.test(name) && name.endsWith('.js'));
+const currentRoots = assets.filter(name => /^(CurrentExample|Field|SelectField|TextField|DevOverlay|DevPanelDrag)\.astro_/.test(name) && name.endsWith('.js'));
 if (!currentRoots.length) throw new Error('No current-component entrypoints found. Check Astro output naming.');
 const inline = { current: [], hydration: [] };
 const visitHtml = node => {
@@ -77,6 +77,8 @@ async function sizes(files, base = join(snapshot, '_astro')) {
 const baseFiles = await closure(islandRoots);
 const rendererFiles = await closure([islandRoots[1]]);
 const currentFiles = await closure(currentRoots);
+const editorRoots = assets.filter(name => /^EditorSelect\..*\.js$/.test(name));
+const editorFiles = editorRoots.length ? await closure([...editorRoots, islandRoots[1]]) : [];
 const common = baseFiles.filter(file => currentFiles.includes(file));
 const publicAssets = (await readdir(resolve(root, 'dist/_astro'))).filter(name => /\.(js|css)$/.test(name));
 const baselineDir = resolve(root, '.dev-session/baseline-output/_astro');
@@ -84,8 +86,11 @@ let baseline = null;
 try { baseline = await sizes((await readdir(baselineDir)).filter(name => /\.(js|css)$/.test(name)), baselineDir); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }
 const result = {
-  method: 'Per-file compression of production Astro JS module closures before publication pruning. Base includes all study variants plus React renderer. Current covers external Astro control scripts; inline control/demo scripts and Astro hydration bootstrap are reported separately as independently compressed estimates. Shared CSS/HTML, comparison notes and safe-viewport page script are excluded from these component totals. Not a runtime network or parse-time measurement.',
+  method: 'Per-file compression of production Astro JS module closures before publication pruning. Base includes all study variants plus React renderer; editorSelect measures the migrated select module closure plus the renderer. Current covers external Astro control scripts; inline control/demo scripts and Astro hydration bootstrap are reported separately as independently compressed estimates. Shared CSS/HTML, comparison notes and safe-viewport page script are excluded from these component totals. Not a runtime network or parse-time measurement.',
   baseUi: await sizes(baseFiles),
+  editorSelect: editorFiles.length ? await sizes(editorFiles) : null,
+  editorSelectIncremental: editorFiles.length ? await sizes(editorFiles.filter(file => !rendererFiles.includes(file))) : null,
+  editorModulesRetainedPublic: editorFiles.filter(file => publicAssets.includes(file)),
   reactRenderer: await sizes(rendererFiles),
   baseUiExamplesIncremental: await sizes(baseFiles.filter(file => !rendererFiles.includes(file))),
   current: await sizes(currentFiles),
