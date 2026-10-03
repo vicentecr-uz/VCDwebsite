@@ -18,7 +18,7 @@ const editorSource = readFileSync(new URL('../../src/lib/siteAnnotationEditor.ts
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource
   .replace(/^import .*;\n/gm, '')
   .replace(/^if \(import\.meta\.hot\).*$/gm, '')
-  + '\nreturn { state, annotationsFor, pushPending, startDrawing, createLauncher, launcherPoint, nearestLauncherPosition, getLauncherPosition: () => launcherPosition };');
+  + '\nreturn { state, annotationsFor, pushPending, startDrawing, createLauncher, launcherPoint, nearestLauncherPosition, positionDrawingMenu, getLauncherPosition: () => launcherPosition };');
 const textEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 
 const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown) => {
@@ -405,13 +405,101 @@ test('hover preview restores saved image sources without changing pending state'
   const original = image.src;
   const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
   h.invokeClick(manage);
+  const menu = h.document.querySelector<HTMLElement>('.site-draw-menu')!;
+  const menuPosition = [menu.style.left, menu.style.top];
   const row = [...h.document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
     .find((item) => item.textContent === 'Highlight 1')!;
   row.dispatchEvent(new h.window.Event('pointerenter', { bubbles: true }));
   expect(image.src).not.toBe(original);
+  expect([menu.style.left, menu.style.top]).toEqual(menuPosition);
   row.dispatchEvent(new h.window.Event('pointerleave', { bubbles: true }));
   expect(image.src).toBe(original);
   expect(h.pending.size).toBe(0);
+});
+
+test('drawing menu chooses the least-overlapping position around visible ink', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(400, 480, 200, 80);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThan(400);
+});
+
+test('drawing menu moves below when ink occupies the preferred above position', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 120);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeGreaterThan(400);
+});
+
+test('drawing menu uses a side candidate when both vertical positions overlap ink', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  for (const top of [280, 480]) {
+    const ink = h.document.createElement('img');
+    ink.dataset.siteAnnotation = `drawing-${top}`;
+    ink.getBoundingClientRect = () => new h.window.DOMRect(400, top, 100, 80);
+    h.document.body.append(ink);
+  }
+  h.document.body.append(menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.left)).toBe(508);
+  expect(Number.parseFloat(menu.style.top)).toBe(400);
+});
+
+test('drawing menu remains inside a constrained viewport', () => {
+  const h = harness([fixture]);
+  Object.defineProperty(h.window, 'innerWidth', { configurable: true, value: 260 });
+  Object.defineProperty(h.window, 'innerHeight', { configurable: true, value: 180 });
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(200, 130, 40, 30);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 260, 180);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(menu.style.maxHeight).toBe('156px');
+  expect(Number.parseFloat(menu.style.left)).toBeGreaterThanOrEqual(12);
+  expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(28);
+  expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(12);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThanOrEqual(68);
+});
+
+test('drawing placement scores clipped carousel ink by its visible clip', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const clipped = h.document.createElement('img');
+  clipped.dataset.siteAnnotation = 'drawing';
+  clipped.style.clipPath = 'inset(180px 0px 0px)';
+  clipped.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 200);
+  const fullyClipped = h.document.createElement('img');
+  fullyClipped.dataset.siteAnnotation = 'fully-clipped';
+  fullyClipped.style.clipPath = 'inset(200px)';
+  fullyClipped.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 200);
+  h.document.body.append(clipped, fullyClipped, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThan(400);
 });
 
 test('unchanged edits preserve original strokes and geometry', () => {

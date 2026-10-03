@@ -588,13 +588,49 @@ const previewDrawing = (target: Target, annotation: SiteAnnotation) => {
 
 const positionDrawingMenu = (menu: HTMLElement, button: HTMLElement) => {
   const rect = button.getBoundingClientRect();
-  const width = Math.min(220, window.innerWidth - 24);
+  const width = Math.max(0, Math.min(220, window.innerWidth - 24));
+  const heightAvailable = Math.max(0, window.innerHeight - 24);
   menu.style.width = `${width}px`;
-  menu.style.maxHeight = `${Math.max(120, window.innerHeight - 24)}px`;
-  menu.style.left = `${Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width))}px`;
+  menu.style.maxHeight = `${heightAvailable}px`;
   const height = menu.getBoundingClientRect().height;
-  const below = rect.bottom + 8;
-  menu.style.top = `${below + height <= window.innerHeight - 12 ? below : Math.max(12, rect.top - height - 8)}px`;
+  const clamp = (value: number, size: number, limit: number) => Math.max(12, Math.min(Math.max(12, limit - size - 12), value));
+  const candidates = [
+    { left: rect.right - width, top: rect.top - height - 8 },
+    { left: rect.right - width, top: rect.bottom + 8 },
+    { left: rect.right + 8, top: rect.top },
+    { left: rect.left - width - 8, top: rect.top },
+  ].map((candidate) => ({
+    left: clamp(candidate.left, width, window.innerWidth),
+    top: clamp(candidate.top, height, window.innerHeight),
+  }));
+  const zones = [...document.querySelectorAll<HTMLElement>('[data-site-annotation]')]
+    .filter((image) => {
+      const style = getComputedStyle(image);
+      return style.visibility !== 'hidden' && style.display !== 'none';
+    })
+    .map((image) => {
+      const rect = annotationVisibleRect(image);
+      // Renderer-owned pixel inset shorthand; keep this ceiling aligned with positionSiteAnnotations.
+      const clip = image.style.clipPath.match(/^inset\((-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\)$/);
+      if (!clip) return rect;
+      const values = clip.slice(1).filter((value): value is string => value !== undefined).map(Number);
+      if (!values.length || !values.every(Number.isFinite)) return rect;
+      const [top, right = top, bottom = top, left = right] = values;
+      return new DOMRect(rect.left + left, rect.top + top,
+        Math.max(0, rect.width - left - right), Math.max(0, rect.height - top - bottom));
+    })
+    .filter((image) => image.width > 0 && image.height > 0)
+    .map((image) => ({ left: image.left - 8, top: image.top - 8, right: image.right + 8, bottom: image.bottom + 8 }));
+  zones.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+  const overlap = (candidate: { left: number; top: number }) => zones.reduce((total, zone) => total
+    + Math.max(0, Math.min(candidate.left + width, zone.right) - Math.max(candidate.left, zone.left))
+      * Math.max(0, Math.min(candidate.top + height, zone.bottom) - Math.max(candidate.top, zone.top)), 0);
+  const chosen = candidates.reduce((best, candidate) => {
+    const score = overlap(candidate);
+    return score < best.score ? { candidate, score } : best;
+  }, { candidate: candidates[0], score: Number.POSITIVE_INFINITY }).candidate;
+  menu.style.left = `${chosen.left}px`;
+  menu.style.top = `${chosen.top}px`;
 };
 
 const menuButton = (text: string, onClick: () => void) => {
