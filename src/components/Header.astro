@@ -1484,6 +1484,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         document.documentElement.dataset.headerNavigation = '';
       }
     });
+    document.addEventListener('header:navigation-covered', (event) => {
+      if (!navigationOutgoing) return;
+      const bridge = headerSlot?.__vcdTitleBridge as { finishesAt: number } | undefined;
+      if (!bridge) return;
+      const detail = (event as CustomEvent<{ waitMs: number }>).detail;
+      detail.waitMs = Math.max(detail.waitMs, Math.max(0, bridge.finishesAt - Date.now()) + 32);
+    });
     document.addEventListener('header:navigation-cancel', () => {
       navigationOutgoing = false;
       if (headerSlot?.__vcdTitleBridge) {

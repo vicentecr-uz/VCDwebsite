@@ -235,6 +235,40 @@ test('accepted navigation prevents title reversal and canceled navigation permit
   expect([...f.home.children].every((char: any) => char.style.opacity === '0')).toBe(true);
 });
 
+test('navigation coverage waits for the outgoing title bridge when it is still running', () => {
+  const start = header.indexOf("    document.addEventListener('header:navigation-start', (event) => {");
+  const end = header.indexOf("\n\n    startTrigger.addEventListener('mouseenter'", start);
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(start, end));
+  const win = new Window();
+  const slot = win.document.createElement('div') as any;
+  new Function('document', 'window', 'headerSlot', `let navigationOutgoing = false; ${script}`)(win.document, {}, slot);
+
+  win.document.dispatchEvent(new win.Event('header:navigation-start'));
+  slot.__vcdTitleBridge = { finishesAt: Date.now() + 1000 };
+  const remaining = { waitMs: 0 };
+  win.document.dispatchEvent(new win.CustomEvent('header:navigation-covered', { detail: remaining }));
+  expect(remaining.waitMs).toBeGreaterThanOrEqual(900);
+  expect(remaining.waitMs).toBeLessThanOrEqual(1032);
+
+  slot.__vcdTitleBridge.finishesAt = Date.now() + 10;
+  const existingLonger = { waitMs: 500 };
+  win.document.dispatchEvent(new win.CustomEvent('header:navigation-covered', { detail: existingLonger }));
+  expect(existingLonger.waitMs).toBe(500);
+
+  delete slot.__vcdTitleBridge;
+  const absentBridge = { waitMs: 0 };
+  win.document.dispatchEvent(new win.CustomEvent('header:navigation-covered', { detail: absentBridge }));
+  expect(absentBridge.waitMs).toBe(0);
+
+  slot.__vcdTitleBridge = { finishesAt: Date.now() + 1000 };
+  win.document.dispatchEvent(new win.Event('header:navigation-cancel'));
+  const canceled = { waitMs: 0 };
+  win.document.dispatchEvent(new win.CustomEvent('header:navigation-covered', { detail: canceled }));
+  expect(canceled.waitMs).toBe(0);
+});
+
 const bridgeScript = readFileSync(resolve(root, 'src/scripts/headerTitleBridge.js'), 'utf8');
 function bridgeFixture(elapsed = 200, targetTitle = 'New') {
   const win = new Window();
