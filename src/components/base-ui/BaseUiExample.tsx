@@ -354,7 +354,7 @@ function ToggleDemo() {
             defaultChecked={Boolean(checked)}
             disabled={label === "Disabled"}
           >
-            <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
+            <Checkbox.Indicator keepMounted className="base-ui-checkbox__indicator" aria-hidden="true">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
             </Checkbox.Indicator>
           </Checkbox.Root>
@@ -397,26 +397,36 @@ function PanelActionsDemo() {
 }
 
 function OverlayDemo() {
+  const [open, setOpen] = useState(true);
+  const [hidden, setHidden] = useState(false);
+  useEffect(() => {
+    if (!hidden) return;
+    const timer = window.setTimeout(() => setHidden(false), 1000);
+    return () => window.clearTimeout(timer);
+  }, [hidden]);
   return (
-    <Collapsible.Root className="base-ui-collapsible" defaultOpen>
-      <Collapsible.Trigger className="dev-btn dev-btn--ghost">
-        Minimize / restore
-      </Collapsible.Trigger>
+    <Collapsible.Root className="base-ui-collapsible dev-panel dev-surface" open={open} onOpenChange={setOpen} hidden={hidden}>
+      <div className="dev-panel__header">
+        <p className="dev-panel__title">Panel title</p>
+        <div className="dev-panel__lights">
+          <Collapsible.Trigger className="dev-panel__light base-ui-panel-light" aria-label={open ? "Minimize" : "Restore"} title={open ? "Minimize" : "Restore"}>
+            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M2 5h6" />{!open && <path d="M5 2v6" />}</svg>
+          </Collapsible.Trigger>
+          <Button className="dev-panel__light base-ui-panel-light" aria-label="Hide" title="Hide" onClick={() => setHidden(true)}>
+            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="m2 2 6 6m0-6-6 6" /></svg>
+          </Button>
+        </div>
+      </div>
       <Collapsible.Panel className="base-ui-collapsible__panel">
-        <div className="dev-panel dev-surface">
-          <div className="dev-panel__header">
-            <p className="dev-panel__title">Panel title</p>
-          </div>
-          <div className="dev-panel__body">
+        <div className="dev-panel__body">
             <label className="base-ui-checkbox">
               <Checkbox.Root className="base-ui-checkbox__root" defaultChecked>
-                <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
+                <Checkbox.Indicator keepMounted className="base-ui-checkbox__indicator" aria-hidden="true">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
                 </Checkbox.Indicator>
               </Checkbox.Root>
               <span>Show caption</span>
             </label>
-          </div>
         </div>
       </Collapsible.Panel>
     </Collapsible.Root>
@@ -546,7 +556,7 @@ export default function BaseUiExample({ kind }: ExampleProps) {
           <div className="dev-panel__body">
             <label className="base-ui-checkbox">
               <Checkbox.Root className="base-ui-checkbox__root" defaultChecked>
-                <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
+                <Checkbox.Indicator keepMounted className="base-ui-checkbox__indicator" aria-hidden="true">
               <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
                 </Checkbox.Indicator>
               </Checkbox.Root>

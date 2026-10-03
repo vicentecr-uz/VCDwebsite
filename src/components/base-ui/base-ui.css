@@ -76,14 +76,18 @@
   opacity: var(--dev-opacity-disabled);
 }
 .base-ui-checkbox__indicator {
-  display: none;
+  display: block;
+  opacity: 0;
+  pointer-events: none;
+  color: var(--comp-button-filled-label);
+  transition: opacity 0.15s ease;
   width: 16px;
   height: 16px;
   flex: none;
   line-height: 1;
 }
 .base-ui-checkbox__root[data-checked] .base-ui-checkbox__indicator {
-  display: block;
+  opacity: 1;
 }
 .base-ui-select-positioner,
 .base-ui-menu-positioner {
@@ -182,7 +186,7 @@
 .base-ui-hairlines {
   align-items: center;
   display: flex;
-  gap: 8px;
+  gap: 1rem;
 }
 
 .base-ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
@@ -191,7 +195,7 @@
 .base-ui-select-item > :first-child { min-width: 0; }
 .base-ui-field .dev-field__value { min-width: 0; }
 .base-ui-select-popup { min-width: min(180px, var(--anchor-width)); width: var(--anchor-width); }
-.base-ui-collapsible .dev-panel { width: 100%; box-sizing: border-box; }
+.base-ui-collapsible { width: min(var(--dev-panel-width), 100%); box-sizing: border-box; }
 
 .base-ui-select-popup { background: var(--sys-color-srf); border: 0; }
 .base-ui-select-item[data-highlighted] { background: var(--comp-field-container); }
@@ -204,3 +208,10 @@
 .base-ui-checkbox__root:hover { background: var(--comp-button-ghost-container-hover); }
 .base-ui-checkbox__root[data-checked]:hover { background: var(--comp-button-filled-container-hover); border-color: var(--comp-button-filled-container-hover); }
 .base-ui-checkbox__root[data-disabled] { cursor: not-allowed; }
+
+.base-ui-collapsible[hidden] { display: none; }
+.base-ui-collapsible[data-closed] { gap: 0; }
+.base-ui-collapsible[data-closed] > .dev-panel__header { padding-bottom: 0; }
+.base-ui-panel-light { display: grid; place-items: center; border: 0; padding: 0; cursor: pointer; color: var(--sys-color-on-srf); }
+.base-ui-panel-light svg { opacity: 0; transition: opacity 150ms ease; }
+.dev-panel__lights:hover .base-ui-panel-light svg, .base-ui-panel-light:focus-visible svg { opacity: 1; }
