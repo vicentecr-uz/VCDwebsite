@@ -16,6 +16,7 @@ const { spacerBufferPx = 16 } = Astro.props;
 </div>
 
 <script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
   const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
   const initScrollFinale = (root: HTMLElement) => {
@@ -25,6 +26,7 @@ const { spacerBufferPx = 16 } = Astro.props;
     const spacer = root.querySelector('[data-project-scroll-finale-spacer]');
     if (!(spacer instanceof HTMLElement) || !root.parentElement) return;
 
+    const scope = createPageScope();
     const dropZone = root.parentElement;
     const sidebar = document.querySelector('.section-sidebar-nav');
     const html = document.documentElement;
@@ -144,7 +146,7 @@ const { spacerBufferPx = 16 } = Astro.props;
 
     const scheduleLayout = () => {
       if (layoutRafId) return;
-      layoutRafId = requestAnimationFrame(() => {
+      layoutRafId = scope.frame(() => {
         layoutRafId = 0;
         layoutSpacer();
         updateFade();
@@ -157,15 +159,15 @@ const { spacerBufferPx = 16 } = Astro.props;
 
     const scheduleFade = () => {
       if (scrollRafId) return;
-      scrollRafId = requestAnimationFrame(updateFade);
+      scrollRafId = scope.frame(updateFade);
     };
 
     layoutSpacer();
     updateFade();
 
-    window.addEventListener('scroll', scheduleFade, { passive: true });
-    window.addEventListener('resize', scheduleLayout);
-    window.addEventListener('vcd:dev-mode-change', scheduleLayout);
+    scope.listen(window, 'scroll', scheduleFade, { passive: true });
+    scope.listen(window, 'resize', scheduleLayout);
+    scope.listen(window, 'vcd:dev-mode-change', scheduleLayout);
 
     const mutationObserver = typeof MutationObserver !== 'undefined'
       ? new MutationObserver(scheduleLayout)
@@ -175,11 +177,14 @@ const { spacerBufferPx = 16 } = Astro.props;
     dropZone.querySelectorAll<HTMLElement>('[data-project-scroll-finale-role] img').forEach((img) => {
       if (!img.complete) img.addEventListener('load', scheduleLayout, { once: true });
     });
+    return () => { scope.destroy(); resizeObserver?.disconnect(); mutationObserver?.disconnect(); resetFade(); delete root.dataset.initialized; };
   };
 
-  document.querySelectorAll('[data-project-scroll-finale]').forEach((root) => {
-    if (root instanceof HTMLElement) initScrollFinale(root);
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll<HTMLElement>('[data-project-scroll-finale]')].map(initScrollFinale);
+    return () => cleanups.forEach((cleanup) => cleanup?.());
   });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

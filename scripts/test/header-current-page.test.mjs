@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
-const start = source.indexOf('  const currentPageLinks = [');
+const start = source.indexOf('  let currentPageLinks = [');
 const end = source.indexOf('  // DEV-only: Section Editor', start);
 const controllerSource = source.slice(start, end).replace('</script>', '');
 
@@ -75,6 +75,7 @@ function createHarness({
     const item = new FakeElement('item', trigger);
     item.trigger = trigger;
     const link = new FakeElement('link', item);
+    link.setAttribute('data-current-page', '');
     link.label = new FakeElement('label', link);
     const note = new FakeElement('note', item);
     item.link = link;
@@ -93,7 +94,7 @@ function createHarness({
   globalThis.document = {
     hidden: false,
     activeElement: null,
-    querySelectorAll: (selector) => selector.includes('[data-current-page]') ? links : notes,
+    querySelectorAll: (selector) => selector.includes('[data-current-page]') || selector === '.header-menu__link' ? links : notes,
     querySelector: (selector) => selector === 'script[data-website-id]' ? analyticsScript : triggers[0].fallback,
     documentElement: { clientWidth: 1200 },
     fonts: { ready: Promise.resolve() },
@@ -147,7 +148,7 @@ function createHarness({
   return { links, notes, items, triggers, timers, values, advance, documentListeners, analyticsEvents, executeController };
 }
 
-function click(link, detail = 1) { link.dispatch('click', { detail }); }
+function click(link, detail = 1) { link.dispatch('click', { detail, button: 0 }); }
 function flush(harness) {
   harness.advance(100);
 }

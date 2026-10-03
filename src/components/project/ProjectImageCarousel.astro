@@ -486,9 +486,13 @@ const blockStyle = [
   import { bindProjectImageCarousels } from '../../lib/projectImageCarousel';
   import { bindAllPlaceholderLabels } from '../../lib/placeholderLabel';
 
-  bindProjectCropCovers();
+  import { onPageLoad } from '../../lib/pageLifecycle';
+  const dispose = onPageLoad(() => {
+    bindProjectCropCovers();
   bindProjectImageCarousels();
-  bindAllPlaceholderLabels();
+    return bindAllPlaceholderLabels();
+  });
+  import.meta.hot?.dispose(dispose);
 
   window.addEventListener('vcd:dev-section-inserted', () => {
     bindAllPlaceholderLabels();

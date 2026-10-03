@@ -231,5 +231,6 @@ export function bindProjectCropCovers(root: ParentNode = document): void {
   if (!resizeBound && root === document) {
     resizeBound = true;
     window.addEventListener('resize', () => refreshProjectCropCovers());
+    document.addEventListener('astro:before-swap', () => { cropCoverObserver?.disconnect(); cropCoverObserver = null; });
   }
 }
