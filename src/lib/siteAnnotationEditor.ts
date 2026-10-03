@@ -48,6 +48,82 @@ let activeDrawRef: { current: DrawHandle | null } | null = null;
 let editingImage: HTMLImageElement | null = null;
 let savedSelection: { anchor: TextAnchor; rect: DOMRect } | null = null;
 const lifecycle = new AbortController();
+const launcherPositionKey = 'vcd:draw-launcher-position:v1';
+const launcherMargin = 16;
+type LauncherPoint = { x: number; y: number };
+let drawLauncher: HTMLElement | null = null;
+let launcherPosition = 4;
+let launcherDragging = false;
+let launcherDragStart: { pointerId: number; x: number; y: number; left: number; top: number; position: number } | null = null;
+let launcherSelection: ReturnType<typeof drawingSelection> | null = null;
+
+const readLauncherPosition = () => {
+  try {
+    const stored = window.localStorage.getItem(launcherPositionKey);
+    if (stored !== null && /^(?:[0-7])$/.test(stored)) launcherPosition = Number(stored);
+  } catch { /* Keep the default when browser storage is unavailable. */ }
+};
+
+const saveLauncherPosition = () => {
+  try { window.localStorage.setItem(launcherPositionKey, String(launcherPosition)); }
+  catch { /* Keep the position in memory when browser storage is unavailable. */ }
+};
+
+const safeArea = (side: 'left' | 'right' | 'top' | 'bottom') => {
+  const value = Number.parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue(`--draw-launcher-safe-${side}`));
+  return Number.isFinite(value) ? value : 0;
+};
+
+const launcherViewport = () => {
+  const viewport = window.visualViewport;
+  return {
+    left: viewport?.offsetLeft ?? 0,
+    top: viewport?.offsetTop ?? 0,
+    width: viewport?.width ?? window.innerWidth,
+    height: viewport?.height ?? window.innerHeight,
+  };
+};
+
+const launcherPoint = (index: number, width: number, height: number): LauncherPoint => {
+  const viewport = launcherViewport();
+  const left = viewport.left + launcherMargin + safeArea('left');
+  const right = viewport.left + viewport.width - launcherMargin - safeArea('right') - width;
+  const top = viewport.top + launcherMargin + safeArea('top');
+  const bottom = viewport.top + viewport.height - launcherMargin - safeArea('bottom') - height;
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const points = [
+    { x: left, y: top },
+    { x: centerX, y: top },
+    { x: right, y: top },
+    { x: right, y: centerY },
+    { x: right, y: bottom },
+    { x: centerX, y: bottom },
+    { x: left, y: bottom },
+    { x: left, y: centerY },
+  ];
+  const point = points[((index % 8) + 8) % 8];
+  return { ...point, x: Math.max(left, Math.min(right, point.x)), y: Math.max(top, Math.min(bottom, point.y)) };
+};
+
+const nearestLauncherPosition = (x: number, y: number, width = drawLauncher?.offsetWidth ?? 0, height = drawLauncher?.offsetHeight ?? 0) => {
+  let nearest = 0;
+  let distance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < 8; index += 1) {
+    const point = launcherPoint(index, width, height);
+    const next = (point.x + width / 2 - x) ** 2 + (point.y + height / 2 - y) ** 2;
+    if (next < distance) { distance = next; nearest = index; }
+  }
+  return nearest;
+};
+
+const positionLauncher = (animate = false) => {
+  if (!drawLauncher || drawLauncher.hidden || launcherDragging) return;
+  const point = launcherPoint(launcherPosition, drawLauncher.offsetWidth, drawLauncher.offsetHeight);
+  drawLauncher.classList.toggle('is-snapping', animate);
+  drawLauncher.style.transform = `translate3d(${point.x}px, ${point.y}px, 0)`;
+};
 
 const annotationsFor = (target: Target) => {
   const key = targetKey(target);
@@ -168,6 +244,10 @@ const closeStage = () => {
   reactRoot = null;
   stage?.remove();
   stage = null;
+  if (drawLauncher) {
+    drawLauncher.hidden = !document.documentElement.classList.contains('is-dev-mode');
+    positionLauncher();
+  }
 };
 
 const drawingSelection = () => {
@@ -282,6 +362,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   overlay.append(canvas, controls);
   document.body.append(overlay);
   stage = overlay;
+  if (drawLauncher) drawLauncher.hidden = true;
   overlay.addEventListener('wheel', (event) => event.preventDefault(), { passive: false });
 
   const drawRef = createRef<DrawHandle>();
@@ -474,6 +555,132 @@ const shortcutTarget = (): Target | null => {
   return sectionId && documentKey ? { section, sectionId, documentKey } : null;
 };
 
+const startFromSelection = (captured: ReturnType<typeof drawingSelection> | null = null) => {
+  const selected = captured?.target.section.isConnected ? captured : drawingSelection();
+  const target = selected?.target ?? shortcutTarget();
+  if (!target) return false;
+  window.getSelection()?.removeAllRanges();
+  startDrawing(target, selected?.anchor ?? null);
+  launcherSelection = null;
+  return true;
+};
+
+const createLauncher = () => {
+  if (drawLauncher) return;
+  readLauncherPosition();
+  const launcher = document.createElement('div');
+  launcher.className = 'site-draw-launcher dev-surface';
+  launcher.setAttribute('role', 'group');
+  launcher.setAttribute('aria-label', 'Drawing tools');
+  const grip = document.createElement('button');
+  grip.type = 'button';
+  grip.className = 'site-draw-launcher__grip';
+  grip.setAttribute('aria-label', 'Move Draw button');
+  grip.innerHTML = '<svg aria-hidden="true" viewBox="0 0 18 18"><circle cx="5" cy="5" r="1.3"/><circle cx="13" cy="5" r="1.3"/><circle cx="5" cy="9" r="1.3"/><circle cx="13" cy="9" r="1.3"/><circle cx="5" cy="13" r="1.3"/><circle cx="13" cy="13" r="1.3"/></svg>';
+  const draw = document.createElement('button');
+  draw.type = 'button';
+  draw.className = 'dev-btn dev-btn--page site-draw-launcher__draw';
+  draw.textContent = 'Draw';
+  const move = (event: PointerEvent) => {
+    if (!launcherDragStart || event.pointerId !== launcherDragStart.pointerId) return;
+    const x = launcherDragStart.left + event.clientX - launcherDragStart.x;
+    const y = launcherDragStart.top + event.clientY - launcherDragStart.y;
+    launcher.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  };
+  const finishMove = (event: PointerEvent, cancelled = false) => {
+    if (!launcherDragStart || event.pointerId !== launcherDragStart.pointerId) return;
+    if (!cancelled) launcherPosition = nearestLauncherPosition(
+      launcherDragStart.left + event.clientX - launcherDragStart.x + launcher.offsetWidth / 2,
+      launcherDragStart.top + event.clientY - launcherDragStart.y + launcher.offsetHeight / 2,
+    );
+    else launcherPosition = launcherDragStart.position;
+    launcherDragging = false;
+    launcherDragStart = null;
+    launcherSelection = null;
+    if (grip.hasPointerCapture?.(event.pointerId)) grip.releasePointerCapture?.(event.pointerId);
+    if (!cancelled) saveLauncherPosition();
+    positionLauncher(!cancelled);
+  };
+  grip.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0 || launcherDragging) return;
+    event.preventDefault();
+    launcherDragging = true;
+    launcherDragStart = {
+      pointerId: event.pointerId, x: event.clientX, y: event.clientY,
+      left: launcher.getBoundingClientRect().left,
+      top: launcher.getBoundingClientRect().top,
+      position: launcherPosition,
+    };
+    grip.setPointerCapture?.(event.pointerId);
+    launcher.classList.add('is-dragging');
+    launcher.style.transform = `translate3d(${launcherDragStart.left}px, ${launcherDragStart.top}px, 0)`;
+  });
+  grip.addEventListener('pointermove', move);
+  grip.addEventListener('pointerup', (event) => {
+    launcher.classList.remove('is-dragging');
+    finishMove(event);
+  });
+  grip.addEventListener('pointercancel', (event) => {
+    launcher.classList.remove('is-dragging');
+    finishMove(event, true);
+  });
+  grip.addEventListener('lostpointercapture', (event) => {
+    if (launcherDragging) {
+      launcher.classList.remove('is-dragging');
+      finishMove(event as PointerEvent, true);
+    }
+  });
+  grip.addEventListener('keydown', (event) => {
+    const direction = { ArrowUp: -1, ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1 }[event.key];
+    if (direction === undefined) return;
+    event.preventDefault();
+    launcherPosition = (launcherPosition + direction + 8) % 8;
+    saveLauncherPosition();
+    positionLauncher(true);
+  });
+  draw.addEventListener('pointerdown', (event) => {
+    launcherSelection = drawingSelection();
+    event.preventDefault();
+  });
+  draw.addEventListener('click', () => {
+    const captured = launcherSelection;
+    launcherSelection = null;
+    startFromSelection(captured);
+  });
+  draw.addEventListener('pointercancel', () => { launcherSelection = null; });
+  launcher.append(grip, draw);
+  document.body.append(launcher);
+  drawLauncher = launcher;
+  positionLauncher();
+};
+
+const syncLauncher = (active = document.documentElement.classList.contains('is-dev-mode')) => {
+  if (!active) {
+    if (drawLauncher) drawLauncher.hidden = true;
+    return;
+  }
+  createLauncher();
+  if (!drawLauncher!.isConnected) document.body.append(drawLauncher!);
+  if (!stage) drawLauncher!.hidden = false;
+  positionLauncher();
+};
+
+const launcherViewportChanged = () => {
+  if (launcherDragStart) {
+    const pointerId = launcherDragStart.pointerId;
+    launcherPosition = launcherDragStart.position;
+    launcherDragStart = null;
+    launcherDragging = false;
+    drawLauncher?.classList.remove('is-dragging');
+    const grip = drawLauncher?.querySelector<HTMLElement>('.site-draw-launcher__grip');
+    if (grip?.hasPointerCapture?.(pointerId)) grip.releasePointerCapture(pointerId);
+  }
+  positionLauncher();
+};
+window.addEventListener('resize', launcherViewportChanged, { signal: lifecycle.signal });
+window.visualViewport?.addEventListener('resize', launcherViewportChanged, { signal: lifecycle.signal });
+window.visualViewport?.addEventListener('scroll', launcherViewportChanged, { signal: lifecycle.signal });
+
 window.addEventListener('keydown', (event) => {
   if (stage) {
     if (event.key === 'Escape') {
@@ -493,17 +700,17 @@ window.addEventListener('keydown', (event) => {
   if (!document.documentElement.classList.contains('is-dev-mode')) return;
   if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.code !== 'KeyD') return;
   const selected = drawingSelection();
-  const target = selected?.target ?? shortcutTarget();
-  if (!target) return;
+  if (!selected && !shortcutTarget()) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  window.getSelection()?.removeAllRanges();
-  startDrawing(target, selected?.anchor ?? null);
+  startFromSelection(selected);
 }, { capture: true, signal: lifecycle.signal });
 
 window.addEventListener('vcd:dev-mode-change', (event) => {
-  if (!(event as CustomEvent<{ active: boolean }>).detail.active) closeStage();
+  const active = (event as CustomEvent<{ active: boolean }>).detail.active;
+  if (!active) closeStage();
   else bindButtons();
+  syncLauncher(active);
 }, { signal: lifecycle.signal });
 const syncTargets = () => {
   bindButtons();
@@ -538,8 +745,10 @@ document.addEventListener('astro:page-load', () => {
   closeStage();
   state.clear();
   bindButtons();
+  syncLauncher();
 }, { signal: lifecycle.signal });
 document.addEventListener('astro:before-swap', closeStage, { signal: lifecycle.signal });
 bindButtons();
+syncLauncher();
 
-if (import.meta.hot) import.meta.hot.dispose(() => { lifecycle.abort(); closeStage(); state.clear(); });
+if (import.meta.hot) import.meta.hot.dispose(() => { lifecycle.abort(); closeStage(); drawLauncher?.remove(); drawLauncher = null; state.clear(); });

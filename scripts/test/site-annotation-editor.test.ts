@@ -18,7 +18,7 @@ const editorSource = readFileSync(new URL('../../src/lib/siteAnnotationEditor.ts
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource
   .replace(/^import .*;\n/gm, '')
   .replace(/^if \(import\.meta\.hot\).*$/gm, '')
-  + '\nreturn { state, annotationsFor, pushPending, startDrawing };');
+  + '\nreturn { state, annotationsFor, pushPending, startDrawing, createLauncher, launcherPoint, nearestLauncherPosition, getLauncherPosition: () => launcherPosition };');
 const textEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 
 const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown) => {
@@ -48,6 +48,7 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
   window.addEventListener('vcd:dev-pending-remove', (event: any) => pending.delete(event.detail.id));
   const env = {
     window, document, Element: window.Element, DOMRect: window.DOMRect,
+    getComputedStyle: window.getComputedStyle.bind(window),
     AbortController: window.AbortController, CustomEvent: window.CustomEvent,
     createElement: (_: unknown, props: unknown) => props,
     createRef: () => ({ current: {
@@ -249,6 +250,22 @@ test('Alt D with one selected word opens an anchored highlight stage', () => {
     .toBe('Highlight');
 });
 
+test('tapping Draw with a selected word uses the same highlight flow as Alt D', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  const paragraph = h.section.querySelector('p')!;
+  const range = h.document.createRange();
+  range.selectNodeContents(paragraph);
+  range.getClientRects = () => [new h.window.DOMRect(120, 50, 40, 20)] as unknown as DOMRectList;
+  h.window.getSelection()!.addRange(range);
+  h.createLauncher();
+  const draw = h.document.querySelector<HTMLButtonElement>('.site-draw-launcher__draw')!;
+  draw.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  draw.click();
+  expect(h.document.querySelector<HTMLButtonElement>('.site-draw-stage__controls button')!.textContent)
+    .toBe('Highlight');
+});
+
 const preferences = {
   tool: { active: 'marker', color: '#ff6633', size: 23, opacity: 0.4, eraserSize: 47 },
   inks: { marker: '#ff6633', highlighter: '#ffee00' },
@@ -290,4 +307,39 @@ test('the patched Drawesome toolbar initializes with the saved active pen, width
   expect(toolbar.querySelector('[aria-pressed="true"]')?.getAttribute('aria-label')).toBe('Marker');
   expect(toolbar.textContent).toContain('23');
   expect(toolbar.textContent).toContain('40%');
+});
+
+test('the Draw launcher exposes exactly eight viewport snap points', () => {
+  const h = harness();
+  const points = Array.from({ length: 8 }, (_, index) => h.launcherPoint(index, 0, 0));
+  expect(new Set(points.map(({ x, y }) => `${x}:${y}`)).size).toBe(8);
+  points.forEach((point, index) => expect(h.nearestLauncherPosition(point.x, point.y)).toBe(index));
+  const corner = h.launcherPoint(4, 120, 50);
+  expect(corner.x + 120).toBe(h.window.innerWidth - 16);
+  expect(corner.y + 50).toBe(h.window.innerHeight - 16);
+  h.createLauncher();
+  expect(h.getLauncherPosition()).toBe(4);
+});
+
+test('the Draw launcher restores its saved position and cancels a drag cleanly', () => {
+  const h = harness();
+  h.window.localStorage.setItem('vcd:draw-launcher-position:v1', '2');
+  h.createLauncher();
+  expect(h.getLauncherPosition()).toBe(2);
+  const grip = h.document.querySelector<HTMLButtonElement>('.site-draw-launcher__grip')!;
+  const event = (type: string, x: number, y: number) => {
+    const result = new h.window.Event(type, { bubbles: true, cancelable: true }) as any;
+    Object.assign(result, { pointerId: 1, button: 0, clientX: x, clientY: y });
+    return result;
+  };
+  grip.dispatchEvent(event('pointerdown', 100, 100));
+  grip.dispatchEvent(event('pointermove', 500, 500));
+  grip.dispatchEvent(event('pointercancel', 500, 500));
+  expect(h.getLauncherPosition()).toBe(2);
+  expect(h.window.localStorage.getItem('vcd:draw-launcher-position:v1')).toBe('2');
+  grip.dispatchEvent(event('pointerdown', 100, 100));
+  grip.dispatchEvent(event('pointermove', 116, 116));
+  grip.dispatchEvent(event('pointerup', 116, 116));
+  expect(h.getLauncherPosition()).toBe(0);
+  expect(h.window.localStorage.getItem('vcd:draw-launcher-position:v1')).toBe('0');
 });
