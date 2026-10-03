@@ -311,6 +311,91 @@ test('completed animation stays completed and malformed bridge state leaves orig
   }
 });
 
+function partialHoverFixture() {
+  const f = bridgeFixture();
+  f.stack.replaceChildren();
+  const rect = { left: 10, top: 20, width: 200, height: 24, right: 210, bottom: 44 };
+  f.stack.getBoundingClientRect = () => rect as any;
+  const addLayer = (text: string, kind: string) => {
+    const element = f.doc.createElement('span');
+    element.className = `header-trigger__wordmark header-trigger__wordmark--${kind}`;
+    element.setAttribute('aria-hidden', kind === 'home' ? 'false' : 'true');
+    element.style.font = '700 24px Hanken'; element.style.lineHeight = '24px';
+    element.getBoundingClientRect = () => rect as any;
+    for (const [index, letter] of [...text].entries()) {
+      const char = f.doc.createElement('span');
+      char.className = 'header-trigger__char'; char.textContent = letter;
+      char.style.opacity = kind === 'home' ? '0' : '1';
+      char.getBoundingClientRect = () => ({ ...rect, left: 10 + index * 12, width: 12 }) as any;
+      element.append(char);
+    }
+    f.stack.append(element);
+    return element;
+  };
+  const page = addLayer('Project', 'page');
+  const home = addLayer('Vicente Cruz', 'home');
+  const animate = (char: any, duration: number, delay: number, currentTime: number) => {
+    char.getAnimations = () => [{ transitionProperty: 'filter', currentTime: 999, effect: { getTiming: () => ({ duration: 1, delay: 0 }) } }, { transitionProperty: 'opacity', currentTime, effect: { getTiming: () => ({ duration, delay }) } }];
+  };
+  [...page.children].forEach((char, index) => animate(char, 150, index * 30, 100));
+  [...home.children].forEach((char, index) => animate(char, 250, index * 40, 100));
+  (page.children[0] as HTMLElement).style.opacity = '0';
+  (page.children[0] as any).getAnimations = () => [];
+  (home.children[0] as HTMLElement).style.opacity = '1';
+  (home.children[0] as any).getAnimations = () => [];
+  f.doc.createRange = () => { throw new Error('Existing home geometry must be carried'); };
+  const pending: any = { title: 'Vicente Cruz', targetTitle: 'Vicente Cruz' };
+  return { ...f, page, home, pending };
+}
+
+test('click during hover carries unfinished home and outgoing page letter phases across documents', () => {
+  const f = partialHoverFixture();
+  const bridge = f.run(f.pending, true);
+  expect(bridge).not.toBeNull();
+  expect(f.pending.title).toBe('Project');
+  const layers = f.doc.querySelectorAll('.header-navigation-title-layer');
+  expect(layers.length).toBe(2);
+  expect(layers[0].textContent).toBe('Project');
+  expect(layers[1].textContent).toBe('Vicente\u00a0Cruz');
+  expect((layers[1].children[1] as HTMLElement).style.animation).toContain('250ms ease -60ms');
+  expect(f.pending.fromCharTimings[0].durationMs).toBe(0);
+  expect(f.pending.toCharTimings[0].durationMs).toBe(0);
+  expect(bridge.remainingMs).toBe(590);
+  const arrival = bridgeFixture(0);
+  const carried = JSON.parse(JSON.stringify(f.pending));
+  carried.startedAt -= 80;
+  const resumed = arrival.run(carried);
+  expect(resumed.remainingMs).toBe(510);
+  const incoming = arrival.doc.querySelectorAll('.header-navigation-title-layer')[1];
+  expect((incoming.children[1] as HTMLElement).style.animation).toContain('250ms ease -140ms');
+});
+
+test('click after the home hover settles retains the fixed wordmark without another fade', () => {
+  const f = partialHoverFixture();
+  for (const char of f.home.children) {
+    (char as HTMLElement).style.opacity = '1';
+    (char as any).getAnimations = () => [];
+  }
+  const bridge = f.run(f.pending, true);
+  expect(bridge.remainingMs).toBe(0);
+  expect(f.doc.querySelectorAll('.header-navigation-title-layer').length).toBe(1);
+  expect(f.pending.fromCharTimings).toBeUndefined();
+  expect(f.pending.title).toBe('Vicente Cruz');
+});
+
+test('click before hover paint schedules unstarted incoming letters and rejects malformed timing carries', () => {
+  const f = partialHoverFixture();
+  (f.home.children[1] as any).getAnimations = () => [];
+  expect(f.run(f.pending, true)).not.toBeNull();
+  expect(f.pending.toCharTimings[1]).toEqual({ durationMs: 250, delayMs: 40 });
+  for (const timings of [null, [], [{ durationMs: -1, delayMs: 0 }], Array.from('Old', () => ({ durationMs: 250, delayMs: NaN }))]) {
+    const invalid = bridgeFixture();
+    (invalid.pending as any).fromCharTimings = timings;
+    expect(invalid.run(invalid.pending)).toBeNull();
+    expect((invalid.stack as HTMLElement).style.visibility).toBe('visible');
+  }
+});
+
 function menuFixture() {
   const win = new Window();
   const doc = win.document;
