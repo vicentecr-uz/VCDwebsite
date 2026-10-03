@@ -261,7 +261,6 @@ function SelectDemo() {
         >
           <Select.Trigger className="dev-field__input dev-field__input--select dev-select__trigger base-ui-control">
             <Select.Value className="base-ui-select-value dev-select__trigger-label" />
-            <Select.Icon aria-hidden="true">⌄</Select.Icon>
           </Select.Trigger>
           <Select.Portal>
             <Select.Positioner
@@ -270,8 +269,8 @@ function SelectDemo() {
             >
               <Select.Popup className="base-ui-select-popup">
                 <Select.List>
-                  <Select.Group>
-                    <Select.GroupLabel className="base-ui-note">
+                  <Select.Group className="base-ui-select-group">
+                    <Select.GroupLabel className="base-ui-select-group-label">
                       Active
                     </Select.GroupLabel>
                     {[
@@ -288,8 +287,8 @@ function SelectDemo() {
                       </Select.Item>
                     ))}
                   </Select.Group>
-                  <Select.Group>
-                    <Select.GroupLabel className="base-ui-note">
+                  <Select.Group className="base-ui-select-group">
+                    <Select.GroupLabel className="base-ui-select-group-label">
                       Other
                     </Select.GroupLabel>
                     {[
