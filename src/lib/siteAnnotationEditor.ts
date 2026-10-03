@@ -519,7 +519,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
       const x = cropped.rect.left - base.left;
       const y = cropped.rect.top - base.top;
       annotation = {
-        id: existing?.id ?? crypto.randomUUID(),
+        id: existing?.id ?? (crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')),
         sectionId: target.sectionId,
         kind: currentKind,
         ...(effectiveAnchor ? { anchor: effectiveAnchor } : {}),

@@ -48,6 +48,7 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
   window.addEventListener('vcd:dev-pending-remove', (event: any) => pending.delete(event.detail.id));
   const env = {
     window, document, Element: window.Element, DOMRect: window.DOMRect,
+    crypto: window.crypto,
     getComputedStyle: window.getComputedStyle.bind(window),
     AbortController: window.AbortController, CustomEvent: window.CustomEvent,
     createElement: (_: unknown, props: unknown) => props,
@@ -352,6 +353,28 @@ test('a media block gets drawing controls and saves normalized frame geometry', 
   expect(saved.anchor).toBeUndefined();
   expect(saved.box.w).toBeLessThan(1);
   expect(validateSiteAnnotations([saved], new Set(['block']))).toBe(true);
+});
+
+test('new doodles use a secure-context-safe ID fallback when randomUUID is unavailable', () => {
+  const h = harness();
+  h.env.crypto = {
+    ...h.window.crypto,
+    randomUUID: undefined,
+    getRandomValues: h.window.crypto.getRandomValues.bind(h.window.crypto),
+  };
+  h.startDrawing(h.target, null);
+  h.props().onChange([fixture.strokes[0]]);
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).toBeNull();
+  h.startDrawing(h.target, null);
+  h.props().onChange([fixture.strokes[0]]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations;
+  expect(saved).toHaveLength(2);
+  expect(saved[0].id).toMatch(/^[\da-f]{32}$/);
+  expect(saved[1].id).toMatch(/^[\da-f]{32}$/);
+  expect(saved[0].id).not.toBe(saved[1].id);
+  expect(validateSiteAnnotations(saved, new Set(['block']))).toBe(true);
 });
 
 test('Command Z and Command Shift Z control Drawesome history while its stage is open', () => {
