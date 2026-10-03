@@ -57,7 +57,9 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
 
 <script>
   import { bindHomeIntro } from '../../scripts/homeIntro';
-  bindHomeIntro();
+  import { onPageLoad } from '../../lib/pageLifecycle';
+  const dispose = onPageLoad(() => bindHomeIntro()?.teardown);
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

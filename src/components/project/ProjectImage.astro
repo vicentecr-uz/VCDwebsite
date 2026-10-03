@@ -494,8 +494,12 @@ const editAttrs = editable
   import { bindProjectCropCovers } from '../../lib/projectCropCover';
   import { bindAllPlaceholderLabels } from '../../lib/placeholderLabel';
 
-  bindProjectCropCovers();
-  bindAllPlaceholderLabels();
+  import { onPageLoad } from '../../lib/pageLifecycle';
+  const dispose = onPageLoad(() => {
+    bindProjectCropCovers();
+    return bindAllPlaceholderLabels();
+  });
+  import.meta.hot?.dispose(dispose);
 
   window.addEventListener('vcd:dev-section-inserted', () => {
     bindAllPlaceholderLabels();

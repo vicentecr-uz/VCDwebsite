@@ -142,7 +142,10 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
-    documentElement: { clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {} },
+    documentElement: {
+      clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {},
+      removeAttribute(name: string) { if (name === 'data-header-navigation') delete (this.dataset as any).headerNavigation; },
+    },
     getElementById: (id: string) => id === 'transition-readiness-marker'
       ? (options.noReadinessMarker ? null : readinessMarker)
       : (options.noOverlay ? null : overlay),
@@ -208,6 +211,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
     Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
+    installPersistentNavigation() {}, resetImagePreviewUpgrade() {},
     gsap: fakeGsap, bindSafeVh() {}, bindExternalLinks() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
     getComputedStyle: (element: any) => ({
@@ -298,39 +302,14 @@ for (const options of [
   });
 }
 
-test('open menu closes only once the outgoing veil is white and navigation waits for its timeline', async () => {
+test('full-document fallback navigates after its 250ms cover without waiting for the header title', async () => {
   const f = fixture();
-  let covered = 0;
-  f.document.addEventListener('header:navigation-covered', (event: any) => {
-    covered++;
-    assert.equal(Number(f.overlay.style.opacity), 1);
-    event.detail.waitMs = 212;
-  });
   await f.paint();
   f.tweens[0].finish();
   f.click();
-  assert.equal(covered, 0);
+  assert.equal(f.destinations.length, 0);
   f.tweens[1].finish();
-  assert.equal(covered, 1);
-  assert.equal(f.destinations.length, 0);
-  await f.advance(211);
-  assert.equal(f.destinations.length, 0);
-  await f.advance(1);
   assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
-});
-
-test('pagehide cancels the menu closure wait without following the stale destination', async () => {
-  const f = fixture();
-  f.document.addEventListener('header:navigation-covered', (event: any) => { event.detail.waitMs = 212; });
-  await f.paint();
-  f.tweens[0].finish();
-  f.click();
-  f.tweens[1].finish();
-  assert.equal(f.timers.size, 1);
-  f.window.emit('pagehide');
-  assert.equal(f.timers.size, 0);
-  await f.advance(212);
-  assert.equal(f.destinations.length, 0);
 });
 
 test('early initial controller reveals once and deferred module adopts its state', async () => {

@@ -82,7 +82,7 @@ export function bindFitPlaceholderLabel(el: HTMLElement): () => void {
     raf = requestAnimationFrame(() => {
       raf = 0;
       // Second frame: crop-stage layout often settles one paint later.
-      requestAnimationFrame(fit);
+      raf = requestAnimationFrame(() => { raf = 0; fit(); });
     });
   };
 

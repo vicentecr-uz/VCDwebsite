@@ -13,8 +13,8 @@ const homePage = loadPageDocument('home');
 const homeIntroPage = loadPageDocument('home-intro');
 ---
 
-<Layout title="Vicente Cruz" columnStyle={pageColumnStyle(homePage.sections)}>
-  <div class="home-page flex flex-col min-h-dvh" data-home-page>
+<Layout persistentNavigation title="Vicente Cruz" columnStyle={pageColumnStyle(homePage.sections)}>
+  <div data-page-shell class="home-page flex flex-col min-h-dvh" data-home-page>
     <Header navMenu wordmarkAsH1 />
 
     <main id="main-content" class="listing-main" style="flex: 1;">
@@ -35,7 +35,9 @@ const homeIntroPage = loadPageDocument('home-intro');
 
 <script>
   import { bindHomeReveal } from '../lib/homeReveal';
-  bindHomeReveal();
+  import { onPageLoad } from '../lib/pageLifecycle';
+  const dispose = onPageLoad(() => bindHomeReveal()?.destroy);
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

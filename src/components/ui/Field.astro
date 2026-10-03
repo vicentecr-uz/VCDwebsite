@@ -29,6 +29,10 @@ const { label, labelId, labelFor, class: className, ...rest } = Astro.props;
 
 <script>
   import { initFieldOverflow } from '../../lib/fieldOverflow.js';
-  const cleanups = [...document.querySelectorAll('[data-dev-field]')].map(initFieldOverflow);
-  if (import.meta.hot) import.meta.hot.dispose(() => cleanups.forEach(cleanup => cleanup?.()));
+  import { onPageLoad } from '../../lib/pageLifecycle';
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll('[data-dev-field]')].map(initFieldOverflow);
+    return () => cleanups.forEach(cleanup => cleanup?.());
+  });
+  import.meta.hot?.dispose(dispose);
 </script>

@@ -243,6 +243,10 @@ document.addEventListener('scroll', schedule, { capture: true, passive: true, si
 document.addEventListener('load', schedule, { capture: true, signal: lifecycle.signal });
 window.addEventListener('vcd:site-annotations-changed', schedule, { signal: lifecycle.signal });
 document.addEventListener('astro:page-load', bind, { signal: lifecycle.signal });
+document.addEventListener('astro:before-swap', () => {
+  resizeObserver?.disconnect(); mutationObserver?.disconnect();
+  cancelAnimationFrame(frame); frame = 0;
+}, { signal: lifecycle.signal });
 window.addEventListener('vcd:dev-section-structure-changed', bind, { signal: lifecycle.signal });
 window.addEventListener('vcd:site-annotation-targets-changed', bind, { signal: lifecycle.signal });
 document.fonts?.ready.then(schedule);
