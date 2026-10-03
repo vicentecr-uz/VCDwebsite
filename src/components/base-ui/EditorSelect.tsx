@@ -39,6 +39,7 @@ export default function EditorSelect({
     disabled: initialDisabled,
   });
   const [selectionReturnedFocus, setSelectionReturnedFocus] = useState(false);
+  const [menuValue, setMenuValue] = useState(snapshot.value);
 
   useEffect(() => {
     const trigger = document.getElementById(triggerId);
@@ -64,7 +65,10 @@ export default function EditorSelect({
       value={encodeValue(snapshot.value)}
       disabled={snapshot.disabled}
       onValueChange={commit}
-      onOpenChange={(open, details) => setSelectionReturnedFocus(!open && details.reason === 'item-press')}
+      onOpenChange={(open, details) => {
+        if (open) setMenuValue(snapshot.value);
+        setSelectionReturnedFocus(!open && details.reason === 'item-press');
+      }}
     >
       <Select.Trigger
         id={triggerId}
@@ -88,7 +92,7 @@ export default function EditorSelect({
                     <Select.Item key={option.value} value={encodeValue(option.value)!} className="base-ui-select-item" disabled={option.disabled}>
                       {option.iconSvg && <span className="dev-select__option-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: option.iconSvg }} />}
                       <Select.ItemText className="base-ui-select-item__text">{option.label}</Select.ItemText>
-                      <Select.ItemIndicator aria-hidden="true">✓</Select.ItemIndicator>
+                      <span className="base-ui-select-check" aria-hidden="true" style={{ visibility: option.value === menuValue ? 'visible' : 'hidden' }}>✓</span>
                     </Select.Item>
                   ))}
                 </Select.Group>
