@@ -38,13 +38,19 @@ const harness = (annotations: SiteAnnotation[] = []) => {
     return element;
   }) as typeof document.createElement;
   let drawProps: any;
+  let undoCount = 0;
+  let redoCount = 0;
   window.addEventListener('vcd:dev-pending-upsert', (event: any) => pending.set(event.detail.id, event.detail));
   window.addEventListener('vcd:dev-pending-remove', (event: any) => pending.delete(event.detail.id));
   const env = {
     window, document, Element: window.Element, DOMRect: window.DOMRect,
     AbortController: window.AbortController, CustomEvent: window.CustomEvent,
     createElement: (_: unknown, props: unknown) => props,
-    createRef: () => ({ current: { getSize: () => ({ w: 1000, h: 800 }) } }),
+    createRef: () => ({ current: {
+      getSize: () => ({ w: 1000, h: 800 }),
+      undo: () => { undoCount += 1; },
+      redo: () => { redoCount += 1; },
+    } }),
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
     Draw: {}, siteAnnotationSvg, positionSiteAnnotations() {},
     annotationRect: () => new window.DOMRect(20, 10, 200, 40),
@@ -55,6 +61,7 @@ const harness = (annotations: SiteAnnotation[] = []) => {
   return {
     ...api, window, document, section, pending, target, env,
     props: () => drawProps,
+    historyCalls: () => ({ undo: undoCount, redo: redoCount }),
     structure: () => window.dispatchEvent(new window.Event('vcd:dev-section-structure-changed')),
     done: () => clicks.get(document.querySelector('.site-draw-stage__controls')!.lastElementChild!)!(),
   };
@@ -167,4 +174,60 @@ test('unchanged edits preserve original strokes and geometry', () => {
 test('only highlight exports disable SVG aspect preservation', () => {
   expect(siteAnnotationSvg(fixture)).toContain('preserveAspectRatio="none"');
   expect(siteAnnotationSvg({ ...fixture, kind: 'doodle' })).not.toContain('preserveAspectRatio="none"');
+});
+
+test('Command Z and Command Shift Z control Drawesome history while its stage is open', () => {
+  const h = harness();
+  h.startDrawing(h.target, null);
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'z', metaKey: true }));
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true }));
+  expect(h.historyCalls()).toEqual({ undo: 1, redo: 1 });
+});
+
+test('Escape closes the drawing stage before the page editor can leave Edit mode', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  h.startDrawing(h.target, null);
+  let pageEscape = 0;
+  h.document.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Escape') pageEscape += 1;
+  }, { capture: true });
+  h.document.body.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  expect(h.document.querySelector('.site-draw-stage')).toBeNull();
+  expect(h.document.documentElement.classList.contains('is-dev-mode')).toBe(true);
+  expect(pageEscape).toBe(0);
+});
+
+test('Alt D without a selection opens a doodle stage for the nearest visible text block', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  const event = new h.window.KeyboardEvent('keydown', {
+    key: 'd', code: 'KeyD', altKey: true, cancelable: true,
+  });
+  h.window.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  expect(h.document.querySelector('.site-draw-stage')).not.toBeNull();
+});
+
+test('Alt D with one selected word opens an anchored highlight stage', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  const paragraph = h.section.querySelector('p')!;
+  const range = h.document.createRange();
+  range.selectNodeContents(paragraph);
+  range.getClientRects = () => [new h.window.DOMRect(120, 50, 40, 20)] as unknown as DOMRectList;
+  h.window.getSelection()!.addRange(range);
+  h.document.dispatchEvent(new h.window.Event('selectionchange'));
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', {
+    key: 'd', code: 'KeyD', altKey: true, cancelable: true,
+  }));
+  expect(h.document.querySelector<HTMLButtonElement>('.site-draw-stage__controls button')!.textContent)
+    .toBe('Highlight');
+});
+
+test('the block control is explicitly a selection-free doodle action', () => {
+  const h = harness();
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-open]')!;
+  expect(button.textContent).toBe('Doodle');
+  expect(button.getAttribute('aria-label')).toBe('Draw a doodle near this text block');
 });
