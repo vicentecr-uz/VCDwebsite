@@ -7,6 +7,7 @@ export function initFieldOverflow(field) {
   const tracked = new Map();
   const inputs = new Map();
   const wrapped = new Map();
+  let readOnlyTrack;
   const sync = () => {
     for (const track of tracked.keys()) {
       const left = track.scrollLeft > .5;
@@ -42,7 +43,15 @@ export function initFieldOverflow(field) {
       if (!inputs.has(root)) inputs.set(root, initTextField(root));
     }
     const candidates = [...value.querySelectorAll('.dev-select__trigger-label, .base-ui-select-value, input[type="email"], input[type="password"], input[type="number"], [data-field-overflow]')];
-    if (!value.querySelector('input, textarea, button, select, .dev-text-field')) candidates.push(value);
+    if (!value.querySelector('input, textarea, button, select, .dev-text-field')) {
+      if (!readOnlyTrack || !value.contains(readOnlyTrack)) {
+        readOnlyTrack = document.createElement('span');
+        readOnlyTrack.className = 'dev-field__overflow-content';
+        readOnlyTrack.append(...value.childNodes);
+        value.append(readOnlyTrack);
+      }
+      candidates.push(readOnlyTrack);
+    }
     for (const track of tracked.keys()) {
       if (candidates.includes(track)) continue;
       resize.unobserve(track);
@@ -68,6 +77,7 @@ export function initFieldOverflow(field) {
     changes.disconnect();
     for (const cleanup of inputs.values()) cleanup();
     for (const [root, input] of wrapped) root.replaceWith(input);
+    if (readOnlyTrack?.parentNode === value) readOnlyTrack.replaceWith(...readOnlyTrack.childNodes);
     for (const track of tracked.keys()) {
       track.classList.remove('dev-field-overflow');
       track.style.maskImage = '';
