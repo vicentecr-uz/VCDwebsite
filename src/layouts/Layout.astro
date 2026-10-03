@@ -628,10 +628,11 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           invalidate();
           const current = generation;
           destinationLocked = true;
+          if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
           const pending = { href: target.href, title: '', time: Date.now(), targetTitle: anchor.dataset.headerNavigationTitle || undefined };
           captureHeaderNavigation(target, pending);
           document.dispatchEvent(new CustomEvent('header:navigation-start', { detail: { pending } }));
-          try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { clearHeaderNavigationState(); }
+          if (pending.title) { try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { clearHeaderNavigationState(); } }
           overlay.style.animation = 'none';
           const navigate = () => {
             if (current !== generation || !destinationLocked) return;
@@ -648,9 +649,6 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               void revealPage();
             }
           };
-          if (visibleTransition) {
-            target.searchParams.set('dev-transition', 'visible');
-          }
           if (visibleTransition) { navigate(); return; }
           try {
             overlay.hidden = false;
