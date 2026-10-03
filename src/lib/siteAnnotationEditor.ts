@@ -3,8 +3,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Draw, PEN_BY_ID, type DrawHandle, type Stroke } from 'drawesome';
 import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
-import { siteAnnotationSvg } from './siteAnnotationSvg';
-import { annotationRect, annotationBaseRect, annotationVisibleRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
+import { siteAnnotationSvg, siteAnnotationHasFreeInk } from './siteAnnotationSvg';
+import { captureTextParts, editableTextStrokes } from './siteAnnotationTextParts';
+import { annotationRect, annotationBaseRect, annotationVisibleRect, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
 import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
@@ -45,7 +46,7 @@ const targetKey = ({ documentKey, sectionId }: Target) => `${documentKey}:${sect
 let stage: HTMLElement | null = null;
 let reactRoot: Root | null = null;
 let activeDrawRef: { current: DrawHandle | null } | null = null;
-let editingImage: HTMLImageElement | null = null;
+let editingImages: HTMLImageElement[] = [];
 let savedSelection: { anchor: TextAnchor; rect: DOMRect } | null = null;
 const lifecycle = new AbortController();
 const launcherPositionKey = 'vcd:draw-launcher-position:v1';
@@ -149,13 +150,33 @@ const renderCurrent = (target: Target) => {
     target.section.append(layer);
   }
   layer.dataset.siteAnnotations = JSON.stringify(entry.current);
-  layer.replaceChildren(...entry.current.map((annotation) => {
-    const image = document.createElement('img');
-    image.dataset.siteAnnotation = annotation.id;
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation))}`;
-    image.alt = '';
-    image.draggable = false;
-    return image;
+  layer.replaceChildren(...entry.current.flatMap((annotation) => {
+    const images: HTMLImageElement[] = [];
+    const addImage = (partIndex?: number, sliceIndex?: number, strokeIndex?: number) => {
+      const image = document.createElement('img');
+      image.dataset.siteAnnotation = annotation.id;
+      if (partIndex !== undefined) {
+        image.dataset.siteAnnotationPart = String(partIndex);
+        image.dataset.siteAnnotationSlice = String(sliceIndex);
+      }
+      if (strokeIndex !== undefined) image.dataset.siteAnnotationStroke = String(strokeIndex);
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation,
+        partIndex !== undefined ? { partIndex, sliceIndex: sliceIndex! }
+          : strokeIndex !== undefined ? { strokeIndex } : undefined))}`;
+      image.alt = '';
+      image.draggable = false;
+      images.push(image);
+    };
+    if (annotation.textParts?.length) {
+      annotation.strokes.forEach((stroke, strokeIndex) => {
+        if (stroke.erase) return;
+        const parts = annotation.textParts!.map((part, partIndex) => ({ part, partIndex }))
+          .filter(({ part }) => part.strokeId === stroke.id);
+        if (parts.length) parts.forEach(({ part, partIndex }) => part.slices.forEach((_, sliceIndex) => addImage(partIndex, sliceIndex)));
+        else addImage(undefined, undefined, strokeIndex);
+      });
+    } else if (siteAnnotationHasFreeInk(annotation)) addImage();
+    return images;
   }));
   updateCount(target);
   positionSiteAnnotations();
@@ -237,8 +258,8 @@ const selectedAnchor = (section: HTMLElement, range: Range | null): { anchor: Te
 };
 
 const closeStage = () => {
-  editingImage?.style.removeProperty('display');
-  editingImage = null;
+  editingImages.forEach((image) => image.style.removeProperty('display'));
+  editingImages = [];
   activeDrawRef = null;
   reactRoot?.unmount();
   reactRoot = null;
@@ -315,14 +336,24 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   target = annotationsFor(target).target;
   const anchor = existing?.anchor ?? selected?.anchor;
   const existingRect = existing ? annotationRect(target.section, existing) : null;
-  if (existing && !existingRect) {
+  const resolvedPart = existing?.textParts?.some((part) => part.slices.some((_, index) => textPartRect(target.section, part, index)));
+  if (existing?.textParts?.some((part) => part.slices.some((_, index) => !textPartRect(target.section, part, index)))) {
+    window.alert('Some highlighted text is missing or ambiguous. Restore it before editing this drawing.');
+    return;
+  }
+  if (existing && !existingRect && (!resolvedPart || siteAnnotationHasFreeInk(existing))) {
     window.alert('This drawing’s target is missing. Restore or reattach it before editing.');
     return;
   }
+  const textStrokes = existing?.textParts ? editableTextStrokes(target.section, existing) : undefined;
+  if (existing?.textParts && !textStrokes) {
+    window.alert('This highlight has reflowed. Restore its original layout or delete and redraw it to edit.');
+    return;
+  }
   if (existing) {
-    editingImage = [...target.section.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
-      .find((image) => image.dataset.siteAnnotation === existing.id) ?? null;
-    if (editingImage) editingImage.style.display = 'none';
+    editingImages = [...target.section.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
+      .filter((image) => image.dataset.siteAnnotation === existing.id);
+    editingImages.forEach((image) => { image.style.display = 'none'; });
   }
   const overlay = document.createElement('div');
   overlay.className = 'site-draw-stage';
@@ -371,7 +402,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
   const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
   // Strokes have one pen width; exact anisotropic nib scaling would require transformed SVG paths.
-  let latest: Stroke[] = existing && existingRect ? existing.strokes.map((stroke) => ({
+  let latest: Stroke[] = textStrokes ?? (existing && existingRect ? existing.strokes.map((stroke) => ({
     ...stroke,
     size: stroke.size * Math.sqrt(scaleX * scaleY),
     points: stroke.points.map(([x, y, pressure]) => [
@@ -379,7 +410,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
       sectionRect.top + existingRect.top + y * scaleY,
       pressure,
     ] as [number, number, number]),
-  })) : [];
+  })) : []);
   const initialStrokes = JSON.stringify(latest);
   reactRoot = createRoot(canvas);
   const narrow = window.innerWidth < 680;
@@ -420,7 +451,10 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
       const cropped = cropStrokes(latest, board);
       if (!cropped) { closeStage(); return; }
       const blockAnchor = existing?.blockAnchor ?? (!anchor ? doodleBlockAnchor(target.section, cropped.rect) : undefined);
-      const base = annotationBaseRect(target.section, { anchor, blockAnchor });
+      const textParts = captureTextParts(target.section, latest, cropped.rect, currentKind === 'highlight' || Boolean(existing?.textParts));
+      const effectiveAnchor = anchor && (textParts || existing?.textParts) && !annotationBaseRect(target.section, { anchor })
+        ? undefined : anchor;
+      const base = annotationBaseRect(target.section, { anchor: effectiveAnchor, blockAnchor });
       if (!base) {
         window.alert('The drawing’s target moved or changed. Cancel and select it again.');
         return;
@@ -431,10 +465,12 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
         id: existing?.id ?? crypto.randomUUID(),
         sectionId: target.sectionId,
         kind: currentKind,
-        ...(anchor ? { anchor } : {}),
+        ...(effectiveAnchor ? { anchor: effectiveAnchor } : {}),
         ...(blockAnchor ? { blockAnchor } : {}),
+        ...(textParts ? { textParts } : {}),
+        ...(textParts ? { kind: 'doodle' as const } : {}),
         board: { w: cropped.rect.width, h: cropped.rect.height },
-        box: currentKind === 'highlight' || blockAnchor
+        box: (!textParts && currentKind === 'highlight') || blockAnchor
           ? { x: x / base.width, y: y / base.height, w: cropped.rect.width / base.width, h: cropped.rect.height / base.height }
           : { x, y, w: cropped.rect.width, h: cropped.rect.height },
         strokes: cropped.strokes,

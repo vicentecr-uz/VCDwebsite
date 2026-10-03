@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from 'node:fs';
 import { validateSiteAnnotations, type SiteAnnotation } from "../../src/lib/siteAnnotations";
+import { siteAnnotationHasFreeInk, siteAnnotationSvg } from "../../src/lib/siteAnnotationSvg";
 
 const sectionIds = new Set(["intro"]);
 const valid: SiteAnnotation = {
@@ -78,6 +79,74 @@ describe("site annotation validation", () => {
       strokes: [{ ...valid.strokes[0], points: Array.from({ length: 10_001 }, () => [0, 0, 0] as [number, number, number]) }],
     };
     expect(validateSiteAnnotations([tooManyPoints], sectionIds)).toBe(false);
+  });
+
+  test("validates contextual text parts and rejects forged references or UTF-16 splits", () => {
+    const textParts = [{
+      strokeId: 0,
+      anchor: { paragraphIndex: 0, exact: "café😀", prefix: "", suffix: "" },
+      slices: [{
+        start: 0,
+        end: 4,
+        glyph: { x: 2, y: 3, w: 30, h: 12 },
+        clip: { x: 0, y: 0, w: 40, h: 20 },
+      }],
+    }];
+    const annotation = {
+      ...valid,
+      textParts,
+      strokes: [{ ...valid.strokes[0], points: [[0, 30, 0.5], [120, 30, 0.6]] as [number, number, number][] }],
+    };
+    expect(validateSiteAnnotations([annotation], sectionIds)).toBe(true);
+    expect(validateSiteAnnotations([{ ...annotation, textParts: [{ ...textParts[0], strokeId: 99 }] }], sectionIds)).toBe(false);
+    expect(validateSiteAnnotations([{ ...annotation, textParts: [{ ...textParts[0], slices: [{ ...textParts[0].slices[0], start: 5, end: 6 }] }] }], sectionIds)).toBe(false);
+    expect(validateSiteAnnotations([{ ...annotation, blockAnchor: { surface: "block" } }], sectionIds)).toBe(false);
+  });
+
+  test("renders text parts from their mapped stroke while retaining later erasers", () => {
+    const annotation: SiteAnnotation = {
+      ...valid,
+      textParts: [{
+        strokeId: 0,
+        anchor: valid.anchor!,
+        slices: [{ start: 0, end: 4, glyph: { x: 4, y: 5, w: 40, h: 14 }, clip: { x: 0, y: 0, w: 50, h: 20 } }],
+      }],
+      strokes: [
+        valid.strokes[0],
+        { ...valid.strokes[0], id: 1, pen: "pen", color: "#111", erase: false },
+        { ...valid.strokes[0], id: 2, erase: true },
+        { ...valid.strokes[0], id: 3, pen: "pen", color: "#222", erase: false },
+      ],
+    };
+    const part = siteAnnotationSvg(annotation, { partIndex: 0, sliceIndex: 0 });
+    expect(part).toContain('viewBox="0 0 50 20"');
+    expect(part).toContain('width="50"');
+    expect(part).toContain('height="20"');
+    expect(siteAnnotationHasFreeInk(annotation)).toBe(true);
+    const base = siteAnnotationSvg(annotation);
+    expect(base).not.toContain('stroke="#111"');
+    expect(base).toContain('fill="#222"');
+    expect((part.match(/<svg [^>]+>/)?.[0].match(/\b(?:width|height|viewBox)=/g) ?? []).length).toBe(3);
+    const freeStroke = siteAnnotationSvg(annotation, { strokeIndex: 3 });
+    expect(freeStroke).toContain('fill="#222"');
+    expect(freeStroke).not.toContain('fill="#111"');
+  });
+
+  test("keeps free strokes in original order when text parts are split into overlays", () => {
+    const annotation: SiteAnnotation = {
+      ...valid,
+      textParts: [{
+        strokeId: 0,
+        anchor: valid.anchor!,
+        slices: [{ start: 0, end: 4, glyph: { x: 4, y: 5, w: 40, h: 14 }, clip: { x: 0, y: 0, w: 50, h: 20 } }],
+      }],
+      strokes: [
+        valid.strokes[0],
+        { ...valid.strokes[0], id: 1, pen: "pen", color: "#222", erase: false },
+      ],
+    };
+    expect(siteAnnotationHasFreeInk(annotation)).toBe(true);
+    expect(siteAnnotationSvg(annotation, { strokeIndex: 1 })).toContain('fill="#222"');
   });
 });
 

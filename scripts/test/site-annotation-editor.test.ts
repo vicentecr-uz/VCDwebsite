@@ -4,7 +4,7 @@ import { Window } from 'happy-dom';
 import { createElement as reactElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Draw, PEN_BY_ID } from 'drawesome';
-import { siteAnnotationSvg } from '../../src/lib/siteAnnotationSvg';
+import { siteAnnotationSvg, siteAnnotationHasFreeInk } from '../../src/lib/siteAnnotationSvg';
 import { validateSiteAnnotations, type SiteAnnotation } from '../../src/lib/siteAnnotations';
 
 const fixture: SiteAnnotation = {
@@ -57,7 +57,10 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
       redo: () => { redoCount += 1; },
     } }),
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
-    Draw: {}, PEN_BY_ID, siteAnnotationSvg, positionSiteAnnotations() {},
+    Draw: {}, PEN_BY_ID, siteAnnotationSvg, siteAnnotationHasFreeInk, positionSiteAnnotations() {},
+    captureTextParts: () => undefined,
+    editableTextStrokes: (_: HTMLElement, annotation: SiteAnnotation) => annotation.strokes,
+    textPartRect: () => new window.DOMRect(20, 10, 200, 40),
     annotationRect: () => new window.DOMRect(20, 10, 200, 40),
     annotationVisibleRect: (element: HTMLElement) => element.getBoundingClientRect(),
     annotationBaseRect: (section: HTMLElement, annotation: SiteAnnotation) => annotation.anchor
@@ -168,6 +171,18 @@ test('Clear then Done queues deletion of the existing drawing', () => {
   const change = [...h.pending.values()][0].prepare();
   expect(change.annotations).toEqual([]);
   expect(change.expected).toEqual([fixture]);
+});
+
+test('unchanged text-part editing preserves the drawing group and erasers verbatim', () => {
+  const grouped: SiteAnnotation = { ...fixture, kind: 'doodle',
+    textParts: [{ strokeId: 0, anchor: fixture.anchor!, slices: [{ start: 0, end: 4,
+      glyph: { x: 0, y: 0, w: 40, h: 20 }, clip: { x: 0, y: 0, w: 40, h: 20 } }] }],
+    strokes: [{ ...fixture.strokes[0], pen: 'highlighter' }, { ...fixture.strokes[0], id: 1, erase: true }] };
+  const h = harness([grouped]);
+  h.startDrawing(h.target, null, grouped);
+  h.done();
+  expect(h.annotationsFor(h.target).current).toEqual([grouped]);
+  expect(h.pending.size).toBe(0);
 });
 
 test('unchanged edits preserve original strokes and geometry', () => {

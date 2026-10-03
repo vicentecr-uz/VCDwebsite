@@ -9,6 +9,16 @@ export type SiteAnnotation = {
     prefix: string;
     suffix: string;
   };
+  textParts?: Array<{
+    strokeId: number;
+    anchor: NonNullable<SiteAnnotation["anchor"]>;
+    slices: Array<{
+      start: number;
+      end: number;
+      glyph: { x: number; y: number; w: number; h: number };
+      clip: { x: number; y: number; w: number; h: number };
+    }>;
+  }>;
   board: { w: number; h: number };
   box: { x: number; y: number; w: number; h: number };
   strokes: Array<{
@@ -41,6 +51,8 @@ const MAX_POINTS = 10_000;
 const MAX_STRING_LENGTH = 2_000;
 const MAX_BOARD_EDGE = 100_000;
 const MAX_STROKE_SIZE = 10_000;
+const MAX_TEXT_PARTS = 400;
+const MAX_TEXT_SLICES = 2_000;
 const PENS = new Set<SiteAnnotation["strokes"][number]["pen"]>([
   "pencil",
   "pen",
@@ -89,6 +101,57 @@ const validateBox = (value: unknown): value is SiteAnnotation["box"] => {
     isPositiveDimension(value.w, MAX_BOARD_EDGE) &&
     isPositiveDimension(value.h, MAX_BOARD_EDGE)
   );
+};
+
+const validateRect = (value: unknown): value is { x: number; y: number; w: number; h: number } => {
+  if (!isRecord(value)) return false;
+  return (
+    isFiniteNumber(value.x) &&
+    isFiniteNumber(value.y) &&
+    Math.abs(value.x) <= MAX_BOARD_EDGE &&
+    Math.abs(value.y) <= MAX_BOARD_EDGE &&
+    isPositiveDimension(value.w, MAX_BOARD_EDGE) &&
+    isPositiveDimension(value.h, MAX_BOARD_EDGE)
+  );
+};
+
+const isUtf16Boundary = (value: string, offset: number): boolean => {
+  if (offset <= 0 || offset >= value.length) return true;
+  const previous = value.charCodeAt(offset - 1);
+  const next = value.charCodeAt(offset);
+  return !(previous >= 0xd800 && previous <= 0xdbff && next >= 0xdc00 && next <= 0xdfff);
+};
+
+const validateTextParts = (
+  value: unknown,
+  strokes: SiteAnnotation["strokes"],
+): value is NonNullable<SiteAnnotation["textParts"]> => {
+  if (!Array.isArray(value) || value.length > MAX_TEXT_PARTS) return false;
+  const strokeById = new Map(strokes.map((stroke) => [stroke.id, stroke]));
+  const mappings = new Set<string>();
+  let sliceCount = 0;
+  for (const part of value) {
+    if (!isRecord(part) || !Number.isInteger(part.strokeId)) return false;
+    const strokeId = part.strokeId as number;
+    const anchor = part.anchor;
+    const stroke = strokeById.get(strokeId);
+    if (!stroke || stroke.erase || !validateAnchor(anchor)) return false;
+    if (!Array.isArray(part.slices) || part.slices.length === 0) return false;
+    const key = `${strokeId}\u0000${anchor.paragraphIndex}\u0000${anchor.exact}\u0000${anchor.prefix}\u0000${anchor.suffix}`;
+    if (mappings.has(key)) return false;
+    mappings.add(key);
+    for (const slice of part.slices) {
+      if (!isRecord(slice) || !Number.isInteger(slice.start) || !Number.isInteger(slice.end)) return false;
+      const start = slice.start as number;
+      const end = slice.end as number;
+      if (start < 0 || start >= end || end > anchor.exact.length) return false;
+      if (!isUtf16Boundary(anchor.exact, start) || !isUtf16Boundary(anchor.exact, end)) return false;
+      if (!validateRect(slice.glyph) || !validateRect(slice.clip)) return false;
+      sliceCount += 1;
+      if (sliceCount > MAX_TEXT_SLICES) return false;
+    }
+  }
+  return true;
 };
 
 const validateStroke = (value: unknown): value is SiteAnnotation["strokes"][number] => {
@@ -185,6 +248,10 @@ const validateAnnotation = (value: unknown, sectionIds: Set<string>): value is S
     strokeIds.add(stroke.id);
     pointCount += stroke.points.length;
     if (pointCount > MAX_POINTS) return false;
+  }
+
+  if (value.textParts !== undefined) {
+    if (value.blockAnchor !== undefined || !validateTextParts(value.textParts, value.strokes)) return false;
   }
 
   return true;

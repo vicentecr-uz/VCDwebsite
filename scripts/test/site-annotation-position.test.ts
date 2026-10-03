@@ -20,7 +20,9 @@ window.Range.prototype.getClientRects = function () {
   return [new window.DOMRect(wordLeft, 50, wordWidth, 20)];
 };
 
-const { findTextAnchor, annotationRect, annotationBlockTarget, annotationVisibleRect } = await import('../../src/scripts/siteAnnotationPosition');
+const { findTextAnchor, annotationRect, annotationBlockTarget, annotationVisibleRect, textPartRect } = await import('../../src/scripts/siteAnnotationPosition');
+const { captureTextParts, editableTextStrokes } = await import('../../src/lib/siteAnnotationTextParts');
+const { validateSiteAnnotations } = await import('../../src/lib/siteAnnotations');
 
 const section = window.document.createElement('section');
 section.innerHTML = '<div class="project-body-text"><p>The word appears, then word appears again.</p></div>';
@@ -113,4 +115,54 @@ test('cropped carousel media anchors use the frame and respect every clipping an
   expect(annotationVisibleRect(track).height).toBe(100);
   item.getBoundingClientRect = () => new window.DOMRect(250, 0, 200, 300);
   expect(annotationVisibleRect(item).width).toBe(0);
+});
+
+test('independent ink runs follow graphemes across hyphen wraps and retain erasers during editing', () => {
+  const block = window.document.createElement('section');
+  block.innerHTML = '<div class="project-body-text"><p>journaling <em>stream-of-consciousness</em> typing</p></div>';
+  block.getBoundingClientRect = () => new window.DOMRect(0, 0, 500, 150);
+  const original = window.Range.prototype.getClientRects;
+  let wrapAt = 1000;
+  window.Range.prototype.getClientRects = function () {
+    const paragraph = this.startContainer.parentElement!.closest('p')!;
+    const walker = window.document.createTreeWalker(paragraph, window.NodeFilter.SHOW_TEXT);
+    let offset = this.startOffset;
+    while (walker.nextNode() && walker.currentNode !== this.startContainer) offset += walker.currentNode.textContent!.length;
+    return Array.from({ length: this.toString().length }, (_, i) => {
+      const at = offset + i;
+      return new window.DOMRect((at >= wrapAt ? at - wrapAt : at) * 10, at >= wrapAt ? 70 : 30, 10, 20);
+    });
+  };
+  try {
+    const ink: SiteAnnotation['strokes'] = [
+      { id: 0, pen: 'highlighter', color: '#ffff00', size: 6, opacity: .5, points: [[5, 40, .5], [95, 40, .5]] },
+      { id: 1, pen: 'highlighter', color: '#ffff00', size: 6, opacity: .5, points: [[115, 40, .5], [425, 40, .5]] },
+      { id: 2, pen: 'pen', erase: true, color: '#000', size: 4, opacity: 1, points: [[20, 40, .5], [30, 40, .5]] },
+    ];
+    const crop = new window.DOMRect(0, 20, 450, 40);
+    const parts = captureTextParts(block, ink, crop)!;
+    expect(parts.length).toBe(2);
+    expect(parts[0].anchor.exact).toBe('journaling');
+    expect(parts[1].anchor.exact).toBe('stream-of-consciousness typing');
+    const marker = [{ ...ink[0], pen: 'marker' as const }];
+    expect(captureTextParts(block, marker, crop)).toBeUndefined();
+    expect(captureTextParts(block, marker, crop, true)?.[0].anchor.exact).toBe('journaling');
+    const drawing: SiteAnnotation = { id: 'group', sectionId: 's', kind: 'doodle', mobile: 'show',
+      board: { w: 450, h: 40 }, box: { x: 0, y: 20, w: 450, h: 40 }, textParts: parts,
+      strokes: ink.map((stroke) => ({ ...stroke, points: stroke.points.map(([x, y, pressure]) => [x, y - 20, pressure]) })) };
+    expect(validateSiteAnnotations([drawing], new Set(['s']))).toBe(true);
+    const afterHyphen = parts[1].slices.findIndex((slice) => slice.start === 'stream-of-'.length);
+    const originalY = textPartRect(block, parts[1], afterHyphen)!.top;
+    const editable = editableTextStrokes(block, drawing)!;
+    expect(editable.length).toBe(drawing.strokes.length);
+    expect(editable[2].erase).toBe(true);
+    expect(editable[2].points).toEqual(ink[2].points);
+    wrapAt = 'journaling stream-of-'.length;
+    expect(textPartRect(block, parts[1], afterHyphen)!.top).toBe(originalY + 40);
+    expect(textPartRect(block, parts[0], 0)!.top).toBe(originalY);
+    expect(editableTextStrokes(block, drawing)).toBeNull();
+    block.querySelector('em')!.textContent = 'replaced';
+    expect(textPartRect(block, parts[1], afterHyphen)).toBeNull();
+    expect(textPartRect(block, parts[0], 0)).not.toBeNull();
+  } finally { window.Range.prototype.getClientRects = original; }
 });
