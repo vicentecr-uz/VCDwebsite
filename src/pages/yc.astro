@@ -1,0 +1,20 @@
+// Short Y Combinator profile URL (/yc) → home with Umami campaign params.
+// Bare page (no layout/analytics) so only the destination is tracked.
+const dest = '/?utm_source=ycombinator&utm_medium=social&utm_campaign=profile';
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="refresh" content={`0;url=${dest}`} />
+    <link rel="canonical" href={new URL(dest, Astro.site)} />
+    <title>Redirecting…</title>
+    <script is:inline define:vars={{ dest }}>
+      location.replace(dest);
+    </script>
+  </head>
+  <body>
+    <a href={dest}>Continue</a>
+  </body>
+</html>
