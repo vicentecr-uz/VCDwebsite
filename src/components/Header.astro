@@ -833,6 +833,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const closeScale = MENU_TIMELINE_CLOSE_DURATION / timelineEnd;
     const closeLayoutMs = Math.ceil(MENU_TIMELINE_CLOSE_DURATION * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
+    let navigationClosing = false;
 
     const clearCloseTimer = () => {
       if (closeTimer) clearTimeout(closeTimer);
@@ -890,7 +891,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let previewPinned = false;
 
     const openMenu = (event?: Event) => {
-      if (isOpen()) return;
+      if (navigationClosing || isOpen()) return;
       if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
       if (import.meta.env.DEV) {
         const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
@@ -937,7 +938,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
         delete trigger.dataset.menuCloseTimer;
-        if ((force || !trigger.matches(':hover')) && !trigger.contains(document.activeElement)) {
+        if ((force || navigationClosing || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
           trigger.classList.remove('is-menu-open');
         }
       }, closeLayoutMs);
@@ -968,6 +969,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
     }
 
+    document.addEventListener('header:force-close', () => {
+      navigationClosing = false;
+    });
+
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
     let lastPointerDownAt = -Infinity;
@@ -975,6 +980,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     trigger.addEventListener('pointerdown', () => {
       lastPointerDownAt = performance.now();
+    });
+
+    document.addEventListener('header:navigation-start', () => {
+      navigationClosing = true;
+      queueMicrotask(() => {
+        if (navigationClosing) closeMenu(true);
+      });
+    });
+    document.addEventListener('header:navigation-cancel', () => {
+      navigationClosing = false;
     });
 
     trigger.addEventListener('mouseenter', (event) => {
@@ -993,8 +1008,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       closeMenu();
     });
-    // Scroll-driven close: run the normal animated close, not the instant
-    // force-close, so the menu fades/staggers out like a mouse-leave.
+    // Scroll-driven close uses the normal reverse timeline.
     trigger.addEventListener('header:request-close', () => {
       closeMenu(true);
     });
@@ -1058,8 +1072,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   // pointer) leaves stale open state behind — reset it.
   tapModeMq.addEventListener('change', () => forceCloseMenus());
 
-  // Leave menu open during the exit fade (pointer is still over it). Close only when
-  // the page is actually unloaded / restored from bfcache so swipe-back isn't stuck open.
+  // Reset menu state when the document is restored from bfcache.
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) forceCloseMenus();
   });
