@@ -1,0 +1,128 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index bdaca8bcd4cf9b9eee34436bc49586ef8cf3d8bf..517c6d9185485ca534e9d23c475d44cfb88f0d8f 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -2874,6 +2874,8 @@ var Draw = (0, import_react10.forwardRef)(function Draw2({
+   background = "#ffffff",
+   initialStrokes,
+   onChange,
++  initialPreferences,
++  onPreferencesChange,
+   chrome = true,
+   motion,
+   placement = "bottom",
+@@ -2904,7 +2906,7 @@ var Draw = (0, import_react10.forwardRef)(function Draw2({
+   const [measured, setMeasured] = (0, import_react10.useState)({ w: 1600, h: 1e3 });
+   const startingInk = theme === "dark" ? "#f2f1ef" : "#111111";
+   const paint = background === "transparent" || background === "checker" ? null : background;
+-  const [tool, setTool] = (0, import_react10.useState)({
++  const [tool, setTool] = (0, import_react10.useState)(initialPreferences?.tool ?? {
+     active: "pen",
+     color: startingInk,
+     size: PEN_BY_ID.pen.defaultSize,
+@@ -2933,23 +2935,35 @@ var Draw = (0, import_react10.forwardRef)(function Draw2({
+   (0, import_react10.useEffect)(() => {
+     changed.current?.(drawing.strokes);
+   }, [drawing.strokes]);
+-  const [inks, setInks] = (0, import_react10.useState)({});
++  const [inks, setInks] = (0, import_react10.useState)(initialPreferences?.inks ?? {});
+   const tuned = (0, import_react10.useRef)(
+-    {}
++    initialPreferences?.tuned ?? {}
+   );
+-  const [ink, setInk] = (0, import_react10.useState)(startingInk);
+-  const chosen = (0, import_react10.useRef)(false);
++  const [ink, setInk] = (0, import_react10.useState)(initialPreferences?.ink ?? startingInk);
++  const chosen = (0, import_react10.useRef)(initialPreferences?.chosen ?? false);
+   (0, import_react10.useEffect)(() => {
+-    if (chosen.current) return;
++    if (initialPreferences || chosen.current) return;
+     setInk(startingInk);
+     setTool((t) => ({ ...t, color: startingInk }));
+   }, [startingInk]);
+   (0, import_react10.useEffect)(() => {
+-    if (theme !== "auto" || chosen.current) return;
++    if (theme !== "auto" || initialPreferences || chosen.current) return;
+     if (!window.matchMedia?.("(prefers-color-scheme: dark)").matches) return;
+     setInk("#f2f1ef");
+     setTool((t) => ({ ...t, color: "#f2f1ef" }));
+   }, [theme]);
++  // Persist tool preferences independently from each drawing's stroke history.
++  const preferencesChanged = (0, import_react10.useRef)(onPreferencesChange);
++  preferencesChanged.current = onPreferencesChange;
++  (0, import_react10.useEffect)(() => {
++    preferencesChanged.current?.({
++      tool: { ...tool },
++      inks: { ...inks },
++      tuned: Object.fromEntries(Object.entries(tuned.current).map(([id, value]) => [id, { ...value }])),
++      ink,
++      chosen: chosen.current
++    });
++  }, [tool, inks, ink]);
+   const inkFor = (0, import_react10.useCallback)(
+     (id) => inkMode === "shared" ? ink : inks[id] ?? (inkMode === "auto" ? PEN_BY_ID[id].defaultColor : void 0) ?? ink,
+     [inks, ink, inkMode]
+diff --git a/dist/index.js b/dist/index.js
+index c9d5e7cbf77f1351e8ee28aef829f3144cd4d526..2abaaa533fa7a023f92691bc243f34005ea982d2 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -2851,6 +2851,8 @@ var Draw = forwardRef(function Draw2({
+   background = "#ffffff",
+   initialStrokes,
+   onChange,
++  initialPreferences,
++  onPreferencesChange,
+   chrome = true,
+   motion,
+   placement = "bottom",
+@@ -2881,7 +2883,7 @@ var Draw = forwardRef(function Draw2({
+   const [measured, setMeasured] = useState9({ w: 1600, h: 1e3 });
+   const startingInk = theme === "dark" ? "#f2f1ef" : "#111111";
+   const paint = background === "transparent" || background === "checker" ? null : background;
+-  const [tool, setTool] = useState9({
++  const [tool, setTool] = useState9(initialPreferences?.tool ?? {
+     active: "pen",
+     color: startingInk,
+     size: PEN_BY_ID.pen.defaultSize,
+@@ -2910,23 +2912,35 @@ var Draw = forwardRef(function Draw2({
+   useEffect5(() => {
+     changed.current?.(drawing.strokes);
+   }, [drawing.strokes]);
+-  const [inks, setInks] = useState9({});
++  const [inks, setInks] = useState9(initialPreferences?.inks ?? {});
+   const tuned = useRef9(
+-    {}
++    initialPreferences?.tuned ?? {}
+   );
+-  const [ink, setInk] = useState9(startingInk);
+-  const chosen = useRef9(false);
++  const [ink, setInk] = useState9(initialPreferences?.ink ?? startingInk);
++  const chosen = useRef9(initialPreferences?.chosen ?? false);
+   useEffect5(() => {
+-    if (chosen.current) return;
++    if (initialPreferences || chosen.current) return;
+     setInk(startingInk);
+     setTool((t) => ({ ...t, color: startingInk }));
+   }, [startingInk]);
+   useEffect5(() => {
+-    if (theme !== "auto" || chosen.current) return;
++    if (theme !== "auto" || initialPreferences || chosen.current) return;
+     if (!window.matchMedia?.("(prefers-color-scheme: dark)").matches) return;
+     setInk("#f2f1ef");
+     setTool((t) => ({ ...t, color: "#f2f1ef" }));
+   }, [theme]);
++  // Persist tool preferences independently from each drawing's stroke history.
++  const preferencesChanged = useRef9(onPreferencesChange);
++  preferencesChanged.current = onPreferencesChange;
++  useEffect5(() => {
++    preferencesChanged.current?.({
++      tool: { ...tool },
++      inks: { ...inks },
++      tuned: Object.fromEntries(Object.entries(tuned.current).map(([id, value]) => [id, { ...value }])),
++      ink,
++      chosen: chosen.current
++    });
++  }, [tool, inks, ink]);
+   const inkFor = useCallback6(
+     (id) => inkMode === "shared" ? ink : inks[id] ?? (inkMode === "auto" ? PEN_BY_ID[id].defaultColor : void 0) ?? ink,
+     [inks, ink, inkMode]

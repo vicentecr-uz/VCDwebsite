@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { createElement as reactElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Draw, PEN_BY_ID } from 'drawesome';
 import { siteAnnotationSvg } from '../../src/lib/siteAnnotationSvg';
 import { validateSiteAnnotations, type SiteAnnotation } from '../../src/lib/siteAnnotations';
 
@@ -18,8 +21,9 @@ const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource
   + '\nreturn { state, annotationsFor, pushPending, startDrawing };');
 const textEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 
-const harness = (annotations: SiteAnnotation[] = []) => {
+const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown) => {
   const window = new Window();
+  if (storedPreferences) window.localStorage.setItem('vcd:drawesome-preferences:v1', JSON.stringify(storedPreferences));
   const document = window.document;
   document.body.innerHTML = '<section data-site-annotation-section-id="block" data-site-annotation-document="page"><div class="project-body-text"><p>word</p></div><div class="site-annotations" data-site-annotations="[]"></div></section>';
   const section = document.querySelector('section')!;
@@ -52,7 +56,7 @@ const harness = (annotations: SiteAnnotation[] = []) => {
       redo: () => { redoCount += 1; },
     } }),
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
-    Draw: {}, siteAnnotationSvg, positionSiteAnnotations() {},
+    Draw: {}, PEN_BY_ID, siteAnnotationSvg, positionSiteAnnotations() {},
     annotationRect: () => new window.DOMRect(20, 10, 200, 40),
     findTextAnchor: () => new window.DOMRect(120, 50, 200, 40),
   };
@@ -230,4 +234,47 @@ test('the block control is explicitly a selection-free doodle action', () => {
   const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-open]')!;
   expect(button.textContent).toBe('Doodle');
   expect(button.getAttribute('aria-label')).toBe('Draw a doodle near this text block');
+});
+
+const preferences = {
+  tool: { active: 'marker', color: '#ff6633', size: 23, opacity: 0.4, eraserSize: 47 },
+  inks: { marker: '#ff6633', highlighter: '#ffee00' },
+  tuned: { marker: { size: 23, opacity: 0.4 }, highlighter: { size: 32, opacity: 0.6 } },
+  ink: '#223344', chosen: true,
+};
+
+test('tool preferences survive Done and Cancel while each new doodle starts with no strokes', () => {
+  const h = harness();
+  h.startDrawing(h.target, null);
+  h.props().onPreferencesChange(preferences);
+  h.props().onChange([fixture.strokes[0]]);
+  h.done();
+  h.startDrawing(h.target, null);
+  expect(h.props().initialPreferences).toEqual(preferences);
+  expect(h.props().initialPreferences).not.toBe(preferences);
+  expect(h.props().initialStrokes).toEqual([]);
+  h.document.body.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  h.startDrawing(h.target, null);
+  expect(h.props().initialPreferences).toEqual(preferences);
+  expect(JSON.parse(h.window.localStorage.getItem('vcd:drawesome-preferences:v1')!)).toEqual(preferences);
+});
+
+test('a fresh editor restores browser preferences and ignores corrupt stored settings', () => {
+  const h = harness([], preferences);
+  h.startDrawing(h.target, null);
+  expect(h.props().initialPreferences).toEqual(preferences);
+  const invalid = harness([], { ...preferences, tool: { ...preferences.tool, active: 'unknown', size: -1 } });
+  invalid.startDrawing(invalid.target, null);
+  expect(invalid.props().initialPreferences).toBeUndefined();
+});
+
+test('the patched Drawesome toolbar initializes with the saved active pen, width and opacity', () => {
+  const window = new Window();
+  window.document.body.innerHTML = renderToStaticMarkup(reactElement(Draw, {
+    initialPreferences: preferences, tooltips: false, motion: 'none',
+  }));
+  const toolbar = window.document.body;
+  expect(toolbar.querySelector('[aria-pressed="true"]')?.getAttribute('aria-label')).toBe('Marker');
+  expect(toolbar.textContent).toContain('23');
+  expect(toolbar.textContent).toContain('40%');
 });

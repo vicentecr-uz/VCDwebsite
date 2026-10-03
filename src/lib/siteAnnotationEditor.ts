@@ -1,6 +1,6 @@
 import { createElement, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { Draw, type DrawHandle, type Stroke } from 'drawesome';
+import { Draw, PEN_BY_ID, type DrawHandle, type Stroke } from 'drawesome';
 import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
 import { siteAnnotationSvg } from './siteAnnotationSvg';
@@ -9,8 +9,38 @@ import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
 type Target = { section: HTMLElement; documentKey: string; sectionId: string };
+type DrawingPreferences = {
+  tool: { active: Stroke['pen'] | 'eraser'; color: string; size: number; opacity: number; eraserSize: number };
+  inks: Partial<Record<Stroke['pen'], string>>;
+  tuned: Partial<Record<Stroke['pen'], { size: number; opacity: number }>>;
+  ink: string;
+  chosen: boolean;
+};
+
+const preferenceKey = 'vcd:drawesome-preferences:v1';
+const readPreferences = (): DrawingPreferences | undefined => {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(preferenceKey) || 'null');
+    const record = (item: unknown) => item !== null && typeof item === 'object' && !Array.isArray(item);
+    const pen = (id: string) => Object.hasOwn(PEN_BY_ID, id);
+    const number = (n: unknown, min: number, max: number) => typeof n === 'number'
+      && Number.isFinite(n) && n >= min && n <= max;
+    const color = (c: unknown) => typeof c === 'string' && /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(c);
+    if (!record(value) || !record(value.tool) || !record(value.inks) || !record(value.tuned)
+      || !(pen(value.tool.active) || value.tool.active === 'eraser')
+      || !color(value.tool.color) || !color(value.ink) || typeof value.chosen !== 'boolean'
+      || !number(value.tool.size, 1, 80) || !number(value.tool.opacity, 0, 1)
+      || !number(value.tool.eraserSize, 1, 120)
+      || Object.entries(value.inks).some(([id, c]) => !pen(id) || !color(c))
+      || Object.entries(value.tuned).some(([id, tuning]) => !pen(id) || !tuning
+        || !number((tuning as { size?: unknown }).size, 1, 80)
+        || !number((tuning as { opacity?: unknown }).opacity, 0, 1))) return;
+    return value;
+  } catch { return; }
+};
 
 const state = new Map<string, { target: Target; original: SiteAnnotation[]; current: SiteAnnotation[] }>();
+let drawingPreferences = readPreferences();
 const targetKey = ({ documentKey, sectionId }: Target) => `${documentKey}:${sectionId}`;
 let stage: HTMLElement | null = null;
 let reactRoot: Root | null = null;
@@ -281,6 +311,12 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
     ref: drawRef,
     background: 'transparent',
     initialStrokes: latest,
+    initialPreferences: drawingPreferences ? structuredClone(drawingPreferences) : undefined,
+    onPreferencesChange: (preferences: DrawingPreferences) => {
+      drawingPreferences = preferences;
+      try { window.localStorage.setItem(preferenceKey, JSON.stringify(preferences)); }
+      catch { /* Keep preferences in memory when browser storage is unavailable. */ }
+    },
     onChange: (strokes: Stroke[]) => { latest = strokes; },
     placement: narrow ? 'left' : 'bottom',
     shortcuts: false,
