@@ -310,3 +310,75 @@ test('completed animation stays completed and malformed bridge state leaves orig
     expect((invalid.stack as HTMLElement).style.visibility).toBe('visible');
   }
 });
+
+test('accepted navigation runs the menu reverse timeline after title capture and recovers after cancel or Back', () => {
+  const win = new Window();
+  const doc = win.document;
+  doc.body.innerHTML = '<div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a><a class="header-menu__link">About</a><a class="header-menu__link">Play</a></div>';
+  const start = doc.querySelector<HTMLElement>('.header-trigger')!;
+  const brand = start.querySelector<HTMLElement>('.header-trigger__brand-link')!;
+  const links = [...start.querySelectorAll<HTMLElement>('.header-menu__link')];
+  const begin = header.indexOf("\n  document.querySelectorAll<HTMLElement>('.header-trigger').forEach", header.indexOf('const forceCloseMenus'));
+  const end = header.indexOf('  // Switching between hover and tap', begin);
+  expect(begin).toBeGreaterThan(0);
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(begin, end).replaceAll('import.meta.env.DEV', 'false'));
+  const timers = new Map<number, { callback: Function; delay: number }>();
+  const microtasks: Function[] = [];
+  const timings: number[][] = [];
+  let sequence = 0;
+  new Function('document', 'window', 'MouseEvent', 'HTMLElement', 'CustomEvent', 'syncMenuSurfaceInlineSize', 'setMenuSurfaceTiming', 'isTapMode', 'isDevEditing', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'menuScrollClosed', script)(
+    doc, win, win.MouseEvent, win.HTMLElement, win.CustomEvent, () => {}, (...values: number[]) => timings.push(values), () => false, () => false,
+    (callback: Function, delay: number) => { timers.set(++sequence, { callback, delay }); return sequence; },
+    (id: number) => timers.delete(id), (callback: Function) => microtasks.push(callback), false,
+  );
+  start.dispatchEvent(new win.Event('mouseenter'));
+  brand.focus();
+  expect(start.dataset.menuOpen).toBe('true');
+  let titleCaptured = false;
+  doc.addEventListener('header:navigation-start', () => { titleCaptured = true; });
+  start.addEventListener('header:trigger-close', () => expect(titleCaptured).toBe(true));
+  doc.dispatchEvent(new win.Event('header:navigation-start'));
+  expect(start.dataset.menuOpen).toBe('true');
+  microtasks.splice(0).forEach((callback) => callback());
+  expect(start.dataset.menuOpen).toBeUndefined();
+  expect(start.dataset.menuSurfaceOpen).toBeUndefined();
+  expect(links.every((link) => link.style.opacity === '0' && parseFloat(link.style.getPropertyValue('--menu-link-duration')) > 0)).toBe(true);
+  expect(timings.at(-1)![0]).toBeGreaterThan(0);
+  expect(timings.at(-1)![0] + timings.at(-1)![1]).toBeCloseTo(0.18);
+  expect(doc.activeElement).toBe(brand);
+  const closing = [...timers.values()].at(-1)!;
+  expect(closing.delay).toBe(212);
+  closing.callback();
+  expect(start.classList.contains('is-menu-open')).toBe(false);
+  start.dispatchEvent(new win.Event('mouseenter'));
+  expect(start.dataset.menuOpen).toBeUndefined();
+  doc.dispatchEvent(new win.Event('header:navigation-cancel'));
+  start.dispatchEvent(new win.Event('mouseenter'));
+  expect(start.dataset.menuOpen).toBe('true');
+  doc.dispatchEvent(new win.Event('header:navigation-start'));
+  microtasks.splice(0).forEach((callback) => callback());
+  doc.dispatchEvent(new win.Event('header:force-close'));
+  start.dispatchEvent(new win.Event('mouseenter'));
+  expect(start.dataset.menuOpen).toBe('true');
+});
+
+test('navigation slides only a visible partly clipped header into view using the hover docking path', () => {
+  const marker = "    document.addEventListener('header:navigation-start', () => {";
+  const begin = header.indexOf(marker);
+  const end = header.indexOf('\n    });', begin) + '\n    });'.length;
+  expect(begin).toBeGreaterThan(0);
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(begin, end));
+  for (const scenario of [
+    { top: -8, bottom: 35, visible: true, shouldSlide: true },
+    { top: -60, bottom: -5, visible: true, shouldSlide: false },
+    { top: 10, bottom: 50, visible: true, shouldSlide: false },
+    { top: -8, bottom: 35, visible: false, shouldSlide: false },
+  ]) {
+    const win = new Window();
+    const calls: unknown[][] = [];
+    if (scenario.visible) win.document.documentElement.dataset.headerNavigation = '';
+    new Function('document', 'logicalHeaderRect', 'setMode', script)(win.document, () => scenario, (...args: unknown[]) => calls.push(args));
+    win.document.dispatchEvent(new win.Event('header:navigation-start'));
+    expect(calls).toEqual(scenario.shouldSlide ? [['docked', false, true]] : []);
+  }
+});
