@@ -3,14 +3,14 @@ import type { SiteAnnotation } from '../lib/siteAnnotations';
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
 type PositionedAnnotation = Omit<SiteAnnotation, 'strokes'>;
 
-const textBlocks = (section: HTMLElement) => {
+export const textBlocks = (section: HTMLElement) => {
   const body = section.querySelector('.project-body-text');
   if (body) return [...body.querySelectorAll<HTMLElement>(':scope > p, :scope > div')];
   const heading = section.querySelector<HTMLElement>('.project-section-title');
   return heading ? [heading] : [];
 };
 
-const rangeForOffsets = (block: HTMLElement, start: number, end: number): Range | null => {
+export const rangeForOffsets = (block: HTMLElement, start: number, end: number): Range | null => {
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
@@ -43,7 +43,7 @@ const singleLineRect = (range: Range): DOMRect | null => {
   return new DOMRect(left, top, right - left, bottom - top);
 };
 
-export const findTextAnchor = (section: HTMLElement, anchor: TextAnchor): DOMRect | null => {
+export const findTextRange = (section: HTMLElement, anchor: TextAnchor): Range | null => {
   const blocks = textBlocks(section);
   const candidates: Array<{ range: Range; context: boolean }> = [];
   const order = [blocks[anchor.paragraphIndex], ...blocks.filter((_, index) => index !== anchor.paragraphIndex)]
@@ -64,7 +64,44 @@ export const findTextAnchor = (section: HTMLElement, anchor: TextAnchor): DOMRec
   const contextual = candidates.filter((item) => item.context);
   const chosen = contextual.length === 1 ? contextual[0]
     : candidates.length === 1 ? candidates[0] : null;
-  return chosen ? singleLineRect(chosen.range) : null;
+  return chosen?.range ?? null;
+};
+
+export const findTextAnchor = (section: HTMLElement, anchor: TextAnchor): DOMRect | null => {
+  const range = findTextRange(section, anchor);
+  return range ? singleLineRect(range) : null;
+};
+
+type TextPart = NonNullable<SiteAnnotation['textParts']>[number];
+type TextResolution = { block: HTMLElement; offset: number } | null;
+export const textPartRect = (section: HTMLElement, part: TextPart, sliceIndex: number,
+  cache?: Map<TextPart, TextResolution>): DOMRect | null => {
+  const slice = part.slices[sliceIndex];
+  if (!slice) return null;
+  let resolved = cache?.get(part);
+  if (resolved === undefined) {
+    const run = findTextRange(section, part.anchor);
+    const block = run && textBlocks(section).find((element) => element.contains(run.startContainer));
+    resolved = null;
+    if (run && block) {
+      const before = document.createRange();
+      before.selectNodeContents(block);
+      before.setEnd(run.startContainer, run.startOffset);
+      resolved = { block, offset: before.toString().length };
+    }
+    cache?.set(part, resolved);
+  }
+  if (!resolved) return null;
+  const { block, offset } = resolved;
+  const range = rangeForOffsets(block, offset + slice.start, offset + slice.end);
+  const target = range && singleLineRect(range);
+  if (!target) return null;
+  const sx = target.width / slice.glyph.w;
+  const sy = target.height / slice.glyph.h;
+  const parent = section.getBoundingClientRect();
+  return new DOMRect(target.left - parent.left + (slice.clip.x - slice.glyph.x) * sx,
+    target.top - parent.top + (slice.clip.y - slice.glyph.y) * sy,
+    slice.clip.w * sx, slice.clip.h * sy);
 };
 
 export const annotationBlockTarget = (section: HTMLElement, anchor: NonNullable<SiteAnnotation['blockAnchor']>): HTMLElement | null => {
@@ -134,32 +171,38 @@ export const positionSiteAnnotations = () => {
     try { annotations = JSON.parse(layer.dataset.siteAnnotations || '[]'); }
     catch { annotations = []; }
     let unresolved = 0;
+    const textCache = new Map<TextPart, TextResolution>();
     for (const annotation of annotations) {
-      const image = [...layer.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
-        .find((item) => item.dataset.siteAnnotation === annotation.id);
-      if (!image) continue;
-      const rect = annotationRect(section, annotation);
-      image.dataset.siteAnnotationMobile = annotation.mobile;
-      const outside = rect && annotation.kind === 'doodle' && !annotation.blockAnchor
-        && (section.getBoundingClientRect().left + rect.left < 8
-          || section.getBoundingClientRect().left + rect.right > window.innerWidth - 8);
-      if (!rect || outside) {
-        image.style.visibility = 'hidden';
-        if (!rect) unresolved++;
-        continue;
+      let missing = false;
+      const images = [...layer.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
+        .filter((item) => item.dataset.siteAnnotation === annotation.id);
+      for (const image of images) {
+        const partIndex = image.dataset.siteAnnotationPart;
+        const part = partIndex !== undefined ? annotation.textParts?.[Number(partIndex)] : undefined;
+        const rect = part ? textPartRect(section, part, Number(image.dataset.siteAnnotationSlice), textCache) : annotationRect(section, annotation);
+        image.dataset.siteAnnotationMobile = annotation.mobile;
+        const outside = rect && !part && annotation.kind === 'doodle' && !annotation.blockAnchor
+          && (section.getBoundingClientRect().left + rect.left < 8
+            || section.getBoundingClientRect().left + rect.right > window.innerWidth - 8);
+        if (!rect || outside) {
+          image.style.visibility = 'hidden';
+          if (!rect) missing = true;
+          continue;
+        }
+        image.style.left = `${rect.x}px`;
+        image.style.top = `${rect.y}px`;
+        image.style.width = `${rect.width}px`;
+        image.style.height = `${rect.height}px`;
+        const blockTarget = annotation.blockAnchor ? annotationBlockTarget(section, annotation.blockAnchor) : null;
+        const track = blockTarget?.closest<HTMLElement>('.project-image-carousel__track');
+        if (track) {
+          const bounds = annotationVisibleRect(track);
+          const parent = section.getBoundingClientRect();
+          image.style.clipPath = `inset(${Math.max(0, bounds.top - parent.top - rect.top)}px ${Math.max(0, parent.left + rect.right - bounds.right)}px ${Math.max(0, parent.top + rect.bottom - bounds.bottom)}px ${Math.max(0, bounds.left - parent.left - rect.left)}px)`;
+        } else image.style.removeProperty('clip-path');
+        image.style.visibility = 'visible';
       }
-      image.style.left = `${rect.x}px`;
-      image.style.top = `${rect.y}px`;
-      image.style.width = `${rect.width}px`;
-      image.style.height = `${rect.height}px`;
-      const blockTarget = annotation.blockAnchor ? annotationBlockTarget(section, annotation.blockAnchor) : null;
-      const track = blockTarget?.closest<HTMLElement>('.project-image-carousel__track');
-      if (track) {
-        const bounds = annotationVisibleRect(track);
-        const parent = section.getBoundingClientRect();
-        image.style.clipPath = `inset(${Math.max(0, bounds.top - parent.top - rect.top)}px ${Math.max(0, parent.left + rect.right - bounds.right)}px ${Math.max(0, parent.top + rect.bottom - bounds.bottom)}px ${Math.max(0, bounds.left - parent.left - rect.left)}px)`;
-      } else image.style.removeProperty('clip-path');
-      image.style.visibility = 'visible';
+      if (missing) unresolved++;
     }
     section.dataset.siteAnnotationUnresolved = String(unresolved);
     const manage = section.querySelector<HTMLButtonElement>('[data-site-draw-manage]');
