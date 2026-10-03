@@ -14,15 +14,15 @@ const state = new Map<string, { target: Target; original: SiteAnnotation[]; curr
 const targetKey = ({ documentKey, sectionId }: Target) => `${documentKey}:${sectionId}`;
 let stage: HTMLElement | null = null;
 let reactRoot: Root | null = null;
+let activeDrawRef: { current: DrawHandle | null } | null = null;
 let editingImage: HTMLImageElement | null = null;
 let savedSelection: { anchor: TextAnchor; rect: DOMRect } | null = null;
-let hadSelection = false;
 const lifecycle = new AbortController();
 const selectionButton = document.createElement('button');
 selectionButton.type = 'button';
 selectionButton.className = 'site-draw-selection dev-btn dev-btn--page dev-surface';
-selectionButton.textContent = 'Draw';
-selectionButton.setAttribute('aria-label', 'Draw on selected word');
+selectionButton.textContent = 'Highlight';
+selectionButton.setAttribute('aria-label', 'Highlight selected word');
 selectionButton.hidden = true;
 document.body.append(selectionButton);
 let selectionTarget: Target | null = null;
@@ -142,6 +142,7 @@ const selectedAnchor = (section: HTMLElement, range: Range | null): { anchor: Te
 const closeStage = () => {
   editingImage?.style.removeProperty('display');
   editingImage = null;
+  activeDrawRef = null;
   reactRoot?.unmount();
   reactRoot = null;
   stage?.remove();
@@ -259,6 +260,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   overlay.addEventListener('wheel', (event) => event.preventDefault(), { passive: false });
 
   const drawRef = createRef<DrawHandle>();
+  activeDrawRef = drawRef;
   const sectionRect = target.section.getBoundingClientRect();
   const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
   const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
@@ -388,24 +390,11 @@ const bindButtons = () => {
     open.type = 'button';
     open.className = 'dev-btn dev-btn--page';
     open.dataset.siteDrawOpen = '';
-    open.textContent = 'Draw';
-    open.setAttribute('aria-label', 'Draw on this text block');
-    open.addEventListener('pointerdown', () => {
-      const selection = window.getSelection();
-      hadSelection = Boolean(selection && !selection.isCollapsed && selection.rangeCount);
-      savedSelection = hadSelection ? selectedAnchor(section, selection!.getRangeAt(0)) : null;
-    });
+    open.textContent = 'Doodle';
+    open.setAttribute('aria-label', 'Draw a doodle near this text block');
     open.addEventListener('click', () => {
-      const selected = savedSelection;
-      if (hadSelection && !selected) {
-        window.alert('Select one word within this text block, or clear the selection to draw a doodle.');
-        savedSelection = null;
-        hadSelection = false;
-        return;
-      }
-      startDrawing(target, selected);
-      savedSelection = null;
-      hadSelection = false;
+      window.getSelection()?.removeAllRanges();
+      startDrawing(target, null);
     });
     const manage = document.createElement('button');
     manage.type = 'button';
@@ -422,6 +411,57 @@ const bindButtons = () => {
     updateCount(target);
   }
 };
+
+const shortcutTarget = (): Target | null => {
+  const sections = [...document.querySelectorAll<HTMLElement>(
+    '[data-site-annotation-section-id][data-site-annotation-document]',
+  )];
+  const active = document.activeElement instanceof Element
+    ? document.activeElement.closest<HTMLElement>('[data-site-annotation-section-id][data-site-annotation-document]')
+    : null;
+  const hovered = document.querySelector<HTMLElement>(
+    '[data-site-annotation-section-id][data-site-annotation-document]:hover',
+  );
+  const section = active ?? hovered ?? sections
+    .map((candidate) => ({ candidate, rect: candidate.getBoundingClientRect() }))
+    .filter(({ rect }) => rect.bottom > 0 && rect.top < window.innerHeight)
+    .sort((a, b) => Math.abs((a.rect.top + a.rect.bottom) / 2 - window.innerHeight / 2)
+      - Math.abs((b.rect.top + b.rect.bottom) / 2 - window.innerHeight / 2))[0]?.candidate;
+  if (!section) return null;
+  const sectionId = section.dataset.siteAnnotationSectionId;
+  const documentKey = section.dataset.siteAnnotationDocument;
+  return sectionId && documentKey ? { section, sectionId, documentKey } : null;
+};
+
+window.addEventListener('keydown', (event) => {
+  if (stage) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closeStage();
+      return;
+    }
+    const command = event.metaKey || event.ctrlKey;
+    if (!command || event.altKey || event.key.toLowerCase() !== 'z') return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.shiftKey) activeDrawRef?.current?.redo();
+    else activeDrawRef?.current?.undo();
+    return;
+  }
+  if (!document.documentElement.classList.contains('is-dev-mode')) return;
+  if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.code !== 'KeyD') return;
+  syncSelectionButton();
+  const selected = selectionTarget && selectionAnchor
+    ? { target: selectionTarget, anchor: selectionAnchor }
+    : null;
+  const target = selected?.target ?? shortcutTarget();
+  if (!target) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  window.getSelection()?.removeAllRanges();
+  startDrawing(target, selected?.anchor ?? null);
+}, { capture: true, signal: lifecycle.signal });
 
 window.addEventListener('vcd:dev-mode-change', (event) => {
   if (!(event as CustomEvent<{ active: boolean }>).detail.active) closeStage();
