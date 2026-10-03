@@ -82,6 +82,22 @@ describe('home reveal choreography', () => {
     controller.destroy();
   });
 
+  test('persistent navigation reveals Home content without hiding or animating the retained header', async () => {
+    const header = new FakeElement(); const cover = new FakeElement(); const home = new FakeElement();
+    home.querySelectorAll = <T>(selector: string) => (selector.includes('site-header-slot') ? [header] : selector.includes('project-grid__cover') ? [cover] : []) as unknown as T[];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800, dataset: { headerNavigation: '' } }, querySelector: () => introSurface } });
+    home.ownerDocument = globalThis.document;
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+    expect(header.style).toEqual({ opacity: '', visibility: '', transform: '', filter: '' });
+    expect(cover.style.opacity).toBe('0');
+    delete (globalThis.document.documentElement.dataset as Record<string, string>).headerNavigation;
+    controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.animations).toHaveLength(0);
+    expect(header.style).toEqual({ opacity: '', visibility: '', transform: '', filter: '' });
+    expect(cover.animations).toHaveLength(1);
+    controller.destroy();
+  });
+
   test('desktop header reveal retains transform and blur', async () => {
     const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
     home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
