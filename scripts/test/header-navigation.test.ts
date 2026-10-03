@@ -382,3 +382,27 @@ test('navigation slides only a visible partly clipped header into view using the
     expect(calls).toEqual(scenario.shouldSlide ? [['docked', false, true]] : []);
   }
 });
+
+test('home intro gate suppresses unseen home handover while allowing seen and other destinations', () => {
+  const run = (targetHref: string, introValue: string | null, storageBlocked = false) => {
+    const f = runtimeFixture('Previous');
+    const head = f.doc.querySelector('.site-header')!;
+    const rect = { top: 0, left: 0, bottom: 80, right: 800, width: 800, height: 80 };
+    f.slot.getBoundingClientRect = () => ({ ...rect, top: -1000, bottom: -920 } as any);
+    head.getBoundingClientRect = () => rect as any;
+    f.home.getBoundingClientRect = () => rect as any;
+    if (introValue !== null) f.win.sessionStorage.setItem('vcd:home-intro-seen', introValue);
+    const originalGet = f.win.sessionStorage.getItem.bind(f.win.sessionStorage);
+    if (storageBlocked) f.win.sessionStorage.getItem = () => { throw new Error('blocked'); };
+    const getStyle = (el: any) => ({ display: 'block', visibility: 'visible', opacity: '1', fontSize: '20px', marginLeft: '2px' });
+    const runtime = new Function('document', 'sessionStorage', 'getComputedStyle', 'innerHeight', 'innerWidth', 'CustomEvent', `${compiledCapture}; return {captureHeaderNavigation,clearHeaderNavigationState}`)(f.doc, f.win.sessionStorage, getStyle, 900, 1200, f.win.CustomEvent);
+    const result = runtime.captureHeaderNavigation(new URL(targetHref));
+    f.win.sessionStorage.getItem = originalGet;
+    return { f, result };
+  };
+  expect(run('https://vcd.test/', null).result).toBe(false);
+  expect(run('https://vcd.test/?from=menu', null).result).toBe(false);
+  expect(run('https://vcd.test/', 'true').result).toBe(true);
+  expect(run('https://vcd.test/about', null).result).toBe(true);
+  expect(run('https://vcd.test/', null, true).result).toBe(false);
+});
