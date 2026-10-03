@@ -67,15 +67,57 @@ export const findTextAnchor = (section: HTMLElement, anchor: TextAnchor): DOMRec
   return chosen ? singleLineRect(chosen.range) : null;
 };
 
+export const annotationBlockTarget = (section: HTMLElement, anchor: NonNullable<SiteAnnotation['blockAnchor']>): HTMLElement | null => {
+  if (anchor.surface === 'block') return section;
+  let item: HTMLElement | undefined = section;
+  for (const id of anchor.itemPath ?? []) {
+    const parent = item;
+    if (!parent) return null;
+    item = [...parent.querySelectorAll<HTMLElement>('[data-grid-item-id]')].find((element) => {
+      const ancestor = element.parentElement?.closest('[data-grid-item-id]');
+      return element.dataset.gridItemId === id && (parent === section
+        ? !ancestor || !section.contains(ancestor) : ancestor === parent);
+    });
+  }
+  if (!item || item.closest('[aria-hidden="true"], [data-carousel-parked="true"]')) return null;
+  return item.querySelector<HTMLElement>('.project-crop-clip, .project-video-player, .project-image-grid__frame, [data-carousel-frame]')
+    ?? item.querySelector<HTMLElement>('iframe, video, img:not([data-site-annotation])')
+    ?? item;
+};
+
+export const annotationVisibleRect = (target: HTMLElement): DOMRect => {
+  let { left, top, right, bottom } = target.getBoundingClientRect();
+  let parent = target.parentElement;
+  while (parent) {
+    if (parent.matches('.project-image-carousel__track, .project-image-carousel__clip')) {
+      const bounds = parent.getBoundingClientRect();
+      left = Math.max(left, bounds.left);
+      top = Math.max(top, bounds.top);
+      right = Math.min(right, bounds.right);
+      bottom = Math.min(bottom, bounds.bottom);
+    }
+    parent = parent.parentElement;
+  }
+  return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+};
+
+export const annotationBaseRect = (section: HTMLElement, annotation: Pick<SiteAnnotation, 'anchor' | 'blockAnchor'>): DOMRect | null => {
+  if (annotation.anchor) return findTextAnchor(section, annotation.anchor);
+  const target = annotation.blockAnchor ? annotationBlockTarget(section, annotation.blockAnchor) : section;
+  const rect = target?.getBoundingClientRect();
+  return rect && rect.width > 0 && rect.height > 0 ? rect : null;
+};
+
 export const annotationRect = (section: HTMLElement, annotation: PositionedAnnotation): DOMRect | null => {
-  const target = annotation.anchor ? findTextAnchor(section, annotation.anchor) : section.getBoundingClientRect();
+  const target = annotationBaseRect(section, annotation);
   if (!target || target.width <= 0 || target.height <= 0) return null;
   const parent = section.getBoundingClientRect();
   const box = annotation.box;
-  const x = annotation.kind === 'highlight' ? box.x * target.width : box.x;
-  const y = annotation.kind === 'highlight' ? box.y * target.height : box.y;
-  const w = annotation.kind === 'highlight' ? box.w * target.width : box.w;
-  const h = annotation.kind === 'highlight' ? box.h * target.height : box.h;
+  const scaled = annotation.kind === 'highlight' || annotation.blockAnchor;
+  const x = scaled ? box.x * target.width : box.x;
+  const y = scaled ? box.y * target.height : box.y;
+  const w = scaled ? box.w * target.width : box.w;
+  const h = scaled ? box.h * target.height : box.h;
   return new DOMRect(target.left - parent.left + x, target.top - parent.top + y, w, h);
 };
 
@@ -98,7 +140,7 @@ export const positionSiteAnnotations = () => {
       if (!image) continue;
       const rect = annotationRect(section, annotation);
       image.dataset.siteAnnotationMobile = annotation.mobile;
-      const outside = rect && annotation.kind === 'doodle'
+      const outside = rect && annotation.kind === 'doodle' && !annotation.blockAnchor
         && (section.getBoundingClientRect().left + rect.left < 8
           || section.getBoundingClientRect().left + rect.right > window.innerWidth - 8);
       if (!rect || outside) {
@@ -110,6 +152,13 @@ export const positionSiteAnnotations = () => {
       image.style.top = `${rect.y}px`;
       image.style.width = `${rect.width}px`;
       image.style.height = `${rect.height}px`;
+      const blockTarget = annotation.blockAnchor ? annotationBlockTarget(section, annotation.blockAnchor) : null;
+      const track = blockTarget?.closest<HTMLElement>('.project-image-carousel__track');
+      if (track) {
+        const bounds = annotationVisibleRect(track);
+        const parent = section.getBoundingClientRect();
+        image.style.clipPath = `inset(${Math.max(0, bounds.top - parent.top - rect.top)}px ${Math.max(0, parent.left + rect.right - bounds.right)}px ${Math.max(0, parent.top + rect.bottom - bounds.bottom)}px ${Math.max(0, bounds.left - parent.left - rect.left)}px)`;
+      } else image.style.removeProperty('clip-path');
       image.style.visibility = 'visible';
     }
     section.dataset.siteAnnotationUnresolved = String(unresolved);
@@ -134,18 +183,21 @@ const bind = () => {
   resizeObserver = new ResizeObserver(schedule);
   mutationObserver = new MutationObserver((changes) => {
     if (changes.some((change) => !(change.target instanceof Element
-      ? change.target.closest('.site-annotations')
-      : change.target.parentElement?.closest('.site-annotations')))) schedule();
+      ? change.target.closest('.site-annotations, .site-draw-controls, .site-draw-menu')
+      : change.target.parentElement?.closest('.site-annotations, .site-draw-controls, .site-draw-menu')))) schedule();
   });
   for (const section of document.querySelectorAll<HTMLElement>('[data-site-annotation-section-id]')) {
     resizeObserver.observe(section);
-    const text = section.querySelector('.project-body-text, .project-section-title');
-    if (text) mutationObserver.observe(text, { subtree: true, childList: true, characterData: true });
+    for (const media of section.querySelectorAll<HTMLElement>('[data-grid-item-id], .project-crop-clip, .project-video-player, img:not([data-site-annotation]), video, iframe')) resizeObserver.observe(media);
+    mutationObserver.observe(section, { subtree: true, childList: true, characterData: true,
+      attributes: true, attributeFilter: ['class', 'style', 'aria-hidden', 'data-carousel-parked'] });
   }
   schedule();
 };
 
 window.addEventListener('resize', schedule, { signal: lifecycle.signal });
+document.addEventListener('scroll', schedule, { capture: true, passive: true, signal: lifecycle.signal });
+document.addEventListener('load', schedule, { capture: true, signal: lifecycle.signal });
 window.addEventListener('vcd:site-annotations-changed', schedule, { signal: lifecycle.signal });
 document.addEventListener('astro:page-load', bind, { signal: lifecycle.signal });
 window.addEventListener('vcd:dev-section-structure-changed', bind, { signal: lifecycle.signal });

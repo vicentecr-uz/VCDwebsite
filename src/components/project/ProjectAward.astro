@@ -8,6 +8,7 @@ import { sizeIcon } from '../../lib/icons';
 import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
 import checkIcon from 'lucide-static/icons/check.svg?raw';
 import awardBlockSize from '../../lib/awardBlockSize.json';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   src?: string;
@@ -18,10 +19,11 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
 }
 const {
   src = '/awards/if-design-2026.png', alt = 'iF Design Award 2026', href = '',
-  documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId,
+  documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId, annotations,
 } = Astro.props;
 const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
 const safeHref = normalizeHref(href) || undefined;
@@ -32,6 +34,8 @@ const safeHref = normalizeHref(href) || undefined;
   class:list={['project-block', 'project-award', projectStackClass(spacing), sectionId && 'section-block']}
   style={`--award-block-height-mobile-saved:${awardBlockSize.mobile}px;--award-block-height-tablet-saved:${awardBlockSize.tablet}px;--award-block-height-desktop-saved:${awardBlockSize.desktop}px`}
   {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
   data-dev-section-deletable={editable ? 'award' : undefined}
   data-project-award
 >
@@ -56,6 +60,7 @@ const safeHref = normalizeHref(href) || undefined;
       </Button>
     </form>}
   </div>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>
 
 <style is:global>

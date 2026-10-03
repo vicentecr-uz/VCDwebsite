@@ -43,6 +43,7 @@ import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageB
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
 import type { VideoAudioSetting } from '../../lib/videoAudio';
 import ProjectImageCarousel from './ProjectImageCarousel.astro';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Item {
   id?: string;
@@ -99,6 +100,7 @@ interface Props {
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
 }
 
 const {
@@ -113,6 +115,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
 } = Astro.props;
 
 const columns = resolveImageGridColumns(columnsProp);
@@ -146,6 +149,8 @@ const editorItems = items.map((item, index) => ({
 <div
   id={sectionId}
   data-image-content-id={contentId}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
   class:list={[
     'project-image-grid',
     matchHeight && 'project-image-grid--match-height',
@@ -354,6 +359,7 @@ const editorItems = items.map((item, index) => ({
       </figure>
     );
   })}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </div>
 
 <script>

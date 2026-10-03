@@ -1,6 +1,7 @@
 ---
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import ProjectVideoControls from './ProjectVideoControls.astro';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   src?: string;
@@ -9,6 +10,11 @@ interface Props {
   autoplay?: boolean;
   aspectRatio?: string;
   spacing?: ProjectStackSpacing;
+  documentKey?: string;
+  contentId?: string;
+  sectionId?: string;
+  sectionPath?: Array<string | number>;
+  annotations?: unknown;
 }
 
 const {
@@ -18,6 +24,11 @@ const {
   autoplay = false,
   aspectRatio = '16:9',
   spacing = 'group',
+  documentKey,
+  contentId,
+  sectionId,
+  sectionPath,
+  annotations,
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing);
@@ -50,7 +61,7 @@ if (!resolvedSrc) {
 }
 ---
 
-<div class:list={['project-block', stackClass]}>
+<div id={sectionId} class:list={['project-block', stackClass, sectionId && 'section-block']} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}>
   {resolvedSrc ? (
     <div class="project-video-player" data-project-video style={containerStyle}>
       <media-controller
@@ -79,6 +90,7 @@ if (!resolvedSrc) {
   ) : (
     <div class="project-video-player project-video-player--empty" style={containerStyle}></div>
   )}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </div>
 
 {(resolvedSrc || import.meta.env.DEV) && <ProjectVideoControls />}

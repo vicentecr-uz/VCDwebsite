@@ -5,6 +5,7 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 import { projectImage } from '../../lib/images';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 export type PressQuoteTickerItem = {
   quote: string;
@@ -22,6 +23,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
   /** Pixels per second at full speed. */
   speed?: number;
   /** Logo opacity in light mode (0–1). */
@@ -35,6 +37,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
   speed = 36,
   logoOpacity = 0.6,
 } = Astro.props;
@@ -54,6 +57,8 @@ const loopItems = [...items, ...items];
   data-press-ticker-speed={String(speed)}
   data-press-ticker-count={String(items.length)}
   {...(spacingAttrs ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
 >
   <div class="press-quote-ticker__viewport" data-press-ticker-viewport>
     <div class="press-quote-ticker__track" data-press-ticker-track>
@@ -106,6 +111,7 @@ const loopItems = [...items, ...items];
       })}
     </div>
   </div>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>
 
 <style>

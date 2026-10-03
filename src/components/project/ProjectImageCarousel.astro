@@ -49,6 +49,7 @@ import {
   type CarouselHeightMode,
   type CarouselOrientation,
 } from '../../lib/projectImageCarouselSettings';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Item {
   id?: string;
@@ -91,6 +92,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
   /** Render as a media cell inside an image grid. */
   nested?: boolean;
   mobileBleedEligible?: boolean;
@@ -112,6 +114,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
   nested = false,
   mobileBleedEligible = true,
 } = Astro.props;
@@ -194,6 +197,8 @@ const blockStyle = [
 <div
   id={!nested ? sectionId : undefined}
   data-image-content-id={contentId}
+  data-site-annotation-section-id={!nested ? contentId : undefined}
+  data-site-annotation-document={!nested && import.meta.env.DEV ? documentKey : undefined}
   class:list={[
     'project-image-carousel',
     !nested && stackClass,
@@ -473,6 +478,7 @@ const blockStyle = [
       );
     })}
   </div>
+  {!nested && contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </div>
 
 <script>

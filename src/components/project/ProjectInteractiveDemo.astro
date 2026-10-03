@@ -2,6 +2,7 @@
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   demo: unknown;
@@ -10,14 +11,15 @@ interface Props {
   contentId?: string;
   documentKey?: string;
   sectionPath?: Array<string | number>;
+  annotations?: unknown;
 }
-const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath } = Astro.props;
+const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations } = Astro.props;
 const demo = craftDemo(id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} {...(spacingAttrs ?? {})}>
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
       src={`/preview/${demo.id}`}
       title={demo.title}
@@ -26,6 +28,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       referrerpolicy="no-referrer"
       style={`height:${demo.height}rem`}
     />}
+    {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 )}
 
