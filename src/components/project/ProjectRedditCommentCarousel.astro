@@ -14,6 +14,7 @@ import {
   spacingDevAttrs,
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 export type RedditCommentCarouselItem = {
   author: string;
@@ -31,6 +32,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
   viewportMaxEm?: { desktop?: number; tablet?: number; mobile?: number };
 }
 
@@ -41,6 +43,7 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  annotations,
   viewportMaxEm,
 } = Astro.props;
 
@@ -91,6 +94,8 @@ const copies = [0, 1, 2] as const;
   data-reddit-board-path={editable ? JSON.stringify([...sectionPath, 'viewportMaxEm']) : undefined}
   style={`--rcb-height-desktop:${heights.desktop}em;--rcb-height-tablet:${heights.tablet}em;--rcb-height-mobile:${heights.mobile}em`}
   {...(spacingAttrs ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
 >
   {editable && <button type="button" class="dev-grid-edit-trigger" data-dev-edit-trigger="reddit-board-height" data-dev-corner="top-left" data-dev-mode-only hidden>Edit board height</button>}
   <div class="reddit-comment-board__shell">
@@ -161,6 +166,7 @@ const copies = [0, 1, 2] as const;
       </div>
     </div>
   </div>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>
 
 <style>

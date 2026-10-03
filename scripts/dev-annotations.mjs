@@ -33,8 +33,8 @@ export function annotationDevWriter() {
           const data = await readDevDocument(relativeFile);
           const sections = Array.isArray(data.sections) ? data.sections : [];
           const section = sections.find((item) => item?.id === body.sectionId);
-          if (!section || !['bodyText', 'sectionTitle'].includes(section.type)) {
-            send(409, { error: 'That text block has changed. Refresh before saving drawings.' });
+          if (!section) {
+            send(409, { error: 'That block has changed. Refresh before saving drawings.' });
             return;
           }
           const ids = new Set([section.id]);

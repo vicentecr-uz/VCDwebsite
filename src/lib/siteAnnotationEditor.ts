@@ -4,7 +4,7 @@ import { Draw, PEN_BY_ID, type DrawHandle, type Stroke } from 'drawesome';
 import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
 import { siteAnnotationSvg } from './siteAnnotationSvg';
-import { annotationRect, findTextAnchor, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
+import { annotationRect, annotationBaseRect, annotationVisibleRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
 import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
@@ -234,13 +234,37 @@ const cropStrokes = (strokes: Stroke[], board: { w: number; h: number }) => {
   };
 };
 
+const doodleBlockAnchor = (section: HTMLElement, rect: DOMRect): SiteAnnotation['blockAnchor'] => {
+  if (section.querySelector('.project-body-text, .project-section-title')) return;
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const item = [...section.querySelectorAll<HTMLElement>('[data-grid-item-id]')].reverse().find((element) => {
+    const bounds = annotationVisibleRect(element);
+    return bounds.width > 0 && bounds.height > 0
+      && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+  });
+  if (item) {
+    const itemPath: string[] = [];
+    let current: HTMLElement | null = item;
+    while (current && current !== section) {
+      if (current.dataset.gridItemId) itemPath.unshift(current.dataset.gridItemId);
+      current = current.parentElement;
+    }
+    return { surface: 'media', itemPath };
+  }
+  if (section.querySelector('[data-grid-item-id]')) return { surface: 'block' };
+  const media = section.matches('.project-image, .project-award')
+    || section.querySelector(':scope > .project-media, :scope > .project-video-player, :scope > iframe');
+  return { surface: media ? 'media' : 'block' };
+};
+
 const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMRect } | null, existing?: SiteAnnotation) => {
   closeStage();
   target = annotationsFor(target).target;
   const anchor = existing?.anchor ?? selected?.anchor;
   const existingRect = existing ? annotationRect(target.section, existing) : null;
   if (existing && !existingRect) {
-    window.alert('Reattach this drawing to a word before editing it.');
+    window.alert('This drawing’s target is missing. Restore or reattach it before editing.');
     return;
   }
   if (existing) {
@@ -343,9 +367,10 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
       const board = drawRef.current?.getSize() ?? { w: canvas.clientWidth, h: canvas.clientHeight };
       const cropped = cropStrokes(latest, board);
       if (!cropped) { closeStage(); return; }
-      const base = anchor ? findTextAnchor(target.section, anchor) : target.section.getBoundingClientRect();
+      const blockAnchor = existing?.blockAnchor ?? (!anchor ? doodleBlockAnchor(target.section, cropped.rect) : undefined);
+      const base = annotationBaseRect(target.section, { anchor, blockAnchor });
       if (!base) {
-        window.alert('The selected word moved or changed. Cancel and select it again.');
+        window.alert('The drawing’s target moved or changed. Cancel and select it again.');
         return;
       }
       const x = cropped.rect.left - base.left;
@@ -355,8 +380,9 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
         sectionId: target.sectionId,
         kind: currentKind,
         ...(anchor ? { anchor } : {}),
+        ...(blockAnchor ? { blockAnchor } : {}),
         board: { w: cropped.rect.width, h: cropped.rect.height },
-        box: currentKind === 'highlight'
+        box: currentKind === 'highlight' || blockAnchor
           ? { x: x / base.width, y: y / base.height, w: cropped.rect.width / base.width, h: cropped.rect.height / base.height }
           : { x, y, w: cropped.rect.width, h: cropped.rect.height },
         strokes: cropped.strokes,
@@ -395,6 +421,18 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
       menu.remove();
     });
     menu.append(edit, remove);
+    if (annotation.blockAnchor?.itemPath) {
+      const reattach = document.createElement('button');
+      reattach.type = 'button';
+      reattach.className = 'dev-btn dev-btn--page';
+      reattach.textContent = `Reattach ${label} to block`;
+      reattach.addEventListener('click', () => {
+        entry.current[index] = { ...annotation, blockAnchor: { surface: 'block' } };
+        pushPending(target);
+        menu.remove();
+      });
+      menu.append(reattach);
+    }
     if (selected && annotation.anchor) {
       const reattach = document.createElement('button');
       reattach.type = 'button';
@@ -412,6 +450,12 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
 };
 
 const bindButtons = () => {
+  for (const section of document.querySelectorAll<HTMLElement>('[data-dev-content-id][data-dev-spacing-document]')) {
+    if (!section.dataset.siteAnnotationSectionId) {
+      section.dataset.siteAnnotationSectionId = section.dataset.devContentId;
+      section.dataset.siteAnnotationDocument = section.dataset.devSpacingDocument;
+    }
+  }
   for (const section of document.querySelectorAll<HTMLElement>('[data-site-annotation-section-id][data-site-annotation-document]')) {
     const sectionId = section.dataset.siteAnnotationSectionId || '';
     const documentKey = section.dataset.siteAnnotationDocument || '';
@@ -427,7 +471,7 @@ const bindButtons = () => {
     open.className = 'dev-btn dev-btn--page';
     open.dataset.siteDrawOpen = '';
     open.textContent = 'Doodle';
-    open.setAttribute('aria-label', 'Draw a doodle near this text block');
+    open.setAttribute('aria-label', 'Draw a doodle on this block');
     open.addEventListener('click', () => {
       window.getSelection()?.removeAllRanges();
       startDrawing(target, null);

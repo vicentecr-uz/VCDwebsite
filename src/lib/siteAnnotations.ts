@@ -2,6 +2,7 @@ export type SiteAnnotation = {
   id: string;
   sectionId: string;
   kind: "highlight" | "doodle";
+  blockAnchor?: { surface: "block" | "media"; itemPath?: string[] };
   anchor?: {
     paragraphIndex: number;
     exact: string;
@@ -164,6 +165,14 @@ const validateAnnotation = (value: unknown, sectionIds: Set<string>): value is S
   }
 
   if (value.kind === "highlight" && !validateAnchor(value.anchor)) return false;
+  if (value.blockAnchor !== undefined) {
+    if (value.kind !== "doodle" || value.anchor !== undefined || !isRecord(value.blockAnchor)
+      || !["block", "media"].includes(String(value.blockAnchor.surface))
+      || (value.blockAnchor.itemPath !== undefined
+        && (value.blockAnchor.surface !== "media" || !Array.isArray(value.blockAnchor.itemPath)
+          || !value.blockAnchor.itemPath.length || value.blockAnchor.itemPath.length > 8
+          || value.blockAnchor.itemPath.some((id) => !isBoundedString(id))))) return false;
+  }
   if (value.kind === "doodle" && value.anchor !== undefined && !validateAnchor(value.anchor)) {
     return false;
   }

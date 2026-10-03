@@ -58,7 +58,9 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
     Draw: {}, PEN_BY_ID, siteAnnotationSvg, positionSiteAnnotations() {},
     annotationRect: () => new window.DOMRect(20, 10, 200, 40),
-    findTextAnchor: () => new window.DOMRect(120, 50, 200, 40),
+    annotationVisibleRect: (element: HTMLElement) => element.getBoundingClientRect(),
+    annotationBaseRect: (section: HTMLElement, annotation: SiteAnnotation) => annotation.anchor
+      ? new window.DOMRect(120, 50, 200, 40) : section.getBoundingClientRect(),
   };
   const api = new Function('env', `with (env) { ${script} }`)(env);
   const target = { section, documentKey: 'page', sectionId: 'block' };
@@ -178,6 +180,24 @@ test('unchanged edits preserve original strokes and geometry', () => {
 test('only highlight exports disable SVG aspect preservation', () => {
   expect(siteAnnotationSvg(fixture)).toContain('preserveAspectRatio="none"');
   expect(siteAnnotationSvg({ ...fixture, kind: 'doodle' })).not.toContain('preserveAspectRatio="none"');
+  expect(siteAnnotationSvg({ ...fixture, kind: 'doodle', blockAnchor: { surface: 'media' } }))
+    .toContain('preserveAspectRatio="none"');
+});
+
+test('a media block gets drawing controls and saves normalized frame geometry', () => {
+  const h = harness();
+  h.section.querySelector('.project-body-text')!.remove();
+  h.section.classList.add('project-image');
+  const image = h.document.createElement('img');
+  h.section.append(image);
+  h.startDrawing(h.target, null);
+  h.props().onChange([{ ...fixture.strokes[0], points: [[140, 70, 0.5], [240, 90, 0.5]] }]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations[0];
+  expect(saved.blockAnchor).toEqual({ surface: 'media' });
+  expect(saved.anchor).toBeUndefined();
+  expect(saved.box.w).toBeLessThan(1);
+  expect(validateSiteAnnotations([saved], new Set(['block']))).toBe(true);
 });
 
 test('Command Z and Command Shift Z control Drawesome history while its stage is open', () => {
@@ -233,7 +253,7 @@ test('the block control is explicitly a selection-free doodle action', () => {
   const h = harness();
   const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-open]')!;
   expect(button.textContent).toBe('Doodle');
-  expect(button.getAttribute('aria-label')).toBe('Draw a doodle near this text block');
+  expect(button.getAttribute('aria-label')).toBe('Draw a doodle on this block');
 });
 
 const preferences = {
