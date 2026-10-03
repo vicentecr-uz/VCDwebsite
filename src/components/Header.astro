@@ -241,7 +241,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       typeof pending.time !== 'number' || !Number.isFinite(pending.time) ||
       Date.now() - pending.time < 0 || Date.now() - pending.time > 10000) return;
 
-    const carriedMenus = Array.isArray(pending.openMenus) ? [...new Set(pending.openMenus.filter((side) => side === 'start' || side === 'end'))].slice(0, 2) : [];
+    const carriedMenus = Array.isArray(pending.openMenus) && pending.openMenus.length <= 2
+      ? [...new Set(pending.openMenus.filter((side) => side === 'start' || side === 'end'))] : [];
     carriedMenus.forEach((side) => {
       const trigger = document.querySelector(`.header-trigger--${side}`);
       if (!trigger) return;
@@ -249,9 +250,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       trigger.dataset.menuOpen = 'true';
       trigger.dataset.menuSurfaceOpen = '';
       trigger.dataset.menuCarriedNavigation = '';
-      trigger.querySelectorAll('.header-menu__link').forEach((link) => { link.style.opacity = '1'; link.style.setProperty('--menu-link-duration', '0s'); link.style.setProperty('--menu-link-delay', '0s'); });
+      trigger.querySelectorAll('.header-menu__link').forEach((link) => {
+        link.style.opacity = '1';
+        link.style.setProperty('--menu-link-duration', '0s');
+        link.style.setProperty('--menu-link-delay', '0s');
+      });
     });
-    if (carriedMenus.length) { root.style.setProperty('--header-menu-surface-duration', '0s'); root.style.setProperty('--header-menu-surface-delay', '0s'); }
+    if (carriedMenus.length) {
+      root.style.setProperty('--header-menu-surface-duration', '0s');
+      root.style.setProperty('--header-menu-surface-delay', '0s');
+    }
     const start = document.querySelector('.header-trigger--start');
     const home = start?.querySelector('.header-trigger__wordmark--home');
     const page = start?.querySelector('.header-trigger__wordmark--page');
@@ -959,6 +967,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if ((force || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
           trigger.classList.remove('is-menu-open');
         }
+        if (!navigationOutgoing) navigationClosing = false;
       }, closeLayoutMs);
       trigger.dataset.menuCloseTimer = String(closeTimer);
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
@@ -997,7 +1006,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       navigationClosing = true;
       const finishCarriedClose = () => {
         if (!navigationClosing || navigationOutgoing) return;
-        requestAnimationFrame(() => { if (navigationClosing && !navigationOutgoing) closeMenu(true); });
+        requestAnimationFrame(() => {
+          if (navigationClosing && !navigationOutgoing) closeMenu(true);
+        });
       };
       const revealOverlay = document.querySelector<HTMLElement>('#transition-overlay');
       if (revealOverlay?.dataset.vcdInitialReveal === 'complete' || !revealOverlay || revealOverlay.hidden) finishCarriedClose();
@@ -1016,8 +1027,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:navigation-start', (event) => {
       navigationClosing = true;
       navigationOutgoing = true;
-      const pending = event.detail?.pending;
-      if (pending && isOpen() && !pending.openMenus?.includes(previewSide)) pending.openMenus = [...(pending.openMenus || []), previewSide];
+      const pending = (event as CustomEvent<{ pending?: { openMenus?: string[] } }>).detail?.pending;
+      if (pending && isOpen() && !pending.openMenus?.includes(previewSide)) {
+        pending.openMenus = [...(pending.openMenus || []), previewSide];
+      }
     });
     document.addEventListener('header:navigation-cancel', () => {
       navigationClosing = false;

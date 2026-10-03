@@ -276,6 +276,28 @@ test('cached content still gets one opaque paint; both fades use the approved va
   assert.equal(f.tweens[1].vars.opacity, 1);
 });
 
+for (const options of [
+  {}, { initialController: true }, { visible: true }, { failTween: true }, { failUpgrade: true },
+]) {
+  test(`destination reveal notifies carried menus only after the veil is uncovered: ${JSON.stringify(options)}`, async () => {
+    const f = fixture(options);
+    let completions = 0;
+    f.window.addEventListener('vcd:initial-reveal-complete', () => {
+      completions++;
+      assert.equal(Number(f.overlay.style.opacity), 0);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    });
+    await f.paint();
+    await f.paint();
+    if (f.tweens.length) {
+      assert.equal(completions, 0);
+      f.tweens[0].finish();
+    }
+    await f.advance(250);
+    assert.equal(completions, 1);
+  });
+}
+
 test('early initial controller reveals once and deferred module adopts its state', async () => {
   const f = fixture({ initialController: true });
   await f.paint();
