@@ -405,19 +405,21 @@ function OverlayDemo() {
     return () => window.clearTimeout(timer);
   }, [hidden]);
   return (
-    <Collapsible.Root className="base-ui-collapsible dev-panel dev-surface" open={open} onOpenChange={setOpen} hidden={hidden}>
+    <Collapsible.Root className="base-ui-collapsible dev-panel dev-surface" open={open} onOpenChange={setOpen} data-panel-open={open} hidden={hidden}>
       <div className="dev-panel__header">
         <p className="dev-panel__title">Panel title</p>
         <div className="dev-panel__lights">
           <Collapsible.Trigger className="dev-panel__light base-ui-panel-light" aria-label={open ? "Minimize" : "Restore"} title={open ? "Minimize" : "Restore"}>
-            <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M2 5h6" />{!open && <path d="M5 2v6" />}</svg>
+            <svg data-panel-glyph="minus" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M2 5h6" /></svg>
+
+            <svg data-panel-glyph="plus" viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M2 5h6M5 2v6" /></svg>
           </Collapsible.Trigger>
           <Button className="dev-panel__light base-ui-panel-light" aria-label="Hide" title="Hide" onClick={() => setHidden(true)}>
             <svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="m2 2 6 6m0-6-6 6" /></svg>
           </Button>
         </div>
       </div>
-      <Collapsible.Panel className="base-ui-collapsible__panel">
+      <Collapsible.Panel keepMounted className="base-ui-collapsible__panel">
         <div className="dev-panel__body">
             <label className="base-ui-checkbox">
               <Checkbox.Root className="base-ui-checkbox__root" defaultChecked>
