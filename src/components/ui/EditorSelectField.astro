@@ -30,6 +30,7 @@ const flatOptions = options.flatMap((item) => isGroup(item)
   ? item.options.map((option) => ({ ...option, group: item.label, iconSvg: option.icon ? sizeIcon(option.icon, 16) : undefined }))
   : [{ ...item, iconSvg: item.icon ? sizeIcon(item.icon, 16) : undefined }]);
 const selected = flatOptions.find((option) => option.value === value)?.value ?? flatOptions[0]?.value ?? null;
+
 ---
 
 <Field label={label} labelId={`${triggerId}-label`} labelFor={triggerId} class={['base-ui-field', className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
@@ -43,4 +44,3 @@ const selected = flatOptions.find((option) => option.value === value)?.value ?? 
   </select>
   <EditorSelect client:load triggerId={triggerId} label={label} options={flatOptions} value={selected} disabled={disabled} />
 </Field>
-
