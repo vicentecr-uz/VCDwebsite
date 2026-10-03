@@ -355,7 +355,7 @@ function ToggleDemo() {
             disabled={label === "Disabled"}
           >
             <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
-              ✓
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
             </Checkbox.Indicator>
           </Checkbox.Root>
           <span>{label}</span>
@@ -411,7 +411,7 @@ function OverlayDemo() {
             <label className="base-ui-checkbox">
               <Checkbox.Root className="base-ui-checkbox__root" defaultChecked>
                 <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
-                  ✓
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
                 </Checkbox.Indicator>
               </Checkbox.Root>
               <span>Show caption</span>
@@ -547,7 +547,7 @@ export default function BaseUiExample({ kind }: ExampleProps) {
             <label className="base-ui-checkbox">
               <Checkbox.Root className="base-ui-checkbox__root" defaultChecked>
                 <Checkbox.Indicator className="base-ui-checkbox__indicator" aria-hidden="true">
-                  ✓
+              <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.667" strokeLinecap="round" strokeLinejoin="round" focusable="false"><path d="M3.5 8.5l3 3 6-6" /></svg>
                 </Checkbox.Indicator>
               </Checkbox.Root>
               <span>Show caption</span>
