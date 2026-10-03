@@ -586,6 +586,14 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       };
 
       const captureHeaderNavigation = (target: URL, pending: { href: string; title: string; time: number; targetTitle?: string; margins?: number[] } = { href: target.href, title: '', time: Date.now() }) => {
+        if (target.pathname === '/') {
+          let introSeen = false;
+          try { introSeen = sessionStorage.getItem('vcd:home-intro-seen') === 'true'; } catch { introSeen = false; }
+          if (!introSeen) {
+            clearHeaderNavigationState();
+            return false;
+          }
+        }
         const slot = document.querySelector<HTMLElement>('.site-header-slot');
         const header = slot?.querySelector<HTMLElement>('.site-header');
         const wordmark = header?.querySelector<HTMLElement>('.header-trigger__wordmark[aria-hidden="false"], .header-trigger__wordmark:not([aria-hidden="true"])');
