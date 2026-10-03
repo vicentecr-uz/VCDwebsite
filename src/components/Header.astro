@@ -241,6 +241,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       typeof pending.time !== 'number' || !Number.isFinite(pending.time) ||
       Date.now() - pending.time < 0 || Date.now() - pending.time > 10000) return;
 
+    const carriedMenus = Array.isArray(pending.openMenus) ? [...new Set(pending.openMenus.filter((side) => side === 'start' || side === 'end'))].slice(0, 2) : [];
+    carriedMenus.forEach((side) => {
+      const trigger = document.querySelector(`.header-trigger--${side}`);
+      if (!trigger) return;
+      trigger.classList.add('is-menu-open');
+      trigger.dataset.menuOpen = 'true';
+      trigger.dataset.menuSurfaceOpen = '';
+      trigger.dataset.menuCarriedNavigation = '';
+      trigger.querySelectorAll('.header-menu__link').forEach((link) => { link.style.opacity = '1'; link.style.setProperty('--menu-link-duration', '0s'); link.style.setProperty('--menu-link-delay', '0s'); });
+    });
+    if (carriedMenus.length) { root.style.setProperty('--header-menu-surface-duration', '0s'); root.style.setProperty('--header-menu-surface-delay', '0s'); }
     const start = document.querySelector('.header-trigger--start');
     const home = start?.querySelector('.header-trigger__wordmark--home');
     const page = start?.querySelector('.header-trigger__wordmark--page');
@@ -783,6 +794,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
   const forceCloseMenus = (preserveNavigation = false) => {
+    if (preserveNavigation && document.documentElement.hasAttribute('data-header-navigation')) return;
     menuScrollClosed = false;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('.site-header--nav-menu')) {
@@ -839,6 +851,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const closeLayoutMs = Math.ceil(MENU_TIMELINE_CLOSE_DURATION * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     let navigationClosing = false;
+    let navigationOutgoing = false;
 
     const clearCloseTimer = () => {
       if (closeTimer) clearTimeout(closeTimer);
@@ -934,7 +947,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
-      if (previewPinned) return;
+      if (previewPinned || navigationOutgoing) return;
       if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
       setCloseStagger();
@@ -976,7 +989,20 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     document.addEventListener('header:force-close', () => {
       navigationClosing = false;
+      navigationOutgoing = false;
     });
+
+    if (trigger.dataset.menuCarriedNavigation !== undefined) {
+      delete trigger.dataset.menuCarriedNavigation;
+      navigationClosing = true;
+      const finishCarriedClose = () => {
+        if (!navigationClosing || navigationOutgoing) return;
+        requestAnimationFrame(() => { if (navigationClosing && !navigationOutgoing) closeMenu(true); });
+      };
+      const revealOverlay = document.querySelector<HTMLElement>('#transition-overlay');
+      if (document.documentElement.dataset.vcdInitialReveal === 'complete' || !revealOverlay || revealOverlay.hidden) finishCarriedClose();
+      else window.addEventListener('vcd:initial-reveal-complete', finishCarriedClose, { once: true });
+    }
 
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
@@ -987,14 +1013,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       lastPointerDownAt = performance.now();
     });
 
-    document.addEventListener('header:navigation-start', () => {
+    document.addEventListener('header:navigation-start', (event) => {
       navigationClosing = true;
-      queueMicrotask(() => {
-        if (navigationClosing) closeMenu(true);
-      });
+      navigationOutgoing = true;
+      const pending = event.detail?.pending;
+      if (pending && isOpen() && !pending.openMenus?.includes(previewSide)) pending.openMenus = [...(pending.openMenus || []), previewSide];
     });
     document.addEventListener('header:navigation-cancel', () => {
       navigationClosing = false;
+      navigationOutgoing = false;
+      if (isOpen() && !trigger.matches(':hover') && !trigger.contains(document.activeElement)) closeMenu(true);
     });
 
     trigger.addEventListener('mouseenter', (event) => {
