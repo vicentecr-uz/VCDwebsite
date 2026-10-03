@@ -48,15 +48,6 @@ let activeDrawRef: { current: DrawHandle | null } | null = null;
 let editingImage: HTMLImageElement | null = null;
 let savedSelection: { anchor: TextAnchor; rect: DOMRect } | null = null;
 const lifecycle = new AbortController();
-const selectionButton = document.createElement('button');
-selectionButton.type = 'button';
-selectionButton.className = 'site-draw-selection dev-btn dev-btn--page dev-surface';
-selectionButton.textContent = 'Highlight';
-selectionButton.setAttribute('aria-label', 'Highlight selected word');
-selectionButton.hidden = true;
-document.body.append(selectionButton);
-let selectionTarget: Target | null = null;
-let selectionAnchor: { anchor: TextAnchor; rect: DOMRect } | null = null;
 
 const annotationsFor = (target: Target) => {
   const key = targetKey(target);
@@ -177,14 +168,9 @@ const closeStage = () => {
   reactRoot = null;
   stage?.remove();
   stage = null;
-  selectionButton.hidden = true;
 };
 
-const syncSelectionButton = () => {
-  selectionButton.hidden = true;
-  selectionTarget = null;
-  selectionAnchor = null;
-  if (!document.documentElement.classList.contains('is-dev-mode') || stage) return;
+const drawingSelection = () => {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !selection.rangeCount) return;
   const range = selection.getRangeAt(0);
@@ -194,27 +180,13 @@ const syncSelectionButton = () => {
   if (!section) return;
   const selected = selectedAnchor(section, range);
   if (!selected || selected.rect.bottom < 0 || selected.rect.top > window.innerHeight) return;
-  selectionTarget = {
+  const target: Target = {
     section,
     documentKey: section.dataset.siteAnnotationDocument || '',
     sectionId: section.dataset.siteAnnotationSectionId || '',
   };
-  selectionAnchor = selected;
-  selectionButton.style.left = `${Math.min(window.innerWidth - 80, Math.max(8, selected.rect.right + 8))}px`;
-  selectionButton.style.top = `${Math.min(window.innerHeight - 44, Math.max(8, selected.rect.top))}px`;
-  selectionButton.hidden = false;
+  return { target, anchor: selected };
 };
-
-selectionButton.addEventListener('pointerdown', (event) => {
-  event.preventDefault();
-  if (selectionTarget && selectionAnchor) startDrawing(selectionTarget, selectionAnchor);
-}, { signal: lifecycle.signal });
-selectionButton.addEventListener('click', () => {
-  if (!stage && selectionTarget && selectionAnchor) startDrawing(selectionTarget, selectionAnchor);
-}, { signal: lifecycle.signal });
-document.addEventListener('selectionchange', syncSelectionButton, { signal: lifecycle.signal });
-window.addEventListener('scroll', syncSelectionButton, { passive: true, signal: lifecycle.signal });
-window.addEventListener('resize', syncSelectionButton, { signal: lifecycle.signal });
 
 const cropStrokes = (strokes: Stroke[], board: { w: number; h: number }) => {
   const points = strokes.flatMap((stroke) => stroke.points);
@@ -310,7 +282,6 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   overlay.append(canvas, controls);
   document.body.append(overlay);
   stage = overlay;
-  selectionButton.hidden = true;
   overlay.addEventListener('wheel', (event) => event.preventDefault(), { passive: false });
 
   const drawRef = createRef<DrawHandle>();
@@ -521,10 +492,7 @@ window.addEventListener('keydown', (event) => {
   }
   if (!document.documentElement.classList.contains('is-dev-mode')) return;
   if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.code !== 'KeyD') return;
-  syncSelectionButton();
-  const selected = selectionTarget && selectionAnchor
-    ? { target: selectionTarget, anchor: selectionAnchor }
-    : null;
+  const selected = drawingSelection();
   const target = selected?.target ?? shortcutTarget();
   if (!target) return;
   event.preventDefault();
@@ -569,10 +537,9 @@ window.addEventListener('vcd:site-annotations-saved', (event) => {
 document.addEventListener('astro:page-load', () => {
   closeStage();
   state.clear();
-  if (!selectionButton.isConnected) document.body.append(selectionButton);
   bindButtons();
 }, { signal: lifecycle.signal });
 document.addEventListener('astro:before-swap', closeStage, { signal: lifecycle.signal });
 bindButtons();
 
-if (import.meta.hot) import.meta.hot.dispose(() => { lifecycle.abort(); closeStage(); state.clear(); selectionButton.remove(); });
+if (import.meta.hot) import.meta.hot.dispose(() => { lifecycle.abort(); closeStage(); state.clear(); });
