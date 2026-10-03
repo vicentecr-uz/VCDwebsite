@@ -546,6 +546,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
             overlay.style.opacity = '0';
             emitTransitionMilestone('veil-fade-start');
             if (visibleTransition) emitTransitionMilestone('veil-fade-end');
+            overlay.dataset.vcdInitialReveal = 'complete';
+            window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
             return;
           }
           emitTransitionMilestone('veil-fade-start');
@@ -558,6 +560,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               if (current === generation) {
                 overlay.hidden = true;
                 activeTween = null;
+                overlay.dataset.vcdInitialReveal = 'complete';
+                window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
               }
             },
           });
@@ -569,6 +573,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
             readinessAbort = null;
             overlay.style.opacity = '0';
             overlay.hidden = true;
+            overlay.dataset.vcdInitialReveal = 'complete';
+            window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
           }
         }
       };

@@ -311,57 +311,138 @@ test('completed animation stays completed and malformed bridge state leaves orig
   }
 });
 
-test('accepted navigation runs the menu reverse timeline after title capture and recovers after cancel or Back', () => {
+function menuFixture(carried = false, revealed = false) {
   const win = new Window();
   const doc = win.document;
-  doc.body.innerHTML = '<div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a><a class="header-menu__link">About</a><a class="header-menu__link">Play</a></div>';
+  doc.body.innerHTML = '<div id="transition-overlay" data-vcd-initial-reveal="running"></div><div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a><a class="header-menu__link">About</a><a class="header-menu__link">Play</a></div>';
   const start = doc.querySelector<HTMLElement>('.header-trigger')!;
   const brand = start.querySelector<HTMLElement>('.header-trigger__brand-link')!;
   const links = [...start.querySelectorAll<HTMLElement>('.header-menu__link')];
+  if (carried) {
+    start.classList.add('is-menu-open');
+    start.dataset.menuOpen = 'true';
+    start.dataset.menuSurfaceOpen = '';
+    start.dataset.menuCarriedNavigation = '';
+    links.forEach((link) => { link.style.opacity = '1'; });
+  }
+  if (revealed) doc.querySelector<HTMLElement>('#transition-overlay')!.dataset.vcdInitialReveal = 'complete';
   const begin = header.indexOf("\n  document.querySelectorAll<HTMLElement>('.header-trigger').forEach", header.indexOf('const forceCloseMenus'));
   const end = header.indexOf('  // Switching between hover and tap', begin);
   expect(begin).toBeGreaterThan(0);
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(begin, end).replaceAll('import.meta.env.DEV', 'false'));
   const timers = new Map<number, { callback: Function; delay: number }>();
-  const microtasks: Function[] = [];
+  const frames: Function[] = [];
   const timings: number[][] = [];
   let sequence = 0;
-  new Function('document', 'window', 'MouseEvent', 'HTMLElement', 'CustomEvent', 'syncMenuSurfaceInlineSize', 'setMenuSurfaceTiming', 'isTapMode', 'isDevEditing', 'setTimeout', 'clearTimeout', 'queueMicrotask', 'menuScrollClosed', script)(
+  const clearTimer = (id: number) => timers.delete(id);
+  new Function('document', 'window', 'MouseEvent', 'HTMLElement', 'CustomEvent', 'syncMenuSurfaceInlineSize', 'setMenuSurfaceTiming', 'isTapMode', 'isDevEditing', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'menuScrollClosed', script)(
     doc, win, win.MouseEvent, win.HTMLElement, win.CustomEvent, () => {}, (...values: number[]) => timings.push(values), () => false, () => false,
     (callback: Function, delay: number) => { timers.set(++sequence, { callback, delay }); return sequence; },
-    (id: number) => timers.delete(id), (callback: Function) => microtasks.push(callback), false,
+    clearTimer, (callback: Function) => frames.push(callback), false,
   );
-  start.dispatchEvent(new win.Event('mouseenter'));
-  brand.focus();
-  expect(start.dataset.menuOpen).toBe('true');
-  let titleCaptured = false;
-  doc.addEventListener('header:navigation-start', () => { titleCaptured = true; });
-  start.addEventListener('header:trigger-close', () => expect(titleCaptured).toBe(true));
-  doc.dispatchEvent(new win.Event('header:navigation-start'));
-  expect(start.dataset.menuOpen).toBe('true');
-  microtasks.splice(0).forEach((callback) => callback());
-  expect(start.dataset.menuOpen).toBe('true');
-  expect(start.dataset.menuSurfaceOpen).toBe('');
-  expect(links.every((link) => link.style.opacity === '1')).toBe(true);
-  expect(timings.at(-1)![0]).toBeGreaterThan(0);
-  expect(timings.at(-1)![0] + timings.at(-1)![1]).toBeCloseTo(0.25);
-  expect(doc.activeElement).toBe(brand);
-  brand.blur();
-  doc.dispatchEvent(new win.Event('header:navigation-cancel'));
-  const closing = [...timers.values()].at(-1)!;
+  const forceScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(header.indexOf('  const forceCloseMenus ='), begin));
+  const forceClose = new Function('document', 'HTMLElement', 'CustomEvent', 'setMenuSurfaceTiming', 'clearTimeout', `let menuScrollClosed = false; ${forceScript}; return forceCloseMenus;`)(doc, win.HTMLElement, win.CustomEvent, (...values: number[]) => timings.push(values), clearTimer);
+  return { win, doc, start, brand, links, timers, timings, forceClose, frame: () => frames.splice(0).forEach((callback) => callback()) };
+}
+
+function incomingMenuFixture(openMenus: unknown) {
+  const win = new Window({ url: 'https://vcd.test/project' });
+  const doc = win.document;
+  doc.body.innerHTML = '<div class="site-header-slot"><div class="header-trigger--start"><span class="header-trigger__wordmark--page"><span class="header-trigger__char">Project</span></span><span class="header-trigger__wordmark--home"><span class="header-trigger__char">Vicente Cruz</span></span><a class="header-menu__link">Work</a></div><div class="header-trigger--end"><a class="header-menu__link">Play</a></div></div>';
+  win.sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: win.location.href, title: 'Previous', time: Date.now(), openMenus }));
+  new Function('document', 'window', 'sessionStorage', 'location', inline)(doc, win, win.sessionStorage, win.location);
+  return { win, doc };
+}
+
+test('incoming inline controller restores carried menus open before first paint without running an entry animation', () => {
+  const f = incomingMenuFixture(['start', 'end']);
+  for (const side of ['start', 'end']) {
+    const trigger = f.doc.querySelector<HTMLElement>(`.header-trigger--${side}`)!;
+    expect(trigger.classList.contains('is-menu-open')).toBe(true);
+    expect(trigger.dataset.menuOpen).toBe('true');
+    expect(trigger.dataset.menuSurfaceOpen).toBe('');
+    expect(trigger.dataset.menuCarriedNavigation).toBe('');
+    const link = trigger.querySelector<HTMLElement>('.header-menu__link')!;
+    expect(link.style.opacity).toBe('1');
+    expect(link.style.getPropertyValue('--menu-link-duration')).toBe('0s');
+  }
+  expect(f.doc.documentElement.style.getPropertyValue('--header-menu-surface-duration')).toBe('0s');
+});
+
+test('incoming menu restoration ignores unknown, oversized and non-array menu state', () => {
+  for (const openMenus of [null, { start: true }, ['other'], ['start', 'end', 'start']]) {
+    const f = incomingMenuFixture(openMenus);
+    expect(f.doc.querySelectorAll('[data-menu-carried-navigation]').length).toBe(0);
+  }
+  expect(incomingMenuFixture(['start', 'start']).doc.querySelectorAll('[data-menu-carried-navigation]').length).toBe(1);
+});
+
+test('outgoing menu stays open through pointer leave and pagehide, serializes its side, and recovers after cancellation or Back', () => {
+  const f = menuFixture();
+  f.start.dispatchEvent(new f.win.Event('mouseenter'));
+  f.brand.focus();
+  const pending: { openMenus?: string[] } = {};
+  f.doc.documentElement.dataset.headerNavigation = '';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending } }));
+  expect(pending.openMenus).toEqual(['start']);
+  f.start.dispatchEvent(new f.win.Event('mouseleave'));
+  f.start.dispatchEvent(new f.win.Event('header:request-close'));
+  f.forceClose(true);
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.start.dataset.menuSurfaceOpen).toBe('');
+  expect(f.links.every((link) => link.style.opacity === '1')).toBe(true);
+  expect(f.timers.size).toBe(0);
+  f.brand.blur();
+  f.doc.dispatchEvent(new f.win.Event('header:navigation-cancel'));
+  const closing = [...f.timers.values()].at(-1)!;
   expect(closing.delay).toBe(212);
   closing.callback();
-  expect(start.classList.contains('is-menu-open')).toBe(false);
-  start.dispatchEvent(new win.Event('mouseenter'));
-  expect(start.dataset.menuOpen).toBe('true');
-  doc.dispatchEvent(new win.Event('header:navigation-cancel'));
-  start.dispatchEvent(new win.Event('mouseenter'));
-  expect(start.dataset.menuOpen).toBe('true');
-  doc.dispatchEvent(new win.Event('header:navigation-start'));
-  microtasks.splice(0).forEach((callback) => callback());
-  doc.dispatchEvent(new win.Event('header:force-close'));
-  start.dispatchEvent(new win.Event('mouseenter'));
-  expect(start.dataset.menuOpen).toBe('true');
+  expect(f.start.classList.contains('is-menu-open')).toBe(false);
+  f.start.dispatchEvent(new f.win.Event('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending } }));
+  expect(pending.openMenus).toEqual(['start']);
+  f.forceClose(false);
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  f.start.dispatchEvent(new f.win.Event('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+});
+
+for (const alreadyRevealed of [false, true]) {
+  test(`carried menu closes after destination reveal and unlocks after its reverse timeline: already revealed=${alreadyRevealed}`, () => {
+    const f = menuFixture(true, alreadyRevealed);
+    f.brand.focus();
+    expect(f.start.dataset.menuOpen).toBe('true');
+    expect(f.timers.size).toBe(0);
+    if (!alreadyRevealed) {
+      f.frame();
+      expect(f.start.dataset.menuOpen).toBe('true');
+      f.win.dispatchEvent(new f.win.Event('vcd:initial-reveal-complete'));
+    }
+    expect(f.start.dataset.menuOpen).toBe('true');
+    f.frame();
+    expect(f.start.dataset.menuOpen).toBeUndefined();
+    expect(f.start.dataset.menuSurfaceOpen).toBeUndefined();
+    expect(f.links.every((link) => link.style.opacity === '0' && parseFloat(link.style.getPropertyValue('--menu-link-duration')) > 0)).toBe(true);
+    expect(f.timings.at(-1)![0] + f.timings.at(-1)![1]).toBeCloseTo(0.18);
+    f.start.dispatchEvent(new f.win.Event('mouseenter'));
+    expect(f.start.dataset.menuOpen).toBeUndefined();
+    const closing = [...f.timers.values()].at(-1)!;
+    expect(closing.delay).toBe(212);
+    closing.callback();
+    expect(f.start.classList.contains('is-menu-open')).toBe(false);
+    f.start.dispatchEvent(new f.win.Event('mouseenter'));
+    expect(f.start.dataset.menuOpen).toBe('true');
+  });
+}
+
+test('a new navigation before destination closure prevents the queued arrival close', () => {
+  const f = menuFixture(true);
+  f.win.dispatchEvent(new f.win.Event('vcd:initial-reveal-complete'));
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: {} } }));
+  f.frame();
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.timers.size).toBe(0);
 });
 
 test('navigation slides only a visible partly clipped header into view using the hover docking path', () => {
