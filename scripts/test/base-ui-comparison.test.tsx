@@ -25,6 +25,9 @@ describe('Base UI study server rendering', () => {
     expect(inputs[0].readOnly).toBe(false);
     expect(inputs[1].readOnly).toBe(false);
     expect(inputs[2].disabled).toBe(true);
+    const prefixTrack = inputs[1].closest('.dev-text-field__track');
+    expect(prefixTrack?.textContent).toContain('example.com/');
+    expect(inputs[0].closest('.dev-text-field')).not.toBeNull();
     for (const input of inputs) expect(document.querySelector(`label[for="${input.id}"]`)).not.toBeNull();
   });
 

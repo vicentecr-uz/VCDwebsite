@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "@base-ui/react/button";
 import { Checkbox } from "@base-ui/react/checkbox";
 import { Collapsible } from "@base-ui/react/collapsible";
@@ -12,6 +12,8 @@ import { Radio } from "@base-ui/react/radio";
 import { Select } from "@base-ui/react/select";
 import { Separator } from "@base-ui/react/separator";
 import { Toggle } from "@base-ui/react/toggle";
+// @ts-expect-error The shared Astro/browser initializer is intentionally a plain JS module.
+import { initFieldOverflow } from "../../lib/fieldOverflow.js";
 import "./base-ui.css";
 
 type ExampleProps = { kind: string };
@@ -31,12 +33,28 @@ function DemoField({
   name?: string;
   invalid?: boolean;
 }) {
+  const fieldRef = useRef<HTMLDivElement>(null);
+  useEffect(() => fieldRef.current ? initFieldOverflow(fieldRef.current) : undefined, []);
   return (
-    <Field.Root className="dev-field base-ui-field" name={name} invalid={invalid}>
+    <Field.Root ref={fieldRef} className="dev-field base-ui-field" name={name} invalid={invalid}>
       <Field.Label className="dev-field__label base-ui-label">{label}</Field.Label>
       <div className="dev-field__value">{children}</div>
       <Field.Error className="base-ui-error" />
     </Field.Root>
+  );
+}
+
+function BaseTextInput({ prefix, className, ...props }: { prefix?: string } & ComponentProps<typeof Input>) {
+  return (
+    <div className={cx("dev-text-field", prefix ? "dev-text-field--prefix" : "dev-text-field--native")}>
+      <div className="dev-text-field__track">
+        <div className="dev-text-field__content">
+          {prefix && <span className="dev-text-field__prefix" aria-hidden="true">{prefix}</span>}
+          <Input {...props} className={cx("dev-field__input", "base-ui-control", typeof className === "string" ? className : undefined)} />
+        </div>
+      </div>
+      <span className="dev-text-field__measure" aria-hidden="true" />
+    </div>
   );
 }
 
@@ -160,15 +178,15 @@ function FieldDemo({ area = false }: { area?: boolean }) {
       }
     >
       <DemoField label="Project name" name="project-name">
-        <Input className="dev-field__input base-ui-control" required />
+        <BaseTextInput required />
       </DemoField>
       <DemoField label="Disabled sample">
-        <Input
-          className="dev-field__input base-ui-control"
+        <BaseTextInput
           disabled
           value="Read only"
         />
       </DemoField>
+      <DemoField label="Read-only value">A deliberately long read-only field value for reviewing shared overflow fades at both edges.</DemoField>
       <div className="base-ui-row">
         <Button className="dev-btn dev-btn--filled" type="submit">
           Submit
@@ -192,23 +210,15 @@ function TextFieldDemo() {
   return (
     <div className="base-ui-stack">
       <DemoField label="Normal">
-        <Input
-          className="dev-field__input base-ui-control"
+        <BaseTextInput
           defaultValue="Project name"
         />
       </DemoField>
       <DemoField label="Prefixed">
-        <div className="base-ui-prefix-control">
-          <span aria-hidden="true">example.com/</span>
-          <Input
-            className="dev-field__input base-ui-control"
-            defaultValue="project-name"
-          />
-        </div>
+        <BaseTextInput prefix="example.com/" defaultValue="project-name" />
       </DemoField>
       <DemoField label="Disabled">
-        <Input
-          className="dev-field__input base-ui-control"
+        <BaseTextInput
           disabled
           value="Unavailable"
         />
@@ -249,14 +259,14 @@ function SelectDemo() {
           value={value}
           onValueChange={(next) => next && setValue(next)}
         >
-          <Select.Trigger className="dev-field__input dev-field__input--select base-ui-control">
-            <Select.Value className="base-ui-select-value" />
+          <Select.Trigger className="dev-field__input dev-field__input--select dev-select__trigger base-ui-control">
+            <Select.Value className="base-ui-select-value dev-select__trigger-label" />
             <Select.Icon aria-hidden="true">⌄</Select.Icon>
           </Select.Trigger>
           <Select.Portal>
             <Select.Positioner
               className="base-ui-select-positioner"
-              alignItemWithTrigger={false}
+              alignItemWithTrigger
             >
               <Select.Popup className="base-ui-select-popup">
                 <Select.List>
@@ -273,7 +283,7 @@ function SelectDemo() {
                         value={item}
                         className="base-ui-select-item"
                       >
-                        <Select.ItemText>{label}</Select.ItemText>
+                        <Select.ItemText className="base-ui-select-item__text">{label}</Select.ItemText>
                         <Select.ItemIndicator aria-hidden="true">✓</Select.ItemIndicator>
                       </Select.Item>
                     ))}
@@ -294,7 +304,7 @@ function SelectDemo() {
                         value={item}
                         className="base-ui-select-item"
                       >
-                        <Select.ItemText>{label}</Select.ItemText>
+                        <Select.ItemText className="base-ui-select-item__text">{label}</Select.ItemText>
                         <Select.ItemIndicator aria-hidden="true">✓</Select.ItemIndicator>
                       </Select.Item>
                     ))}
@@ -311,8 +321,8 @@ function SelectDemo() {
           disabled
           defaultValue="draft"
         >
-          <Select.Trigger className="dev-field__input dev-field__input--select base-ui-control">
-            <Select.Value className="base-ui-select-value" />
+          <Select.Trigger className="dev-field__input dev-field__input--select dev-select__trigger base-ui-control">
+            <Select.Value className="base-ui-select-value dev-select__trigger-label" />
           </Select.Trigger>
         </Select.Root>
       </DemoField>
@@ -430,7 +440,7 @@ function DialogDemo() {
             An exploratory dialog pattern for the comparison page.
           </Dialog.Description>
           <DemoField label="Label">
-            <Input className="dev-field__input base-ui-control" />
+            <BaseTextInput />
           </DemoField>
           <Dialog.Close className="dev-btn dev-btn--ghost">Close</Dialog.Close>
         </Dialog.Popup>

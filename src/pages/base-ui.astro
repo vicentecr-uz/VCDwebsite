@@ -49,14 +49,14 @@ import { comparisons } from '../lib/baseUiComparison';
         <p class="comparison-eyebrow">Maintenance & delivery</p><h2>What we can save</h2>
         <p>The clearest candidate is the 621-line select controller. Base UI takes responsibility for keyboard handling, typeahead, focus and popup placement. Replacing that controller still requires migrating callers that write directly to native selects.</p>
         <p>Native inputs and buttons offer much smaller savings. Styling, editor actions, caret-aware text fades, dragging, resizing and persistence remain application code. No current code has been removed by this study.</p>
-        <div class="comparison-measurements"><table><caption>Production JavaScript · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
+        <div class="comparison-measurements"><table><caption>Initial study baseline · gzip estimates</caption><thead><tr><th scope="col">What is loaded</th><th scope="col">Size</th></tr></thead><tbody>
           <tr><th scope="row">React + Astro’s React renderer</th><td>45.9 KiB</td></tr>
           <tr><th scope="row">Base UI + all study examples</th><td>69.4 KiB</td></tr>
           <tr><th scope="row">Combined Base UI module cost</th><td>115.3 KiB</td></tr>
           <tr><th scope="row">Astro hydration bootstrap, inline</th><td>1.5 KiB</td></tr>
           <tr><th scope="row">Current controls + inline demo scripts</th><td>About 11 KiB</td></tr>
         </tbody></table></div>
-        <p>The comparison page loads both versions. Module figures sum individually compressed production files; inline figures are separate compression estimates. Shared styles, fonts, HTML and comparison-page helpers are excluded. The Base UI figure includes the additional dialog and menu candidates. This is a whole-study cost, not a per-control cost or a measured network transfer.</p>
+        <p>These figures predate the shared-field overflow refinements. The comparison page loads both versions. Module figures sum individually compressed production files; inline figures are separate compression estimates. Shared styles, fonts, HTML and comparison-page helpers are excluded. The Base UI figure includes the additional dialog and menu candidates. This is a whole-study cost, not a per-control cost or a measured network transfer.</p>
         <p>No Base UI or React study modules remain in the ordinary public build: the existing publication filter removes this unlinked page and its exclusive assets. The total public JavaScript and CSS output is about 0.2 KiB smaller after compression because the bundler regrouped shared code; that is not a performance win to attribute to Base UI.</p>
         <p>The select example is about 114 lines of React composition, plus shared Field markup and styling, against the current 621-line controller. These are not equivalent implementations: the example omits the editor’s native-select mutation bridge. Net maintenance savings can only be established when those callers are migrated.</p>
       </section>
