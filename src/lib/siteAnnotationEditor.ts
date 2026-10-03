@@ -301,14 +301,58 @@ const drawingSelection = () => {
   return { target, anchor: selected };
 };
 
-const cropStrokes = (strokes: Stroke[], board: { w: number; h: number }) => {
+type LayoutSnapshot = {
+  viewport: [number, number, number, number];
+  section: [number, number, number, number];
+  internals: number[];
+};
+
+const layoutSnapshot = (section: HTMLElement): LayoutSnapshot => {
+  const rect = section.getBoundingClientRect();
+  const internals: number[] = [];
+  const addRects = (rects: DOMRectList | DOMRect[]) => {
+    for (const item of [...rects].filter((candidate) => candidate.width > 0 && candidate.height > 0)) {
+      internals.push(item.left, item.top, item.width, item.height);
+    }
+  };
+  for (const block of textBlocks(section)) {
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    addRects(range.getClientRects());
+  }
+  const media = section.querySelectorAll<HTMLElement>(
+    '[data-grid-item-id], .project-crop-clip, .project-video-player, .project-image-grid__frame, '
+      + '[data-carousel-frame], img:not([data-site-annotation]), video, iframe',
+  );
+  for (const element of media) addRects([element.getBoundingClientRect()]);
+  return {
+    viewport: [window.innerWidth, window.innerHeight, window.scrollX, window.scrollY],
+    section: [rect.left, rect.top, rect.width, rect.height],
+    internals,
+  };
+};
+
+const layoutChanged = (before: LayoutSnapshot, after: LayoutSnapshot) => {
+  const values = [...before.viewport, ...before.section];
+  const current = [...after.viewport, ...after.section];
+  if (before.internals.length !== after.internals.length || values.length !== current.length) return true;
+  for (let index = 0; index < values.length; index += 1) {
+    if (Math.abs(values[index] - current[index]) > .5) return true;
+  }
+  for (let index = 0; index < before.internals.length; index += 1) {
+    if (Math.abs(before.internals[index] - after.internals[index]) > .5) return true;
+  }
+  return false;
+};
+
+const cropStrokes = (strokes: Stroke[]) => {
   const points = strokes.flatMap((stroke) => stroke.points);
   if (!points.length || strokes.every((stroke) => stroke.erase)) return null;
   const pad = Math.max(4, ...strokes.map((stroke) => stroke.size / 2 + 2));
-  const left = Math.max(0, Math.min(...points.map((point) => point[0])) - pad);
-  const top = Math.max(0, Math.min(...points.map((point) => point[1])) - pad);
-  const right = Math.min(board.w, Math.max(...points.map((point) => point[0])) + pad);
-  const bottom = Math.min(board.h, Math.max(...points.map((point) => point[1])) + pad);
+  const left = Math.min(...points.map((point) => point[0])) - pad;
+  const top = Math.min(...points.map((point) => point[1])) - pad;
+  const right = Math.max(...points.map((point) => point[0])) + pad;
+  const bottom = Math.max(...points.map((point) => point[1])) + pad;
   if (right <= left || bottom <= top) return null;
   return {
     rect: new DOMRect(left, top, right - left, bottom - top),
@@ -408,6 +452,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   const drawRef = createRef<DrawHandle>();
   activeDrawRef = drawRef;
   const sectionRect = target.section.getBoundingClientRect();
+  const layoutAtOpen = layoutSnapshot(target.section);
   const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
   const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
   // Strokes have one pen width; exact anisotropic nib scaling would require transformed SVG paths.
@@ -456,8 +501,11 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
     if (existing && JSON.stringify(latest) === initialStrokes) {
       annotation = { ...existing, mobile: mobileVisibility };
     } else {
-      const board = drawRef.current?.getSize() ?? { w: canvas.clientWidth, h: canvas.clientHeight };
-      const cropped = cropStrokes(latest, board);
+      if (layoutChanged(layoutAtOpen, layoutSnapshot(target.section))) {
+        window.alert('The page layout changed while drawing. Restore its original size and scroll position, or cancel and reopen Draw.');
+        return;
+      }
+      const cropped = cropStrokes(latest);
       if (!cropped) { closeStage(); return; }
       const blockAnchor = existing?.blockAnchor ?? (!anchor ? doodleBlockAnchor(target.section, cropped.rect) : undefined);
       const textParts = captureTextParts(target.section, latest, cropped.rect, currentKind === 'highlight' || Boolean(existing?.textParts));
@@ -541,7 +589,7 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
       });
       menu.append(reattach);
     }
-    if (selected && annotation.anchor) {
+    if (selected && annotation.anchor && !annotation.textParts?.length) {
       const reattach = document.createElement('button');
       reattach.type = 'button';
       reattach.className = 'dev-btn dev-btn--page';
