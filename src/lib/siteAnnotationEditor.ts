@@ -5,7 +5,7 @@ import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
 import { siteAnnotationSvg, siteAnnotationHasFreeInk } from './siteAnnotationSvg';
 import { captureTextParts, editableTextStrokes } from './siteAnnotationTextParts';
-import { annotationRect, annotationBaseRect, annotationVisibleRect, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
+import { annotationRect, annotationBaseRect, annotationVisibleRect, rangeForOffsets, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
 import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
@@ -232,16 +232,26 @@ const selectedAnchor = (section: HTMLElement, range: Range | null): { anchor: Te
   const blocks = textBlocks(section);
   const block = blocks.find((item) => item.contains(range.startContainer) && item.contains(range.endContainer));
   if (!block) return null;
-  const exact = range.toString();
-  if (!exact || exact.length > 100 || /\s/.test(exact)) return null;
-  const rects = [...range.getClientRects()].filter((item) => item.width > 0 && item.height > 0);
+  const selectedText = range.toString();
+  const tokenMatch = /\S+/.exec(selectedText);
+  if (!tokenMatch || tokenMatch[0].length > 100) return null;
+  const beforeSelection = document.createRange();
+  beforeSelection.selectNodeContents(block);
+  beforeSelection.setEnd(range.startContainer, range.startOffset);
+  const tokenStart = beforeSelection.toString().length + tokenMatch.index;
+  const tokenRange = /\s/.test(selectedText)
+    ? rangeForOffsets(block, tokenStart, tokenStart + tokenMatch[0].length)
+    : range;
+  if (!tokenRange) return null;
+  const exact = tokenMatch[0];
+  const rects = [...tokenRange.getClientRects()].filter((item) => item.width > 0 && item.height > 0);
   if (!rects.length || rects.some((item) => Math.abs(item.top - rects[0].top) > 3)) return null;
   const before = document.createRange();
   before.selectNodeContents(block);
-  before.setEnd(range.startContainer, range.startOffset);
+  before.setEnd(tokenRange.startContainer, tokenRange.startOffset);
   const after = document.createRange();
   after.selectNodeContents(block);
-  after.setStart(range.endContainer, range.endOffset);
+  after.setStart(tokenRange.endContainer, tokenRange.endOffset);
   const left = Math.min(...rects.map((item) => item.left));
   const right = Math.max(...rects.map((item) => item.right));
   const top = Math.min(...rects.map((item) => item.top));
@@ -279,8 +289,10 @@ const drawingSelection = () => {
     ? range.startContainer : range.startContainer.parentElement;
   const section = element?.closest<HTMLElement>('[data-site-annotation-section-id][data-site-annotation-document]');
   if (!section) return;
+  if (!section.contains(range.startContainer) || !section.contains(range.endContainer)) return;
+  const selectionRects = [...range.getClientRects()].filter((item) => item.width > 0 && item.height > 0);
+  if (!selectionRects.some((item) => item.bottom > 0 && item.top < window.innerHeight)) return;
   const selected = selectedAnchor(section, range);
-  if (!selected || selected.rect.bottom < 0 || selected.rect.top > window.innerHeight) return;
   const target: Target = {
     section,
     documentKey: section.dataset.siteAnnotationDocument || '',

@@ -58,6 +58,25 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
     } }),
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
     Draw: {}, PEN_BY_ID, siteAnnotationSvg, siteAnnotationHasFreeInk, positionSiteAnnotations() {},
+    rangeForOffsets: (block: HTMLElement, start: number, end: number) => {
+      const walker = document.createTreeWalker(block, 4);
+      const nodes: Text[] = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+      let offset = 0;
+      let first: { node: Text; offset: number } | null = null;
+      let last: { node: Text; offset: number } | null = null;
+      for (const node of nodes) {
+        const next = offset + node.length;
+        if (!first && start < next) first = { node, offset: start - offset };
+        if (first && end <= next) { last = { node, offset: end - offset }; break; }
+        offset = next;
+      }
+      if (!first || !last) return null;
+      const result = document.createRange();
+      result.setStart(first.node, first.offset);
+      result.setEnd(last.node, last.offset);
+      return result;
+    },
     captureTextParts: () => undefined,
     editableTextStrokes: (_: HTMLElement, annotation: SiteAnnotation) => annotation.strokes,
     textPartRect: () => new window.DOMRect(20, 10, 200, 40),
@@ -376,4 +395,76 @@ test('the Draw launcher restores its saved position and cancels a drag cleanly',
   grip.dispatchEvent(event('pointerup', 116, 116));
   expect(h.getLauncherPosition()).toBe(0);
   expect(h.window.localStorage.getItem('vcd:draw-launcher-position:v1')).toBe('0');
+});
+
+test('tapping Draw with a phrase selection anchors the first word to the text block', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  const paragraph = h.section.querySelector('p')!;
+  paragraph.innerHTML = '<span> tactile-first </span><strong>device </strong>for reflection';
+  const start = paragraph.querySelector('span')!.firstChild!;
+  const end = paragraph.querySelector('strong')!.firstChild!;
+  const range = h.document.createRange();
+  range.setStart(start, 0);
+  range.setEnd(end, end.textContent!.length);
+  range.getClientRects = () => [
+    new h.window.DOMRect(120, 50, 70, 20),
+    new h.window.DOMRect(120, 74, 40, 20),
+  ] as unknown as DOMRectList;
+  Object.defineProperty(h.window.Range.prototype, 'getClientRects', {
+    configurable: true, value: () => [new h.window.DOMRect(120, 50, 40, 20)],
+  });
+  h.window.getSelection()!.addRange(range);
+  const imageSection = h.document.createElement('section');
+  imageSection.dataset.siteAnnotationSectionId = 'image';
+  imageSection.dataset.siteAnnotationDocument = 'page';
+  imageSection.tabIndex = -1;
+  h.document.body.append(imageSection);
+  imageSection.focus();
+  h.createLauncher();
+  const draw = h.document.querySelector<HTMLButtonElement>('.site-draw-launcher__draw')!;
+  draw.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  draw.click();
+  expect(h.document.querySelector<HTMLButtonElement>('.site-draw-stage__controls button')!.textContent)
+    .toBe('Highlight');
+  h.props().onChange([fixture.strokes[0]]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations[0];
+  expect(saved.sectionId).toBe('block');
+  expect(saved.anchor?.exact).toBe('tactile-first');
+  expect(saved.anchor?.prefix).toBe(' ');
+  expect(saved.anchor?.suffix).toBe(' device for reflection');
+  expect(saved.blockAnchor).toBeUndefined();
+  expect(h.section.querySelector('[data-site-draw-manage]')?.textContent).toBe('Drawings 1');
+  expect(imageSection.querySelector('[data-site-draw-manage]')).toBeNull();
+});
+
+test('an unsupported long selection stays a text-block doodle instead of falling through to an image block', () => {
+  const h = harness();
+  h.document.documentElement.classList.add('is-dev-mode');
+  const imageSection = h.document.createElement('section');
+  imageSection.dataset.siteAnnotationSectionId = 'image';
+  imageSection.dataset.siteAnnotationDocument = 'page';
+  imageSection.className = 'project-image';
+  imageSection.tabIndex = -1;
+  imageSection.innerHTML = '<img alt="" />';
+  imageSection.getBoundingClientRect = () => new h.window.DOMRect(300, 100, 500, 100);
+  h.document.body.append(imageSection);
+  const paragraph = h.section.querySelector('p')!;
+  paragraph.textContent = 'a'.repeat(101);
+  const range = h.document.createRange();
+  range.selectNodeContents(paragraph);
+  range.getClientRects = () => [new h.window.DOMRect(120, 50, 300, 20)] as unknown as DOMRectList;
+  h.window.getSelection()!.addRange(range);
+  imageSection.focus();
+  h.createLauncher();
+  const draw = h.document.querySelector<HTMLButtonElement>('.site-draw-launcher__draw')!;
+  draw.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  draw.click();
+  h.props().onChange([fixture.strokes[0]]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations[0];
+  expect(saved.sectionId).toBe('block');
+  expect(saved.anchor).toBeUndefined();
+  expect(saved.blockAnchor).toBeUndefined();
 });
