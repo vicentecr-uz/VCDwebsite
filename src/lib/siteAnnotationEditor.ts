@@ -370,8 +370,6 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   kind.addEventListener('click', () => {
     currentKind = currentKind === 'highlight' ? 'doodle' : 'highlight';
     kind.textContent = currentKind === 'highlight' ? 'Highlight' : 'Doodle';
-    mobile.hidden = currentKind === 'highlight';
-    if (currentKind === 'highlight') mobileInput.checked = true;
   });
   const mobile = document.createElement('label');
   mobile.className = 'site-draw-stage__mobile';
@@ -379,7 +377,6 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   mobileInput.type = 'checkbox';
   mobileInput.checked = existing ? existing.mobile === 'show' : currentKind === 'highlight';
   mobile.append(mobileInput, document.createTextNode('Show on phone'));
-  mobile.hidden = currentKind === 'highlight';
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = 'dev-btn dev-btn--page';
@@ -442,7 +439,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
       closeStage();
       return;
     }
-    const mobileVisibility = currentKind === 'highlight' || mobileInput.checked ? 'show' : 'hide';
+    const mobileVisibility = mobileInput.checked ? 'show' : 'hide';
     let annotation: SiteAnnotation;
     if (existing && JSON.stringify(latest) === initialStrokes) {
       annotation = { ...existing, mobile: mobileVisibility };
@@ -508,7 +505,18 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
       pushPending(target);
       menu.remove();
     });
-    menu.append(edit, remove);
+    const mobile = document.createElement('button');
+    mobile.type = 'button';
+    mobile.className = 'dev-btn dev-btn--page';
+    mobile.dataset.siteDrawMobile = '';
+    mobile.textContent = `Show ${label} on phone`;
+    mobile.setAttribute('aria-pressed', String(annotation.mobile === 'show'));
+    mobile.addEventListener('click', () => {
+      entry.current[index] = { ...annotation, mobile: annotation.mobile === 'show' ? 'hide' : 'show' };
+      pushPending(target);
+      menu.remove();
+    });
+    menu.append(edit, mobile, remove);
     if (annotation.blockAnchor?.itemPath) {
       const reattach = document.createElement('button');
       reattach.type = 'button';

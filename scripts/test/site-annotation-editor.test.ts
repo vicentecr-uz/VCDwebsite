@@ -193,6 +193,25 @@ test('unchanged edits preserve original strokes and geometry', () => {
   expect(h.annotationsFor(h.target).current).toEqual([fixture]);
 });
 
+test('highlights can be hidden on phones through drawing controls or management without changing ink', () => {
+  const h = harness([fixture]);
+  h.startDrawing(h.target, null, fixture);
+  const label = h.document.querySelector<HTMLLabelElement>('.site-draw-stage__mobile')!;
+  expect(label.hidden).toBe(false);
+  label.querySelector<HTMLInputElement>('input')!.checked = false;
+  h.done();
+  let saved = h.pending.get('annotation:page:block').prepare().annotations[0];
+  expect(saved.mobile).toBe('hide');
+  expect(saved.strokes).toEqual(fixture.strokes);
+  h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!.click();
+  const mobile = h.document.querySelector<HTMLButtonElement>('[data-site-draw-mobile]')!;
+  expect(mobile.getAttribute('aria-pressed')).toBe('false');
+  mobile.click();
+  expect(h.pending.size).toBe(0);
+  saved = h.annotationsFor(h.target).current[0];
+  expect(saved).toEqual(fixture);
+});
+
 test('only highlight exports disable SVG aspect preservation', () => {
   expect(siteAnnotationSvg(fixture)).toContain('preserveAspectRatio="none"');
   expect(siteAnnotationSvg({ ...fixture, kind: 'doodle' })).not.toContain('preserveAspectRatio="none"');
