@@ -2,6 +2,56 @@ html.is-dev-mode .site-draw-controls:has([data-site-draw-manage]:not([hidden])) 
   display: flex;
 }
 
+:root {
+  --draw-launcher-safe-left: env(safe-area-inset-left, 0px);
+  --draw-launcher-safe-right: env(safe-area-inset-right, 0px);
+  --draw-launcher-safe-top: env(safe-area-inset-top, 0px);
+  --draw-launcher-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.site-draw-launcher {
+  --dev-btn-hit-inset: 0;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 115;
+  display: inline-flex;
+  align-items: center;
+  gap: .15rem;
+  padding: .2rem;
+  border-radius: .6rem;
+  transform: translate3d(0, 0, 0);
+}
+
+.site-draw-launcher.is-snapping { transition: transform 160ms ease; }
+.site-draw-launcher.is-dragging { transition: none; }
+.site-draw-launcher[hidden] { display: none; }
+
+.site-draw-launcher__grip,
+.site-draw-launcher__draw {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.site-draw-launcher__grip {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: .35rem;
+  color: var(--color-muted, currentColor);
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+
+.site-draw-launcher__grip:active { cursor: grabbing; }
+.site-draw-launcher__grip svg { width: 18px; height: 18px; fill: currentColor; }
+
+@media (prefers-reduced-motion: reduce) {
+  .site-draw-launcher.is-snapping { transition: none; }
+}
+
 .site-draw-controls {
   position: absolute;
   right: 0;
