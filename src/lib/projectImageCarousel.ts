@@ -1,3 +1,4 @@
+import { createPageScope } from './pageLifecycle';
 /**
  * Image carousel behaviour: active-slide tracking, the 5-slot dot window, and
  * height easing. Scrolling itself is native (`overflow` + `scroll-snap`) so a
@@ -31,6 +32,7 @@ const DEFAULT_DRAG_TUNING = normalizeCarouselDragTuning(dragTuningConfig);
 type Axis = 'horizontal' | 'vertical';
 
 interface Carousel {
+  scope: ReturnType<typeof createPageScope>;
   block: HTMLElement;
   track: HTMLElement;
   slides: HTMLElement[];
@@ -463,7 +465,7 @@ function bindDrag(carousel: Carousel): void {
     track.style.setProperty('--project-carousel-rubberband-x', '0px');
     track.style.setProperty('--project-carousel-rubberband-y', '0px');
     if (animate) {
-      rubberbandTimer = window.setTimeout(() => {
+      rubberbandTimer = carousel.scope.timeout(() => {
         track.classList.remove('is-rubberband-settling');
         rubberbandTimer = 0;
       }, gestureTuning.springBackMs);
@@ -568,9 +570,9 @@ function bindDrag(carousel: Carousel): void {
         settleFrame = 0;
         return;
       }
-      settleFrame = requestAnimationFrame(frame);
+      settleFrame = carousel.scope.frame(frame);
     };
-    settleFrame = requestAnimationFrame(frame);
+    settleFrame = carousel.scope.frame(frame);
   };
 
   track.addEventListener('click', (event) => {
@@ -650,7 +652,7 @@ function bindDrag(carousel: Carousel): void {
       } else {
         restoreSnap();
       }
-      window.setTimeout(() => { suppressClick = false; }, 0);
+      carousel.scope.timeout(() => { suppressClick = false; }, 0);
     } else restoreSnap();
   };
 
@@ -662,8 +664,9 @@ function bindDrag(carousel: Carousel): void {
   });
   track.addEventListener('wheel', cancelMomentum, { passive: true });
   track.addEventListener('touchstart', cancelMomentum, { passive: true });
-  window.addEventListener('resize', cancelMomentum, { passive: true });
-  window.addEventListener('pagehide', cancelMomentum, { passive: true });
+  carousel.scope.listen(window, 'resize', cancelMomentum, { passive: true });
+  carousel.scope.listen(window, 'pagehide', cancelMomentum, { passive: true });
+  carousel.scope.add(() => { cancelMomentum(); clearRubberband(false); });
 }
 
 /**
@@ -875,6 +878,7 @@ function initCarousel(block: HTMLElement): void {
   applyCarouselViewportSettings(block, viewport);
 
   const carousel: Carousel = {
+    scope: createPageScope(),
     block,
     track,
     slides: [],
@@ -900,7 +904,7 @@ function initCarousel(block: HTMLElement): void {
   syncCaptions(carousel);
   applyHeight(carousel);
   // Mark ready after the first measurement so consumers can gate on it.
-  requestAnimationFrame(() => block.classList.add('is-carousel-ready'));
+  carousel.scope.frame(() => block.classList.add('is-carousel-ready'));
   // Cap metrics can shift once webfonts settle — remeasure trim + slot height.
   if (document.fonts?.ready) {
     document.fonts.ready.then(() => {
@@ -912,7 +916,7 @@ function initCarousel(block: HTMLElement): void {
   let frame = 0;
   track.addEventListener('scroll', () => {
     if (frame) return;
-    frame = requestAnimationFrame(() => {
+    frame = carousel.scope.frame(() => {
       frame = 0;
       sync(carousel);
     });
@@ -942,11 +946,12 @@ function initCarousel(block: HTMLElement): void {
       applyHeight(carousel);
       void refreshCarouselMediaInk(carousel);
     });
+    carousel.scope.add(() => observer.disconnect());
     observer.observe(track);
     observer.observe(block);
     carousel.slides.forEach((slide) => observer.observe(slide));
   }
-  window.addEventListener('resize', () => {
+  carousel.scope.listen(window, 'resize', () => {
     syncViewportSettings(carousel);
     void refreshCarouselMediaInk(carousel);
   }, { passive: true });
@@ -977,6 +982,11 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
   queryCarouselsIn(root).forEach(initCarousel);
   if (refreshBound) return;
   refreshBound = true;
+  document.addEventListener('astro:page-load', () => bindProjectImageCarousels());
+  document.addEventListener('astro:before-swap', () => {
+    registry.forEach((carousel, block) => { carousel.scope.destroy(); delete block.dataset.carouselInitialized; });
+    registry.clear();
+  });
   // Dev tuner writes orientation/height mode onto the block, then fires this.
   window.addEventListener('vcd:carousel-refresh', ((event: CustomEvent) => {
     const only = event.detail?.block as HTMLElement | undefined;

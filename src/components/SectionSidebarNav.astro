@@ -200,6 +200,7 @@ const easingOptions = [
 }
 
 <script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
   const parseNumber = (value, fallback) => {
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
@@ -208,6 +209,7 @@ const easingOptions = [
   const initSectionSidebarNav = (nav) => {
     if (!(nav instanceof HTMLElement) || nav.dataset.initialized === 'true') return;
     nav.dataset.initialized = 'true';
+    const scope = createPageScope();
 
     const sectionSelector = nav.dataset.sectionSelector || '.section-block[id]';
     const earlyRampVh = parseNumber(nav.dataset.earlyRampVh, 0.3);
@@ -652,9 +654,9 @@ const easingOptions = [
               // Ignore capture failures.
             }
           }
-          window.addEventListener('pointermove', onPointerMove);
-          window.addEventListener('pointerup', stopDrag);
-          window.addEventListener('pointercancel', stopDrag);
+          scope.listen(window, 'pointermove', onPointerMove);
+          scope.listen(window, 'pointerup', stopDrag);
+          scope.listen(window, 'pointercancel', stopDrag);
         };
 
         bezierHandles.forEach((handleEl) => {
@@ -1029,11 +1031,11 @@ const easingOptions = [
       }
 
       updateAnimatingClass();
-      if (anyActive) animRafId = requestAnimationFrame(tickGroupAnims);
+      if (anyActive) animRafId = scope.frame(tickGroupAnims);
     };
 
     const ensureAnimTicker = () => {
-      if (!animRafId) animRafId = requestAnimationFrame(tickGroupAnims);
+      if (!animRafId) animRafId = scope.frame(tickGroupAnims);
     };
 
     /**
@@ -1258,7 +1260,7 @@ const easingOptions = [
     let ticking = false;
     const updateActiveFromScroll = () => {
       if (!ticking) {
-        requestAnimationFrame(() => {
+        scope.frame(() => {
           if (isAutoScrolling) {
             ticking = false;
             return;
@@ -1332,7 +1334,7 @@ const easingOptions = [
         manualLockUntil = performance.now() + clickLockMs;
         isAutoScrolling = true;
         window.scrollTo({ top: targetTop, behavior: 'smooth' });
-        scrollTimeoutId = window.setTimeout(() => {
+        scrollTimeoutId = scope.timeout(() => {
           scrollTimeoutId = 0;
           isAutoScrolling = false;
           if (id) setActiveLink(id);
@@ -1355,29 +1357,23 @@ const easingOptions = [
         window.scrollTo(0, startY + distance * eased);
 
         if (progress < 1) {
-          scrollRafId = requestAnimationFrame(animateScroll);
+          scrollRafId = scope.frame(animateScroll);
         } else {
           scrollRafId = 0;
           isAutoScrolling = false;
           if (id) setActiveLink(id);
-          requestAnimationFrame(updateActiveFromScroll);
+          scope.frame(updateActiveFromScroll);
         }
       };
 
-      scrollRafId = requestAnimationFrame(animateScroll);
+      scrollRafId = scope.frame(animateScroll);
     };
 
     const revealHistoryBlock = (event: CustomEvent<{ block?: HTMLElement }>) => {
       const block = event.detail?.block;
       if (nav.isConnected && block instanceof HTMLElement && block.isConnected) scrollToBlock(block);
     };
-    window.addEventListener('vcd:section-history-reveal', revealHistoryBlock as EventListener);
-    document.addEventListener('astro:before-swap', () => {
-      window.removeEventListener('vcd:section-history-reveal', revealHistoryBlock as EventListener);
-      if (scrollRafId) cancelAnimationFrame(scrollRafId);
-      if (scrollTimeoutId) window.clearTimeout(scrollTimeoutId);
-    }, { once: true });
-
+    scope.listen(window, 'vcd:section-history-reveal', revealHistoryBlock as EventListener);
     // Event delegation so Section Editor DOM rebuilds keep working.
     nav.addEventListener('click', (event) => {
       const target = event.target;
@@ -1464,35 +1460,35 @@ const easingOptions = [
       return activeId;
     };
 
-    window.addEventListener('vcd:section-nav-editor-change', ((event) => {
+    scope.listen(window, 'vcd:section-nav-editor-change', ((event) => {
       const active = Boolean(event.detail?.active);
       if (active) {
         activateSectionEditorSidebar();
         // Sync runs in the next listener; open any still-collapsed groups after DOM settles.
-        requestAnimationFrame(() => openClosedGroups());
+        scope.frame(() => openClosedGroups());
       } else {
         deactivateSectionEditorSidebar();
-        requestAnimationFrame(() => updateActiveFromScroll());
+        scope.frame(() => updateActiveFromScroll());
       }
     }) as EventListener);
 
-    window.addEventListener('vcd:section-nav-sidebar-synced', () => {
+    scope.listen(window, 'vcd:section-nav-sidebar-synced', () => {
       if (!sectionEditorKeepOpen) return;
       openClosedGroups();
     });
 
     if (isSectionEditorActive()) {
       activateSectionEditorSidebar();
-      requestAnimationFrame(() => openClosedGroups());
+      scope.frame(() => openClosedGroups());
     }
 
     updateActiveFromScroll();
     updateSidebarScrollChrome();
-    window.addEventListener('scroll', () => {
+    scope.listen(window, 'scroll', () => {
       updateActiveFromScroll();
       updateSidebarScrollChrome();
     }, { passive: true });
-    window.addEventListener('resize', () => {
+    scope.listen(window, 'resize', () => {
       // Width / font-size may change → cached open heights & row bands are stale.
       measureCache = new WeakMap();
       updateActiveFromScroll();
@@ -1503,7 +1499,7 @@ const easingOptions = [
       scrollShell.addEventListener(
         'scroll',
         () => {
-          requestAnimationFrame(updateSidebarScrollChrome);
+          scope.frame(updateSidebarScrollChrome);
         },
         { passive: true },
       );
@@ -1514,13 +1510,20 @@ const easingOptions = [
     // attributes) so our style-only animation writes never trigger it.
     const navList = getNavList();
     if (navList instanceof HTMLElement && 'MutationObserver' in window) {
-      new MutationObserver(() => {
+      const observer = new MutationObserver(() => {
         measureCache = new WeakMap();
-      }).observe(navList, { childList: true, subtree: true });
+      });
+      observer.observe(navList, { childList: true, subtree: true });
+      scope.add(() => observer.disconnect());
     }
+    return () => { scope.destroy(); delete nav.dataset.initialized; };
   };
 
-  document.querySelectorAll('.section-sidebar-nav').forEach((nav) => initSectionSidebarNav(nav));
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll('.section-sidebar-nav')].map(initSectionSidebarNav);
+    return () => cleanups.forEach((cleanup) => cleanup?.());
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style is:global>

@@ -20,6 +20,7 @@ const keyboardLikelyVisible = () => {
 export function waitForSignupViewportSettlement(
   input: HTMLInputElement,
   lastBlurAt = Number.NEGATIVE_INFINITY,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!hasTouchOrCoarsePointer()) return Promise.resolve();
 
@@ -37,6 +38,7 @@ export function waitForSignupViewportSettlement(
     const cleanup = () => {
       window.removeEventListener('scroll', onViewportChange);
       window.removeEventListener('pagehide', onPageHide);
+      signal?.removeEventListener('abort', finish);
       viewport?.removeEventListener('resize', onViewportChange);
       viewport?.removeEventListener('scroll', onViewportChange);
       clearTimeout(minTimer);
@@ -62,6 +64,8 @@ export function waitForSignupViewportSettlement(
     const onViewportChange = () => armQuietTimer();
     const onPageHide = () => finish();
 
+    if (signal?.aborted) { finish(); return; }
+    signal?.addEventListener('abort', finish, { once: true });
     window.addEventListener('scroll', onViewportChange, { passive: true });
     window.addEventListener('pagehide', onPageHide, { once: true });
     viewport?.addEventListener('resize', onViewportChange);

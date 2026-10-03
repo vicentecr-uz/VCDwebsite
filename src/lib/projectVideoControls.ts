@@ -1,3 +1,5 @@
+import { createPageScope } from './pageLifecycle';
+const videoScopes = new WeakMap<HTMLVideoElement, ReturnType<typeof createPageScope>>();
 import 'media-chrome';
 import type { MediaVolumeRange } from 'media-chrome';
 import playIcon from 'lucide-static/icons/play.svg?raw';
@@ -38,7 +40,7 @@ export function syncProjectVideoAudio(video: HTMLVideoElement): void {
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
 
-function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange): () => void {
+function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange, scope: ReturnType<typeof createPageScope>): () => void {
   let previousVolume = 0.5;
   let drag: { pointerId: number; value: number | null; listeners: AbortController } | undefined;
   const syncMutedVolume = () => queueMicrotask(() => {
@@ -59,7 +61,9 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
   video.addEventListener('volumechange', () => {
     if (video.volume > 0 && !video.hasAttribute('data-project-video-fading')) previousVolume = video.volume;
   });
-  new MutationObserver(syncMutedVolume).observe(volume, {
+  const observer = new MutationObserver(syncMutedVolume);
+  scope.add(() => { observer.disconnect(); drag?.listeners.abort(); });
+  observer.observe(volume, {
     attributes: true, attributeFilter: ['mediamuted', 'mediavolume'],
   });
   mute.addEventListener('mediaunmuterequest', (event) => {
@@ -105,7 +109,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
   return syncMutedVolume;
 }
 
-function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement): void {
+function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, scope: ReturnType<typeof createPageScope>): void {
   if (typeof IntersectionObserver === 'undefined' || video.dataset.videoVisibilityBound === 'true') return;
   video.dataset.videoVisibilityBound = 'true';
   let fade: { volume: number; start: number; frame: number } | undefined;
@@ -143,6 +147,7 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement): 
   const stop = () => { observer.disconnect(); cancelFade(); };
   video.addEventListener('pause', stop);
   video.addEventListener('ended', stop);
+  scope.add(stop);
   if (!video.paused) observer.observe(controller);
 }
 
@@ -150,6 +155,9 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   if (!video.matches('video[data-project-inline-video]') || !video.parentElement) return;
   let controller = video.closest<HTMLElement>('media-controller');
   if (controller?.hasAttribute('data-project-video-controller')) return;
+  const scope = createPageScope();
+  videoScopes.set(video, scope);
+  scope.add(() => video.pause());
   if (!controller) {
     controller = document.createElement('media-controller');
     controller.setAttribute('novolumepref', '');
@@ -216,15 +224,16 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
     control.addEventListener('pointerdown', () => control.removeAttribute('data-video-keyboard-focus'), { capture: true });
     control.addEventListener('keydown', () => control.setAttribute('data-video-keyboard-focus', ''));
   });
-  const syncMutedVolume = bindVolumeControls(video, mute, volume);
+  const syncMutedVolume = bindVolumeControls(video, mute, volume, scope);
   popup.append(volume);
   group.append(mute, popup);
   controller.append(play, progress, group);
   syncProjectVideoAudio(video);
-  bindVideoVisibility(video, controller);
+  bindVideoVisibility(video, controller, scope);
 
   Promise.all(['media-controller', 'media-play-button', 'media-time-range', 'media-mute-button', 'media-volume-range']
     .map((name) => customElements.whenDefined(name))).then(() => {
+    if (scope.signal.aborted || !video.isConnected) return;
     volume.shadowRoot?.querySelector('input')?.setAttribute('aria-orientation', 'vertical');
     video.removeAttribute('controls');
     syncMutedVolume();
@@ -248,6 +257,9 @@ export function bindProjectVideoControls(): void {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
   document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:before-swap', () => {
+    document.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach((video) => videoScopes.get(video)?.destroy());
+  });
   window.addEventListener('resize', () => {
     document.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach(syncProjectVideoAudio);
   }, { passive: true });
@@ -264,9 +276,9 @@ export function bindProjectVideoControls(): void {
         if (node instanceof Element && node.isConnected) enhanceProjectVideos(node);
       }
       for (const node of record.removedNodes) {
-        if (node instanceof HTMLVideoElement && !node.isConnected) node.pause();
+        if (node instanceof HTMLVideoElement && !node.isConnected) { node.pause(); videoScopes.get(node)?.destroy(); }
         else if (node instanceof Element) node.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach((video) => {
-          if (!video.isConnected) video.pause();
+          if (!video.isConnected) { video.pause(); videoScopes.get(video)?.destroy(); }
         });
       }
     }

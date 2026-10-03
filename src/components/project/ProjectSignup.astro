@@ -81,6 +81,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 <script>
   import tlds from 'tlds';
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
   import {
     animateRelease,
     readSignupMotionCfg,
@@ -89,9 +90,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   import { waitForSignupViewportSettlement } from '../../lib/signupViewport';
 
   const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
-  document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
+  const bindSignup = (form: HTMLFormElement) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
+    const scope = createPageScope();
     const motionRoot = form.closest<HTMLElement>('[data-signup-motion]');
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
@@ -121,7 +123,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       });
       labelEl.dataset.split = 'true';
     }
-    const waitMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const waitMs = (ms: number) => new Promise<void>((resolve) => {
+      if (scope.signal.aborted) { resolve(); return; }
+      const finish = () => { scope.signal.removeEventListener('abort', finish); resolve(); };
+      scope.signal.addEventListener('abort', finish, { once: true });
+      scope.timeout(finish, ms);
+    });
     const settled = (animation: Animation) => animation.finished.catch(() => undefined);
     const waitCheckTransition = (ms: number) => new Promise<void>((resolve) => {
       if (!checkEl) return resolve();
@@ -135,8 +142,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       const onEnd = (event: TransitionEvent) => {
         if (event.target === checkEl && event.propertyName === 'opacity') finish();
       };
-      checkEl.addEventListener('transitionend', onEnd);
-      window.setTimeout(finish, ms + 80);
+      scope.listen(checkEl, 'transitionend', onEnd);
+      scope.timeout(finish, ms + 80);
     });
     const teardownGhost = () => {
       ghost?.remove();
@@ -201,9 +208,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
             { duration: c.anticipateMs, easing: c.anticipateEase, fill: 'forwards' },
           );
           await settled(windup);
+          if (scope.signal.aborted) return;
           windup.commitStyles();
           windup.cancel();
           if (c.storeMs > 0) await waitMs(c.storeMs);
+          if (scope.signal.aborted) return;
         }
         const release = animateRelease(
           emailEl,
@@ -264,7 +273,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         checkEl.classList.toggle('is-reduced', reduce);
         checkEl.classList.remove('is-in', 'is-out');
         void checkEl.offsetWidth;
-        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        await new Promise<void>((r) => scope.frame(() => scope.frame(() => r())));
         checkEl.classList.add('is-in');
         await waitCheckTransition(c.checkMs);
       }
@@ -364,7 +373,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
       form.classList.add('has-status');
       form.classList.toggle('is-error', error);
-      statusTimer = setTimeout(dismissStatus, 2500);
+      statusTimer = scope.timeout(dismissStatus, 2500);
     };
     const shakeInvalid = () => {
       shakes.forEach((animation) => animation.cancel());
@@ -397,16 +406,16 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
       input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     };
-    input?.addEventListener('input', () => {
+    scope.listen(input, 'input', () => {
       updateShortcut();
       dismissStatus();
       input.removeAttribute('aria-invalid');
     });
-    input?.addEventListener('change', updateShortcut);
-    input?.addEventListener('focus', updateShortcut);
+    scope.listen(input, 'change', updateShortcut);
+    scope.listen(input, 'focus', updateShortcut);
     updateShortcut();
-    field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
-    input?.addEventListener('blur', (event) => {
+    scope.listen(field, 'pointerdown', () => { field.dataset.pointerFocus = ''; });
+    scope.listen(input, 'blur', (event) => {
       lastBlurAt = performance.now();
       if (field) delete field.dataset.pointerFocus;
       const toSubmit = event.relatedTarget instanceof Node && Boolean(button?.contains(event.relatedTarget));
@@ -416,18 +425,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
       updateShortcut();
     });
-    input?.addEventListener('keydown', (event) => {
+    scope.listen(input, 'keydown', (event) => {
       if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
       if (event.key === 'Enter' && !event.isComposing) {
         event.preventDefault();
         if (event.repeat) return;
         clearTimeout(pressTimer);
         button?.classList.add('is-keyboard-pressed');
-        pressTimer = setTimeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
+        pressTimer = scope.timeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
         form.requestSubmit();
       }
     });
-    form.addEventListener('submit', async (event) => {
+    scope.listen(form, 'submit', async (event) => {
       event.preventDefault();
       if (celebrating || submitting) return;
       updateShortcut();
@@ -450,15 +459,17 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       submitting = true;
       button?.setAttribute('aria-busy', 'true');
       const email = input.value.trim();
-      const keyboardSettled = waitForSignupViewportSettlement(input, lastBlurAt);
+      const keyboardSettled = waitForSignupViewportSettlement(input, lastBlurAt, scope.signal);
       if (document.activeElement === input) input.blur();
       input.readOnly = true;
       try {
         const response = await fetch('/api/signup', {
           method: 'POST',
+          signal: scope.signal,
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ email }),
         });
+        if (scope.signal.aborted) return;
         let errorText = '';
         try {
           const payload = await response.json() as { error?: unknown };
@@ -468,7 +479,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         }
         if (response.status === 200) {
           await keyboardSettled;
-          if (form.isConnected) await playSuccess();
+          if (!scope.signal.aborted && form.isConnected) await playSuccess();
           return;
         }
         if (response.status === 502 || response.status === 503) {
@@ -483,6 +494,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           showStatus(errorText || 'Signup is not available yet.');
         }
       } catch {
+        if (scope.signal.aborted) return;
         showStatus('Signup is not available yet.');
       } finally {
         input.readOnly = false;
@@ -490,7 +502,19 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         if (!celebrating) button?.removeAttribute('aria-busy');
       }
     });
+    return () => {
+      playId++;
+      scope.destroy();
+      form.getAnimations({ subtree: true }).forEach((animation) => animation.cancel());
+      teardownGhost();
+      delete form.dataset.bound;
+    };
+  };
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]')].map(bindSignup);
+    return () => cleanups.forEach((cleanup) => cleanup?.());
   });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

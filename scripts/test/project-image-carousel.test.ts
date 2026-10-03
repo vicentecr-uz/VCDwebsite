@@ -8,8 +8,8 @@ Object.assign(globalThis, {
   document: window.document,
   HTMLElement: window.HTMLElement,
   CSS: window.CSS,
-  requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 0; },
-  cancelAnimationFrame: () => {},
+  requestAnimationFrame: window.requestAnimationFrame.bind(window),
+  cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
 });
 
 for (const axis of ['horizontal', 'vertical']) {
@@ -437,13 +437,14 @@ for (const axis of ['horizontal', 'vertical'] as const) {
   }
 }
 
-test('video dot placement follows image–video–image swipe progress and reversal', () => {
+test('video dot placement follows image–video–image swipe progress and reversal', async () => {
   const { block, track } = createSnapTestCarousel('horizontal');
   const video = window.document.createElement('video');
   block.querySelectorAll('[data-carousel-slide]')[1].append(video);
   for (const [offset, expected] of [[0, 0], [25, 0.25], [50, 0.5], [100, 1], [150, 0.5], [200, 0], [150, 0.5], [100, 1], [50, 0.5]]) {
     track.scrollLeft = offset;
     track.dispatchEvent(new window.Event('scroll'));
+    await new Promise(window.requestAnimationFrame.bind(window));
     expect(Number(block.style.getPropertyValue('--project-carousel-video-progress'))).toBe(expected);
   }
   video.replaceWith(window.document.createElement('img'));
@@ -452,16 +453,18 @@ test('video dot placement follows image–video–image swipe progress and rever
   block.remove();
 });
 
-test('current carousel marker follows the active slide for video dot visibility', () => {
+test('current carousel marker follows the active slide for video dot visibility', async () => {
   const { block, track } = createSnapTestCarousel('horizontal');
   const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
   slides.forEach((slide) => slide.append(window.document.createElement('video')));
   track.scrollLeft = 0;
   track.dispatchEvent(new window.Event('scroll'));
+    await new Promise(window.requestAnimationFrame.bind(window));
   expect(slides[0].dataset.carouselCurrent).toBe('true');
   expect(slides[1].dataset.carouselCurrent).toBeUndefined();
   track.scrollLeft = 100;
   track.dispatchEvent(new window.Event('scroll'));
+    await new Promise(window.requestAnimationFrame.bind(window));
   expect(slides[0].dataset.carouselCurrent).toBeUndefined();
   expect(slides[1].dataset.carouselCurrent).toBe('true');
   block.remove();

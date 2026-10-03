@@ -46,7 +46,7 @@ function collectUnits(home: HTMLElement, viewportHeight: number): HomeRevealUnit
     units.push({ element, kind, top: rect.top, left: rect.left });
   };
   home.querySelectorAll<HTMLElement>('.site-header-slot').forEach((el) => {
-    if (el.dataset.headerCarriedNavigation !== undefined) return;
+    if ((home.ownerDocument ?? document).documentElement.dataset?.headerNavigation !== undefined) return;
     add(el, 'header');
   });
   home.querySelectorAll<HTMLElement>('.project-body-text, .project-section-title').forEach((el) => add(el, 'text'));

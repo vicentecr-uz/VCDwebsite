@@ -11,7 +11,7 @@ interface Props {
 
 import headerSettings from '../content/settings/header.json';
 import type { SvgComponent } from 'astro/types';
-import headerTitleBridgeSource from '../scripts/headerTitleBridge.js?raw';
+import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
@@ -76,9 +76,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand">
-            {brandHref ? (
               <a
-                href={brandHref}
+                href={brandHref || undefined}
                 data-header-navigation-title={headerSettings.siteTitle}
                 class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
                 aria-label="Home"
@@ -101,27 +100,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   </WordmarkTag>
                 )}
               </a>
-            ) : (
-              <>
-                <span class="header-trigger__wordmark-stack">
-                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                    {pageChars.map((char) => (
-                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                    ))}
-                  </WordmarkTag>
-                  <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
-                    {homeChars.map((char) => (
-                      <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                    ))}
-                  </span>
-                </span>
-                {titleEditAttrs && (
-                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
-                    {wordmark}
-                  </WordmarkTag>
-                )}
-              </>
-            )}
           </div>
           <ul class="header-menu" role="list">
             {menuLinks.map((link) => (
@@ -135,11 +113,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                 >
                   <span class="header-menu__link-label">{link.label}</span>
                 </a>
-                {link.isCurrent && (
-                  <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
-                    You are on this page
-                  </span>
-                )}
+                <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
+                  You are on this page
+                </span>
               </li>
             ))}
           </ul>
@@ -154,21 +130,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand" data-dev-mode-trigger>
-            {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home" data-header-navigation-title={headerSettings.siteTitle}>
+              <a href={brandHref || undefined} class="header-trigger__brand-link" aria-label="Home" data-header-navigation-title={headerSettings.siteTitle}>
                 <span class="header-trigger__logo" aria-hidden="true">
                   <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
                 </span>
               </a>
-            ) : (
-              <span
-                class="header-trigger__logo"
-                role="img"
-                aria-label="Logo"
-              >
-                <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
-              </span>
-            )}
           </div>
           <ul class="header-menu" role="list">
             {menuLinks.map((link) => (
@@ -182,11 +148,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                 >
                   <span class="header-menu__link-label">{link.label}</span>
                 </a>
-                {link.isCurrent && (
-                  <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
-                    You are on this page
-                  </span>
-                )}
+                <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
+                  You are on this page
+                </span>
               </li>
             ))}
           </ul>
@@ -224,72 +188,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </div>
 )}
 
-<script is:inline set:html={headerTitleBridgeSource}></script>
+<script is:inline set:html={headerTitleTransitionSource}></script>
 
-<script is:inline>
-  (() => {
-    const slot = document.querySelector('.site-header-slot');
-    const root = document.documentElement;
-    let pending = null;
-    try {
-      const raw = sessionStorage.getItem('vcd:header-navigation');
-      sessionStorage.removeItem('vcd:header-navigation');
-      if (raw) pending = JSON.parse(raw);
-    } catch { pending = null; }
-    if (!slot || !pending || typeof pending.href !== 'string' || pending.href !== location.href ||
-      typeof pending.title !== 'string' || !pending.title.trim() || pending.title.length > 300 ||
-      typeof pending.time !== 'number' || !Number.isFinite(pending.time) ||
-      Date.now() - pending.time < 0 || Date.now() - pending.time > 10000) return;
-
-    const start = document.querySelector('.header-trigger--start');
-    const home = start?.querySelector('.header-trigger__wordmark--home');
-    const page = start?.querySelector('.header-trigger__wordmark--page');
-    if (!start || !home || !page) return;
-    if (pending.targetTitle && pending.fromGeometry && pending.toGeometry && window.__vcdHeaderTitleBridge) {
-      const bridge = window.__vcdHeaderTitleBridge(pending, false);
-      if (bridge) {
-        slot.__vcdTitleBridge = bridge;
-        slot.dataset.headerCarriedNavigation = '';
-        slot.dataset.headerNavigationTitle = pending.title;
-        root.dataset.headerNavigation = '';
-        window.addEventListener('pagereveal', (event) => {
-          window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
-        }, { once: true });
-        return;
-      }
-    }
-    const carriedTitle = pending.title.replace(/ /g, '\u00a0');
-    const originalChars = home.__vcdOriginalHeaderChars ??= [...home.querySelectorAll('.header-trigger__char')];
-    if (!originalChars[0]) return;
-    const pendingMargins = Array.isArray(pending.margins) && pending.margins.length === [...carriedTitle].length &&
-      pending.margins.every((margin) => typeof margin === 'number' && Number.isFinite(margin) && Math.abs(margin) <= 1)
-      ? pending.margins : null;
-    home.replaceChildren(...[...carriedTitle].map((char, index) => {
-      const span = originalChars[0].cloneNode(false);
-      span.className = 'header-trigger__char';
-      span.textContent = char;
-      span.style.setProperty('--char-duration', '0s');
-      span.style.setProperty('--char-delay', '0s');
-      span.style.setProperty('--char-blur', '0px');
-      if (pendingMargins) span.style.marginLeft = `${pendingMargins[index]}em`;
-      return span;
-    }));
-    home.setAttribute('aria-hidden', 'false');
-    page.setAttribute('aria-hidden', 'true');
-    home.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '1'; });
-    page.querySelectorAll('.header-trigger__char').forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.opacity = '0'; });
-    start.classList.add('is-wordmark-swapped');
-    slot.dataset.headerCarriedNavigation = '';
-    slot.dataset.headerNavigationTitle = pending.title;
-    root.dataset.headerNavigation = '';
-    if (pending.title.replace(/\s+/g, ' ').trim() === page.textContent?.replace(/\s+/g, ' ').trim()) {
-      slot.dataset.headerNavigationSame = '';
-    }
-    window.addEventListener('pagereveal', (event) => {
-      window.__vcdHeaderNavigationTransition = event.viewTransition?.finished ?? Promise.resolve();
-    }, { once: true });
-  })();
-</script>
 
 <script>
   // Touch / no-hover devices open the menu on tap instead of on hover.
@@ -728,6 +628,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ticking = false;
     };
 
+    document.addEventListener('astro:after-swap', () => {
+      menuScrollClosed = false;
+      trend = null; anchorY = lastY = window.scrollY;
+      setMode('flow');
+      syncMobileHeaderMode(); syncSlot(); captureGeo();
+      syncHeaderWidth(logicalHeaderRect().bottom, true);
+      update();
+    });
+
     document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
@@ -993,16 +902,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     document.addEventListener('header:navigation-start', () => {
       navigationClosing = true;
-      navigationOutgoing = true;
-    });
-    document.addEventListener('header:navigation-covered', (event) => {
-      if (!navigationOutgoing || !isOpen() || !document.documentElement.hasAttribute('data-header-navigation')) return;
       navigationOutgoing = false;
       closeMenu(true);
       navigationOutgoing = true;
-      const detail = (event as CustomEvent<{ waitMs: number }>).detail;
-      detail.waitMs = Math.max(detail.waitMs, closeLayoutMs);
     });
+    document.addEventListener('header:navigation-commit', () => { navigationClosing = false; navigationOutgoing = false; });
     document.addEventListener('header:navigation-cancel', () => {
       navigationClosing = false;
       navigationOutgoing = false;
@@ -1206,8 +1110,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
 
   if (startTrigger && wordmarkStack) {
-    const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page') as HTMLElement | null;
-    const pageChars = [
+    let pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page') as HTMLElement | null;
+    let pageChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
     ];
     const homeWordmarkEl = wordmarkStack.querySelector('.header-trigger__wordmark--home');
@@ -1306,11 +1210,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ) +
       FADE_IN_DURATION;
 
-    const titleEntryEnd = Math.max(
+    let titleEntryEnd = Math.max(
       getFadeOutEnd(pageChars.length),
       getFadeInEnd(homeChars.length, 0),
     );
-    const titleCloseScale = 0.18 / titleEntryEnd;
+    let titleCloseScale = 0.18 / titleEntryEnd;
 
     const applyWordmarkOpen = () => {
       setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
@@ -1346,94 +1250,47 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
-    const restoreHomeWordmark = () => {
-      if (!homeWordmarkEl) return;
-      const homeState = homeWordmarkEl as HTMLElement & { __vcdOriginalHeaderChars?: HTMLElement[] };
-      const originalChars = homeState.__vcdOriginalHeaderChars;
-      if (!originalChars) return;
-      homeWordmarkEl.replaceChildren(...originalChars);
-      delete homeState.__vcdOriginalHeaderChars;
-      homeChars = [...homeWordmarkEl.querySelectorAll<HTMLElement>('.header-trigger__char')];
-      homeWordmarkEl.setAttribute('aria-hidden', 'true');
-      homeChars.forEach((char) => {
-        char.style.setProperty('--char-duration', '0s');
-        char.style.setProperty('--char-delay', '0s');
-        char.style.setProperty('--char-blur', '0px');
-        char.style.opacity = '0';
+    const finishNavigationTitle = () => {
+      const transition = headerSlot?.__vcdTitleTransition;
+      const finish = () => {
+        if (transition && headerSlot?.__vcdTitleTransition !== transition) return;
+        transition?.cleanup();
+        if (headerSlot) delete headerSlot.__vcdTitleTransition;
+        navigationOutgoing = false;
+        startTrigger.classList.remove('is-wordmark-swapped');
+      };
+      navigationRestoreTimer = window.setTimeout(finish, Math.max(0, (transition?.finishesAt ?? 0) - Date.now()));
+    };
+
+    document.addEventListener('header:navigation-commit', (event) => {
+      const incoming = (event as CustomEvent<{ header: HTMLElement }>).detail.header;
+      const next = incoming.querySelector<HTMLElement>('.header-trigger--start');
+      const nextWordmark = next?.querySelector<HTMLElement>('.header-trigger__wordmark--page');
+      if (!next || !nextWordmark || !pageWordmark) return;
+      invalidateWordmarkRun();
+      wordmarkIsOpen = false;
+      pageWordmark.replaceWith(nextWordmark);
+      pageWordmark = nextWordmark;
+      pageChars = [...nextWordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
+      homeChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.opacity = '0'; });
+      homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      startTrigger.dataset.headerTitleSwap = next.dataset.headerTitleSwap;
+      startTrigger.classList.toggle('header-trigger--home', next.classList.contains('header-trigger--home'));
+      document.querySelectorAll('.site-header .header-trigger__brand-link').forEach((brand, index) => {
+        const nextBrand = incoming.querySelectorAll('.header-trigger__brand-link')[index];
+        if (!nextBrand) return;
+        const href = nextBrand.getAttribute('href');
+        if (href) brand.setAttribute('href', href); else brand.removeAttribute('href');
+        brand.className = nextBrand.className;
       });
+      const sizer = startTrigger.querySelector('.header-trigger__sizer');
+      const nextSizer = next.querySelector('.header-trigger__sizer');
+      if (sizer && nextSizer) sizer.replaceChildren(...nextSizer.childNodes);
+      titleEntryEnd = Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
+      titleCloseScale = 0.18 / titleEntryEnd;
       applyWordmarkKerning();
-    };
-
-    const clearNavigationState = () => {
-      document.documentElement.removeAttribute('data-header-navigation');
-      headerSlot?.removeAttribute('data-header-carried-navigation');
-      headerSlot?.removeAttribute('data-header-navigation-title');
-      headerSlot?.removeAttribute('data-header-navigation-same');
-    };
-    const clearNavigationTitleState = () => {
-      headerSlot?.removeAttribute('data-header-navigation-title');
-      headerSlot?.removeAttribute('data-header-navigation-same');
-    };
-
-    const runNavigationTitleSwap = () => {
-      const bridge = headerSlot?.__vcdTitleBridge as { cleanup: () => void; finishesAt: number } | undefined;
-      if (bridge) {
-        const token = wordmarkRunToken;
-        const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
-        const wait = Promise.all([document.fonts?.ready ?? Promise.resolve(), transitionFinished ?? Promise.resolve()]);
-        void wait.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))).then(() => {
-          if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
-          navigationRestoreTimer = window.setTimeout(() => {
-            navigationRestoreTimer = undefined;
-            if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
-            bridge.cleanup();
-            delete headerSlot.__vcdTitleBridge;
-            clearNavigationTitleState();
-            startTrigger.classList.remove('is-wordmark-swapped');
-          }, Math.max(0, bridge.finishesAt - Date.now()));
-        });
-        return;
-      }
-      if (!headerSlot?.dataset.headerNavigationTitle) return;
-      const carriedTitle = headerSlot?.dataset.headerNavigationTitle?.replace(/ /g, '\u00a0');
-      if (!carriedTitle || !pageWordmark || !homeWordmarkEl) return;
-      const sameTitle = headerSlot?.dataset.headerNavigationSame !== undefined;
-      const navigationToken = wordmarkRunToken;
-      const startSwap = () => {
-        if (navigationToken !== wordmarkRunToken || !headerSlot?.dataset.headerNavigationTitle) return;
-        if (sameTitle) {
-          restoreHomeWordmark();
-          startTrigger.classList.remove('is-wordmark-swapped');
-          pageWordmark.setAttribute('aria-hidden', 'false');
-          pageChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = '1'; });
-          clearNavigationTitleState();
-          applyWordmarkKerning();
-          return;
-        }
-        invalidateWordmarkRun();
-        const runToken = wordmarkRunToken;
-        wordmarkIsOpen = false;
-        startTrigger.classList.add('is-wordmark-swapped');
-        setCharFadeOut(homeChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
-        applyWordmarkFadeIn(pageChars);
-        pageWordmark.setAttribute('aria-hidden', 'false');
-        homeWordmarkEl.setAttribute('aria-hidden', 'true');
-        navigationRestoreTimer = window.setTimeout(() => {
-          navigationRestoreTimer = undefined;
-          if (runToken !== wordmarkRunToken) return;
-          restoreHomeWordmark();
-          clearNavigationTitleState();
-          startTrigger.classList.remove('is-wordmark-swapped');
-          applyWordmarkKerning();
-        }, Math.ceil(Math.max(getFadeOutEnd(homeChars.length), getFadeInEnd(pageChars.length, 0)) * 1000) + 40);
-      };
-      const afterNativeTransition = () => {
-        requestAnimationFrame(() => requestAnimationFrame(startSwap));
-      };
-      const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
-      const fontsReady = document.fonts?.ready ?? Promise.resolve();
-      void Promise.all([fontsReady, transitionFinished ?? Promise.resolve()]).then(afterNativeTransition, afterNativeTransition);
-    };
+      finishNavigationTitle();
+    });
 
     const runWordmarkOpen = () => {
       invalidateWordmarkRun();
@@ -1457,14 +1314,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (isDevEditing()) return;
       if (navigationOutgoing) return;
       if (startTrigger.dataset.headerTitleSwap !== 'true') return;
-      if (headerSlot?.__vcdTitleBridge) {
-        headerSlot.__vcdTitleBridge.cleanup();
-        delete headerSlot.__vcdTitleBridge;
-      }
-      if (headerSlot?.dataset.headerNavigationTitle) {
-        invalidateWordmarkRun();
-        restoreHomeWordmark();
-        clearNavigationTitleState();
+      if (headerSlot?.__vcdTitleTransition) {
+        headerSlot.__vcdTitleTransition.cleanup();
+        delete headerSlot.__vcdTitleTransition;
       }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
@@ -1477,18 +1329,20 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:navigation-start', (event) => {
       navigationOutgoing = true;
       const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
-      if (!pending?.targetTitle || !window.__vcdHeaderTitleBridge) return;
-      const bridge = window.__vcdHeaderTitleBridge(pending, true);
+      if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
+      invalidateWordmarkRun();
+      headerSlot?.__vcdTitleTransition?.cleanup();
+      const bridge = window.__vcdHeaderTitleTransition(pending);
       if (bridge) {
-        headerSlot.__vcdTitleBridge = bridge;
+        headerSlot.__vcdTitleTransition = bridge;
         document.documentElement.dataset.headerNavigation = '';
       }
-    });
+    }, true);
     document.addEventListener('header:navigation-cancel', () => {
       navigationOutgoing = false;
-      if (headerSlot?.__vcdTitleBridge) {
-        headerSlot.__vcdTitleBridge.cleanup();
-        delete headerSlot.__vcdTitleBridge;
+      if (headerSlot?.__vcdTitleTransition) {
+        headerSlot.__vcdTitleTransition.cleanup();
+        delete headerSlot.__vcdTitleTransition;
       }
     });
 
@@ -1527,9 +1381,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:force-close', (event) => {
       const preserveNavigation = (event as CustomEvent<{ preserveNavigation?: boolean }>).detail?.preserveNavigation;
       if (preserveNavigation && navigationOutgoing) return;
-      if (!preserveNavigation && headerSlot?.__vcdTitleBridge) {
-        headerSlot.__vcdTitleBridge.cleanup();
-        delete headerSlot.__vcdTitleBridge;
+      if (!preserveNavigation && headerSlot?.__vcdTitleTransition) {
+        headerSlot.__vcdTitleTransition.cleanup();
+        delete headerSlot.__vcdTitleTransition;
       }
       if (!preserveNavigation) navigationOutgoing = false;
       invalidateWordmarkRun();
@@ -1549,23 +1403,21 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
-      restoreHomeWordmark();
-      if (!preserveNavigation) clearNavigationState();
+      if (!preserveNavigation) document.documentElement.removeAttribute('data-header-navigation');
     });
 
     window.addEventListener('vcd:initial-reveal-complete', () => {
       document.documentElement.removeAttribute('data-header-navigation');
-    }, { once: true });
-    runNavigationTitleSwap();
+    });
   }
 
-  const currentPageLinks = [
+  let currentPageLinks = [
     ...document.querySelectorAll<HTMLAnchorElement>('[data-current-page]'),
   ];
-  const currentPageNotes = [
-    ...document.querySelectorAll<HTMLElement>('[data-current-page-note]'),
+  let currentPageNotes = [
+    ...document.querySelectorAll<HTMLElement>('.header-menu__item--current-page [data-current-page-note]'),
   ];
-  const currentPageItems = currentPageLinks
+  let currentPageItems = currentPageLinks
     .map((link) => link.closest<HTMLElement>('.header-menu__item'))
     .filter((item): item is HTMLElement => Boolean(item));
   const reduceMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -1578,7 +1430,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   } catch {
     completionStored = false;
   }
-  const storySequence = completionStored ? 'returning' : 'main';
+  let storySequence = completionStored ? 'returning' : 'main';
   const trackingWindow = window as Window & {
     __vcdHeaderStoryStages?: Set<string>;
     umami?: { track?: (name: string, data: { sequence: string; stage: string }) => void | Promise<unknown> };
@@ -1790,7 +1642,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     if (trigger?.dataset.menuOpen === 'true' && !currentPageRemoved && !document.hidden &&
       currentPageItems.some((item) => !item.classList.contains('is-removed'))) trackStoryStage('exposed');
   };
-  currentPageNotes.forEach((note) => {
+  document.querySelectorAll<HTMLElement>('[data-current-page-note]').forEach((note) => {
     const trigger = note.closest<HTMLElement>('.header-trigger');
     trigger?.addEventListener('header:trigger-close', () => {
       clearStoryLock();
@@ -1799,6 +1651,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger?.addEventListener('header:trigger-open', () => {
       cancelNote(note);
+      if (!currentPageNotes.includes(note)) return;
       trackExposure(trigger);
       if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
       else {
@@ -1823,10 +1676,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     currentPageNotes.forEach(hideCurrentPageNote);
   });
 
-  currentPageLinks.forEach((link) => {
+  document.querySelectorAll<HTMLAnchorElement>('.header-menu__link').forEach((link) => {
     link.addEventListener(
       'click',
       (event) => {
+        if (!link.hasAttribute('data-current-page') || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
         event.preventDefault();
         if (currentPageRemoved || suppressNextCurrentPageClick) {
           suppressNextCurrentPageClick = false;
@@ -1894,6 +1748,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       true,
     );
     link.addEventListener('pointerdown', (event) => {
+      if (!link.hasAttribute('data-current-page')) return;
       if (storyIsLocked()) return;
       if (event.pointerType === 'mouse' && event.button === 0 &&
         ((completionStored && currentPageClickCount === 3) || (!completionStored && currentPageClickCount === 13)) && !needsResume) {
@@ -1902,6 +1757,31 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         removeCurrentPage(false);
       }
     }, true);
+  });
+
+  document.addEventListener('header:navigation-commit', (event) => {
+    clearStoryLock(); cancelIdle();
+    try { completionStored = localStorage.getItem(currentPageStorageKey) === 'true'; } catch {}
+    storySequence = completionStored ? 'returning' : 'main';
+    currentPageClickCount = 0; currentPageRemoved = false; needsResume = false; idlePhase = 'none';
+    suppressNextCurrentPageClick = false;
+    const path = (event as CustomEvent<{ url: URL }>).detail.url.pathname.replace(/\/+$/, '') || '/';
+    document.querySelectorAll<HTMLAnchorElement>('.header-menu__link').forEach((link) => {
+      const current = (new URL(link.href).pathname.replace(/\/+$/, '') || '/') === path;
+      link.toggleAttribute('data-current-page', current);
+      if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+      const item = link.closest<HTMLElement>('.header-menu__item');
+      if (!item) return;
+      cancelAnimations(item);
+      item.classList.toggle('header-menu__item--current-page', current);
+      item.classList.remove('is-removed', 'is-removing');
+      item.removeAttribute('inert'); item.removeAttribute('aria-hidden'); item.style.removeProperty('--current-page-row-height');
+      const note = item.querySelector<HTMLElement>('[data-current-page-note]');
+      if (note) { cancelNote(note); note.classList.remove('is-visible'); note.setAttribute('aria-hidden', 'true'); }
+    });
+    currentPageLinks = [...document.querySelectorAll<HTMLAnchorElement>('[data-current-page]')];
+    currentPageItems = currentPageLinks.map((link) => link.closest<HTMLElement>('.header-menu__item')!);
+    currentPageNotes = currentPageItems.map((item) => item.querySelector<HTMLElement>('[data-current-page-note]')!);
   });
 
   // DEV-only: Section Editor is toggled via Alt+E (see DevModeController).
@@ -2010,10 +1890,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so
      .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
      which lives outside the row. Tree order already puts the row above the bg. */
-  :global(html[data-header-navigation]) .site-header__row {
-    view-transition-name: vcd-header;
-  }
-
   .site-header__row {
     /* The header reads as a pair with the block directly under it, so the row
        spans that first block's width (see pageColumnStyle in
