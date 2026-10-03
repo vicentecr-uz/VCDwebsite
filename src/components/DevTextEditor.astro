@@ -1268,6 +1268,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return distanceToRect(pill.getBoundingClientRect(), clientX, clientY);
     };
 
+    const isPointerNearDrawingControls = (clientX: number, clientY: number) =>
+      [...document.querySelectorAll<HTMLElement>('.site-draw-controls, .site-draw-launcher:not([hidden])')]
+        .some((control) => {
+          const rect = control.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0
+            && distanceToRect(rect, clientX, clientY) <= SPACING_ENTRY_RADIUS_PX;
+        });
+
     const isSectionMenuOpen = (state: EditableSpacingState) =>
       state.control.classList.contains('is-menu-open');
 
@@ -1402,6 +1410,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
+      // Visible drawing controls own their vicinity, even when a gap pill paints above them.
+      if (document.documentElement.hasAttribute('data-site-draw-menu-open')
+        || isPointerNearDrawingControls(clientX, clientY)) {
+        cancelGapRevealIntent();
+        closeSectionMenus();
+        spacingStates.forEach(({ control }) => clearGapProximity(control));
+        syncPageTopGapStacking();
+        return;
+      }
       if (
         !isDevContentEditing()
         || gapsSuppressed()
@@ -1581,7 +1598,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
       }) as EventListener, { signal: editorSignal });
       document.addEventListener('dev:clear-gap-proximity', () => {
-        if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')) {
+        if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')
+          || document.documentElement.hasAttribute('data-site-draw-menu-open')) {
           closeSectionMenus();
         }
         clearGapProximityAll();
@@ -7164,6 +7182,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   /* Tuner open: force-hide gap controls (same as asset manager). */
   html.is-dev-tuner-open .dev-gap-toolbar__pill,
+  html[data-site-draw-menu-open] .dev-gap-toolbar__pill,
+  html[data-site-draw-menu-open] .dev-gap-toolbar__menu,
   html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__pill,
   html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__menu {
     opacity: 0 !important;
