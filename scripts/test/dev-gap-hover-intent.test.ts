@@ -25,11 +25,14 @@ function createHarness() {
     },
     clearTimeout(id: number) { timers.delete(id); },
   };
-  const root = { classList: { toggle() {}, remove() {} } };
+  const drawingMenu = { open: false };
+  const drawingControls: Array<{ getBoundingClientRect: () => object }> = [];
+  const root = { classList: { toggle() {}, remove() {} }, hasAttribute: () => drawingMenu.open };
   const document = {
     activeElement: null,
     documentElement: root,
     querySelector: () => null,
+    querySelectorAll: () => drawingControls,
   };
   const makeClassList = () => {
     const names = new Set<string>();
@@ -87,6 +90,10 @@ function createHarness() {
     pinGapToolbarTop: () => {},
     syncPageTopGapStacking: () => {},
     clearGapProximity: (control: any) => control.classList.remove('is-near-add', 'is-near-spacing'),
+    closeSectionMenus: () => spacingStates.forEach((state) => {
+      state.control.classList.remove('is-menu-open');
+      state.menu.hidden = true;
+    }),
     preventScrollWhileGapToolbarHeld: () => {},
   };
   const constants = source.slice(source.indexOf('  const SPACING_ENTRY_RADIUS_PX'), source.indexOf('\n\n  let editorAbortController'));
@@ -101,8 +108,37 @@ function createHarness() {
   const syntheticBody = source.slice(source.indexOf('((event: CustomEvent', syntheticStart), source.indexOf(") as EventListener", syntheticStart)) + ')';
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`${constants}\n${geometry}\n${intent}\n${sync}\nconst syncSpacingProximityApi = syncSpacingProximity;\nconst handlePointerMove = ${pointerBody};\nconst handleSynthetic = ${syntheticBody};\nconst handleWheel = ${wheelBody};\nreturn { syncSpacingProximity: syncSpacingProximityApi, handlePointerMove, handleSynthetic, handleWheel, setSuppressed: (value) => { suppressionState.value = value; }, setEditing: (value) => { editingState.value = value; }, setPinned: (kind, value) => { pinState[kind] = value; }, abort: () => abortCallbacks.forEach((callback) => callback()) };`);
   const api = new Function('env', `with (env) { ${compiled} }`)(env);
-  return { first, second, ...api, runTimers, advance: (amount: number) => { now += amount; } };
+  return { first, second, drawingMenu, drawingControls, ...api, runTimers, advance: (amount: number) => { now += amount; } };
 }
+
+test('Drawings owns overlapping gap geometry and cancels pending or visible gap reveals', () => {
+  const h = createHarness();
+  h.handlePointerMove({ buttons: 0, clientX: 105, clientY: 10, timeStamp: 100 });
+  h.drawingControls.push({ getBoundingClientRect: () => ({ left: 100, right: 120, top: 0, bottom: 20, width: 20, height: 20 }) });
+  h.runTimers(140);
+  assert.equal(h.first.control.classList.contains('is-near-spacing'), false);
+  h.drawingControls.length = 0;
+  h.handlePointerMove({ buttons: 0, clientX: 105, clientY: 10, timeStamp: 300 });
+  h.runTimers(140);
+  assert.equal(h.first.control.classList.contains('is-near-spacing'), true);
+  h.drawingControls.push({ getBoundingClientRect: () => ({ left: 100, right: 120, top: 0, bottom: 20, width: 20, height: 20 }) });
+  h.handlePointerMove({ buttons: 0, clientX: 105, clientY: 10, timeStamp: 500 });
+  assert.equal(h.first.control.classList.contains('is-near-spacing'), false);
+});
+
+test('an open drawing menu suppresses every gap until it closes', () => {
+  const h = createHarness();
+  h.drawingMenu.open = true;
+  h.first.control.classList.add('is-menu-open');
+  h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 100 });
+  h.runTimers(140);
+  assert.equal(h.first.control.classList.contains('is-menu-open'), false);
+  assert.equal(h.second.control.classList.contains('is-near-spacing'), false);
+  h.drawingMenu.open = false;
+  h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 300 });
+  h.runTimers(140);
+  assert.equal(h.second.control.classList.contains('is-near-spacing'), true);
+});
 
 test('hidden gap waits for settled intent, then retains within 24px', () => {
   const harness = createHarness();
