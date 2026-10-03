@@ -1345,13 +1345,21 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const runNavigationTitleSwap = () => {
-      const bridge = headerSlot?.__vcdTitleBridge as { cleanup: () => void; remainingMs: number } | undefined;
+      const bridge = headerSlot?.__vcdTitleBridge as { cleanup: () => void; finishesAt: number } | undefined;
       if (bridge) {
         const token = wordmarkRunToken;
-        const wait = Promise.all([document.fonts?.ready ?? Promise.resolve(), (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition ?? Promise.resolve()]);
+        const transitionFinished = (window as Window & { __vcdHeaderNavigationTransition?: Promise<unknown> }).__vcdHeaderNavigationTransition;
+        const wait = Promise.all([document.fonts?.ready ?? Promise.resolve(), transitionFinished ?? Promise.resolve()]);
         void wait.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))).then(() => {
           if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
-          window.setTimeout(() => { if (headerSlot?.__vcdTitleBridge !== bridge) return; bridge.cleanup(); delete headerSlot.__vcdTitleBridge; clearNavigationTitleState(); startTrigger.classList.remove('is-wordmark-swapped'); }, bridge.remainingMs);
+          navigationRestoreTimer = window.setTimeout(() => {
+            navigationRestoreTimer = undefined;
+            if (token !== wordmarkRunToken || headerSlot?.__vcdTitleBridge !== bridge) return;
+            bridge.cleanup();
+            delete headerSlot.__vcdTitleBridge;
+            clearNavigationTitleState();
+            startTrigger.classList.remove('is-wordmark-swapped');
+          }, Math.max(0, bridge.finishesAt - Date.now()));
         });
         return;
       }
@@ -1418,8 +1426,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (isDevEditing()) return;
       if (navigationOutgoing) return;
       if (startTrigger.dataset.headerTitleSwap !== 'true') return;
-      if (headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
-      if (headerSlot?.dataset.headerNavigationTitle) { invalidateWordmarkRun(); restoreHomeWordmark(); clearNavigationTitleState(); }
+      if (headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
+      if (headerSlot?.dataset.headerNavigationTitle) {
+        invalidateWordmarkRun();
+        restoreHomeWordmark();
+        clearNavigationTitleState();
+      }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
@@ -1430,14 +1445,20 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     document.addEventListener('header:navigation-start', (event) => {
       navigationOutgoing = true;
-      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending as any;
+      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
       if (!pending?.targetTitle || !window.__vcdHeaderTitleBridge) return;
       const bridge = window.__vcdHeaderTitleBridge(pending, true);
-      if (bridge) { headerSlot.__vcdTitleBridge = bridge; document.documentElement.dataset.headerNavigation = ''; }
+      if (bridge) {
+        headerSlot.__vcdTitleBridge = bridge;
+        document.documentElement.dataset.headerNavigation = '';
+      }
     });
     document.addEventListener('header:navigation-cancel', () => {
       navigationOutgoing = false;
-      if (headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
+      if (headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
     });
 
     startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
@@ -1475,7 +1496,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:force-close', (event) => {
       const preserveNavigation = (event as CustomEvent<{ preserveNavigation?: boolean }>).detail?.preserveNavigation;
       if (preserveNavigation && navigationOutgoing) return;
-      if (!preserveNavigation && headerSlot?.__vcdTitleBridge) { headerSlot.__vcdTitleBridge.cleanup(); delete headerSlot.__vcdTitleBridge; }
+      if (!preserveNavigation && headerSlot?.__vcdTitleBridge) {
+        headerSlot.__vcdTitleBridge.cleanup();
+        delete headerSlot.__vcdTitleBridge;
+      }
       if (!preserveNavigation) navigationOutgoing = false;
       invalidateWordmarkRun();
       wordmarkIsOpen = false;

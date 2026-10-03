@@ -68,6 +68,7 @@ class Target {
 
 const sourceUrl = 'https://vcd.test/work/';
 class Anchor extends Target {
+  dataset: Record<string, string> = {};
   attributes: Record<string, string>;
   constructor(href: string, attributes: Record<string, string> = {}) {
     super();
