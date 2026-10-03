@@ -182,6 +182,78 @@ test('existing drawings open in viewport coordinates and save edited geometry', 
   expect(50 + saved.box.y * 40 + saved.strokes[0].points[0][1]).toBe(70);
 });
 
+test('editing a partly offscreen drawing preserves the complete old and new ink bounds', () => {
+  const h = harness([fixture]);
+  h.env.annotationRect = () => new h.window.DOMRect(-150, -100, 200, 40);
+  h.startDrawing(h.target, null, fixture);
+  h.props().onChange([...h.props().initialStrokes, {
+    ...fixture.strokes[0], id: 1, points: [[160, 100, 0.5], [180, 110, 0.5]],
+  }]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations[0];
+  expect(saved.board.w).toBeGreaterThan(210);
+  expect(saved.board.h).toBeGreaterThan(150);
+  expect(saved.strokes).toHaveLength(2);
+  expect(saved.strokes[0].points[0][0]).toBeLessThan(10);
+  expect(saved.strokes[0].points[0][1]).toBeLessThan(10);
+  expect(120 + saved.box.x * 200 + saved.strokes[0].points[0][0]).toBe(-30);
+  expect(50 + saved.box.y * 40 + saved.strokes[0].points[0][1]).toBe(-40);
+});
+
+test('a changed layout keeps the drawing open until its original viewport is restored', () => {
+  const h = harness();
+  h.window.alert = () => {};
+  h.startDrawing(h.target, null);
+  h.props().onChange([fixture.strokes[0]]);
+  const originalRect = h.section.getBoundingClientRect;
+  h.section.getBoundingClientRect = () => new h.window.DOMRect(140, 40, 500, 100);
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).not.toBeNull();
+  expect(h.pending.size).toBe(0);
+  h.section.getBoundingClientRect = originalRect;
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).toBeNull();
+  expect(h.pending.size).toBe(1);
+});
+
+test('internal media frame movement is treated as a layout change', () => {
+  const h = harness();
+  h.window.alert = () => {};
+  const frame = h.document.createElement('div');
+  frame.dataset.gridItemId = 'frame';
+  let left = 120;
+  frame.getBoundingClientRect = () => new h.window.DOMRect(left, 50, 200, 100);
+  h.section.append(frame);
+  h.startDrawing(h.target, null);
+  h.props().onChange([fixture.strokes[0]]);
+  left = 160;
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).not.toBeNull();
+  expect(h.pending.size).toBe(0);
+  left = 120;
+  h.done();
+  expect(h.pending.size).toBe(1);
+});
+
+test('text line reflow is treated as a layout change even when the section size is fixed', () => {
+  const h = harness();
+  h.window.alert = () => {};
+  let top = 50;
+  Object.defineProperty(h.window.Range.prototype, 'getClientRects', {
+    configurable: true,
+    value: () => [new h.window.DOMRect(120, top, 200, 20)],
+  });
+  h.startDrawing(h.target, null);
+  h.props().onChange([fixture.strokes[0]]);
+  top = 76;
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).not.toBeNull();
+  expect(h.pending.size).toBe(0);
+  top = 50;
+  h.done();
+  expect(h.pending.size).toBe(1);
+});
+
 test('Clear then Done queues deletion of the existing drawing', () => {
   const h = harness([fixture]);
   h.startDrawing(h.target, null, fixture);
@@ -202,6 +274,34 @@ test('unchanged text-part editing preserves the drawing group and erasers verbat
   h.done();
   expect(h.annotationsFor(h.target).current).toEqual([grouped]);
   expect(h.pending.size).toBe(0);
+});
+
+test('mapped text drawings do not offer the legacy anchor reattach action', () => {
+  const mapped: SiteAnnotation = { ...fixture, textParts: [{ strokeId: 0, anchor: fixture.anchor!,
+    slices: [{ start: 0, end: 4, glyph: { x: 0, y: 0, w: 40, h: 20 }, clip: { x: 0, y: 0, w: 40, h: 20 } }] }] };
+  const h = harness([mapped]);
+  const range = h.document.createRange();
+  const paragraph = h.section.querySelector('p')!;
+  range.selectNodeContents(paragraph);
+  range.getClientRects = () => [new h.window.DOMRect(120, 50, 40, 20)] as unknown as DOMRectList;
+  h.window.getSelection()!.addRange(range);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  manage.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true }));
+  manage.click();
+  expect(h.document.querySelector('.site-draw-menu')?.textContent).not.toContain('Reattach');
+});
+
+test('legacy text drawings retain the anchor reattach action', () => {
+  const h = harness([fixture]);
+  const range = h.document.createRange();
+  const paragraph = h.section.querySelector('p')!;
+  range.selectNodeContents(paragraph);
+  range.getClientRects = () => [new h.window.DOMRect(120, 50, 40, 20)] as unknown as DOMRectList;
+  h.window.getSelection()!.addRange(range);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  manage.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true }));
+  manage.click();
+  expect(h.document.querySelector('.site-draw-menu')?.textContent).toContain('Reattach');
 });
 
 test('unchanged edits preserve original strokes and geometry', () => {
