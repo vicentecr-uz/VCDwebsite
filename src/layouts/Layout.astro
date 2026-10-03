@@ -669,14 +669,21 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
               void revealPage();
             }
           };
-          if (visibleTransition) { navigate(); return; }
+          const finishExit = () => {
+            if (current !== generation || !destinationLocked) return;
+            const detail = { waitMs: 0 };
+            document.dispatchEvent(new CustomEvent('header:navigation-covered', { detail }));
+            if (detail.waitMs > 0) setTimeout(() => { if (current === generation && destinationLocked) navigate(); }, detail.waitMs);
+            else navigate();
+          };
+          if (visibleTransition) { finishExit(); return; }
           try {
             overlay.hidden = false;
             activeTween = gsap.to(overlay, {
               opacity: 1,
               duration: 0.25,
               ease: REVEAL_EASE,
-              onComplete: navigate,
+              onComplete: finishExit,
             });
           } catch {
             clearHeaderNavigationState();
