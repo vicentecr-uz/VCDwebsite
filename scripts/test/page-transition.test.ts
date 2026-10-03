@@ -298,6 +298,41 @@ for (const options of [
   });
 }
 
+test('open menu closes only once the outgoing veil is white and navigation waits for its timeline', async () => {
+  const f = fixture();
+  let covered = 0;
+  f.document.addEventListener('header:navigation-covered', (event: any) => {
+    covered++;
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    event.detail.waitMs = 212;
+  });
+  await f.paint();
+  f.tweens[0].finish();
+  f.click();
+  assert.equal(covered, 0);
+  f.tweens[1].finish();
+  assert.equal(covered, 1);
+  assert.equal(f.destinations.length, 0);
+  await f.advance(211);
+  assert.equal(f.destinations.length, 0);
+  await f.advance(1);
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
+});
+
+test('pagehide cancels the menu closure wait without following the stale destination', async () => {
+  const f = fixture();
+  f.document.addEventListener('header:navigation-covered', (event: any) => { event.detail.waitMs = 212; });
+  await f.paint();
+  f.tweens[0].finish();
+  f.click();
+  f.tweens[1].finish();
+  assert.equal(f.timers.size, 1);
+  f.window.emit('pagehide');
+  assert.equal(f.timers.size, 0);
+  await f.advance(212);
+  assert.equal(f.destinations.length, 0);
+});
+
 test('early initial controller reveals once and deferred module adopts its state', async () => {
   const f = fixture({ initialController: true });
   await f.paint();
