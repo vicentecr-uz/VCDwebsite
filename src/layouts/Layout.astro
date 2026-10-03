@@ -591,8 +591,11 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         const wordmark = header?.querySelector<HTMLElement>('.header-trigger__wordmark[aria-hidden="false"], .header-trigger__wordmark:not([aria-hidden="true"])');
         if (!slot || !header || !wordmark) return false;
         const visible = (element: HTMLElement, checkViewport = true) => {
-          const style = getComputedStyle(element); const rect = element.getBoundingClientRect();
-          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 && (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) && rect.left < (innerWidth || document.documentElement.clientWidth)));
+          const style = getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0 &&
+            (!checkViewport || (rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || document.documentElement.clientHeight) &&
+            rect.left < (innerWidth || document.documentElement.clientWidth)));
         };
         const title = wordmark.textContent?.trim() ?? '';
         if (!visible(slot, false) || !visible(header) || !visible(wordmark) || !title || title.length > 300) return false;
@@ -602,8 +605,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         const margins = chars.length === codepoints.length && fontSize > 0 ? chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) / fontSize) : [];
         pending.href = target.href; pending.title = title; pending.time = Date.now();
         pending.margins = margins.length === codepoints.length && margins.every((margin) => Number.isFinite(margin) && Math.abs(margin) <= 1) ? margins : undefined;
-        document.documentElement.dataset.headerNavigation = '';
         try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { return false; }
+        document.documentElement.dataset.headerNavigation = '';
         return true;
       };
 
@@ -630,9 +633,12 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
           destinationLocked = true;
           if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
           const pending = { href: target.href, title: '', time: Date.now(), targetTitle: anchor.dataset.headerNavigationTitle || undefined };
-          captureHeaderNavigation(target, pending);
-          document.dispatchEvent(new CustomEvent('header:navigation-start', { detail: { pending } }));
-          if (pending.title) { try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); } catch { clearHeaderNavigationState(); } }
+          const captured = captureHeaderNavigation(target, pending);
+          document.dispatchEvent(new CustomEvent('header:navigation-start', { detail: { pending: captured ? pending : undefined } }));
+          if (captured) {
+            try { sessionStorage.setItem('vcd:header-navigation', JSON.stringify(pending)); }
+            catch { clearHeaderNavigationState(); }
+          }
           overlay.style.animation = 'none';
           const navigate = () => {
             if (current !== generation || !destinationLocked) return;

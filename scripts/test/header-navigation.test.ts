@@ -234,3 +234,79 @@ test('accepted navigation prevents title reversal and canceled navigation permit
   expect(f.page.getAttribute('aria-hidden')).toBe('false');
   expect([...f.home.children].every((char: any) => char.style.opacity === '0')).toBe(true);
 });
+
+const bridgeScript = readFileSync(resolve(root, 'src/scripts/headerTitleBridge.js'), 'utf8');
+function bridgeFixture(elapsed = 200, targetTitle = 'New') {
+  const win = new Window();
+  const doc = win.document;
+  doc.body.innerHTML = '<span class="header-trigger__wordmark-stack" style="visibility: visible"><span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false" style="margin-top: -5px"><span class="header-trigger__char" data-astro-cid-fixture style="margin-left: 2px; transform: translateX(10px); transition: opacity 1s">Old</span></span></span>';
+  const now = 100000;
+  new Function('window', 'document', 'getComputedStyle', 'Date', bridgeScript)(win, doc, win.getComputedStyle.bind(win), { now: () => now });
+  const geometry = { left: 0.1, top: -0.15, width: 3, height: 1, offsets: [0, 0.6, 1.2] };
+  const pending = {
+    title: 'Old', targetTitle, startedAt: now - elapsed,
+    fromGeometry: geometry, toGeometry: { ...geometry, offsets: [0, 0.7, 1.4] },
+    fontMetrics: { font: '700 24px Hanken', lineHeight: '24px', letterSpacing: '-0.5px', fontKerning: 'normal', fontFeatureSettings: 'normal' },
+  };
+  const run = (win as any).__vcdHeaderTitleBridge;
+  return { win, doc, pending, run, stack: doc.querySelector('.header-trigger__wordmark-stack')! };
+}
+
+test('destination resumes elapsed keyframes without restarting or recalculating visible geometry', () => {
+  const f = bridgeFixture();
+  const bridge = f.run(f.pending);
+  const layers = f.doc.querySelectorAll('.header-navigation-title-layer');
+  const outgoing = layers[0].querySelectorAll<HTMLElement>('.header-navigation-title-char');
+  const incoming = layers[1].querySelectorAll<HTMLElement>('.header-navigation-title-char');
+  expect(outgoing[0].style.animation).toContain('-200ms');
+  expect(outgoing[1].style.animation).toContain('-170ms');
+  expect(incoming[0].style.animation).toContain('-200ms');
+  expect(incoming[1].style.animation).toContain('-160ms');
+  expect((layers[0] as HTMLElement).style.top).toBe('-0.15em');
+  expect((layers[0] as HTMLElement).style.left).toBe('0.1em');
+  expect((layers[0] as HTMLElement).style.fontSize).toBe('24px');
+  expect(outgoing[1].style.left).toBe('0.6em');
+  expect(incoming[1].style.left).toBe('0.7em');
+  expect(bridge.finishesAt).toBeGreaterThan(100000);
+  expect(outgoing[0].hasAttribute('data-astro-cid-fixture')).toBe(true);
+  expect(outgoing[0].style.transform).toBe('');
+  expect(outgoing[0].style.marginLeft).toBe('0px');
+  expect(outgoing[0].style.transition).toBe('none');
+  expect((layers[0] as HTMLElement).style.marginTop).toBe('');
+});
+
+test('bridge cleanup restores the untouched original header for hover', () => {
+  const f = bridgeFixture();
+  const original = f.stack.firstElementChild;
+  const bridge = f.run(f.pending);
+  expect((f.stack as HTMLElement).style.visibility).toBe('hidden');
+  bridge.cleanup();
+  expect((f.stack as HTMLElement).style.visibility).toBe('visible');
+  expect(f.stack.children.length).toBe(1);
+  expect(f.stack.firstElementChild).toBe(original);
+  expect(original?.querySelector<HTMLElement>('.header-trigger__char')?.style.marginLeft).toBe('2px');
+});
+
+test('same-title bridge uses a single visible fixed layer without duplicate text', () => {
+  const f = bridgeFixture(200, 'Old');
+  const bridge = f.run(f.pending);
+  expect(f.doc.querySelectorAll('.header-navigation-title-layer').length).toBe(1);
+  const chars = [...f.doc.querySelectorAll<HTMLElement>('.header-navigation-title-char')];
+  expect(chars.every((char) => char.style.opacity === '1' && char.style.animation === 'none')).toBe(true);
+  expect(bridge.remainingMs).toBe(0);
+});
+
+test('completed animation stays completed and malformed bridge state leaves original visible', () => {
+  const f = bridgeFixture(2000);
+  expect(f.run(f.pending).remainingMs).toBe(0);
+  for (const mutate of [
+    (p: any) => p.startedAt = 110000,
+    (p: any) => p.fromGeometry.offsets = [NaN, 0, 0],
+    (p: any) => p.fontMetrics.lineHeight = {},
+  ]) {
+    const invalid = bridgeFixture();
+    mutate(invalid.pending);
+    expect(invalid.run(invalid.pending)).toBeNull();
+    expect((invalid.stack as HTMLElement).style.visibility).toBe('visible');
+  }
+});
