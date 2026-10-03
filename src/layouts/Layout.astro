@@ -414,6 +414,7 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
       let readinessAbort: AbortController | null = null;
       let readinessCleanup: (() => void) | null = null;
       let navigationWatchdog: ReturnType<typeof setTimeout> | null = null;
+      let navigationMenuTimer: ReturnType<typeof setTimeout> | null = null;
       let destinationLocked = false;
       let suspended = false;
 
@@ -432,6 +433,10 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
         if (navigationWatchdog !== null) {
           clearTimeout(navigationWatchdog);
           navigationWatchdog = null;
+        }
+        if (navigationMenuTimer !== null) {
+          clearTimeout(navigationMenuTimer);
+          navigationMenuTimer = null;
         }
         destinationLocked = false;
       };
@@ -673,8 +678,12 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
             if (current !== generation || !destinationLocked) return;
             const detail = { waitMs: 0 };
             document.dispatchEvent(new CustomEvent('header:navigation-covered', { detail }));
-            if (detail.waitMs > 0) setTimeout(() => { if (current === generation && destinationLocked) navigate(); }, detail.waitMs);
-            else navigate();
+            if (detail.waitMs > 0) {
+              navigationMenuTimer = setTimeout(() => {
+                navigationMenuTimer = null;
+                navigate();
+              }, detail.waitMs);
+            } else navigate();
           };
           if (visibleTransition) { finishExit(); return; }
           try {
