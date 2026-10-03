@@ -228,6 +228,7 @@ function TextFieldDemo() {
 }
 
 function SelectDemo() {
+  const [selectionReturnedFocus, setSelectionReturnedFocus] = useState(false);
   const [value, setValue] = useState("draft");
   const [submitted, setSubmitted] = useState("");
   return (
@@ -258,8 +259,9 @@ function SelectDemo() {
           ]}
           value={value}
           onValueChange={(next) => next && setValue(next)}
+          onOpenChange={(open, details) => setSelectionReturnedFocus(!open && details.reason === "item-press")}
         >
-          <Select.Trigger className="dev-field__input dev-field__input--select dev-select__trigger base-ui-control">
+          <Select.Trigger data-selection-returned-focus={selectionReturnedFocus || undefined} onBlur={() => setSelectionReturnedFocus(false)} className="dev-field__input dev-field__input--select dev-select__trigger base-ui-control">
             <Select.Value className="base-ui-select-value dev-select__trigger-label" />
           </Select.Trigger>
           <Select.Portal>
