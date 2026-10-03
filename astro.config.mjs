@@ -7,6 +7,7 @@ import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
 
 import tailwindcss from '@tailwindcss/vite';
+import react from '@astrojs/react';
 import {
   buildImageCarouselSection,
   buildImageCarouselSectionFromSrcs,
@@ -72,6 +73,7 @@ import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTar
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 import { isVideoSrc } from './src/lib/imageUpload.mjs';
 import { imageDescriptionsDevWriter } from './scripts/dev-image-descriptions.mjs';
+import { devInspectors } from './scripts/dev-inspectors.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -2672,7 +2674,7 @@ export default defineConfig({
   // change needed, just the env var in Cloudflare.
   site: process.env.PUBLIC_SITE_URL || 'https://wip.vcruzdesigns.com',
   devToolbar: { enabled: false },
-  integrations: [mediaCollectorIntegration()],
+  integrations: [react(), mediaCollectorIntegration(), devInspectors()],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
   // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {

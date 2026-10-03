@@ -13,7 +13,7 @@ interface Props {
 const { label, labelId, labelFor, class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['dev-field', className]} {...rest}>
+<div class:list={['dev-field', className]} data-dev-field {...rest}>
   <div class="dev-field__label-row">
     {labelFor ? (
       <label class="dev-field__label" id={labelId} for={labelFor}>{label}</label>
@@ -26,3 +26,9 @@ const { label, labelId, labelFor, class: className, ...rest } = Astro.props;
     <slot />
   </div>
 </div>
+
+<script>
+  import { initFieldOverflow } from '../../lib/fieldOverflow.js';
+  const cleanups = [...document.querySelectorAll('[data-dev-field]')].map(initFieldOverflow);
+  if (import.meta.hot) import.meta.hot.dispose(() => cleanups.forEach(cleanup => cleanup?.()));
+</script>

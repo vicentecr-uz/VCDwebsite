@@ -1,0 +1,46 @@
+---
+import '../../styles/dev-chrome.css';
+import Field from './Field.astro';
+import EditorSelect from '../base-ui/EditorSelect';
+import { sizeIcon } from '../../lib/icons';
+
+type SelectOption = { value: string; label: string; icon?: string; disabled?: boolean };
+type SelectGroup = { label: string; options: SelectOption[] };
+
+interface Props {
+  label: string;
+  options: Array<SelectOption | SelectGroup>;
+  value?: string;
+  disabled?: boolean;
+  hidden?: boolean;
+  hideLabel?: boolean;
+  [key: string]: any;
+}
+
+const { label, options, value, disabled = false, hidden, hideLabel = false, class: className, id: providedId, ...rest } = Astro.props;
+const fieldRest: Record<string, unknown> = {};
+const selectRest: Record<string, unknown> = {};
+for (const [key, propValue] of Object.entries(rest)) {
+  if (key === 'data-caption-overlay-only' || key.endsWith('-wrap')) fieldRest[key] = propValue;
+  else selectRest[key] = propValue;
+}
+const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup => Array.isArray((item as SelectGroup).options);
+const triggerId = typeof providedId === 'string' && providedId ? providedId : `dev-editor-select-${Math.random().toString(36).slice(2, 9)}`;
+const flatOptions = options.flatMap((item) => isGroup(item)
+  ? item.options.map((option) => ({ ...option, group: item.label, iconSvg: option.icon ? sizeIcon(option.icon, 16) : undefined }))
+  : [{ ...item, iconSvg: item.icon ? sizeIcon(item.icon, 16) : undefined }]);
+const selected = flatOptions.find((option) => option.value === value)?.value ?? flatOptions[0]?.value ?? null;
+
+---
+
+<Field label={label} labelId={`${triggerId}-label`} labelFor={triggerId} class={['base-ui-field', className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
+  <slot name="labelAccessory" slot="labelAccessory" />
+  <select disabled={disabled} class="dev-select__native" data-dev-editor-select tabindex="-1" aria-hidden="true" {...selectRest}>
+    {options.map((item) => isGroup(item) ? (
+      <optgroup label={item.label}>
+        {item.options.map((option) => <option value={option.value} selected={option.value === selected} disabled={option.disabled} data-icon-svg={option.icon ? sizeIcon(option.icon, 16) : undefined}>{option.label}</option>)}
+      </optgroup>
+    ) : <option value={item.value} selected={item.value === selected} disabled={item.disabled} data-icon-svg={item.icon ? sizeIcon(item.icon, 16) : undefined}>{item.label}</option>)}
+  </select>
+  <EditorSelect client:load triggerId={triggerId} label={label} options={flatOptions} value={selected} disabled={disabled} />
+</Field>
