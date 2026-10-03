@@ -386,6 +386,7 @@ test('navigation slides only a visible partly clipped header into view using the
 test('home intro gate suppresses unseen home handover while allowing seen and other destinations', () => {
   const run = (targetHref: string, introValue: string | null, storageBlocked = false) => {
     const f = runtimeFixture('Previous');
+    f.win.sessionStorage.setItem('vcd:header-navigation', JSON.stringify({ href: targetHref, title: 'Stale', time: Date.now() }));
     const head = f.doc.querySelector('.site-header')!;
     const rect = { top: 0, left: 0, bottom: 80, right: 800, width: 800, height: 80 };
     f.slot.getBoundingClientRect = () => ({ ...rect, top: -1000, bottom: -920 } as any);
