@@ -34,11 +34,11 @@ function DemoField({
   invalid?: boolean;
 }) {
   const fieldRef = useRef<HTMLDivElement>(null);
-  useEffect(() => fieldRef.current ? initFieldOverflow(fieldRef.current) : undefined, []);
+  useEffect(() => fieldRef.current ? initFieldOverflow(fieldRef.current, { manageMarkup: false }) : undefined, []);
   return (
     <Field.Root ref={fieldRef} className="dev-field base-ui-field" name={name} invalid={invalid}>
       <Field.Label className="dev-field__label base-ui-label">{label}</Field.Label>
-      <div className="dev-field__value">{children}</div>
+      <div className="dev-field__value">{typeof children === "string" ? <span className="dev-field__overflow-content" data-field-overflow>{children}</span> : children}</div>
       <Field.Error className="base-ui-error" />
     </Field.Root>
   );
