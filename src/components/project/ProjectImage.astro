@@ -42,6 +42,7 @@ import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
 import type { VideoAudioSetting } from '../../lib/videoAudio';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   src: string;
@@ -81,6 +82,7 @@ interface Props {
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
   contentId?: string;
+  annotations?: unknown;
   /** Legacy single caption (all breakpoints). Prefer `captions`. */
   caption?: string;
   /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
@@ -122,6 +124,7 @@ const {
   imgModifier,
   sectionId,
   contentId,
+  annotations,
   caption,
   captions: captionsProp,
   captionStyle: captionStyleProp,
@@ -196,6 +199,8 @@ const editAttrs = editable
   <div
     id={sectionId}
     data-image-content-id={contentId}
+    data-site-annotation-section-id={contentId}
+    data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
     class:list={[
       'project-image',
       layout !== 'default' && `project-image--${layout}`,
@@ -321,11 +326,14 @@ const editAttrs = editable
         {isVideo ? 'Edit video' : 'Edit image'}
       </button>
     )}
+    {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 ) : (
   <div
     id={sectionId}
     data-image-content-id={contentId}
+    data-site-annotation-section-id={contentId}
+    data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
     class:list={[
       'project-block',
       (centered || hasWidthConstraint || maxVh) && 'project-block--centered',
@@ -478,6 +486,7 @@ const editAttrs = editable
         </button>
       )}
     </figure>
+    {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 )}
 

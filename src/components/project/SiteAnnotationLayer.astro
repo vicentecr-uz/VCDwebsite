@@ -1,0 +1,51 @@
+---
+import { siteAnnotationSvg } from '../../lib/siteAnnotationSvg';
+import { validateSiteAnnotations, type SiteAnnotation } from '../../lib/siteAnnotations';
+import '../../styles/site-annotations.css';
+
+interface Props {
+  sectionId: string;
+  annotations?: unknown;
+}
+
+const { sectionId, annotations } = Astro.props;
+const source = annotations ?? [];
+const valid = validateSiteAnnotations(source, new Set([sectionId]))
+  ? source as SiteAnnotation[]
+  : [];
+const items = valid.flatMap((annotation) => {
+  if (!annotation.textParts?.length) {
+    return [{ annotation, part: undefined, strokeIndex: undefined, src: siteAnnotationSvg(annotation) }];
+  }
+  const mapped = annotation.textParts.map((part, partIndex) => ({ part, partIndex }));
+  return annotation.strokes.flatMap((stroke, strokeIndex) => {
+    if (stroke.erase) return [];
+    const mappings = mapped.filter(({ part }) => part.strokeId === stroke.id);
+    if (mappings.length) {
+      return mappings.flatMap((mapping) => mapping.part.slices.map((_, sliceIndex) => ({
+        annotation,
+        part: { partIndex: mapping.partIndex, sliceIndex },
+        strokeIndex: undefined,
+        src: siteAnnotationSvg(annotation, { partIndex: mapping.partIndex, sliceIndex }),
+      })));
+    }
+    return [{
+      annotation,
+      part: undefined,
+      strokeIndex,
+      src: siteAnnotationSvg(annotation, { strokeIndex }),
+    }];
+  });
+}).map((item) => ({ ...item, src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.src)}` }));
+const positionData = import.meta.env.DEV ? valid : valid.map(({ strokes, ...annotation }) => annotation);
+---
+
+<div class="site-annotations" data-site-annotations={JSON.stringify(positionData)} aria-hidden="true">
+  {items.map(({ annotation, part, strokeIndex, src }) => (
+    <img data-site-annotation={annotation.id} {...(part ? { 'data-site-annotation-part': part.partIndex, 'data-site-annotation-slice': part.sliceIndex } : {})} {...(strokeIndex !== undefined ? { 'data-site-annotation-stroke': strokeIndex } : {})} src={src} alt="" draggable="false" />
+  ))}
+</div>
+
+<script>
+  import '../../scripts/siteAnnotationPosition';
+</script>

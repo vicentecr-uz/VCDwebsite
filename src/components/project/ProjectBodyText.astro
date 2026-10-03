@@ -5,6 +5,7 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 import { resolveTextWrapHtml } from '../../lib/projectTextWrap';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
   paragraphs: string[];
@@ -18,6 +19,7 @@ interface Props {
   introHeight?: number;
   introHeightPath?: Array<string | number>;
   balance?: boolean;
+  annotations?: unknown;
 }
 
 const {
@@ -31,6 +33,7 @@ const {
   introHeight,
   introHeightPath,
   balance = false,
+  annotations,
 } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
@@ -55,6 +58,8 @@ const paragraphWrapClass = (paragraph: string) => `project-body-text__wrap-${res
   data-dev-intro-height-path={intro && editable ? JSON.stringify(introHeightPath ?? [...sectionPath!, 'introHeight']) : undefined}
   data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
   style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
 >
   <div
     class="project-body-text"
@@ -68,4 +73,5 @@ const paragraphWrapClass = (paragraph: string) => `project-body-text__wrap-${res
       <p class={paragraphWrapClass(paragraph)} set:html={paragraph} />
     ))}
   </div>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </section>
