@@ -577,8 +577,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   };
 }
 
-const pageUpgrade = createImagePreviewUpgrade();
-export const bindImagePreviewUpgrade = pageUpgrade.bind;
-export const openImagePreviewUpgrade = pageUpgrade.open;
+let pageUpgrade = createImagePreviewUpgrade();
+export const bindImagePreviewUpgrade = (root: ParentNode = document) => pageUpgrade.bind(root);
+export const openImagePreviewUpgrade = () => pageUpgrade.open();
 
-export const cancelImagePreviewUpgrade = pageUpgrade.cancel;
+export const cancelImagePreviewUpgrade = (image: HTMLImageElement) => pageUpgrade.cancel(image);
+export const resetImagePreviewUpgrade = () => { pageUpgrade.destroy(); pageUpgrade = createImagePreviewUpgrade(); };

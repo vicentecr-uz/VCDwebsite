@@ -572,8 +572,12 @@
       window.removeEventListener('vcd:dev-mode-change',onPageHide);
     };
   };
-  const disposers = [...document.querySelectorAll<HTMLDialogElement>('[data-image-lightbox]')].map(bindImageLightbox);
-  import.meta.hot?.dispose(() => disposers.forEach(dispose => dispose()));
+  import { onPageLoad } from '../lib/pageLifecycle';
+  const dispose = onPageLoad(() => {
+    const disposers = [...document.querySelectorAll<HTMLDialogElement>('[data-image-lightbox]')].map(bindImageLightbox);
+    return () => disposers.forEach((dispose) => dispose());
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

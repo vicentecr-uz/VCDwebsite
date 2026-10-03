@@ -33,10 +33,11 @@ const teaserPassword = getTeaserPassword();
   <slot />
 )}
 
-<script define:vars={{ teaserPassword }}>
+<script define:vars={{ teaserPassword }} data-astro-rerun>
   const gates = document.querySelectorAll('[data-teaser-gate]');
   gates.forEach((root) => {
-    if (!(root instanceof HTMLElement)) return;
+    if (!(root instanceof HTMLElement) || root.dataset.teaserBound === 'true') return;
+    root.dataset.teaserBound = 'true';
     const storageKey = root.dataset.teaserStorageKey;
     const locked = root.querySelector<HTMLElement>('[data-teaser-locked]');
     const content = root.querySelector<HTMLElement>('[data-teaser-content]');

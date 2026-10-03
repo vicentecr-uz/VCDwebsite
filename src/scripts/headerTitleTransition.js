@@ -8,18 +8,6 @@
       delay += 40 + (total > 1 ? (i / (total - 1)) * 50 : 0);
     return delay;
   };
-  const validMetrics = (metrics) =>
-    Boolean(
-      metrics &&
-      typeof metrics.font === "string" &&
-      metrics.font.length > 0 &&
-      metrics.font.length <= 500 &&
-      typeof metrics.lineHeight === "string" &&
-      metrics.lineHeight.length <= 500 &&
-      ["letterSpacing", "fontKerning", "fontFeatureSettings"].every(
-        (key) => typeof metrics[key] === "string" && metrics[key].length <= 500,
-      ),
-    );
   const validGeometry = (geometry, count) =>
     Boolean(
       geometry &&
@@ -207,19 +195,7 @@
             : progressiveDelay(index, codepoints(text).length),
       };
     });
-  const validTimings = (timings, count) =>
-    timings === undefined ||
-    (Array.isArray(timings) &&
-      timings.length === count &&
-      timings.every(
-        (item) =>
-          item &&
-          finite(item.durationMs, 10000) &&
-          item.durationMs >= 0 &&
-          finite(item.delayMs, 10000),
-      ));
-
-  window.__vcdHeaderTitleBridge = (pending, outgoing = false) => {
+  window.__vcdHeaderTitleTransition = (pending) => {
     const source = visibleLayer();
     if (
       !source ||
@@ -231,7 +207,7 @@
     let sourceText = pending.title.replace(/\s+/g, " ").trim();
     const targetText = pending.targetTitle.replace(/\s+/g, " ").trim();
     if (!sourceText || !targetText || sourceText.length > 300) return null;
-    if (outgoing) {
+    {
       let outgoingSource = source;
       if (
         source.classList.contains("header-trigger__wordmark--home") &&
@@ -281,17 +257,6 @@
       }
       pending.startedAt = Date.now();
     }
-    if (
-      !Number.isFinite(pending.startedAt) ||
-      Date.now() - pending.startedAt > 10000 ||
-      Date.now() < pending.startedAt ||
-      !validMetrics(pending.fontMetrics) ||
-      !validGeometry(pending.fromGeometry, codepoints(sourceText).length) ||
-      !validGeometry(pending.toGeometry, codepoints(targetText).length) ||
-      !validTimings(pending.fromCharTimings, codepoints(sourceText).length) ||
-      !validTimings(pending.toCharTimings, codepoints(targetText).length)
-    )
-      return null;
     const stack = source.closest(".header-trigger__wordmark-stack");
     if (!stack) return null;
     const previousVisibility = stack.style.visibility;
