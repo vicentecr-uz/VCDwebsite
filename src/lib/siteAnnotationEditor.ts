@@ -463,19 +463,9 @@ const bindButtons = () => {
     const entry = annotationsFor({ section, sectionId, documentKey });
     const target = entry.target;
     target.section = section;
-    if (section.querySelector('[data-site-draw-open]')) continue;
+    if (section.querySelector('[data-site-draw-manage]')) continue;
     const controls = document.createElement('div');
     controls.className = 'site-draw-controls dev-surface';
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'dev-btn dev-btn--page';
-    open.dataset.siteDrawOpen = '';
-    open.textContent = 'Doodle';
-    open.setAttribute('aria-label', 'Draw a doodle on this block');
-    open.addEventListener('click', () => {
-      window.getSelection()?.removeAllRanges();
-      startDrawing(target, null);
-    });
     const manage = document.createElement('button');
     manage.type = 'button';
     manage.className = 'dev-btn dev-btn--page';
@@ -486,7 +476,7 @@ const bindButtons = () => {
         ? selectedAnchor(section, selection.getRangeAt(0)) : null;
     });
     manage.addEventListener('click', () => showManage(target, manage));
-    controls.append(open, manage);
+    controls.append(manage);
     section.append(controls);
     updateCount(target);
   }
