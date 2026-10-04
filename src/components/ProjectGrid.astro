@@ -204,12 +204,14 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /*
-    Live-site pointer / keyboard hover. Coarse pointers omit :hover so a tap
-    does not stick (#132). Edit uses the chip above, not :hover — crossing
-    the gap to the crop tuner must not swap the bitmap.
+    Live-site pointer / keyboard hover. The fine-pointer state is armed by
+    movement so a stationary cursor does not swap the bitmap on page arrival.
+    Coarse pointers omit this state so a tap does not stick (#132). Edit uses
+    the chip above, not this state — crossing the gap to the crop tuner must
+    not swap the bitmap.
   */
   @media (hover: hover) and (pointer: fine) {
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover
+    html:not(.is-dev-mode) .project-grid__card[data-pointer-hover] .project-grid__cover--has-hover
       .project-grid__hover-layer {
       opacity: 1;
       visibility: visible;
@@ -304,7 +306,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (hover: hover) and (pointer: fine) {
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title {
+    html:not(.is-dev-mode) .project-grid__card[data-pointer-hover] .project-grid__cover--has-hover .project-grid__title {
       color: var(--title-ink-hover);
     }
   }
@@ -335,8 +337,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (hover: hover) and (pointer: fine) {
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+    html:not(.is-dev-mode) .project-grid__card[data-pointer-hover] .project-grid__cover--has-hover .project-grid__subtitle,
+    html:not(.is-dev-mode) .project-grid__card[data-pointer-hover] .project-grid__cover--has-hover .project-grid__teaser-label {
       color: var(--subtitle-ink-hover);
     }
   }
