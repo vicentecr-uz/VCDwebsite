@@ -145,7 +145,7 @@ test('a child drop that stops propagation still clears page feedback', () => {
   const cleanupScript = between('  const clearDragState =', '  const closeMultiDropChoice =');
   const registrationScript = between(
     '  const root = document;',
-    "  window.addEventListener('vcd:dev-mode-change'",
+    "  scope.listen(window, 'vcd:dev-mode-change'",
   );
   let pageInsertionCalls = 0;
   const runtime = new Function('env', `with (env) {
@@ -155,6 +155,7 @@ test('a child drop that stops propagation still clears page feedback', () => {
     return { getDragDepth: () => dragDepth };
   }`)({
     document,
+    scope: { listen: (target: EventTarget, type: string, handler: EventListener, options?: any) => target.addEventListener(type, handler, options) },
     window: browser,
     pageDropVeil,
     HTMLElement: browser.HTMLElement,
@@ -300,6 +301,8 @@ test('insertSection keeps the captured document and index across async state cha
     closePicker: () => {},
   };
   const insertSection = new Function('env', `with (env) {
+    const pageFetch = fetch;
+    const scope = { signal: new AbortController().signal };
     ${between('  const insertSection =', '  const appendToCarousel =')}
     return insertSection;
   }`)(env);

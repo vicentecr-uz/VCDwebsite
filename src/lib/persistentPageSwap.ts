@@ -28,6 +28,14 @@ export function persistentPageParts(doc: Document) {
   return wrapper && page && header && backdrop && overlay ? { wrapper, page, header, backdrop, overlay } : null;
 }
 
+export function supportsPersistentPage(doc: Document) {
+  if (!persistentPageParts(doc) || doc.querySelector('template[shadowrootmode]')) return false;
+  return [...doc.querySelectorAll('astro-island')].every((island) =>
+    doc.body.hasAttribute('data-dev-authoring')
+    && /\/components\/base-ui\/EditorSelect\.tsx(?:\?|$)/.test(island.getAttribute('component-url') ?? ''),
+  );
+}
+
 export function swapPageContent(current: Document, incoming: Document) {
   const old = persistentPageParts(current);
   const next = persistentPageParts(incoming);
@@ -40,7 +48,11 @@ export function swapPageContent(current: Document, incoming: Document) {
   copyAttributes(old.wrapper, next.wrapper);
   for (const [property, value] of timing) if (value) old.wrapper.style.setProperty(property, value);
   copyAttributes(old.page, next.page);
-  replaceAround(current.body, incoming.body, new Map([[old.wrapper, next.wrapper], [old.overlay, next.overlay]]));
+  const bodyRetained = new Map<Element, Element>([[old.wrapper, next.wrapper], [old.overlay, next.overlay]]);
+  const marker = current.getElementById('transition-readiness-marker');
+  const nextMarker = incoming.getElementById('transition-readiness-marker');
+  if (marker && nextMarker) bodyRetained.set(marker, nextMarker);
+  replaceAround(current.body, incoming.body, bodyRetained);
   replaceAround(old.wrapper, next.wrapper, new Map([[old.page, next.page]]));
   replaceAround(old.page, next.page, new Map([[old.header, next.header], [old.backdrop, next.backdrop]]));
 }

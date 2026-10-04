@@ -7,7 +7,7 @@ const source = readFileSync(new URL('../../src/components/project/ProjectImageCa
 const between = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const functions = [
   between('    const captureDraft =', '    registerHistoryScope('),
-  between('    const applyCaptionsToTarget =', '    /** Drop an empty caption'),
+  between('    const applyCaptionsToTarget =', "    window.addEventListener('vcd:dev-media-captions-mount'"),
   between('    const renderFields =', '    const notifyCarouselCaptions ='),
   between("    positionSelect.addEventListener('change'", "    revealSelect.addEventListener('change'"),
   between("    textArea.addEventListener('input'", "    viewportButtons.forEach((button) => {"),

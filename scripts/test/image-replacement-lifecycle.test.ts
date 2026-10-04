@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { createPageScope } from '../../src/lib/pageLifecycle';
 import { imageVariantSettingSource, setImageVariantSetting } from '../../src/lib/imageVariantInheritance';
 import { coverWidthFraction, normalizeImageVariants } from '../../src/lib/responsiveImage';
 
@@ -46,6 +47,7 @@ function setup() {
   const handlers = new Map<string, (event: any) => void>();
   const panel = win.document.createElement('aside');
   const env: any = {
+    pageScope: createPageScope(),
     Image: Probe, HTMLElement: win.HTMLElement, projectImage: (src: string) => `/images/${src}`,
     editTarget: target, activeSlot: 'cover', selectedViewport: 'desktop', replacementSession: 1,
     sourceRevision: 1, replacementAttempt: 0, replacementPending: false,
@@ -89,9 +91,9 @@ function setup() {
     'return { invalidateReplacement, replacementContext, startReplacement, replaceWithFile, setReplacementPending, setReplacementError, isCurrentReplacement };',
   ].join('\n'), env);
   Object.assign(env, api);
-  compile(between("    window.addEventListener('vcd:dev-before-save'", "    window.addEventListener('vcd:dev-has-draft'"), env);
-  compile(between("    window.addEventListener('vcd:dev-image-replace'", '    const teardownEditSession ='), env);
-  compile(between("    replaceAssetsButton.addEventListener('click'", '    // Stop page-level image-drop'), env);
+  compile(between("    pageScope.listen(window, 'vcd:dev-before-save'", "    pageScope.listen(window, 'vcd:dev-has-draft'"), env);
+  compile(between("    pageScope.listen(window, 'vcd:dev-image-replace'", '    const teardownEditSession ='), env);
+  compile(between("    pageScope.listen(replaceAssetsButton, 'click'", '    // Stop page-level image-drop'), env);
   return { env, api, image, preview, probes, uploads, handlers, target };
 }
 const file = { type: 'image/png' };

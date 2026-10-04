@@ -117,6 +117,9 @@ const visibilityOptions = [
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import { isAcceptedImageFile, isHeicUpload } from '../lib/imageUpload.mjs';
   import 'color-dialog-box';
+  import { createPageScope } from '../lib/pageLifecycle';
+  window.__vcdProjectGridPageScope = createPageScope;
+  import.meta.hot?.dispose(() => window.__vcdProjectGridCleanup?.());
   import { createHistory, pageHistory, registerHistoryScope } from '../lib/devHistory';
 
   window.__vcdPageHistory = pageHistory;
@@ -180,6 +183,13 @@ const visibilityOptions = [
 </script>
 
 <script define:vars={{ teaserPassword, statusIcons, openPageIconSvg, placeholderCover: PLACEHOLDER_COVER, emptyCoverFill: EMPTY_COVER_FILL }}>
+  const mountProjectGridEditor = () => {
+  window.__vcdProjectGridCleanup?.();
+  const scope = window.__vcdProjectGridPageScope();
+  const cleanup = () => scope.destroy();
+  window.__vcdProjectGridCleanup = cleanup;
+  scope.listen(document, 'astro:before-swap', cleanup, { once: true });
+  const pageFetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
@@ -220,7 +230,7 @@ const visibilityOptions = [
     void fieldValue.offsetWidth;
     fieldValue.classList.add('is-shaking');
     const clearShake = () => fieldValue.classList.remove('is-shaking');
-    fieldValue.addEventListener('animationend', clearShake, { once: true });
+    scope.listen(fieldValue, 'animationend', clearShake, { once: true });
   };
 
   const disarmDelete = () => {
@@ -928,10 +938,11 @@ const visibilityOptions = [
       return existing;
     }
     const grid = gridForItem(item);
-    const response = await fetch(
+    const response = await pageFetch(
       `/api/project-settings?slug=${encodeURIComponent(slug)}&grid=${encodeURIComponent(grid)}`,
     );
     const payload = await response.json();
+    scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(payload.error || 'Could not load project settings.');
 
     if (caches.has(slug)) return caches.get(slug);
@@ -1038,11 +1049,12 @@ const visibilityOptions = [
       renderPanelFromEntry(entry);
       openSettingsPanel(trigger);
     } catch (error) {
+    if (scope.signal.aborted) return;
       window.alert(error instanceof Error ? error.message : 'Could not load project settings.');
     }
   };
 
-  window.addEventListener('vcd:dev-project-settings-open', ((event) => {
+  scope.listen(window, 'vcd:dev-project-settings-open', ((event) => {
     const slug = String(event.detail?.slug || '').trim();
     const trigger = event.detail?.trigger;
     if (slug) {
@@ -1101,6 +1113,7 @@ const visibilityOptions = [
       pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change card span');
       if (spanHandle) syncSpanHandleSide(item, spanHandle);
     } catch (error) {
+    if (scope.signal.aborted) return;
       window.alert(error instanceof Error ? error.message : 'Could not update span.');
     }
   };
@@ -1125,7 +1138,7 @@ const visibilityOptions = [
     spanFrame = frame;
     spanHandle = handle;
 
-    handle.addEventListener('pointerdown', (event) => {
+    scope.listen(handle, 'pointerdown', (event) => {
       if (event.button !== 0) return;
       if (cropPanelOpen()) return;
       event.preventDefault();
@@ -1161,7 +1174,7 @@ const visibilityOptions = [
     enterSpanMode(item, chip);
   };
 
-  document.addEventListener('pointermove', (event) => {
+  scope.listen(document, 'pointermove', (event) => {
     if (!spanDrag || !spanModeItem) return;
     if (event.pointerId !== spanDrag.pointerId) return;
     const delta = event.clientX - spanDrag.startX;
@@ -1175,7 +1188,7 @@ const visibilityOptions = [
     }
   });
 
-  document.addEventListener('pointerup', (event) => {
+  scope.listen(document, 'pointerup', (event) => {
     if (!spanDrag || !spanModeItem) return;
     if (event.pointerId !== spanDrag.pointerId) return;
     const full = spanModeItem.classList.contains('project-grid__item--full');
@@ -1183,12 +1196,12 @@ const visibilityOptions = [
     void setSpanFull(spanModeItem, full);
   });
 
-  document.addEventListener('pointercancel', (event) => {
+  scope.listen(document, 'pointercancel', (event) => {
     if (!spanDrag || event.pointerId !== spanDrag.pointerId) return;
     spanDrag = null;
   });
 
-  document.addEventListener('keydown', (event) => {
+  scope.listen(document, 'keydown', (event) => {
     if (event.key !== 'Escape') return;
     if (!spanModeItem) return;
     event.preventDefault();
@@ -1196,7 +1209,7 @@ const visibilityOptions = [
     exitSpanMode();
   }, true);
 
-  window.addEventListener('vcd:dev-edit-open', ((event) => {
+  scope.listen(window, 'vcd:dev-edit-open', ((event) => {
     const panel = event.detail?.panel;
     if (!(panel instanceof HTMLElement)) return;
     if (panel.dataset.devPanelKey === 'image') {
@@ -1206,7 +1219,7 @@ const visibilityOptions = [
     }
   }));
 
-  window.addEventListener('vcd:dev-edit-close', ((event) => {
+  scope.listen(window, 'vcd:dev-edit-close', ((event) => {
     const panel = event.detail?.panel;
     if (panel?.dataset?.devPanelKey === 'image') {
       document.documentElement.classList.remove('is-dev-crop-open');
@@ -1215,7 +1228,7 @@ const visibilityOptions = [
 
   const uploadCoverImage = async (slug, file) => {
     const data = await readFileAsBase64(file);
-    const response = await fetch('/api/upload', {
+    const response = await pageFetch('/api/upload', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -1224,6 +1237,7 @@ const visibilityOptions = [
       }),
     });
     const payload = await response.json();
+    scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(payload.error || 'Could not upload the cover image.');
     const filename = payload.filenames?.[0];
     if (!filename) throw new Error('Could not upload the cover image.');
@@ -1256,6 +1270,7 @@ const visibilityOptions = [
           // measurement path stayed invisible once already. Say so out loud.
           else console.warn('[vcd #182] Hover legibility not measured — fell back to the card\'s `dark` value. Check that the coverLuminance module loaded.');
         } catch (error) {
+    if (scope.signal.aborted) return;
           console.warn('[vcd #182] Hover legibility measurement failed — using the card\'s `dark` value.', error);
         }
         entry.draft.listing.hoverDark = hoverDark;
@@ -1272,6 +1287,7 @@ const visibilityOptions = [
       syncPendingFor(slug);
       pushEntryHistory(entry, before, structuredClone(entry.draft), `Replace ${slot === 'hoverImage' ? 'hover' : 'cover'} image`);
     } catch (error) {
+    if (scope.signal.aborted) return;
       window.alert(error instanceof Error ? error.message : 'Could not upload the cover image.');
       throw error;
     }
@@ -1301,6 +1317,7 @@ const visibilityOptions = [
     cover.dataset.devCrossfadeActive = 'true';
     cover.append(overlay);
     await waitImageReady(overlay);
+        scope.signal.throwIfAborted();
 
     if (entry.draft?.listing?.image !== draftUrl || liveCoverBlobs.get(slug) !== blobUrl) {
       overlay.remove();
@@ -1382,8 +1399,9 @@ const visibilityOptions = [
     if (img.complete && img.naturalWidth > 0) return;
     await new Promise((resolve) => {
       const done = () => resolve();
-      img.addEventListener('load', done, { once: true });
-      img.addEventListener('error', done, { once: true });
+      scope.add(done);
+      scope.listen(img, 'load', done, { once: true });
+      scope.listen(img, 'error', done, { once: true });
     });
   };
 
@@ -1404,12 +1422,14 @@ const visibilityOptions = [
       if (propertyName && event.propertyName !== propertyName) return;
       finish();
     };
-    el.addEventListener('transitionend', done);
-    window.setTimeout(finish, fallbackMs);
+    scope.listen(el, 'transitionend', done);
+    scope.timeout(finish, fallbackMs);
+    scope.add(finish);
   });
 
   const delay = (ms) => new Promise((resolve) => {
-    window.setTimeout(resolve, prefersReducedMotion() ? 0 : ms);
+    scope.timeout(resolve, prefersReducedMotion() ? 0 : ms);
+    scope.add(resolve);
   });
 
   /**
@@ -1439,6 +1459,8 @@ const visibilityOptions = [
       if (ownsBlobUrl) URL.revokeObjectURL(blobUrl);
     };
 
+    scope.add(() => { void abort(); reject(new DOMException('Page replaced', 'AbortError')); });
+
     const finish = async () => {
       const targetImg = cover.querySelector(
         slot === 'hoverImage' ? '.project-grid__img--hover' : '.project-grid__img--base',
@@ -1451,13 +1473,15 @@ const visibilityOptions = [
         targetImg.hidden = false;
         targetImg.src = blobUrl;
         await waitImageReady(targetImg);
+        scope.signal.throwIfAborted();
       }
       if (stack instanceof HTMLElement) {
         stack.style.transition = 'none';
         stack.style.opacity = '1';
       }
       delete cover.dataset.devFadeOut;
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise((r) => { scope.add(r); scope.frame(() => scope.frame(r)); });
+      scope.signal.throwIfAborted();
       overlay.remove();
       delete cover.dataset.devCrossfadeActive;
       delete cover.dataset.devDropActive;
@@ -1474,15 +1498,20 @@ const visibilityOptions = [
         cover.append(overlay);
         overlay.src = blobUrl;
         await waitImageReady(overlay);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        scope.signal.throwIfAborted();
+        await new Promise((r) => { scope.add(r); scope.frame(() => scope.frame(r)); });
+      scope.signal.throwIfAborted();
 
         cover.dataset.devFadeOut = 'true';
         await waitTransition(stack, 'opacity', 700);
+        scope.signal.throwIfAborted();
 
         await delay(140);
+        scope.signal.throwIfAborted();
 
         overlay.classList.add('is-in');
         await waitTransition(overlay, 'opacity', 700);
+        scope.signal.throwIfAborted();
 
         resolve({ finish, blobUrl });
       } catch (error) {
@@ -1530,6 +1559,7 @@ const visibilityOptions = [
       }
       pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change visibility');
     } catch (error) {
+    if (scope.signal.aborted) return;
       window.alert(error instanceof Error ? error.message : 'Could not update visibility.');
     }
   };
@@ -1537,7 +1567,7 @@ const visibilityOptions = [
   // Chips sit on the <li> (outside the card <a>). preventDefault only — do not
   // stopPropagation here or DevModeController never sees [data-dev-edit-trigger]
   // (crop). Status / hover / span handlers below stop bubble themselves.
-  document.addEventListener('click', (event) => {
+  scope.listen(document, 'click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const openPage = target.closest('a[data-dev-project-open]');
@@ -1563,7 +1593,7 @@ const visibilityOptions = [
     }
   }, true);
 
-  document.addEventListener('mousedown', (event) => {
+  scope.listen(document, 'mousedown', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     // Don't steal focus from contenteditable — only stop chip mousedown bubbling to drag/link logic.
@@ -1572,7 +1602,7 @@ const visibilityOptions = [
     }
   }, true);
 
-  document.addEventListener('click', (event) => {
+  scope.listen(document, 'click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
 
@@ -1681,7 +1711,7 @@ const visibilityOptions = [
     }
   }, true);
 
-  document.addEventListener('input', (event) => {
+  scope.listen(document, 'input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
@@ -1696,12 +1726,13 @@ const visibilityOptions = [
         syncPendingFor(slug);
         pushEntryHistory(entry, before, structuredClone(entry.draft), 'Edit card text', `inline:${slug}:${target.dataset.devProjectTitle !== undefined ? 'title' : target.dataset.devProjectSubtitle !== undefined ? 'subtitle' : 'teaser'}`);
       } catch (error) {
+    if (scope.signal.aborted) return;
         window.alert(error instanceof Error ? error.message : 'Could not stage that edit.');
       }
     })();
   });
 
-  document.addEventListener('focusin', (event) => {
+  scope.listen(document, 'focusin', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     const item = target.closest('[data-dev-project-slug]');
@@ -1710,7 +1741,7 @@ const visibilityOptions = [
     void ensureLoaded(slug, item).catch(() => {});
   }, true);
 
-  document.addEventListener('focusout', (event) => {
+  scope.listen(document, 'focusout', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
@@ -1718,7 +1749,7 @@ const visibilityOptions = [
   });
 
   // Drop image onto cover → replace listing cover (hover wash + crossfade).
-  document.addEventListener('dragover', (event) => {
+  scope.listen(document, 'dragover', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
 
     const cover = coverFromPoint(event.clientX, event.clientY, event.target);
@@ -1733,7 +1764,7 @@ const visibilityOptions = [
     cover.dataset.devDropActive = 'true';
   });
 
-  document.addEventListener('dragleave', (event) => {
+  scope.listen(document, 'dragleave', (event) => {
     // Only clear when the pointer leaves the window / document — per-cover
     // clear is driven by dragover (above) so child enter/leave doesn't flicker.
     if (event.relatedTarget == null || event.relatedTarget === document.documentElement) {
@@ -1741,7 +1772,7 @@ const visibilityOptions = [
     }
   });
 
-  document.addEventListener('drop', (event) => {
+  scope.listen(document, 'drop', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     const cover = coverFromPoint(event.clientX, event.clientY, event.target);
     if (!cover) {
@@ -1776,6 +1807,7 @@ const visibilityOptions = [
         await finish();
         await applyCoverFileToCard(slug, file, uploadedUrl ? '' : blobUrl, slot, uploadedUrl);
       } catch (error) {
+    if (scope.signal.aborted) return;
         if (error instanceof Error && !/upload/i.test(error.message)) {
           window.alert(error.message);
         }
@@ -1783,16 +1815,16 @@ const visibilityOptions = [
     })();
   });
 
-  document.addEventListener('dragend', () => {
+  scope.listen(document, 'dragend', () => {
     clearAllCoverDropActive();
   });
 
-  document.addEventListener('keydown', (event) => {
+  scope.listen(document, 'keydown', (event) => {
     if (event.key !== 'Escape') return;
     clearAllCoverDropActive();
   });
 
-  settingsRoot?.addEventListener('input', (event) => {
+  scope.listen(settingsRoot, 'input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-ps-bg]')) return;
@@ -1803,7 +1835,7 @@ const visibilityOptions = [
     previewCardBg(value);
   });
 
-  settingsRoot?.addEventListener('blur', (event) => {
+  scope.listen(settingsRoot, 'blur', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-ps-bg]')) return;
     const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '');
@@ -1812,7 +1844,7 @@ const visibilityOptions = [
     if (bgPicker instanceof HTMLElement) bgPicker.setAttribute('hex', toPickerHex(value));
   }, true);
 
-  settingsRoot?.addEventListener('change', (event) => {
+  scope.listen(settingsRoot, 'change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (target.matches('select[data-ps-status]')) {
@@ -1830,7 +1862,7 @@ const visibilityOptions = [
     }
   });
 
-  settingsRoot?.addEventListener('input', (event) => {
+  scope.listen(settingsRoot, 'input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-ps-slug]')) return;
     if (!panelSlug) return;
@@ -1841,20 +1873,20 @@ const visibilityOptions = [
     syncPanelActionButtons();
   });
 
-  bgSwatch?.addEventListener('click', () => {
+  scope.listen(bgSwatch, 'click', () => {
     const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '')
       || '#efefef';
     openBgPicker(value);
   });
 
-  bgPicker?.addEventListener('update-color', (event) => {
+  scope.listen(bgPicker, 'update-color', (event) => {
     const value = normalizeHex(event.detail?.hex || '');
     if (!value) return;
     syncBgField(value);
     previewCardBg(value);
   });
 
-  window.addEventListener('vcd:dev-edit-close', (event) => {
+  scope.listen(window, 'vcd:dev-edit-close', (event) => {
     const panel = event.detail?.panel;
     if (panel?.dataset?.devPanelKey !== 'project-settings') return;
     if (bgPicker instanceof HTMLElement) bgPicker.removeAttribute('open');
@@ -1890,7 +1922,7 @@ const visibilityOptions = [
     }
   };
 
-  revertButton?.addEventListener('click', () => {
+  scope.listen(revertButton, 'click', () => {
     if (!settingsEntry || !settingsOpening) return;
     lastSettingsDraft = structuredClone(settingsOpening);
     settingsHistory?.clear();
@@ -1917,15 +1949,15 @@ const visibilityOptions = [
     syncPanelActionButtons();
     return true;
   };
-  saveButton?.addEventListener('click', saveSettings);
-  window.addEventListener('vcd:dev-before-save', (event) => {
+  scope.listen(saveButton, 'click', saveSettings);
+  scope.listen(window, 'vcd:dev-before-save', (event) => {
     if (settingsEntry && settingsOpening && !settingsMatch(settingsOpening, settingsEntry.draft) && saveSettings() === false) event.preventDefault();
   });
-  window.addEventListener('vcd:dev-has-draft', (event) => {
+  scope.listen(window, 'vcd:dev-has-draft', (event) => {
     if (settingsEntry && settingsOpening && !settingsMatch(settingsOpening, settingsEntry.draft)) event.detail.dirty = true;
   });
 
-  deleteButton?.addEventListener('animationend', (event) => {
+  scope.listen(deleteButton, 'animationend', (event) => {
     if (!(deleteButton instanceof HTMLButtonElement)) return;
     if (event.animationName !== 'ps-delete-arm') return;
     if (deleteButton.matches(':hover') || deleteButton === document.activeElement) {
@@ -1933,29 +1965,29 @@ const visibilityOptions = [
     }
   });
 
-  deleteButton?.addEventListener('mouseenter', () => {
+  scope.listen(deleteButton, 'mouseenter', () => {
     if (!(deleteButton instanceof HTMLButtonElement)) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       armDelete();
     }
   });
 
-  deleteButton?.addEventListener('mouseleave', () => {
+  scope.listen(deleteButton, 'mouseleave', () => {
     disarmDelete();
   });
 
-  deleteButton?.addEventListener('blur', () => {
+  scope.listen(deleteButton, 'blur', () => {
     disarmDelete();
   });
 
-  deleteButton?.addEventListener('focus', () => {
+  scope.listen(deleteButton, 'focus', () => {
     if (!(deleteButton instanceof HTMLButtonElement)) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       armDelete();
     }
   });
 
-  deleteButton?.addEventListener('click', async (event) => {
+  scope.listen(deleteButton, 'click', async (event) => {
     if (!(deleteButton instanceof HTMLButtonElement)) return;
     if (!deleteButton.hasAttribute('data-ps-delete-armed')) {
       event.preventDefault();
@@ -1964,12 +1996,13 @@ const visibilityOptions = [
     }
     if (!panelSlug) return;
     if (!window.confirm(`Delete "${panelSlug}" and its draft media? This cannot be undone.`)) return;
-    const response = await fetch('/api/project-delete', {
+    const response = await pageFetch('/api/project-delete', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ slug: panelSlug }),
     });
     const payload = await response.json();
+    scope.signal.throwIfAborted();
     if (!response.ok) {
       window.alert(payload.error || 'Could not delete the project.');
       return;
@@ -1984,7 +2017,7 @@ const visibilityOptions = [
 
   disarmDelete();
 
-  window.addEventListener('vcd:dev-pending-reverted', () => {
+  scope.listen(window, 'vcd:dev-pending-reverted', () => {
     liveCoverBlobs.forEach((url) => URL.revokeObjectURL(url));
     liveCoverBlobs.clear();
     liveHoverBlobs.forEach((url) => URL.revokeObjectURL(url));
@@ -1997,7 +2030,7 @@ const visibilityOptions = [
     syncPanelActionButtons();
   });
 
-  window.addEventListener('vcd:dev-pending-committed', (event) => {
+  scope.listen(window, 'vcd:dev-pending-committed', (event) => {
     void (async () => {
       const ids = event.detail?.ids;
       const submitted = [...caches.entries()]
@@ -2031,7 +2064,7 @@ const visibilityOptions = [
     })();
   });
 
-  window.addEventListener('vcd:dev-listing-src', (event) => {
+  scope.listen(window, 'vcd:dev-listing-src', (event) => {
     const { slug, slot, src } = event.detail ?? {};
     if (!slug || (slot !== 'image' && slot !== 'hoverImage')) return;
     const item = gridItemForSlug(slug);
@@ -2062,7 +2095,7 @@ const visibilityOptions = [
     }
   });
 
-  window.addEventListener('vcd:dev-project-created', (event) => {
+  scope.listen(window, 'vcd:dev-project-created', (event) => {
     const { slug, title, status, grid } = event.detail || {};
     if (!slug || !grid) return;
     insertCreatedProjectCard({
@@ -2073,7 +2106,7 @@ const visibilityOptions = [
     });
   });
 
-  window.addEventListener('vcd:dev-mode-change', (event) => {
+  scope.listen(window, 'vcd:dev-mode-change', (event) => {
     if (event.detail?.active) {
       enableAllCardEditing();
       return;
@@ -2086,6 +2119,13 @@ const visibilityOptions = [
   if (document.documentElement.classList.contains('is-dev-mode')) {
     enableAllCardEditing();
   }
+  scope.add(() => {
+    unregisterHistoryScope?.();
+    document.documentElement.classList.remove('is-dev-crop-open');
+  });
+  };
+  if (window.__vcdProjectGridPageScope) mountProjectGridEditor();
+  else document.addEventListener('DOMContentLoaded', mountProjectGridEditor, { once: true });
 </script>
 
 <style is:global>

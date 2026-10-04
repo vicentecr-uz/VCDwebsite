@@ -1,4 +1,13 @@
 <script>
+  import { onPageLoad, createPageScope } from '../../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
   const initDraggableDevPanels = () => {
@@ -33,7 +42,7 @@
       const schedulePosition = (left: number, top: number) => {
         pendingLeft = left;
         pendingTop = top;
-        if (frame === null) frame = requestAnimationFrame(applyPendingPosition);
+        if (frame === null) frame = scope.frame(applyPendingPosition);
       };
 
       const commitPosition = (left: number, top: number) => {
@@ -88,7 +97,7 @@
         if (dragHandle.hasPointerCapture(event.pointerId)) dragHandle.releasePointerCapture(event.pointerId);
       };
 
-      dragHandle.addEventListener('pointerdown', (event) => {
+      scope.listen(dragHandle, 'pointerdown', (event) => {
         if (pointerId !== null || event.button !== 0 || event.isPrimary === false || event.target instanceof Element && event.target.closest('[data-drag-ignore]')) return;
         event.preventDefault();
         const rect = anchorToLeftTop();
@@ -106,32 +115,34 @@
         dragHandle.setPointerCapture(event.pointerId);
       });
 
-      dragHandle.addEventListener('pointermove', (event) => {
+      scope.listen(dragHandle, 'pointermove', (event) => {
         if (pointerId !== event.pointerId) return;
         schedulePosition(originLeft + event.clientX - startX, originTop + event.clientY - startY);
       });
 
-      dragHandle.addEventListener('pointerup', endDrag);
-      dragHandle.addEventListener('pointercancel', cancelDrag);
-      dragHandle.addEventListener('lostpointercapture', (event: PointerEvent) => {
+      scope.listen(dragHandle, 'pointerup', endDrag);
+      scope.listen(dragHandle, 'pointercancel', cancelDrag);
+      scope.listen(dragHandle, 'lostpointercapture', (event: PointerEvent) => {
         if (pointerId !== event.pointerId) return;
         commitPosition(pendingLeft, pendingTop);
         pointerId = null;
         panel.classList.remove('is-dragging');
       });
 
-      window.addEventListener('resize', () => {
+      scope.listen(window, 'resize', () => {
         if (!userPositioned || pointerId !== null) return;
         reclampPosition();
       });
 
-      new ResizeObserver(() => {
+      ownObserver(new ResizeObserver(() => {
         if (!userPositioned || !pendingReclamp || pointerId !== null) return;
         reclampPosition();
-      }).observe(panel);
+      })).observe(panel);
     });
   };
 
   initDraggableDevPanels();
-  document.addEventListener('astro:page-load', initDraggableDevPanels);
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
