@@ -280,6 +280,25 @@ test('cached content still gets one opaque paint; both fades use the approved va
   assert.equal(f.tweens[1].vars.opacity, 1);
 });
 
+for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
+  test(`menu reveal notification starts with unveiling, after readiness: ${JSON.stringify(options)}`, async () => {
+    const image = new ImageFixture();
+    const f = fixture({ ...options, images: [image] });
+    const notices: Array<{ opacity: number; tweens: number }> = [];
+    f.document.addEventListener('header:navigation-reveal', () => {
+      notices.push({ opacity: Number(f.overlay.style.opacity), tweens: f.tweens.length });
+    });
+    await f.paint();
+    assert.equal(notices.length, 0);
+    image.load(); image.decoded.resolve(); await flush();
+    assert.equal(notices.length, 1);
+    assert.equal(notices[0].tweens, 0);
+    if (!options.visible) assert.equal(notices[0].opacity, 1);
+    if (options.failTween || options.failUpgrade || options.visible) assert.equal(Number(f.overlay.style.opacity), 0);
+    else assert.equal(f.tweens[0].vars.opacity, 0);
+  });
+}
+
 for (const options of [
   {}, { initialController: true }, { visible: true }, { failTween: true }, { failUpgrade: true },
 ]) {
