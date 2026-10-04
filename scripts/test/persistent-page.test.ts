@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { swapPageContent } from '../../src/lib/persistentPageSwap';
+import { swapPageContent, supportsPersistentPage } from '../../src/lib/persistentPageSwap';
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 
 const windows: Window[] = [];
@@ -172,4 +172,29 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
   const second = hooks.cover();
   await first; expect(firstSettled).toBe(true);
   current!.finish(); await second;
+});
+
+
+test('dev editor islands navigate persistently while unsupported islands remain document surfaces', () => {
+  const win = fixture();
+  const doc = new win.DOMParser().parseFromString(html('About'), 'text/html');
+  const island = doc.createElement('astro-island');
+  island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx');
+  doc.body.append(island);
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  doc.body.setAttribute('data-dev-authoring', '');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/src/components/Unknown.tsx');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+});
+
+test('dev readiness marker stays attached to the retained transition controller across pages', () => {
+  const win = fixture(); const doc = win.document;
+  doc.write(html('About'));
+  const marker = doc.createElement('output'); marker.id = 'transition-readiness-marker'; doc.body.prepend(marker);
+  const incoming = new win.DOMParser().parseFromString(html('Home'), 'text/html');
+  const nextMarker = incoming.createElement('output'); nextMarker.id = marker.id; incoming.body.prepend(nextMarker);
+  swapPageContent(doc as any, incoming as any);
+  expect(doc.getElementById(marker.id)).toBe(marker);
+  expect(marker.isConnected).toBe(true);
 });

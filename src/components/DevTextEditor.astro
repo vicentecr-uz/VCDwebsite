@@ -167,6 +167,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     type ProjectStackSpacingViewport,
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
   type EditableTextValue = string | string[];
   type SpacingValue = ProjectStackSpacingValue;
   type SpacingMap = ProjectStackSpacingResolved;
@@ -327,7 +331,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   };
 
   const initDevTextEditor = () => {
-    if (document.documentElement.dataset.devTextEditorInit === '1') return;
 
 
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
@@ -937,7 +940,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
     syncPageTopSpacingControls();
     syncEmptyZoneState();
-    const scheduleEmptyZoneState = () => requestAnimationFrame(() => {
+    const scheduleEmptyZoneState = () => pageScope.frame(() => {
       syncEmptyZoneState();
       syncIntroRunControls();
       spacingStates.forEach(syncSpacingControl);
@@ -1133,7 +1136,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (gapRevealTimer !== null) window.clearTimeout(gapRevealTimer);
       gapRevealTarget = target;
       gapRevealReadyTarget = null;
-      gapRevealTimer = window.setTimeout(() => {
+      gapRevealTimer = pageScope.timeout(() => {
         gapRevealTimer = null;
         const readyTarget = gapRevealTarget;
         if (!readyTarget || !latestGapPointer) return;
@@ -1348,7 +1351,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // so the closing pill and menu travel with their document anchor.
         unpinGapToolbarTop(state.control);
         state.control.classList.add('is-menu-closing');
-        sectionMenuCloseTimers.set(state.control, window.setTimeout(() => {
+        sectionMenuCloseTimers.set(state.control, pageScope.timeout(() => {
           sectionMenuCloseTimers.delete(state.control);
           state.menu.hidden = true;
           state.control.classList.remove('is-menu-closing');
@@ -1520,7 +1523,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     document.addEventListener('focusin', syncSpacingCaretSuppression, { signal: editorSignal });
     document.addEventListener('focusout', () => {
       // focusout fires before the next focus target is active
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         syncSpacingCaretSuppression();
         // Drop sticky section chrome when leaving a text field so the drag
         // grip doesn't linger after click-away while controls-visible is set.
@@ -2140,7 +2143,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     /*
       Esc / leaving Edit is View mode, not discard. Pending edits stay in the
       DOM and in pendingMedia until Save, Revert, or a real navigation. The
-      leave guard is beforeunload (+ vcd:before-reload) only — do not confirm
+      leave guard covers navigation, beforeunload, and vcd:before-reload — do not confirm
       or revert on vcd:dev-mode-before-exit.
     */
 
@@ -2366,7 +2369,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       sessionStorage.removeItem(SCROLL_RESTORE_KEY);
       const y = Number(raw);
       if (!Number.isFinite(y)) return;
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         window.scrollTo(0, y);
       });
     };
@@ -2912,7 +2915,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncPageTopSpacingControls();
       updateActions();
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         if (type === 'award') {
           built.root.querySelector<HTMLButtonElement>('[data-award-edit]')?.focus({ preventScroll: true });
           return;
@@ -3314,7 +3317,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
-      requestAnimationFrame(syncIntroRunControls);
+      pageScope.frame(syncIntroRunControls);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     }, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-upsert', (event) => {
@@ -4390,7 +4393,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         stickyStatus = '';
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         updateActions();
-        requestAnimationFrame(() => {
+        pageScope.frame(() => {
           heading.focus();
           const range = document.createRange();
           range.selectNodeContents(heading);
@@ -4547,7 +4550,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       stickyStatus = '';
       updateActions();
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         built.textElement.focus();
         if (built.textKind === 'paragraphs') {
           ensureParagraphSelection(built.textElement);
@@ -4698,7 +4701,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       formatBar.classList.add('is-dev-text-format-dismissing');
       formatBar.classList.remove('is-dev-text-format-offscreen');
       formatBar.inert = true;
-      formatDismissTimer = window.setTimeout(() => {
+      formatDismissTimer = pageScope.timeout(() => {
         if (generation !== formatDismissGeneration) return;
         formatDismissTimer = 0;
         linkInput.value = '';
@@ -4728,7 +4731,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // Paint stand-in before focus collapses the native selection (Edge).
         syncFormatSelectionOverlay();
         const generation = formatDismissGeneration;
-        linkInputFocusRaf = requestAnimationFrame(() => {
+        linkInputFocusRaf = pageScope.frame(() => {
           linkInputFocusRaf = 0;
           if (
             !linkPanelOpen
@@ -4981,7 +4984,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       cancelAnimationFrame(formatRaf);
       const generation = formatDismissGeneration;
-      formatRaf = requestAnimationFrame(() => {
+      formatRaf = pageScope.frame(() => {
         formatRaf = 0;
         if (
           generation !== formatDismissGeneration
@@ -5025,7 +5028,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       positionFormatBar(savedFormatRange);
       syncFormatButtons();
       // queryCommandState can lag one frame behind the DOM mutation.
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         if (!savedFormatRange || formatBar.hidden) return;
         syncFormatButtons();
       });
@@ -6546,10 +6549,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     window.addEventListener('vcd:section-nav-editor-change', () => {
       setEditingEnabled(isDevContentEditing());
     }, { signal: editorSignal });
+    pageScope.listen(document, 'astro:before-preparation', (event) => {
+      const draft = { dirty: false };
+      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
+      const hasContentEdits = actionsBusy || pageHistory.busy || draft.dirty
+        || unsavedChangeCount() > persistedMediaInserts.length;
+      // Astro falls back to a document navigation when preparation is prevented,
+      // so the existing beforeunload guard provides the browser's Leave / Stay prompt.
+      if (hasContentEdits) event.preventDefault();
+    });
+
     window.addEventListener('beforeunload', (event) => {
       const draft = { dirty: false };
       window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
-      const hasContentEdits = actionsBusy || draft.dirty
+      const hasContentEdits = actionsBusy || pageHistory.busy || draft.dirty
         || unsavedChangeCount() > persistedMediaInserts.length;
       if (!hasContentEdits) return;
       event.preventDefault();
@@ -6559,18 +6572,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     setEditingEnabled(isDevContentEditing());
   };
 
-  if (import.meta.hot) {
-    import.meta.hot.dispose(() => {
-      editorAbortController?.abort();
-      editorAbortController = null;
-      if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
-      branchUpdatePollTimer = null;
-      disposeDevSectionOutlineSync();
-      delete document.documentElement.dataset.devTextEditorInit;
-    });
-  }
-
   initDevTextEditor();
+  return () => {
+    pageScope.destroy();
+    editorAbortController?.abort();
+    editorAbortController = null;
+    if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
+    branchUpdatePollTimer = null;
+    disposeDevSectionOutlineSync();
+    pageHistory.clear();
+    delete document.documentElement.dataset.devTextEditorInit;
+  };
+  });
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style is:global>

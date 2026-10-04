@@ -5,7 +5,7 @@ import * as geometry from '../../src/lib/imageLightbox';
 
 const script = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8')
   .match(/<script>([\s\S]*?)<\/script>/)![1];
-const source = script.slice(0, script.indexOf('  const disposers'))
+const source = script.slice(0, script.indexOf('  import { onPageLoad }'))
   .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];

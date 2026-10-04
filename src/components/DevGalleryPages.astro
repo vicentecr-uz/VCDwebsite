@@ -32,6 +32,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 </DevOverlay>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { projectImage } from '../lib/images';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
@@ -48,6 +49,15 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     type ImageVariants,
   } from '../lib/responsiveImage';
   import { pageHistory, registerHistoryScope } from '../lib/devHistory';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
 
   /** @typedef {{
    *   slug: string,
@@ -77,8 +87,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const root = document.querySelector<HTMLElement>('[data-dev-gallery-pages]');
     const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
     if (!root || !panel) return;
-    if (root.dataset.initialized === 'true') return;
-    root.dataset.initialized = 'true';
 
     const gridEl = root.querySelector<HTMLElement>('[data-gallery-grid]');
     const statusEl = root.querySelector<HTMLElement>('[data-gallery-status]');
@@ -116,6 +124,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     let layoutCapsRaf = 0;
     let historyScope: ReturnType<typeof pageHistory.scope> | null = null;
     let unregisterHistoryScope: (() => void) | null = null;
+    scope.add(() => unregisterHistoryScope?.());
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const readLandscapeDefaultInnerWidth = () => {
@@ -200,7 +209,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const scheduleLayoutCaps = () => {
       if (layoutCapsRaf) return;
-      layoutCapsRaf = requestAnimationFrame(() => {
+      layoutCapsRaf = scope.frame(() => {
         layoutCapsRaf = 0;
         applyLayoutCaps();
       });
@@ -310,7 +319,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const attachCardDrag = (card: HTMLElement, button: HTMLElement, page: GalleryPage, isOn: boolean) => {
       if (!isOn) return;
 
-      button.addEventListener('pointerdown', (event: PointerEvent) => {
+      scope.listen(button, 'pointerdown', (event: PointerEvent) => {
         if (event.button !== 0 || drag) return;
         card.classList.add('is-pressing');
         const pointerId = event.pointerId;
@@ -423,7 +432,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
               if (!invertX && !invertY) continue;
               el.style.transition = 'none';
               el.style.transform = `translate(${invertX}px, ${invertY}px)`;
-              requestAnimationFrame(() => {
+              scope.frame(() => {
                 el.style.transition = '';
                 el.style.transform = '';
               });
@@ -453,9 +462,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
         drag = { pointerId, slug: page.slug, cancel: abort };
 
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', onUp);
-        document.addEventListener('pointercancel', onCancel);
+        scope.listen(document, 'pointermove', onMove);
+        scope.listen(document, 'pointerup', onUp);
+        scope.listen(document, 'pointercancel', onCancel);
       });
     };
 
@@ -826,7 +835,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         // Native <img> drag hijacks the pointer once it starts — it never fires pointermove,
         // so the custom reorder drag couldn't clear its threshold. Kill native drag outright.
         thumb.draggable = false;
-        thumb.addEventListener('dragstart', (event) => event.preventDefault());
+        scope.listen(thumb, 'dragstart', (event) => event.preventDefault());
 
         if (page.hasCover) {
           const img = document.createElement('img');
@@ -852,9 +861,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         );
         badge.setAttribute('aria-pressed', isOn ? 'true' : 'false');
         badge.draggable = false;
-        badge.addEventListener('dragstart', (event) => event.preventDefault());
+        scope.listen(badge, 'dragstart', (event) => event.preventDefault());
 
-        badge.addEventListener('click', () => {
+        scope.listen(badge, 'click', () => {
           const before = gallerySnapshot();
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
@@ -885,8 +894,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       setStatus('Loading…');
       const requestedGrid = activeGrid;
       loadPromise = (async () => {
-        const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(requestedGrid)}`);
+        const response = await pageFetch(`/api/gallery-membership?grid=${encodeURIComponent(requestedGrid)}`);
         const payload = await response.json();
+      scope.signal.throwIfAborted();
         if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
         if (activeGrid !== requestedGrid) return;
         pages = Array.isArray(payload.pages) ? payload.pages : [];
@@ -932,7 +942,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     };
 
     filterButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      scope.listen(button, 'click', () => {
         const next = button.getAttribute('data-gallery-filter');
         if (next !== 'all' && next !== 'on' && next !== 'off') return;
         filter = next;
@@ -943,7 +953,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       });
     });
 
-    document.addEventListener('keydown', (event) => {
+    scope.listen(document, 'keydown', (event) => {
       if (event.key === 'Escape' && drag) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -966,7 +976,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       closePanel();
     }, true);
 
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    scope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       if (!activeGrid) return;
       const ids = event.detail?.ids;
       if (Array.isArray(ids) && !ids.includes(`gallery-membership:${activeGrid}`)) return;
@@ -980,23 +990,26 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       renderGrid();
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active) return;
       if (drag) drag.cancel();
       if (!panel.hidden) closePanel();
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+    scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
       if (event.detail?.panel !== panel) return;
       scheduleLayoutCaps();
     }) as EventListener);
 
-    new MutationObserver(() => {
+    ownObserver(new MutationObserver(() => {
       if (!panel.hidden) scheduleLayoutCaps();
-    }).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
+    })).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
   };
 
   initDevGalleryPages();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style is:global>

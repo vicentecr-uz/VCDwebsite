@@ -39,6 +39,12 @@ const shortcuts = [
 </div>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
   const initDevShortcutsHelp = () => {
     const root = document.querySelector('[data-dev-shortcuts-help]');
     const veil = document.querySelector('[data-dev-shortcuts-veil]');
@@ -61,13 +67,13 @@ const shortcuts = [
       const requestId = ++versionRequestId;
       if (showVersion) {
         version.textContent = 'Version…';
-        fetch('/api/dev-branch-update', { cache: 'no-store' })
+        pageFetch('/api/dev-branch-update', { cache: 'no-store' })
           .then((response) => {
             if (!response.ok) throw new Error('Version unavailable');
             return response.json();
           })
           .then((state) => {
-            if (requestId !== versionRequestId) return;
+            if (scope.signal.aborted || requestId !== versionRequestId) return;
             if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
             const identity = `${state.branch} · ${state.revision.slice(0, 7)}${state.clean ? '' : ' · Local changes'}`;
             let comparison;
@@ -99,16 +105,16 @@ const shortcuts = [
       else open(showVersion);
     };
 
-    veil.addEventListener('click', (event) => {
+    scope.listen(veil, 'click', (event) => {
       if (event.target !== veil) return;
       close();
     });
 
-    card.addEventListener('click', (event) => {
+    scope.listen(card, 'click', (event) => {
       event.stopPropagation();
     });
 
-    document.addEventListener('keydown', (event) => {
+    scope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyH') {
         if (isTypingTarget(event.target)) return;
         event.preventDefault();
@@ -126,6 +132,9 @@ const shortcuts = [
   };
 
   initDevShortcutsHelp();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

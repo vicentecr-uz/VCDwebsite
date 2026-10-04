@@ -102,6 +102,15 @@ const hideSvg = trafficLightIcon(xIcon);
 </aside>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+
   const MOTION_MS = 180;
   const EMBEDDED_RESTORE_MS = 1000;
   /* CSS rest is 60 (above the header's 50). Stay below the save bar (90).
@@ -127,8 +136,6 @@ const hideSvg = trafficLightIcon(xIcon);
   const nativeHidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
 
   const initDevOverlay = (overlay: HTMLElement) => {
-    if (overlay.dataset.initialized === 'true') return;
-    overlay.dataset.initialized = 'true';
 
     const embedded = overlay.hasAttribute('data-embedded');
     const storageKeyRaw = overlay.dataset.storageKey?.trim() || 'default';
@@ -320,7 +327,7 @@ const hideSvg = trafficLightIcon(xIcon);
           delete overlay.dataset.restoredHeight;
         }
         if (wasMinimized) {
-          requestAnimationFrame(() => {
+          scope.frame(() => {
             expanding = false;
             portraitScheduleConstrain?.();
           });
@@ -368,8 +375,8 @@ const hideSvg = trafficLightIcon(xIcon);
       // Start from the resting "closed" pose, then open on the next frame.
       overlay.classList.remove('is-dev-overlay-open');
       void overlay.offsetWidth;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      scope.frame(() => {
+        scope.frame(() => {
           if (!wantVisible) return;
           overlay.classList.add('is-dev-overlay-open');
         });
@@ -399,7 +406,7 @@ const hideSvg = trafficLightIcon(xIcon);
       // Catalog: keep the in-flow box (no [hidden]) so the well does not
       // collapse, then restore after 1s. Live: fade, then display:none.
       if (embedded) {
-        motionTimer = window.setTimeout(() => {
+        motionTimer = scope.timeout(() => {
           if (generation !== motionGeneration || wantVisible) return;
           showOverlay();
         }, EMBEDDED_RESTORE_MS);
@@ -426,7 +433,7 @@ const hideSvg = trafficLightIcon(xIcon);
       }
 
       // Fallback if transitionend is skipped (display/tab backgrounded, etc.).
-      motionTimer = window.setTimeout(() => finishHide(generation), MOTION_MS + 50);
+      motionTimer = scope.timeout(() => finishHide(generation), MOTION_MS + 50);
     };
 
     if (nativeHidden?.get && nativeHidden?.set) {
@@ -568,7 +575,7 @@ const hideSvg = trafficLightIcon(xIcon);
 
       const scheduleConstrain = () => {
         if (constrainRaf) return;
-        constrainRaf = requestAnimationFrame(() => {
+        constrainRaf = scope.frame(() => {
           constrainRaf = 0;
           constrainPortraitHeight();
         });
@@ -576,7 +583,7 @@ const hideSvg = trafficLightIcon(xIcon);
 
       portraitScheduleConstrain = scheduleConstrain;
 
-      new MutationObserver(scheduleConstrain).observe(body, {
+      ownObserver(new MutationObserver(scheduleConstrain)).observe(body, {
         childList: true,
         subtree: true,
         characterData: true,
@@ -589,12 +596,12 @@ const hideSvg = trafficLightIcon(xIcon);
       // A `field-sizing: content` textarea grows on typed `value` changes,
       // which is neither DOM text content nor an attribute, so the
       // MutationObserver above never fires for it — catch it via `input`.
-      body.addEventListener('input', scheduleConstrain);
-      window.addEventListener('resize', scheduleConstrain);
+      scope.listen(body, 'input', scheduleConstrain);
+      scope.listen(window, 'resize', scheduleConstrain);
     }
 
     let lastObservedHeight: number | null = null;
-    new ResizeObserver((entries) => {
+    ownObserver(new ResizeObserver((entries) => {
       const entry = entries[0];
       const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
       const previous = lastObservedHeight;
@@ -620,7 +627,7 @@ const hideSvg = trafficLightIcon(xIcon);
         }
       }
       portraitScheduleConstrain?.();
-    }).observe(overlay);
+    })).observe(overlay);
 
     restorePosition();
 
@@ -635,7 +642,7 @@ const hideSvg = trafficLightIcon(xIcon);
       pendingDx = dx;
       pendingDy = dy;
       if (dragRaf) return;
-      dragRaf = requestAnimationFrame(() => {
+      dragRaf = scope.frame(() => {
         dragRaf = 0;
         overlay.style.translate = `${pendingDx}px ${pendingDy}px`;
       });
@@ -659,7 +666,7 @@ const hideSvg = trafficLightIcon(xIcon);
     };
 
     if (!embedded) {
-      dragHandle.addEventListener('pointerdown', (event) => {
+      scope.listen(dragHandle, 'pointerdown', (event) => {
         if (event.button !== 0) return;
         if (overlay.classList.contains('is-resizing')) return;
         const target = event.target as HTMLElement | null;
@@ -676,13 +683,13 @@ const hideSvg = trafficLightIcon(xIcon);
         dragHandle.setPointerCapture(event.pointerId);
       });
 
-      dragHandle.addEventListener('pointermove', (event) => {
+      scope.listen(dragHandle, 'pointermove', (event) => {
         if (dragPointerId !== event.pointerId) return;
         scheduleDragTranslate(event.clientX - dragStartX, event.clientY - dragStartY);
       });
 
-      dragHandle.addEventListener('pointerup', endDrag);
-      dragHandle.addEventListener('pointercancel', endDrag);
+      scope.listen(dragHandle, 'pointerup', endDrag);
+      scope.listen(dragHandle, 'pointercancel', endDrag);
     }
 
     const resizeLayer = overlay.querySelector<HTMLElement>('[data-resize-handles]');
@@ -777,13 +784,13 @@ const hideSvg = trafficLightIcon(xIcon);
         pendingResizeX = clientX;
         pendingResizeY = clientY;
         if (resizeRaf) return;
-        resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = scope.frame(() => {
           resizeRaf = 0;
           applyResizeFrame(pendingResizeX, pendingResizeY);
         });
       };
 
-      resizeLayer.addEventListener('pointerdown', (event) => {
+      scope.listen(resizeLayer, 'pointerdown', (event) => {
         if (event.button !== 0) return;
         if (overlay.classList.contains('is-minimized')) return;
         if (overlay.classList.contains('is-dragging')) return;
@@ -840,7 +847,7 @@ const hideSvg = trafficLightIcon(xIcon);
         handle.setPointerCapture(event.pointerId);
       });
 
-      resizeLayer.addEventListener('pointermove', (event) => {
+      scope.listen(resizeLayer, 'pointermove', (event) => {
         if (resizePointerId !== event.pointerId) return;
         scheduleResize(event.clientX, event.clientY);
       });
@@ -868,17 +875,17 @@ const hideSvg = trafficLightIcon(xIcon);
         resizeHandle = null;
       };
 
-      resizeLayer.addEventListener('pointerup', endResize);
-      resizeLayer.addEventListener('pointercancel', endResize);
+      scope.listen(resizeLayer, 'pointerup', endResize);
+      scope.listen(resizeLayer, 'pointercancel', endResize);
     }
 
-    hideBtn?.addEventListener('click', (event) => {
+    scope.listen(hideBtn, 'click', (event) => {
       event.stopPropagation();
       hideOverlay();
     });
 
     if (!embedded) {
-      window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
+      scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
         const { trigger, panel, clientX, clientY } = event.detail ?? {};
         if (panel !== overlay || !(trigger instanceof HTMLElement)) return;
         if (overlay.classList.contains('is-minimized')) setMinimized(false);
@@ -888,10 +895,10 @@ const hideSvg = trafficLightIcon(xIcon);
           if (w <= 0 || h <= 0) return;
           placeBesideTrigger(trigger, clientX, clientY);
         };
-        requestAnimationFrame(() => requestAnimationFrame(place));
+        scope.frame(() => scope.frame(place));
       }) as EventListener);
 
-      window.addEventListener('vcd:dev-edit-open-at', ((event: CustomEvent<{ panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
+      scope.listen(window, 'vcd:dev-edit-open-at', ((event: CustomEvent<{ panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
         const { panel, clientX, clientY } = event.detail ?? {};
         if (panel !== overlay || typeof clientX !== 'number' || typeof clientY !== 'number') return;
         if (overlay.classList.contains('is-minimized')) setMinimized(false);
@@ -901,16 +908,16 @@ const hideSvg = trafficLightIcon(xIcon);
           if (w <= 0 || h <= 0) return;
           applyPosition(clientX - w / 2, clientY - h / 2, true);
         };
-        requestAnimationFrame(() => requestAnimationFrame(place));
+        scope.frame(() => scope.frame(place));
       }) as EventListener);
     }
 
-    minimizeBtn?.addEventListener('click', (event) => {
+    scope.listen(minimizeBtn, 'click', (event) => {
       event.stopPropagation();
       setMinimized(!overlay.classList.contains('is-minimized'));
     });
 
-    overlay.addEventListener('transitionend', (event) => {
+    scope.listen(overlay, 'transitionend', (event) => {
       if (event.target !== overlay) return;
       if (event.propertyName !== 'opacity') return;
       if (wantVisible) return;
@@ -918,16 +925,19 @@ const hideSvg = trafficLightIcon(xIcon);
     });
 
     if (!embedded) {
-      overlay.addEventListener('pointerdown', () => {
+      scope.listen(overlay, 'pointerdown', () => {
         raiseOverlay(overlay);
       });
-      window.addEventListener('resize', () => {
+      scope.listen(window, 'resize', () => {
         applyPreferredPosition();
       });
     }
   };
 
   document.querySelectorAll<HTMLElement>('[data-dev-overlay]').forEach(initDevOverlay);
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

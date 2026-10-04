@@ -280,8 +280,16 @@ if (typeof window !== 'undefined') {
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
-  import.meta.hot?.dispose(() => {
+  const cleanup = () => {
     globalWindow[prototypeKey]?.abort();
     delete globalWindow[prototypeKey];
+  };
+  document.addEventListener('astro:before-swap', cleanup);
+  document.addEventListener('astro:page-load', boot);
+  import.meta.hot?.dispose(() => {
+    cleanup();
+    document.removeEventListener('DOMContentLoaded', boot);
+    document.removeEventListener('astro:before-swap', cleanup);
+    document.removeEventListener('astro:page-load', boot);
   });
 }

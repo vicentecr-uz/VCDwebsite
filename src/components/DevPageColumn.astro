@@ -16,6 +16,15 @@
 ---
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+
   const wrapper = document.querySelector<HTMLElement>('#site-wrapper');
   const zone = document.querySelector<HTMLElement>('[data-dev-project-drop-zone]');
 
@@ -84,20 +93,23 @@
     const schedule = () => {
       if (queued) return;
       queued = true;
-      requestAnimationFrame(() => {
+      scope.frame(() => {
         queued = false;
         sync();
       });
     };
 
-    new MutationObserver(schedule).observe(zone, {
+    ownObserver(new MutationObserver(schedule)).observe(zone, {
       childList: true,
       subtree: true,
       attributes: true,
       attributeFilter: ['data-dev-constrained', 'class'],
     });
 
-    document.addEventListener('vcd:dev-pending-committed', schedule);
+    scope.listen(document, 'vcd:dev-pending-committed', schedule);
     schedule();
   }
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
