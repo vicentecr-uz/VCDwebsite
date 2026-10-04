@@ -268,6 +268,7 @@ const selectedAnchor = (section: HTMLElement, range: Range | null): { anchor: Te
 };
 
 const closeStage = () => {
+  closeDrawingMenu();
   editingImages.forEach((image) => image.style.removeProperty('display'));
   editingImages = [];
   activeDrawRef = null;
@@ -543,67 +544,248 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   });
 };
 
-const showManage = (target: Target, button: HTMLButtonElement) => {
-  document.querySelectorAll('.site-draw-menu').forEach((menu) => menu.remove());
-  const menu = document.createElement('div');
-  menu.className = 'site-draw-menu dev-surface';
-  const entry = annotationsFor(target);
-  const selected = savedSelection;
-  entry.current.forEach((annotation, index) => {
-    const label = `${annotation.kind === 'highlight' ? 'Highlight' : 'Doodle'} ${index + 1}`;
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'dev-btn dev-btn--page';
-    edit.textContent = `Edit ${label}`;
-    edit.addEventListener('click', () => { menu.remove(); startDrawing(target, null, annotation); });
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'dev-btn dev-btn--page';
-    remove.textContent = `Delete ${label}`;
-    remove.addEventListener('click', () => {
-      entry.current = entry.current.filter((item) => item.id !== annotation.id);
-      pushPending(target);
-      menu.remove();
-    });
-    const mobile = document.createElement('button');
-    mobile.type = 'button';
-    mobile.className = 'dev-btn dev-btn--page';
-    mobile.dataset.siteDrawMobile = '';
-    mobile.textContent = `Show ${label} on phone`;
-    mobile.setAttribute('aria-pressed', String(annotation.mobile === 'show'));
-    mobile.addEventListener('click', () => {
-      entry.current[index] = { ...annotation, mobile: annotation.mobile === 'show' ? 'hide' : 'show' };
-      pushPending(target);
-      menu.remove();
-    });
-    menu.append(edit, mobile, remove);
-    if (annotation.blockAnchor?.itemPath) {
-      const reattach = document.createElement('button');
-      reattach.type = 'button';
-      reattach.className = 'dev-btn dev-btn--page';
-      reattach.textContent = `Reattach ${label} to block`;
-      reattach.addEventListener('click', () => {
-        entry.current[index] = { ...annotation, blockAnchor: { surface: 'block' } };
-        pushPending(target);
-        menu.remove();
-      });
-      menu.append(reattach);
-    }
-    if (selected && annotation.anchor && !annotation.textParts?.length) {
-      const reattach = document.createElement('button');
-      reattach.type = 'button';
-      reattach.className = 'dev-btn dev-btn--page';
-      reattach.textContent = `Reattach ${label}`;
-      reattach.addEventListener('click', () => {
-        entry.current[index] = { ...annotation, anchor: selected.anchor };
-        pushPending(target);
-        menu.remove();
-      });
-      menu.append(reattach);
-    }
-  });
-  button.after(menu);
+let activeDrawingMenu: { menu: HTMLElement; target: Target; button: HTMLButtonElement; detailId: string | null; rows: HTMLButtonElement[]; lastId?: string } | null = null;
+const previewSources = new Map<HTMLImageElement, string>();
+let suppressDrawingMenuClick = false;
+
+const restoreDrawingPreview = () => {
+  previewSources.forEach((src, image) => { image.src = src; });
+  previewSources.clear();
 };
+
+const closeDrawingMenu = (restoreFocus = false) => {
+  if (!activeDrawingMenu) return;
+  restoreDrawingPreview();
+  activeDrawingMenu.menu.hidePopover?.();
+  activeDrawingMenu.menu.classList.remove('is-open');
+  activeDrawingMenu.menu.remove();
+  const button = activeDrawingMenu.button;
+  activeDrawingMenu = null;
+  button.setAttribute('aria-expanded', 'false');
+  document.documentElement.removeAttribute('data-site-draw-menu-open');
+  if (restoreFocus) button.focus();
+};
+
+const previewDrawing = (target: Target, annotation: SiteAnnotation) => {
+  restoreDrawingPreview();
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--ref-palette-blue-500').trim()
+    || document.documentElement.style.getPropertyValue('--ref-palette-blue-500').trim();
+  if (!color) return;
+  const clone = structuredClone(annotation);
+  clone.strokes = clone.strokes.map((stroke) => stroke.erase ? stroke : { ...stroke, color });
+  [...target.section.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
+    .filter((image) => image.dataset.siteAnnotation === annotation.id).forEach((image) => {
+    previewSources.set(image, image.src);
+    const part = image.dataset.siteAnnotationPart;
+    const slice = image.dataset.siteAnnotationSlice;
+    const stroke = image.dataset.siteAnnotationStroke;
+    const source = part !== undefined
+      ? siteAnnotationSvg(clone, { partIndex: Number(part), sliceIndex: Number(slice) })
+      : stroke !== undefined ? siteAnnotationSvg(clone, { strokeIndex: Number(stroke) }) : siteAnnotationSvg(clone);
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+    });
+};
+
+const positionDrawingMenu = (menu: HTMLElement, button: HTMLElement) => {
+  const rect = button.getBoundingClientRect();
+  const width = Math.max(0, Math.min(220, window.innerWidth - 24));
+  const heightAvailable = Math.max(0, window.innerHeight - 24);
+  menu.style.width = `${width}px`;
+  menu.style.maxHeight = `${heightAvailable}px`;
+  const height = menu.getBoundingClientRect().height;
+  const clamp = (value: number, size: number, limit: number) => Math.max(12, Math.min(Math.max(12, limit - size - 12), value));
+  const candidates = [
+    { left: rect.right - width, top: rect.top - height - 8 },
+    { left: rect.right - width, top: rect.bottom + 8 },
+    { left: rect.right + 8, top: rect.top },
+    { left: rect.left - width - 8, top: rect.top },
+  ].map((candidate) => ({
+    left: clamp(candidate.left, width, window.innerWidth),
+    top: clamp(candidate.top, height, window.innerHeight),
+  }));
+  const zones = [...document.querySelectorAll<HTMLElement>('[data-site-annotation]')]
+    .filter((image) => {
+      const style = getComputedStyle(image);
+      return style.visibility !== 'hidden' && style.display !== 'none';
+    })
+    .map((image) => {
+      const rect = annotationVisibleRect(image);
+      // Renderer-owned pixel inset shorthand; keep this ceiling aligned with positionSiteAnnotations.
+      const clip = image.style.clipPath.match(/^inset\((-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\)$/);
+      if (!clip) return rect;
+      const values = clip.slice(1).filter((value): value is string => value !== undefined).map(Number);
+      if (!values.length || !values.every(Number.isFinite)) return rect;
+      const [top, right = top, bottom = top, left = right] = values;
+      return new DOMRect(rect.left + left, rect.top + top,
+        Math.max(0, rect.width - left - right), Math.max(0, rect.height - top - bottom));
+    })
+    .filter((image) => image.width > 0 && image.height > 0)
+    .map((image) => ({ left: image.left - 8, top: image.top - 8, right: image.right + 8, bottom: image.bottom + 8 }));
+  zones.push({ left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom });
+  const overlap = (candidate: { left: number; top: number }) => zones.reduce((total, zone) => total
+    + Math.max(0, Math.min(candidate.left + width, zone.right) - Math.max(candidate.left, zone.left))
+      * Math.max(0, Math.min(candidate.top + height, zone.bottom) - Math.max(candidate.top, zone.top)), 0);
+  const chosen = candidates.reduce((best, candidate) => {
+    const score = overlap(candidate);
+    return score < best.score ? { candidate, score } : best;
+  }, { candidate: candidates[0], score: Number.POSITIVE_INFINITY }).candidate;
+  menu.style.left = `${chosen.left}px`;
+  menu.style.top = `${chosen.top}px`;
+};
+
+const menuButton = (text: string, onClick: () => void) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'dev-select__option dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill';
+  button.setAttribute('role', 'menuitem');
+  button.textContent = text;
+  button.addEventListener('click', onClick);
+  return button;
+};
+
+const renderDrawingMenu = (detailId: string | null) => {
+  const active = activeDrawingMenu;
+  if (!active) return;
+  restoreDrawingPreview();
+  const retainMobileFocus = document.activeElement?.getAttribute('data-site-draw-mobile') === '';
+  active.detailId = detailId;
+  active.rows = [];
+  active.menu.replaceChildren();
+  const entry = annotationsFor(active.target);
+  const selected = savedSelection;
+  if (detailId) {
+    const annotation = entry.current.find((item) => item.id === detailId);
+    if (!annotation) return closeDrawingMenu();
+    const label = `${annotation.kind === 'highlight' ? 'Highlight' : 'Doodle'} ${entry.current.indexOf(annotation) + 1}`;
+    const group = document.createElement('div');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', label);
+    const heading = document.createElement('div');
+    heading.className = 'dev-select__group-label';
+    heading.textContent = label;
+    group.append(heading);
+    if (entry.current.length > 1) active.menu.append(menuButton('Back', () => {
+      const id = active.lastId;
+      renderDrawingMenu(null);
+      const nextRow = active.rows.find((candidate) => candidate.dataset.siteDrawMenuAnnotation === id);
+      nextRow?.focus();
+    }));
+    const edit = menuButton('Edit', () => {
+      closeDrawingMenu();
+      startDrawing(active.target, null, annotation);
+    });
+    const mobile = menuButton(`${annotation.mobile === 'show' ? 'Showing' : 'Hidden'} on phone`, () => {
+      const current = annotationsFor(active.target).current.find((item) => item.id === annotation.id);
+      if (!current) return;
+      current.mobile = current.mobile === 'show' ? 'hide' : 'show';
+      pushPending(active.target);
+      renderDrawingMenu(annotation.id);
+    });
+    mobile.dataset.siteDrawMobile = '';
+    mobile.setAttribute('role', 'menuitemcheckbox');
+    mobile.setAttribute('aria-checked', String(annotation.mobile === 'show'));
+    const remove = menuButton('Delete', () => {
+      const currentEntry = annotationsFor(active.target);
+      currentEntry.current = currentEntry.current.filter((item) => item.id !== annotation.id);
+      pushPending(active.target);
+      if (currentEntry.current.length) renderDrawingMenu(currentEntry.current.length === 1 ? currentEntry.current[0].id : null);
+      else closeDrawingMenu(true);
+    });
+    group.append(edit, mobile, remove);
+    if (annotation.blockAnchor?.itemPath) group.append(menuButton(`Reattach ${label} to block`, () => {
+      const current = annotationsFor(active.target).current.find((item) => item.id === annotation.id);
+      if (!current) return;
+      current.blockAnchor = { surface: 'block' };
+      pushPending(active.target);
+      renderDrawingMenu(annotation.id);
+    }));
+    if (selected && annotation.anchor && !annotation.textParts?.length) group.append(menuButton(`Reattach ${label}`, () => {
+      const current = annotationsFor(active.target).current.find((item) => item.id === annotation.id);
+      if (!current) return;
+      current.anchor = selected.anchor;
+      pushPending(active.target);
+      renderDrawingMenu(annotation.id);
+    }));
+    active.menu.append(group);
+    if (retainMobileFocus) mobile.focus();
+    else edit.focus();
+  } else {
+    const heading = document.createElement('div');
+    heading.className = 'dev-select__group-label';
+    heading.textContent = 'Drawings';
+    active.menu.append(heading);
+    entry.current.forEach((annotation, index) => {
+      const label = `${annotation.kind === 'highlight' ? 'Highlight' : 'Doodle'} ${index + 1}`;
+      const row = menuButton(label, () => {
+        active.lastId = annotation.id;
+        renderDrawingMenu(annotation.id);
+      });
+      row.dataset.siteDrawMenuAnnotation = annotation.id;
+      row.setAttribute('aria-haspopup', 'menu');
+      row.addEventListener('pointerenter', () => previewDrawing(active.target, annotation));
+      row.addEventListener('pointerleave', restoreDrawingPreview);
+      row.addEventListener('focus', () => previewDrawing(active.target, annotation));
+      row.addEventListener('blur', restoreDrawingPreview);
+      active.rows.push(row);
+      active.menu.append(row);
+    });
+  }
+  positionDrawingMenu(active.menu, active.button);
+};
+
+const showManage = (target: Target, button: HTMLButtonElement) => {
+  closeDrawingMenu();
+  const menu = document.createElement('div');
+  menu.className = 'site-draw-menu dev-select__listbox dev-surface';
+  menu.setAttribute('popover', 'manual');
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Drawings');
+  activeDrawingMenu = { menu, target, button, detailId: null, rows: [] };
+  button.setAttribute('aria-expanded', 'true');
+  button.setAttribute('aria-haspopup', 'menu');
+  document.documentElement.setAttribute('data-site-draw-menu-open', 'true');
+  document.dispatchEvent(new Event('dev:clear-gap-proximity'));
+  document.body.append(menu);
+  renderDrawingMenu(annotationsFor(target).current.length === 1 ? annotationsFor(target).current[0].id : null);
+  let nativePopover = false;
+  try {
+    if (menu.showPopover) {
+      menu.showPopover();
+      nativePopover = true;
+    }
+  } catch { /* Native popovers are unavailable in older browsers. */ }
+  if (!nativePopover) menu.classList.add('is-open');
+  positionDrawingMenu(menu, button);
+  menu.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus();
+};
+
+document.addEventListener('pointerdown', (event) => {
+  suppressDrawingMenuClick = false;
+  const active = activeDrawingMenu;
+  if (!active || active.menu.contains(event.target as Node) || active.button.contains(event.target as Node)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  suppressDrawingMenuClick = true;
+  if (active.detailId && annotationsFor(active.target).current.length > 1) {
+    const id = active.detailId;
+    renderDrawingMenu(null);
+    active.rows.find((row) => row.dataset.siteDrawMenuAnnotation === id)?.focus();
+  }
+  else closeDrawingMenu(true);
+}, { capture: true, signal: lifecycle.signal });
+document.addEventListener('pointercancel', () => { suppressDrawingMenuClick = false; }, { capture: true, signal: lifecycle.signal });
+document.addEventListener('click', (event) => {
+  if (!suppressDrawingMenuClick) return;
+  suppressDrawingMenuClick = false;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}, { capture: true, signal: lifecycle.signal });
+window.addEventListener('resize', () => {
+  if (activeDrawingMenu) positionDrawingMenu(activeDrawingMenu.menu, activeDrawingMenu.button);
+}, { signal: lifecycle.signal });
+window.addEventListener('scroll', () => {
+  if (activeDrawingMenu) positionDrawingMenu(activeDrawingMenu.menu, activeDrawingMenu.button);
+}, { capture: true, signal: lifecycle.signal });
 
 const bindButtons = () => {
   for (const section of document.querySelectorAll<HTMLElement>('[data-dev-content-id][data-dev-spacing-document]')) {
@@ -626,12 +808,20 @@ const bindButtons = () => {
     manage.type = 'button';
     manage.className = 'dev-btn dev-btn--page';
     manage.dataset.siteDrawManage = '';
+    manage.setAttribute('aria-expanded', 'false');
+    manage.setAttribute('aria-haspopup', 'menu');
     manage.addEventListener('pointerdown', () => {
       const selection = window.getSelection();
       savedSelection = selection && !selection.isCollapsed && selection.rangeCount
         ? selectedAnchor(section, selection.getRangeAt(0)) : null;
     });
-    manage.addEventListener('click', () => showManage(target, manage));
+    manage.addEventListener('click', () => {
+      if (activeDrawingMenu?.button === manage) {
+        if (activeDrawingMenu.detailId && annotationsFor(target).current.length > 1) renderDrawingMenu(null);
+        else closeDrawingMenu(true);
+      }
+      else showManage(target, manage);
+    });
     controls.append(manage);
     section.append(controls);
     updateCount(target);
@@ -786,6 +976,35 @@ window.visualViewport?.addEventListener('resize', launcherViewportChanged, { sig
 window.visualViewport?.addEventListener('scroll', launcherViewportChanged, { signal: lifecycle.signal });
 
 window.addEventListener('keydown', (event) => {
+  suppressDrawingMenuClick = false;
+  if (activeDrawingMenu) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (activeDrawingMenu.detailId && annotationsFor(activeDrawingMenu.target).current.length > 1) {
+        const id = activeDrawingMenu.detailId;
+        renderDrawingMenu(null);
+        activeDrawingMenu.rows.find((row) => row.dataset.siteDrawMenuAnnotation === id)?.focus();
+      }
+      else closeDrawingMenu(true);
+      return;
+    }
+    if (event.key === 'Tab') {
+      closeDrawingMenu(true);
+      return;
+    }
+    const menuItems = [...activeDrawingMenu.menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')];
+    if (menuItems.length && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const current = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? menuItems.length - 1
+        : current < 0 ? (event.key === 'ArrowUp' ? menuItems.length - 1 : 0)
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + menuItems.length) % menuItems.length;
+      menuItems[next < 0 ? menuItems.length - 1 : next].focus();
+      return;
+    }
+  }
   if (stage) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -817,6 +1036,7 @@ window.addEventListener('vcd:dev-mode-change', (event) => {
   syncLauncher(active);
 }, { signal: lifecycle.signal });
 const syncTargets = () => {
+  closeDrawingMenu();
   bindButtons();
   for (const [key, entry] of state) {
     if (entry.target.section.isConnected) pushPending(entry.target);
@@ -846,6 +1066,7 @@ window.addEventListener('vcd:site-annotations-saved', (event) => {
   if (entry) entry.original = structuredClone(entry.current);
 }, { signal: lifecycle.signal });
 document.addEventListener('astro:page-load', () => {
+  closeDrawingMenu();
   closeStage();
   state.clear();
   bindButtons();
