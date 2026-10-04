@@ -100,7 +100,7 @@ test('page history restores each image background independently, including trans
   expect(a.dataset.devImageBackground).toBe('#ff0000');
 });
 
-const backgroundChangeBody = source.slice(source.indexOf('    const changeBackground ='), source.indexOf("    backgroundInput?.addEventListener('change'"));
+const backgroundChangeBody = source.slice(source.indexOf('    const changeBackground ='), source.indexOf("    pageScope.listen(backgroundInput, 'change'"));
 const backgroundChangeScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(backgroundChangeBody);
 
 test('background control tracks a reversible change and rejects invalid colour input', () => {

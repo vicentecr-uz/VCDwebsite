@@ -82,11 +82,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
 </DevOverlay>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { bindVideoReplacement } from '../scripts/devVideoReplacement';
   import { devEditPendingId, withDevEditTarget } from '../scripts/devEditTarget';
   import { getLastPointerPosition } from '../lib/lastPointer';
   import { getDropZone } from '../scripts/devSectionPaths';
   import { isAcceptedImageFile, isAcceptedVideoFile } from '../lib/imageUpload.mjs';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
 
   bindVideoReplacement();
 
@@ -187,8 +193,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!(veil instanceof HTMLElement)) return;
     veil.classList.remove('is-active');
     const remove = () => veil.remove();
-    veil.addEventListener('transitionend', remove, { once: true });
-    window.setTimeout(remove, 200);
+    scope.listen(veil, 'transitionend', remove, { once: true });
+    scope.timeout(remove, 200);
   };
 
   const setCarouselDropTarget = (target) => {
@@ -539,12 +545,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
       data: await readFileAsBase64(file),
       mimeType: file.type,
     })));
-    const response = await fetch('/api/upload', {
+    const response = await pageFetch('/api/upload', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ document: target.documentKey, files: payload }),
     });
     const result = await response.json();
+      scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(result.error || 'Upload failed.');
     return result.filenames;
   };
@@ -565,7 +572,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
     let index = initialIndex;
     for (const payload of payloads) {
-      const response = await fetch('/api/content-section', {
+      const response = await pageFetch('/api/content-section', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -575,6 +582,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
         }),
       });
       const result = await response.json();
+      scope.signal.throwIfAborted();
       if (!response.ok) throw new Error(result.error || 'Could not insert images.');
       window.dispatchEvent(new CustomEvent('vcd:dev-section-inserted', {
         detail: {
@@ -629,7 +637,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     } catch {
       throw new Error('Could not read the current carousel settings.');
     }
-    const settingsResponse = await fetch('/api/content-batch', {
+    const settingsResponse = await pageFetch('/api/content-batch', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -649,6 +657,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }),
     });
     const settingsResult = await settingsResponse.json();
+      scope.signal.throwIfAborted();
     if (!settingsResponse.ok) {
       throw new Error(settingsResult.error || 'Could not save the current carousel settings.');
     }
@@ -660,7 +669,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     window.dispatchEvent(new CustomEvent('vcd:dev-carousel-prepare-append', {
       detail: { target: target.target },
     }));
-    const response = await fetch('/api/content-section', {
+    const response = await pageFetch('/api/content-section', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -671,6 +680,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }),
     });
     const result = await response.json();
+      scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(result.error || 'Could not add images to that carousel.');
     window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
       detail: {
@@ -700,7 +710,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       || !layouts || typeof layouts !== 'object' || Array.isArray(layouts)) {
       throw new Error('Could not read the current grid settings.');
     }
-    const settingsResponse = await fetch('/api/content-batch', {
+    const settingsResponse = await pageFetch('/api/content-batch', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ grids: [withDevEditTarget({
         document: target.documentKey,
@@ -713,15 +723,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }, target.target)] }),
     });
     const settingsResult = await settingsResponse.json();
+      scope.signal.throwIfAborted();
     if (!settingsResponse.ok) throw new Error(settingsResult.error || 'Could not save the current grid settings.');
     const pendingId = devEditPendingId('grid', target.target);
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids: [pendingId] } }));
-    const response = await fetch('/api/content-section', {
+    const response = await pageFetch('/api/content-section', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ document: target.documentKey, action: 'appendMediaItems', ...withDevEditTarget({ document: target.documentKey, path: target.path }, target.target), ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }) }),
     });
     const result = await response.json();
+      scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(result.error || 'Could not add images to that grid.');
     window.dispatchEvent(new CustomEvent('vcd:dev-grid-media-appended', {
       detail: { documentKey: target.documentKey, index: result.index, section: result.section },
@@ -792,6 +804,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
           const filenames = await uploadFiles(images, target);
           await insertSection('image', filenames, [], target);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add image.');
         }
       })();
@@ -905,6 +918,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
           const filenames = await uploadFiles(images, target);
           await appendToCarousel(filenames, [], carouselTarget);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add images to that carousel.');
         }
       })();
@@ -916,6 +930,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       pendingInsertIndex = insertIndexForY(clientY, target.dropZone);
       target.insertIndex = pendingInsertIndex;
       void insertSection('image', [], [assetSrc], target).catch((error) => {
+      if (scope.signal.aborted) return;
         window.alert(error instanceof Error ? error.message : 'Could not add image.');
       });
       return;
@@ -925,7 +940,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   pickButtons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       const target = currentTransaction();
       const type = button.getAttribute('data-dev-image-pick');
       if (!type) return;
@@ -939,6 +954,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
           const filenames = await uploadFiles(pendingFiles, target);
           await insertSection(type, filenames, [], target);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
       })();
@@ -946,7 +962,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   });
 
   multiDropChoiceButtons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       const type = button.getAttribute('data-dev-image-drop-choice-type');
       if (type !== 'imageGrid' && type !== 'imageCarousel') return;
       const files = [...pendingFiles];
@@ -957,25 +973,26 @@ const globeSvg = sizeIcon(globeIcon, 16);
           const filenames = await uploadFiles(files, target);
           await insertSection(type, filenames, [], target);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
       })();
     });
   });
 
-  document.addEventListener('pointerdown', (event) => {
+  scope.listen(document, 'pointerdown', (event) => {
     if (!(multiDropChoice instanceof HTMLElement) || multiDropChoice.hidden) return;
     if (event.target instanceof Node && multiDropChoice.contains(event.target)) return;
     closeMultiDropChoice();
   });
 
-  document.addEventListener('keydown', (event) => {
+  scope.listen(document, 'keydown', (event) => {
     if (event.key !== 'Escape' || !(multiDropChoice instanceof HTMLElement) || multiDropChoice.hidden) return;
     event.preventDefault();
     closeMultiDropChoice();
   });
 
-  placeholderButton?.addEventListener('click', () => {
+  scope.listen(placeholderButton, 'click', () => {
     const target = currentTransaction();
     void (async () => {
       try {
@@ -994,20 +1011,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
           : preferredType === 'imageCarousel' ? 'placeholderImageCarousel' : 'placeholder';
         await insertSection(placeholderType, [], [], target);
       } catch (error) {
+      if (scope.signal.aborted) return;
         window.alert(error instanceof Error ? error.message : 'Could not add placeholder.');
       }
     })();
   });
 
-  cancelButton?.addEventListener('click', () => {
+  scope.listen(cancelButton, 'click', () => {
     closePicker();
   });
 
-  chooseButton?.addEventListener('click', () => {
+  scope.listen(chooseButton, 'click', () => {
     if (fileInput instanceof HTMLInputElement) fileInput.click();
   });
 
-  chooseAssetsButton?.addEventListener('click', () => {
+  scope.listen(chooseAssetsButton, 'click', () => {
     const target = currentTransaction();
     if (!target) return;
     const type = preferredType;
@@ -1042,6 +1060,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
         pendingSrcs = srcs;
         showPanel();
       } catch (error) {
+      if (scope.signal.aborted) return;
         if (error instanceof Error && error.message === 'cancelled') {
           showPanel();
           return;
@@ -1054,7 +1073,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     })();
   });
 
-  fileInput?.addEventListener('change', () => {
+  scope.listen(fileInput, 'change', () => {
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
     setPendingFiles(fileInput.files);
     const target = currentTransaction();
@@ -1069,23 +1088,24 @@ const globeSvg = sizeIcon(globeIcon, 16);
           if (grid) await appendToGrid(filenames, [], grid);
           else await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
       })();
     }
   });
 
-  dropzone?.addEventListener('dragover', (event) => {
+  scope.listen(dropzone, 'dragover', (event) => {
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
     if (dropzone instanceof HTMLElement) dropzone.classList.add('is-dragover');
   });
 
-  dropzone?.addEventListener('dragleave', () => {
+  scope.listen(dropzone, 'dragleave', () => {
     if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
   });
 
-  dropzone?.addEventListener('drop', (event) => {
+  scope.listen(dropzone, 'drop', (event) => {
     event.preventDefault();
     if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
     if (!event.dataTransfer?.files?.length) return;
@@ -1101,13 +1121,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
           if (grid) await appendToGrid(filenames, [], grid);
           else await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
+      if (scope.signal.aborted) return;
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
       })();
     }
   });
 
-  window.addEventListener('vcd:dev-edit-close', ((event) => {
+  scope.listen(window, 'vcd:dev-edit-close', ((event) => {
     const detail = event.detail ?? {};
     if (detail.panel !== panel) return;
     if (suppressCloseReset) return;
@@ -1115,16 +1136,16 @@ const globeSvg = sizeIcon(globeIcon, 16);
   }));
 
   const root = document;
-  root.addEventListener('dragenter', onDragEnter);
-  root.addEventListener('dragover', onDragOver);
-  root.addEventListener('dragleave', onDragLeave);
-  root.addEventListener('drop', onDrop);
-  document.addEventListener('drop', resetDragState, true);
-  document.addEventListener('dragend', resetDragState, true);
+  scope.listen(root, 'dragenter', onDragEnter);
+  scope.listen(root, 'dragover', onDragOver);
+  scope.listen(root, 'dragleave', onDragLeave);
+  scope.listen(root, 'drop', onDrop);
+  scope.listen(document, 'drop', resetDragState, true);
+  scope.listen(document, 'dragend', resetDragState, true);
 
-  window.addEventListener('vcd:dev-mode-change', syncVisibility);
+  scope.listen(window, 'vcd:dev-mode-change', syncVisibility);
 
-  window.addEventListener('vcd:page-surface-change', ((event) => {
+  scope.listen(window, 'vcd:page-surface-change', ((event) => {
     const nextDocumentKey = event.detail?.documentKey || event.detail?.document;
     if (!(panel instanceof HTMLElement) || panel.hidden || !activeTransaction) return;
     if (typeof nextDocumentKey === 'string' && nextDocumentKey !== activeTransaction.documentKey) {
@@ -1132,7 +1153,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
   }));
 
-  window.addEventListener('vcd:dev-image-picker-open', ((event) => {
+  scope.listen(window, 'vcd:dev-image-picker-open', ((event) => {
     const detail = event.detail ?? {};
     if (typeof detail.documentKey !== 'string' || typeof detail.index !== 'number') return;
     const target = beginTransaction(detail.documentKey);
@@ -1147,7 +1168,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     openPicker(undefined, target);
   }));
 
-  window.addEventListener('vcd:dev-carousel-image-picker-open', ((event) => {
+  scope.listen(window, 'vcd:dev-carousel-image-picker-open', ((event) => {
     const detail = event.detail ?? {};
     if (
       typeof detail.documentKey !== 'string'
@@ -1169,7 +1190,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     showPanel();
   }));
 
-  window.addEventListener('vcd:dev-grid-image-picker-open', ((event) => {
+  scope.listen(window, 'vcd:dev-grid-image-picker-open', ((event) => {
     const detail = event.detail ?? {};
     if (
       typeof detail.documentKey !== 'string'
@@ -1187,8 +1208,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
     showPanel();
   }));
 
+  scope.add(() => {
+    resetDragState();
+    document.querySelectorAll('.dev-carousel-drop-veil').forEach((veil) => veil.remove());
+  });
   syncVisibility();
   syncPickerState();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style is:global>

@@ -23,6 +23,10 @@
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
 
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
   const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
   const DROP_INDICATOR_CLASS = 'dev-section-drop-indicator';
@@ -611,7 +615,7 @@
     liftBackdrop.setAttribute('aria-hidden', 'true');
     root.prepend(liftBackdrop);
     // Next frame so opacity 0 → 1 transitions (same beat as is-lifted-raised).
-    requestAnimationFrame(() => {
+    pageScope.frame(() => {
       liftBackdrop?.classList.add(LIFT_BACKDROP_VISIBLE_CLASS);
     });
   };
@@ -636,8 +640,8 @@
         if (liftBackdrop === el) liftBackdrop = null;
         resolve();
       };
-      el.addEventListener('transitionend', finish, { once: true });
-      window.setTimeout(finish, LIFT_BACKDROP_FADE_MS + 50);
+      pageScope.listen(el, 'transitionend', finish, { once: true });
+      pageScope.timeout(finish, LIFT_BACKDROP_FADE_MS + 50);
     });
   };
 
@@ -662,8 +666,8 @@
       page.classList.remove(SECTION_HOLDING_CLASS);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       if (shouldReveal) {
-        controlsRevealFrame = requestAnimationFrame(() => {
-          controlsRevealFrame = requestAnimationFrame(() => {
+        controlsRevealFrame = pageScope.frame(() => {
+          controlsRevealFrame = pageScope.frame(() => {
             controlsRevealFrame = 0;
             page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
           });
@@ -871,8 +875,8 @@
   const bindSessionPointerListeners = () => {
     if (sessionPointerActive) return;
     sessionPointerActive = true;
-    document.addEventListener('pointerup', onSessionPointerUp, { capture: true });
-    document.addEventListener('mouseup', onSessionMouseUp, { capture: true });
+    pageScope.listen(document, 'pointerup', onSessionPointerUp, { capture: true });
+    pageScope.listen(document, 'mouseup', onSessionMouseUp, { capture: true });
   };
 
   const unbindSessionPointerListeners = () => {
@@ -882,28 +886,28 @@
     document.removeEventListener('mouseup', onSessionMouseUp, { capture: true });
   };
 
-  document.addEventListener('pointermove', (event) => {
+  pageScope.listen(document, 'pointermove', (event) => {
     controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
-  document.addEventListener('mousemove', (event) => {
+  pageScope.listen(document, 'mousemove', (event) => {
     controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   const wireSectionControlHover = (root: HTMLElement) => {
     if (root.dataset.devSectionControlsWired === 'true') return;
     root.dataset.devSectionControlsWired = 'true';
-    root.addEventListener('mouseenter', () => pinSectionControls(root));
-    root.addEventListener('mouseleave', () => unpinSectionControls(root));
+    pageScope.listen(root, 'mouseenter', () => pinSectionControls(root));
+    pageScope.listen(root, 'mouseleave', () => unpinSectionControls(root));
   };
 
   const wireDragHandle = (root: HTMLElement, handle: HTMLButtonElement) => {
     if (handle.dataset.devSectionDragWired === 'true') return;
     handle.dataset.devSectionDragWired = 'true';
 
-    handle.addEventListener('click', (event) => event.preventDefault());
+    pageScope.listen(handle, 'click', (event) => event.preventDefault());
 
-    handle.addEventListener('pointerdown', (event) => {
+    pageScope.listen(handle, 'pointerdown', (event) => {
       if (!reorderActive) return;
       if (event.button !== 0) return;
 
@@ -1105,7 +1109,7 @@
     setReorderActive(active, preserveBaseline);
   };
 
-  window.addEventListener('vcd:dev-mode-change', onDevModeChange);
+  pageScope.listen(window, 'vcd:dev-mode-change', onDevModeChange);
   const onPageSurfaceChange = ((event: CustomEvent<{ documentKey?: string; document?: string }>) => {
     const previousZone = dropZone();
     if (documentKey && baselineOrder) baselineOrders.set(documentKey, baselineOrder);
@@ -1124,12 +1128,8 @@
       }
     }
   }) as EventListener;
-  window.addEventListener('vcd:page-surface-change', onPageSurfaceChange);
-  import.meta.hot?.dispose(() => {
-    window.removeEventListener('vcd:page-surface-change', onPageSurfaceChange);
-    abortActiveSession();
-  });
-  window.addEventListener('vcd:section-nav-editor-change', () => {
+  pageScope.listen(window, 'vcd:page-surface-change', onPageSurfaceChange);
+  pageScope.listen(window, 'vcd:section-nav-editor-change', () => {
     const sectionNavEditor = document.documentElement.classList.contains('show-section-nav-editor');
     if (sectionNavEditor) {
       reorderSuspendedForSectionNav = true;
@@ -1140,7 +1140,7 @@
     reorderSuspendedForSectionNav = false;
     if (wasSuspended) setReorderActive(isDevContentEditing() && Boolean(dropZone()), true);
   });
-  window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<{ document?: string }>) => {
+  pageScope.listen(window, 'vcd:dev-section-structure-changed', ((event: CustomEvent<{ document?: string }>) => {
     if (!reorderActive) return;
     if (event.detail?.document && event.detail.document !== documentKey) return;
     syncDragHandles();
@@ -1167,7 +1167,7 @@
    * that node is new and unobserved until the next sync. Editors announce frame
    * changes here so the chrome never lags the image it belongs to.
    */
-  window.addEventListener('vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
+  pageScope.listen(window, 'vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
     const scope = event.detail?.target?.closest<HTMLElement>('[data-dev-spacing-document], .project-block');
     if (scope) {
       syncDragHandleAnchor(scope);
@@ -1178,13 +1178,13 @@
     });
   }) as EventListener);
 
-  window.addEventListener('resize', () => {
+  pageScope.listen(window, 'resize', () => {
     getSectionRootsInDomOrder(dropZone()).forEach((root) => {
       if (!isChromeNode(root)) syncDragHandleAnchor(root);
     });
   });
 
-  window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+  pageScope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
     const zone = dropZone();
     if (!zone) return;
     const ids = event.detail?.ids;
@@ -1194,7 +1194,7 @@
     zone.classList.remove('is-section-order-dirty');
   }) as EventListener);
 
-  window.addEventListener('vcd:dev-pending-reverted', () => {
+  pageScope.listen(window, 'vcd:dev-pending-reverted', () => {
     dropZone()?.classList.remove('is-section-order-dirty');
     if (reorderActive) {
       baselineOrder = captureSectionOrder(dropZone());
@@ -1202,7 +1202,7 @@
     }
   });
 
-  document.addEventListener('keydown', (event) => {
+  pageScope.listen(document, 'keydown', (event) => {
     if (!reorderActive || event.key !== 'Escape') return;
     if (!controller.isActive() && !dragItem) return;
     event.preventDefault();
@@ -1210,6 +1210,23 @@
   });
 
   onDevModeChange();
+  return () => {
+    abortActiveSession();
+    controller.destroy();
+    unbindSessionPointerListeners();
+    handleAnchorObserver?.disconnect();
+    document.querySelectorAll<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`).forEach((handle) => delete handle.dataset.devSectionDragWired);
+    document.querySelectorAll<HTMLElement>('[data-dev-section-controls-wired]').forEach((root) => delete root.dataset.devSectionControlsWired);
+    clearSourceGapPreview();
+    clearHostLiftChrome();
+    setSectionDragging(false);
+    setSectionHolding(false);
+    removeLiftBackdrop();
+    document.documentElement.classList.remove(SECTION_CONTROLS_REVEAL_CLASS, SECTION_CONTROLS_SETTLING_CLASS);
+    pageScope.destroy();
+  };
+  });
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 

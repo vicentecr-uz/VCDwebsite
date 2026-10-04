@@ -1,13 +1,17 @@
 <script>
   import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
 
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
   const initDevModeController = () => {
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
     const CHROME_FADE_MS = 280;
 
     const html = document.documentElement;
     const leaseKey = '__vcdDevAuthoringLease';
-    const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean; pageLifecycleInstalled?: boolean } })[leaseKey]
+    const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean } })[leaseKey]
       ??= { id: `dev-${crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`, timer: null, active: false });
     const sendAuthoring = (active: boolean, beacon = false) => {
       const body = JSON.stringify({ id: lease.id, active });
@@ -35,19 +39,16 @@
       if (active) startHeartbeat();
       else stopHeartbeat();
     };
-    if (!lease.pageLifecycleInstalled) {
-      window.addEventListener('pagehide', () => {
-        sendAuthoring(false, true);
-        stopHeartbeat();
-      });
-      window.addEventListener('pageshow', () => {
-        if (!lease.active) return;
-        sendAuthoring(true);
-        startHeartbeat();
-      });
-      lease.pageLifecycleInstalled = true;
-    }
-    let devMode = false;
+    pageScope.listen(window, 'pagehide', () => {
+      sendAuthoring(false, true);
+      stopHeartbeat();
+    });
+    pageScope.listen(window, 'pageshow', () => {
+      if (!lease.active) return;
+      sendAuthoring(true);
+      startHeartbeat();
+    });
+    let devMode = lease.active;
     let enterEndTimer: ReturnType<typeof setTimeout> | null = null;
     let exitTimer: ReturnType<typeof setTimeout> | null = null;
     let teardownEditorChips: (() => void) | undefined;
@@ -63,8 +64,6 @@
     };
 
     mountEditorChips();
-    document.addEventListener('astro:page-load', mountEditorChips);
-    document.addEventListener('astro:before-swap', cleanupEditorChips);
 
     const editTriggers = () =>
       [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
@@ -131,13 +130,13 @@
         item.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-surface';
         item.setAttribute('role', 'menuitem');
         item.textContent = title;
-        item.addEventListener('click', () => openLauncherPanel(panel));
+        pageScope.listen(item, 'click', () => openLauncherPanel(panel));
         if (index === 0) item.tabIndex = 0;
         menu.appendChild(item);
       });
 
       const enabled = [...menu.querySelectorAll<HTMLButtonElement>('button')];
-      menu.addEventListener('keydown', (event) => {
+      pageScope.listen(menu, 'keydown', (event) => {
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
         event.preventDefault();
         if (!enabled.length) return;
@@ -255,7 +254,7 @@
         return;
       }
 
-      enterEndTimer = setTimeout(() => {
+      enterEndTimer = pageScope.timeout(() => {
         html.classList.remove('is-dev-mode-entering');
         enterEndTimer = null;
       }, fadeMs);
@@ -287,7 +286,7 @@
       html.classList.add('is-dev-mode-exiting');
       html.classList.remove('is-dev-mode-entering');
 
-      exitTimer = setTimeout(() => {
+      exitTimer = pageScope.timeout(() => {
         devMode = false;
         html.classList.remove('is-dev-mode', 'is-dev-mode-exiting');
         syncDevModeControls(false);
@@ -320,17 +319,17 @@
     html.classList.remove(SECTION_EDITOR_CLASS);
     setDevModeImmediate(devMode);
 
-    window.addEventListener('vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active === 'boolean') setDevMode(event.detail.active);
     }) as EventListener);
 
-    window.addEventListener('vcd:section-nav-editor-request', ((event: CustomEvent<{ active?: boolean }>) => {
+    pageScope.listen(window, 'vcd:section-nav-editor-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active !== 'boolean') return;
       if (event.detail.active && !devMode) setDevMode(true);
       setSectionEditor(event.detail.active);
     }) as EventListener);
 
-    document.addEventListener('click', (event) => {
+    pageScope.listen(document, 'click', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
@@ -405,7 +404,7 @@
     // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
     // blurs back to Rest unless a newer panel is in front (e.g. Asset manager
     // just opened from a Ghost inside the well — first Esc must close that).
-    document.addEventListener('keydown', (event) => {
+    pageScope.listen(document, 'keydown', (event) => {
       if (event.key !== 'Escape') return;
       const target = event.target as HTMLElement | null;
       const drop = target?.closest?.('.dev-drop');
@@ -420,7 +419,7 @@
       active.blur();
     }, true);
 
-    document.addEventListener('keydown', (event) => {
+    pageScope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
         // Alt+M types 'µ' in an editable — never intercept it there.
         if (!devMode || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
@@ -504,29 +503,33 @@
       setDevMode(false);
     });
 
-    document.addEventListener('pointerdown', (event) => {
+    pageScope.listen(document, 'pointerdown', (event) => {
       if (!launcher) return;
       const target = event.target as Node | null;
       if (target && launcher.contains(target)) return;
       removeLauncher();
     }, true);
 
-    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active === false) removeLauncher();
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-open', syncTunerOpenClass);
-    window.addEventListener('vcd:dev-edit-close', syncTunerOpenClass);
+    pageScope.listen(window, 'vcd:dev-edit-open', syncTunerOpenClass);
+    pageScope.listen(window, 'vcd:dev-edit-close', syncTunerOpenClass);
     syncTunerOpenClass();
 
-    if (import.meta.hot) import.meta.hot.dispose(() => {
+    return () => {
+      abortChromeTransition();
+      removeLauncher();
       cleanupEditorChips();
-      document.removeEventListener('astro:page-load', mountEditorChips);
-      document.removeEventListener('astro:before-swap', cleanupEditorChips);
-    });
+      stopHeartbeat();
+      pageScope.destroy();
+    };
   };
 
-  initDevModeController();
+  return initDevModeController();
+  });
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style is:global>

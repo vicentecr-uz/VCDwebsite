@@ -54,9 +54,19 @@ const { documentKey = '' } = Astro.props;
 </DevOverlay>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import { sizeIcon } from '../lib/icons';
   import { getLastPointerPosition } from '../lib/lastPointer';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
 
   const UNASSIGNED = '__unassigned__';
   const ASSET_DRAG_TYPE = 'application/x-vcd-asset-src';
@@ -166,7 +176,7 @@ const { documentKey = '' } = Astro.props;
     disconnectThumbObserver();
     if (!(gridEl instanceof HTMLElement)) return;
 
-    thumbObserver = new IntersectionObserver((entries) => {
+    thumbObserver = ownObserver(new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting) continue;
         const img = entry.target;
@@ -177,7 +187,7 @@ const { documentKey = '' } = Astro.props;
         }
         thumbObserver?.unobserve(img);
       }
-    }, { root: gridEl, rootMargin: THUMB_ROOT_MARGIN });
+    }, { root: gridEl, rootMargin: THUMB_ROOT_MARGIN }));
 
     gridEl.querySelectorAll('.dev-asset-manager__thumb img[data-thumb-src]').forEach((img) => {
       thumbObserver?.observe(img);
@@ -225,7 +235,7 @@ const { documentKey = '' } = Astro.props;
       label.textContent = project.title;
       button.append(label);
 
-      button.addEventListener('click', () => {
+      scope.listen(button, 'click', () => {
         selectedProject = project.slug;
         selected.clear();
         renderProjects();
@@ -287,7 +297,7 @@ const { documentKey = '' } = Astro.props;
       trash.setAttribute('aria-label', `Delete ${asset.filename} from cloud`);
       trash.innerHTML = sizeIcon(trashIcon);
 
-      button.addEventListener('click', () => {
+      scope.listen(button, 'click', () => {
         if (!pickMode) {
           if (selected.has(asset.id)) selected.delete(asset.id);
           else {
@@ -306,13 +316,13 @@ const { documentKey = '' } = Astro.props;
         syncPickButtons();
       });
 
-      button.addEventListener('dragstart', (event) => {
+      scope.listen(button, 'dragstart', (event) => {
         if (!event.dataTransfer) return;
         event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.src);
         event.dataTransfer.effectAllowed = 'copy';
       });
 
-      trash.addEventListener('click', (event) => {
+      scope.listen(trash, 'click', (event) => {
         event.stopPropagation();
         void deleteAsset(asset);
       });
@@ -326,8 +336,9 @@ const { documentKey = '' } = Astro.props;
 
   const loadAssets = async () => {
     setStatus('Loading…');
-    const response = await fetch('/api/assets');
+    const response = await pageFetch('/api/assets');
     const payload = await response.json();
+      scope.signal.throwIfAborted();
     if (!response.ok) throw new Error(payload.error || 'Could not load assets.');
     projects = Array.isArray(payload.projects) ? payload.projects : [];
     assets = Array.isArray(payload.assets) ? payload.assets : [];
@@ -348,12 +359,13 @@ const { documentKey = '' } = Astro.props;
     const ok = window.confirm(`Delete “${asset.filename}” forever?\n\nThis removes the file from disk and any places it appears on the site.`);
     if (!ok) return;
     try {
-      const response = await fetch('/api/assets', {
+      const response = await pageFetch('/api/assets', {
         method: 'DELETE',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ src: asset.src }),
       });
       const payload = await response.json();
+      scope.signal.throwIfAborted();
       if (!response.ok) throw new Error(payload.error || 'Could not delete that asset.');
       selected.delete(asset.id);
       // Gone from disk for good — there is nothing to stage or revert, but the
@@ -362,6 +374,7 @@ const { documentKey = '' } = Astro.props;
       await loadAssets();
       setStatus(`Deleted ${asset.filename}.`);
     } catch (error) {
+      if (scope.signal.aborted) return;
       window.alert(error instanceof Error ? error.message : 'Could not delete that asset.');
     }
   };
@@ -415,7 +428,7 @@ const { documentKey = '' } = Astro.props;
   };
 
   filterButtons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       const next = button.getAttribute('data-asset-filter');
       if (next !== 'all' && next !== 'onPage' && next !== 'library') return;
       filter = next;
@@ -428,14 +441,14 @@ const { documentKey = '' } = Astro.props;
     });
   });
 
-  selectButton?.addEventListener('click', () => confirmPick());
+  scope.listen(selectButton, 'click', () => confirmPick());
 
-  cancelButton?.addEventListener('click', () => closePanel(true));
+  scope.listen(cancelButton, 'click', () => closePanel(true));
 
   // DevOverlay's own traffic-light Hide bypasses closePanel() entirely — it
   // sets `overlay.hidden = true` internally and announces itself here, which
   // is the one place a pending pick still needs to be rejected.
-  window.addEventListener('vcd:dev-edit-close', ((event) => {
+  scope.listen(window, 'vcd:dev-edit-close', ((event) => {
     const detail = event.detail ?? {};
     if (detail.panel !== overlay) return;
     setAssetManagerOpen(false);
@@ -448,7 +461,7 @@ const { documentKey = '' } = Astro.props;
     }
   }));
 
-  document.addEventListener('pointerdown', (event) => {
+  scope.listen(document, 'pointerdown', (event) => {
     if (!pickMode || !pickOpener) return;
     const target = event.target;
     if (!(target instanceof Node)) return;
@@ -457,7 +470,7 @@ const { documentKey = '' } = Astro.props;
     closePanel(true);
   }, true);
 
-  window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
+  scope.listen(window, 'vcd:dev-asset-manager-open', ((event) => {
     const detail = event.detail ?? {};
 
     if (rejectPick) {
@@ -495,6 +508,7 @@ const { documentKey = '' } = Astro.props;
       setAssetManagerOpen(true);
     }
     void loadAssets().catch((error) => {
+      if (scope.signal.aborted) return;
       setStatus(error instanceof Error ? error.message : 'Could not load assets.');
     });
   }));
@@ -504,7 +518,7 @@ const { documentKey = '' } = Astro.props;
     return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
   };
 
-  document.addEventListener('keydown', (event) => {
+  scope.listen(document, 'keydown', (event) => {
     if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyA')) return;
     if (isTypingTarget(event.target)) return;
 
@@ -526,6 +540,10 @@ const { documentKey = '' } = Astro.props;
       }));
     }
   });
+    scope.add(() => closePanel(true));
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style is:global>

@@ -1376,7 +1376,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     if (import.meta.env.DEV) {
       const startBrand = startTrigger.querySelector<HTMLAnchorElement>('.header-trigger__brand-link');
-      const startBrandHref = startBrand?.getAttribute('href') ?? '';
+      let startBrandHref = startBrand?.getAttribute('href') ?? '';
+      document.addEventListener('header:navigation-commit', (event) => {
+        const incoming = (event as CustomEvent<{ header: HTMLElement }>).detail.header;
+        startBrandHref = incoming.querySelector('.header-trigger--start .header-trigger__brand-link')?.getAttribute('href') ?? '';
+        syncStartBrandForEdit(isDevEditing());
+      });
       const syncStartBrandForEdit = (active: boolean) => {
         if (!startBrand) return;
         if (active) startBrand.removeAttribute('href');

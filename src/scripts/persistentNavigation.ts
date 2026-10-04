@@ -1,6 +1,6 @@
 import { swapFunctions } from 'astro:transitions/client';
 import type { TransitionBeforePreparationEvent, TransitionBeforeSwapEvent } from 'astro:transitions/client';
-import { persistentPageParts, swapPageContent } from '../lib/persistentPageSwap';
+import { persistentPageParts, supportsPersistentPage, swapPageContent } from '../lib/persistentPageSwap';
 import { setIntroFoldOffsets } from '../lib/safeVh';
 
 type Hooks = {
@@ -14,13 +14,19 @@ export function installPersistentNavigation(hooks: Hooks) {
   if (!document.querySelector('[name="astro-view-transitions-enabled"]')) return;
   let navigation: TransitionBeforePreparationEvent | undefined;
   let swapped = false;
+  const unseenHome = (url: URL) => {
+    if (url.pathname !== '/') return false;
+    try { return sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { return true; }
+  };
   const announceTitle = (title?: string) => {
     const visible = document.querySelector('.header-trigger__wordmark[aria-hidden="false"]');
     document.dispatchEvent(new CustomEvent('header:navigation-start', {
       detail: { pending: { title: visible?.textContent?.trim(), targetTitle: title } },
     }));
+    if (navigation && unseenHome(navigation.to)) document.documentElement.removeAttribute('data-header-navigation');
   };
   document.addEventListener('astro:before-preparation', ((event: TransitionBeforePreparationEvent) => {
+    if (event.defaultPrevented) return;
     navigation = event;
     swapped = false;
     if (event.formData) { event.preventDefault(); return; }
@@ -29,14 +35,17 @@ export function installPersistentNavigation(hooks: Hooks) {
     const title = (event.sourceElement as HTMLElement | undefined)?.dataset.headerNavigationTitle;
     announceTitle(title);
     const covered = hooks.cover();
+    queueMicrotask(() => {
+      if (event.defaultPrevented && navigation === event) hooks.cancel();
+    });
     const loader = event.loader;
     event.loader = async () => {
       try {
         await loader();
         if (event.signal.aborted || event.defaultPrevented) return;
         const parts = persistentPageParts(event.newDocument);
-        // Authoring and standalone tools remain full-document surfaces until their controllers have page lifecycles.
-        if (!parts || event.newDocument.querySelector('astro-island, template[shadowrootmode]')) {
+        // Only lifecycle-supported editor islands join the retained public shell.
+        if (!parts || !supportsPersistentPage(event.newDocument)) {
           event.preventDefault(); return;
         }
         if (!title) announceTitle(parts.header.querySelector('.header-trigger__wordmark--page')?.textContent?.trim());
@@ -62,11 +71,7 @@ export function installPersistentNavigation(hooks: Hooks) {
       const safeVh = document.documentElement.style.getPropertyValue('--vh-safe');
       swapFunctions.swapRootAttributes(event.newDocument);
       if (safeVh) document.documentElement.style.setProperty('--vh-safe', safeVh);
-      let unseenHome = false;
-      if (event.to.pathname === '/') {
-        try { unseenHome = sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { unseenHome = true; }
-      }
-      if (!unseenHome) document.documentElement.dataset.headerNavigation = '';
+      if (!unseenHome(event.to)) document.documentElement.dataset.headerNavigation = '';
       swapFunctions.swapHeadElements(event.newDocument);
       swapPageContent(document, event.newDocument);
       document.dispatchEvent(new CustomEvent('header:navigation-commit', { detail: { header: nextHeader, url: event.to } }));

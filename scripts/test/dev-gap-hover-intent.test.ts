@@ -66,6 +66,7 @@ function createHarness() {
   const abortCallbacks: Array<() => void> = [];
   const editorSignal = { addEventListener(_name: string, callback: () => void) { abortCallbacks.push(callback); } };
   const env = {
+    pageScope: { timeout: window.setTimeout },
     window,
     document,
     editorSignal,
