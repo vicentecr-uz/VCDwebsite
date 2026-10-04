@@ -32,21 +32,56 @@ function menuFixture() {
 }
 
 
-test('menu exit runs concurrently with navigation and has no title or content wait', () => {
+test('menu stays open through navigation and commit, then exits with the incoming reveal', () => {
   const f = menuFixture();
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   f.frame();
   expect(f.start.dataset.menuOpen).toBe('true');
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.links.every((link) => link.style.opacity === '1')).toBe(true);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit'));
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.timers.size).toBe(0);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
   expect(f.start.dataset.menuOpen).toBeUndefined();
   expect(f.start.dataset.menuSurfaceOpen).toBeUndefined();
   expect(f.links.every((link) => link.style.opacity === '0')).toBe(true);
   expect(f.timings.at(-1)![0] + f.timings.at(-1)![1]).toBeCloseTo(0.18);
-  const detail = { waitMs: 0 };
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-covered', { detail }));
-  expect(detail.waitMs).toBe(0);
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBeUndefined();
   [...f.timers.values()].forEach((timer) => timer.callback());
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+});
+
+test('current link appearance stays stable until the retained menu finishes closing', () => {
+  const f = menuFixture();
+  f.links[0].setAttribute('aria-current', 'page');
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
+  f.links[0].removeAttribute('aria-current'); f.links[1].setAttribute('aria-current', 'page');
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit'));
+  expect(f.links.map((link) => link.dataset.navigationCurrent)).toEqual(['true', 'false']);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  expect(f.links.map((link) => link.dataset.navigationCurrent)).toEqual(['true', 'false']);
+  [...f.timers.values()].forEach((timer) => timer.callback());
+  expect(f.links.every((link) => link.dataset.navigationCurrent === undefined)).toBe(true);
+  expect(f.links[1].getAttribute('aria-current')).toBe('page');
+});
+
+test('a new navigation during menu exit remains locked until its own reveal', () => {
+  const f = menuFixture();
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
+  [...f.timers.values()].forEach((timer) => timer.callback());
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
 });
@@ -56,6 +91,7 @@ test('cancellation releases the outgoing menu lock', () => {
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-cancel'));
+  expect(f.links.every((link) => link.dataset.navigationCurrent === undefined)).toBe(true);
   [...f.timers.values()].forEach((timer) => timer.callback());
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
