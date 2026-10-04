@@ -18,7 +18,7 @@ const editorSource = readFileSync(new URL('../../src/lib/siteAnnotationEditor.ts
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource
   .replace(/^import .*;\n/gm, '')
   .replace(/^if \(import\.meta\.hot\).*$/gm, '')
-  + '\nreturn { state, annotationsFor, pushPending, startDrawing, createLauncher, launcherPoint, nearestLauncherPosition, getLauncherPosition: () => launcherPosition };');
+  + '\nreturn { state, annotationsFor, pushPending, startDrawing, createLauncher, launcherPoint, nearestLauncherPosition, positionDrawingMenu, getLauncherPosition: () => launcherPosition };');
 const textEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 
 const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown) => {
@@ -50,7 +50,7 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
     window, document, Element: window.Element, DOMRect: window.DOMRect,
     crypto: window.crypto,
     getComputedStyle: window.getComputedStyle.bind(window),
-    AbortController: window.AbortController, CustomEvent: window.CustomEvent,
+    AbortController: window.AbortController, CustomEvent: window.CustomEvent, Event: window.Event,
     createElement: (_: unknown, props: unknown) => props,
     createRef: () => ({ current: {
       getSize: () => ({ w: 1000, h: 800 }),
@@ -90,6 +90,7 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
   const target = { section, documentKey: 'page', sectionId: 'block' };
   return {
     ...api, window, document, section, pending, target, env,
+    invokeClick: (element: object) => clicks.get(element)?.(),
     props: () => drawProps,
     historyCalls: () => ({ undo: undoCount, redo: redoCount }),
     structure: () => window.dispatchEvent(new window.Event('vcd:dev-section-structure-changed')),
@@ -288,7 +289,7 @@ test('mapped text drawings do not offer the legacy anchor reattach action', () =
   h.window.getSelection()!.addRange(range);
   const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
   manage.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true }));
-  manage.click();
+  h.invokeClick(manage);
   expect(h.document.querySelector('.site-draw-menu')?.textContent).not.toContain('Reattach');
 });
 
@@ -301,8 +302,204 @@ test('legacy text drawings retain the anchor reattach action', () => {
   h.window.getSelection()!.addRange(range);
   const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
   manage.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true }));
-  manage.click();
+  h.invokeClick(manage);
   expect(h.document.querySelector('.site-draw-menu')?.textContent).toContain('Reattach');
+});
+
+test('multiple drawings open as a list and support detail Back and Escape dismissal', () => {
+  const second = { ...fixture, id: 'second', kind: 'doodle' as const };
+  const h = harness([fixture, second]);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  h.invokeClick(manage);
+  const menu = h.document.querySelector('.site-draw-menu')!;
+  expect(menu.textContent).toContain('Highlight 1');
+  expect(menu.textContent).toContain('Doodle 2');
+  const first = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === 'Highlight 1')!;
+  h.invokeClick(first);
+  expect(menu.querySelector('[role="group"]')?.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0);
+  expect(menu.textContent).toContain('Edit');
+  expect(menu.textContent).toContain('Delete');
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+  expect(h.document.querySelector('.site-draw-menu')).not.toBeNull();
+  expect(h.document.querySelector('.site-draw-menu')?.textContent).toContain('Highlight 1');
+  expect(h.document.activeElement?.getAttribute('data-site-draw-menu-annotation')).toBe('drawing');
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+  expect(h.document.querySelector('.site-draw-menu')).toBeNull();
+  expect(h.document.documentElement.hasAttribute('data-site-draw-menu-open')).toBe(false);
+});
+
+test('single drawing detail closes on outside pointerdown and Tab is not trapped', () => {
+  const h = harness([fixture]);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  h.invokeClick(manage);
+  const menu = h.document.querySelector('.site-draw-menu')!;
+  expect(menu.classList.contains('is-open')).toBe(true);
+  const outside = h.document.createElement('button');
+  h.document.body.append(outside);
+  outside.addEventListener('click', () => {});
+  outside.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  expect(h.document.querySelector('.site-draw-menu')).toBeNull();
+  h.invokeClick(manage);
+  const tab = new h.window.KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+  h.window.dispatchEvent(tab);
+  expect(tab.defaultPrevented).toBe(false);
+  expect(h.document.querySelector('.site-draw-menu')).toBeNull();
+  expect(h.document.documentElement.hasAttribute('data-site-draw-menu-open')).toBe(false);
+});
+
+test('outside dismissal consumes only its associated click across menu levels', () => {
+  const second = { ...fixture, id: 'second', kind: 'doodle' as const };
+  const h = harness([fixture, second]);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  h.invokeClick(manage);
+  const first = [...h.document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === 'Highlight 1')!;
+  h.invokeClick(first);
+  const outside = h.document.createElement('button');
+  let clicks = 0;
+  outside.addEventListener('click', () => { clicks += 1; });
+  h.document.body.append(outside);
+  outside.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  outside.dispatchEvent(new h.window.Event('click', { bubbles: true, cancelable: true }));
+  expect(clicks).toBe(0);
+  expect(h.document.querySelector('.site-draw-menu')).not.toBeNull();
+  outside.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  outside.dispatchEvent(new h.window.Event('click', { bubbles: true, cancelable: true }));
+  expect(clicks).toBe(0);
+  expect(h.document.querySelector('.site-draw-menu')).toBeNull();
+  outside.dispatchEvent(new h.window.Event('pointerdown', { bubbles: true, cancelable: true }));
+  outside.dispatchEvent(new h.window.Event('click', { bubbles: true, cancelable: true }));
+  expect(clicks).toBe(1);
+});
+
+test('visibility stays in the detail menu and deletion uses the current annotation ID', () => {
+  const second = { ...fixture, id: 'second', kind: 'doodle' as const };
+  const h = harness([fixture, second]);
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  h.invokeClick(manage);
+  const menu = h.document.querySelector('.site-draw-menu')!;
+  const secondRow = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === 'Doodle 2')!;
+  h.invokeClick(secondRow);
+  const visibility = menu.querySelector<HTMLButtonElement>('[data-site-draw-mobile]')!;
+  expect(visibility.getAttribute('role')).toBe('menuitemcheckbox');
+  expect(h.document.activeElement?.textContent).toBe('Edit');
+  h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true }));
+  expect(h.document.activeElement?.getAttribute('role')).toBe('menuitemcheckbox');
+  visibility.focus();
+  h.invokeClick(visibility);
+  expect(menu.querySelector<HTMLButtonElement>('[data-site-draw-mobile]')?.textContent).toBe('Hidden on phone');
+  expect(h.pending.get('annotation:page:block').prepare().annotations.find((item: SiteAnnotation) => item.id === 'second')?.mobile).toBe('hide');
+  const remove = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === 'Delete')!;
+  h.invokeClick(remove);
+  expect(h.annotationsFor(h.target).current.map((item: SiteAnnotation) => item.id)).toEqual(['drawing']);
+});
+
+test('hover preview restores saved image sources without changing pending state', () => {
+  const h = harness([fixture, { ...fixture, id: 'second', kind: 'doodle' as const }]);
+  h.document.documentElement.style.setProperty('--ref-palette-blue-500', '#2b7fff');
+  h.pushPending(h.target);
+  const image = h.section.querySelector<HTMLImageElement>('[data-site-annotation]')!;
+  const original = image.src;
+  const manage = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  h.invokeClick(manage);
+  const menu = h.document.querySelector<HTMLElement>('.site-draw-menu')!;
+  const menuPosition = [menu.style.left, menu.style.top];
+  const row = [...h.document.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+    .find((item) => item.textContent === 'Highlight 1')!;
+  row.dispatchEvent(new h.window.Event('pointerenter', { bubbles: true }));
+  expect(image.src).not.toBe(original);
+  expect([menu.style.left, menu.style.top]).toEqual(menuPosition);
+  row.dispatchEvent(new h.window.Event('pointerleave', { bubbles: true }));
+  expect(image.src).toBe(original);
+  expect(h.pending.size).toBe(0);
+});
+
+test('drawing menu chooses the least-overlapping position around visible ink', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(400, 480, 200, 80);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThan(400);
+});
+
+test('drawing menu moves below when ink occupies the preferred above position', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 120);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeGreaterThan(400);
+});
+
+test('drawing menu uses a side candidate when both vertical positions overlap ink', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  for (const top of [280, 480]) {
+    const ink = h.document.createElement('img');
+    ink.dataset.siteAnnotation = `drawing-${top}`;
+    ink.getBoundingClientRect = () => new h.window.DOMRect(400, top, 100, 80);
+    h.document.body.append(ink);
+  }
+  h.document.body.append(menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.left)).toBe(508);
+  expect(Number.parseFloat(menu.style.top)).toBe(400);
+});
+
+test('drawing menu remains inside a constrained viewport', () => {
+  const h = harness([fixture]);
+  Object.defineProperty(h.window, 'innerWidth', { configurable: true, value: 260 });
+  Object.defineProperty(h.window, 'innerHeight', { configurable: true, value: 180 });
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(200, 130, 40, 30);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const ink = h.document.createElement('img');
+  ink.dataset.siteAnnotation = 'drawing';
+  ink.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 260, 180);
+  h.document.body.append(ink, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(menu.style.maxHeight).toBe('156px');
+  expect(Number.parseFloat(menu.style.left)).toBeGreaterThanOrEqual(12);
+  expect(Number.parseFloat(menu.style.left)).toBeLessThanOrEqual(28);
+  expect(Number.parseFloat(menu.style.top)).toBeGreaterThanOrEqual(12);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThanOrEqual(68);
+});
+
+test('drawing placement scores clipped carousel ink by its visible clip', () => {
+  const h = harness([fixture]);
+  const button = h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!;
+  button.getBoundingClientRect = () => new h.window.DOMRect(400, 400, 100, 40);
+  const menu = h.document.createElement('div');
+  menu.getBoundingClientRect = () => new h.window.DOMRect(0, 0, 220, 100);
+  const clipped = h.document.createElement('img');
+  clipped.dataset.siteAnnotation = 'drawing';
+  clipped.style.clipPath = 'inset(180px 0px 0px)';
+  clipped.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 200);
+  const fullyClipped = h.document.createElement('img');
+  fullyClipped.dataset.siteAnnotation = 'fully-clipped';
+  fullyClipped.style.clipPath = 'inset(200px)';
+  fullyClipped.getBoundingClientRect = () => new h.window.DOMRect(380, 280, 240, 200);
+  h.document.body.append(clipped, fullyClipped, menu);
+  h.positionDrawingMenu(menu, button);
+  expect(Number.parseFloat(menu.style.top)).toBeLessThan(400);
 });
 
 test('unchanged edits preserve original strokes and geometry', () => {
@@ -323,9 +520,9 @@ test('highlights can be hidden on phones through drawing controls or management 
   let saved = h.pending.get('annotation:page:block').prepare().annotations[0];
   expect(saved.mobile).toBe('hide');
   expect(saved.strokes).toEqual(fixture.strokes);
-  h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!.click();
+  h.invokeClick(h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!);
   const mobile = h.document.querySelector<HTMLButtonElement>('[data-site-draw-mobile]')!;
-  expect(mobile.getAttribute('aria-pressed')).toBe('false');
+  expect(mobile.getAttribute('aria-checked')).toBe('false');
   mobile.click();
   expect(h.pending.size).toBe(0);
   saved = h.annotationsFor(h.target).current[0];
