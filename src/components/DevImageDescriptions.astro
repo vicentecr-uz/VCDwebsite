@@ -58,6 +58,16 @@ const intentOptions = [
 </template>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const ownObserver = <T extends { disconnect(): void }>(observer: T): T => {
+      scope.add(() => observer.disconnect());
+      return observer;
+    };
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
   type Intent = 'auto' | 'manual';
   type Row = {
     key: string;
@@ -89,6 +99,7 @@ const intentOptions = [
   };
 
   const root = document.querySelector<HTMLElement>('[data-dev-image-descriptions]');
+  if (!root) return () => scope.destroy();
   const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
   const pageSelect = root?.querySelector<HTMLSelectElement>('select[data-image-descriptions-page]');
   const statusEl = root?.querySelector<HTMLElement>('[data-image-descriptions-status]');
@@ -266,22 +277,22 @@ const intentOptions = [
     text.id = `${controlId}-text`;
     text.setAttribute('aria-label', 'Description');
     text.maxLength = 300;
-    text.addEventListener('input', () => {
+    scope.listen(text, 'input', () => {
       row.description = text.value.slice(0, 300);
       row.dirty = true;
       row.saveError = undefined;
       updateRowView(view, row);
     });
-    intent.addEventListener('change', () => {
+    scope.listen(intent, 'change', () => {
       row.intent = intent.value as Intent;
       row.dirty = true;
       row.saveError = undefined;
       updateRowView(view, row);
     });
-    save.addEventListener('click', () => void saveRow(row));
-    retry.addEventListener('click', () => void retryRow(row));
-    refresh.addEventListener('click', () => void loadRows({ resetKey: row.key }));
-    revert.addEventListener('click', () => void loadRows({ resetKey: row.key }));
+    scope.listen(save, 'click', () => void saveRow(row));
+    scope.listen(retry, 'click', () => void retryRow(row));
+    scope.listen(refresh, 'click', () => void loadRows({ resetKey: row.key }));
+    scope.listen(revert, 'click', () => void loadRows({ resetKey: row.key }));
 
     updateRowView(view, row);
     return view;
@@ -317,9 +328,10 @@ const intentOptions = [
     if (savingKeys.size) return;
     const generation = ++requestGeneration;
     try {
-      const response = await fetch('/api/image-descriptions');
+      const response = await pageFetch('/api/image-descriptions');
       if (!response.ok) throw new Error('Could not load image descriptions.');
       const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      scope.signal.throwIfAborted();
       if (generation !== requestGeneration) return;
       if (resetKey) {
         const latest = payload.rows?.find((row) => row.key === resetKey);
@@ -337,6 +349,7 @@ const intentOptions = [
       renderRows();
       syncPolling();
     } catch (error) {
+      if (scope.signal.aborted) return;
       if (generation !== requestGeneration) return;
       setStatus(error instanceof Error ? error.message : 'Could not load image descriptions.');
     }
@@ -355,12 +368,13 @@ const intentOptions = [
     updateRowView(view, row);
     let didSave = false;
     try {
-      const response = await fetch('/api/image-description-save', {
+      const response = await pageFetch('/api/image-description-save', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ key: row.key, baseToken: row.baseToken, alt: row.description.slice(0, 300), intent: row.intent }),
       });
       const payload = await response.json() as { ok?: boolean; row?: Row; error?: string };
+      scope.signal.throwIfAborted();
       if (generation !== requestGeneration) return;
       if (response.status === 409) {
         row.conflict = true;
@@ -375,6 +389,7 @@ const intentOptions = [
       renderRows();
       didSave = true;
     } catch (error) {
+      if (scope.signal.aborted) return;
       if (generation !== requestGeneration) return;
       row.saveError = error instanceof Error ? error.message : 'Could not save description.';
     } finally {
@@ -390,19 +405,21 @@ const intentOptions = [
     if (savingKeys.size) return;
     const generation = ++requestGeneration;
     try {
-      const response = await fetch('/api/image-descriptions', {
+      const response = await pageFetch('/api/image-descriptions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'retry', key: row.key }),
       });
       if (!response.ok) throw new Error('Could not retry description.');
       const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      scope.signal.throwIfAborted();
       if (generation !== requestGeneration) return;
       mergeRows(payload.rows ?? []);
       checking = payload.checking === true;
       renderRows();
       syncPolling();
     } catch (error) {
+      if (scope.signal.aborted) return;
       if (generation !== requestGeneration) return;
       setStatus(error instanceof Error ? error.message : 'Could not retry description.');
     }
@@ -413,13 +430,14 @@ const intentOptions = [
     const generation = ++requestGeneration;
     checkButton.disabled = true;
     try {
-      const response = await fetch('/api/image-descriptions', {
+      const response = await pageFetch('/api/image-descriptions', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'check' }),
       });
       if (!response.ok) throw new Error('Could not check image descriptions.');
       const payload = await response.json() as { rows?: Row[]; checking?: boolean };
+      scope.signal.throwIfAborted();
       if (generation !== requestGeneration) return;
       mergeRows(payload.rows ?? []);
       checking = payload.checking === true;
@@ -427,6 +445,7 @@ const intentOptions = [
       renderRows();
       syncPolling();
     } catch (error) {
+      if (scope.signal.aborted) return;
       if (generation !== requestGeneration) return;
       setStatus(error instanceof Error ? error.message : 'Could not check image descriptions.');
     } finally {
@@ -444,20 +463,24 @@ const intentOptions = [
     }
   };
 
-  pageSelect.addEventListener('change', () => {
+  scope.listen(pageSelect, 'change', () => {
     pageFilter = pageSelect.value;
     renderRows();
   });
-  checkButton.addEventListener('click', () => void checkRows());
+  scope.listen(checkButton, 'click', () => void checkRows());
   let wasHidden = panel.hidden;
-  new MutationObserver(() => {
+  ownObserver(new MutationObserver(() => {
     const nowHidden = panel.hidden;
     if (wasHidden && !nowHidden) void loadRows();
     wasHidden = nowHidden;
     syncPolling();
-  }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
-  window.addEventListener('vcd:dev-content-written', () => void loadRows());
+  })).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+  scope.listen(window, 'vcd:dev-content-written', () => void loadRows());
+  scope.add(() => { requestGeneration += 1; window.clearInterval(pollTimer); });
   void loadRows();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

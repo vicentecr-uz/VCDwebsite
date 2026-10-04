@@ -45,13 +45,18 @@ import Button from './ui/Button.astro';
 </DevOverlay>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { getLastPointerPosition } from '../lib/lastPointer';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
 
   const initDevNewProject = () => {
     const root = document.querySelector<HTMLElement>('[data-dev-new-project]');
     const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
-    if (!root || !panel || root.dataset.initialized === 'true') return;
-    root.dataset.initialized = 'true';
+    if (!root || !panel) return;
 
     const titleInput = root.querySelector<HTMLInputElement>('[data-np-title]');
     const slugInput = root.querySelector<HTMLInputElement>('[data-np-slug]');
@@ -119,24 +124,24 @@ import Button from './ui/Button.astro';
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
         detail: { panel, clientX: x, clientY: y },
       }));
-      requestAnimationFrame(() => titleInput?.focus());
+      scope.frame(() => titleInput?.focus());
     };
 
-    titleInput?.addEventListener('input', () => {
+    scope.listen(titleInput, 'input', () => {
       if (slugInput && !slugTouched) {
         slugInput.value = slugify(titleInput.value);
       }
       syncCreateEnabled();
     });
 
-    slugInput?.addEventListener('input', () => {
+    scope.listen(slugInput, 'input', () => {
       slugTouched = true;
       slugInput.dataset.touched = 'true';
       syncCreateEnabled();
     });
 
     statusButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      scope.listen(button, 'click', () => {
         const value = button.dataset.npStatus;
         if (!value) return;
         selectedStatus = value;
@@ -145,11 +150,11 @@ import Button from './ui/Button.astro';
       });
     });
 
-    cancelBtn?.addEventListener('click', () => {
+    scope.listen(cancelBtn, 'click', () => {
       closePanel();
     });
 
-    createBtn?.addEventListener('click', async () => {
+    scope.listen(createBtn, 'click', async () => {
       if (!canCreate()) return;
       const title = titleInput?.value.trim() ?? '';
       const slug = selectedStatus === 'image'
@@ -157,7 +162,7 @@ import Button from './ui/Button.astro';
         : (slugInput?.value.trim() ?? '');
       createBtn.disabled = true;
       try {
-        const response = await fetch('/api/project-create', {
+        const response = await pageFetch('/api/project-create', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -168,6 +173,7 @@ import Button from './ui/Button.astro';
           }),
         });
         const payload = await response.json();
+      scope.signal.throwIfAborted();
         if (!response.ok) {
           window.alert(payload.error || 'Could not create the project.');
           return;
@@ -182,13 +188,14 @@ import Button from './ui/Button.astro';
           },
         }));
       } catch {
+        if (scope.signal.aborted) return;
         window.alert('Could not create the project.');
       } finally {
         syncCreateEnabled();
       }
     });
 
-    window.addEventListener('vcd:dev-new-project-open', ((event: CustomEvent<{
+    scope.listen(window, 'vcd:dev-new-project-open', ((event: CustomEvent<{
       grid?: string;
       clientX?: number;
       clientY?: number;
@@ -198,14 +205,16 @@ import Button from './ui/Button.astro';
       openPanel(grid, clientX, clientY);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+    scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
       if (event.detail?.panel !== panel) return;
       resetForm();
     }) as EventListener);
   };
 
   initDevNewProject();
-  document.addEventListener('astro:page-load', initDevNewProject);
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

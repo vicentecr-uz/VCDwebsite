@@ -281,6 +281,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
 
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
   const LOCK_ICON = sizeIcon(lockIcon, 14);
   const LOCK_OPEN_ICON = sizeIcon(lockOpenIcon, 14);
 
@@ -468,7 +472,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!hoverImg) return;
       if (hoverImg.naturalWidth > 0 && hoverImg.naturalHeight > 0) return;
       hoverImg.loading = 'eager';
-      hoverImg.addEventListener('load', () => {
+      pageScope.listen(hoverImg, 'load', () => {
         if (editTarget !== target || !draftHoverVariants) return;
         syncLinkedListingAspect(draftCoverVariants[selectedViewport].aspect, fromAspect);
         paintDraftCrop();
@@ -1886,8 +1890,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (editedImage.naturalWidth) renderDraft();
     };
 
-    previewImage.addEventListener('load', refreshCover);
-    window.addEventListener('resize', refreshCover);
+    pageScope.listen(previewImage, 'load', refreshCover);
+    pageScope.listen(window, 'resize', refreshCover);
 
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
@@ -2037,8 +2041,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       if (pageLabel) {
         const onInput = () => syncLabelText();
-        pageLabel.addEventListener('input', onInput);
-        pageLabel.addEventListener('keyup', onInput);
+        pageScope.listen(pageLabel, 'input', onInput);
+        pageScope.listen(pageLabel, 'keyup', onInput);
         previewLabelInputCleanup = () => {
           pageLabel.removeEventListener('input', onInput);
           pageLabel.removeEventListener('keyup', onInput);
@@ -2132,7 +2136,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (editedImage.complete) {
         refreshCover();
       } else {
-        editedImage.addEventListener('load', refreshCover, { once: true });
+        pageScope.listen(editedImage, 'load', refreshCover, { once: true });
       }
       if (!preserveLocalHistory) {
         openingSnapshot = snapshotViewport();
@@ -2270,8 +2274,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         closing.ghost.removeEventListener('transitionend', onEnd);
         if (closingStage === closing) finishClosingStage(closing);
       };
-      closing.ghost.addEventListener('transitionend', onEnd);
-      closingStageTimer = window.setTimeout(() => {
+      pageScope.listen(closing.ghost, 'transitionend', onEnd);
+      closingStageTimer = pageScope.timeout(() => {
         if (closingStage === closing) finishClosingStage(closing);
       }, 250);
     };
@@ -2427,7 +2431,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const wait = Math.max(0, GESTURE_CHROME_MS - (performance.now() - lastChromeAt));
         const run = () => {
           chromeTimer = 0;
-          chromeRaf = requestAnimationFrame(() => {
+          chromeRaf = pageScope.frame(() => {
             chromeRaf = 0;
             flushGestureChrome(false);
           });
@@ -2436,7 +2440,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           run();
           return;
         }
-        chromeTimer = window.setTimeout(run, wait);
+        chromeTimer = pageScope.timeout(run, wait);
       };
 
       const applyPinchToDraft = () => {
@@ -2523,7 +2527,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       const requestGesturePaint = () => {
         if (paintRaf) return;
-        paintRaf = requestAnimationFrame(flushGesturePaint);
+        paintRaf = pageScope.frame(flushGesturePaint);
       };
 
       const beginPinch = (bounds: DOMRect) => {
@@ -2585,7 +2589,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       const armWheelIdleFlush = () => {
         if (wheelIdleTimer) window.clearTimeout(wheelIdleTimer);
-        wheelIdleTimer = window.setTimeout(() => {
+        wheelIdleTimer = pageScope.timeout(() => {
           wheelIdleTimer = 0;
           // Pointer gesture owns the session — don't reset mid-drag.
           if (pointers.size > 0 || pinch || panPointer != null) return;
@@ -2593,7 +2597,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         }, 140);
       };
 
-      surface.addEventListener('pointerdown', (event) => {
+      pageScope.listen(surface, 'pointerdown', (event) => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
         if (
           options?.ignoreSelector
@@ -2624,7 +2628,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         capturePointer(surface, event.pointerId);
       });
 
-      surface.addEventListener('pointermove', (event) => {
+      pageScope.listen(surface, 'pointermove', (event) => {
         if (!pointers.has(event.pointerId)) return;
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -2684,9 +2688,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         surface.classList.remove('is-dragging');
         endGestureSession();
       };
-      surface.addEventListener('pointerup', endPointer);
-      surface.addEventListener('pointercancel', endPointer);
-      surface.addEventListener('lostpointercapture', (event) => {
+      pageScope.listen(surface, 'pointerup', endPointer);
+      pageScope.listen(surface, 'pointercancel', endPointer);
+      pageScope.listen(surface, 'lostpointercapture', (event) => {
         // Ignore capture loss while pinching — we release captures on purpose
         // when the second finger lands, and ending the pointer then drops the pinch.
         if (pointers.size >= 2 || pinch) return;
@@ -2694,7 +2698,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         endPointer(event);
       });
 
-      surface.addEventListener('wheel', (event) => {
+      pageScope.listen(surface, 'wheel', (event) => {
         event.preventDefault();
         if (!gestureBounds) refreshGestureBounds();
 
@@ -2736,7 +2740,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       });
 
       stage.querySelectorAll<HTMLElement>('[data-page-resize]').forEach((handle) => {
-        handle.addEventListener('pointerdown', (event) => {
+        pageScope.listen(handle, 'pointerdown', (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
           // Bubble past the stage pan handler and the carousel track swipe.
@@ -2753,7 +2757,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           stage.classList.add('is-resizing');
           capturePointer(handle, event.pointerId);
         });
-        handle.addEventListener('pointermove', (event) => {
+        pageScope.listen(handle, 'pointermove', (event) => {
           if (resizePointerId !== event.pointerId) return;
           applyResizeFromPointer(event.clientX, event.clientY);
         });
@@ -2765,8 +2769,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           stage.classList.remove('is-resizing');
           if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
         };
-        handle.addEventListener('pointerup', endResize);
-        handle.addEventListener('pointercancel', endResize);
+        pageScope.listen(handle, 'pointerup', endResize);
+        pageScope.listen(handle, 'pointercancel', endResize);
       });
     };
 
@@ -2820,13 +2824,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncPageStageBox();
       // Layout can settle a frame later (constrained width, fonts, overlay open)
       // — re-glue so handles aren't stranded at 0×0 and look "missing".
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      pageScope.frame(() => {
+        pageScope.frame(() => {
           if (pageStage?.stage === stage) syncPageStageBox();
         });
       });
       // Fade ghost + stage chrome in after paint so opacity 0 → visible transitions.
-      requestAnimationFrame(() => {
+      pageScope.frame(() => {
         if (pageStage?.ghost !== ghost) return;
         ghost.classList.add('is-visible');
         stage.classList.add('is-visible');
@@ -2837,13 +2841,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     };
 
-    window.addEventListener('vcd:dev-listing-slot', ((event: CustomEvent<{ cover?: HTMLElement; slot?: 'cover' | 'hover' }>) => {
+    pageScope.listen(window, 'vcd:dev-listing-slot', ((event: CustomEvent<{ cover?: HTMLElement; slot?: 'cover' | 'hover' }>) => {
       const cover = event.detail?.cover;
       if (!(cover instanceof HTMLElement) || cover !== editTarget || !editingSession) return;
       selectTarget(cover, true);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent) => {
       // Only the image/crop panel — caption/grid opens must not hijack this target.
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
@@ -2855,7 +2859,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (target) selectTarget(target, true);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-image-replace', ((event: CustomEvent<{
+    pageScope.listen(window, 'vcd:dev-image-replace', ((event: CustomEvent<{
       target?: HTMLElement;
       file?: File;
       src?: string;
@@ -2892,7 +2896,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       editingSession = false;
     };
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (panel && panel.dataset.devPanelKey !== 'image') return;
       teardownEditSession();
@@ -2902,16 +2906,29 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     // can exit Dev Mode with a panel still open. Both must tear the page
     // surface down, or the orphaned ghost loses its dev-only styling and
     // renders as a full-size in-flow duplicate of the image.
-    window.addEventListener('vcd:dev-panels-closed', teardownEditSession);
-    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-panels-closed', teardownEditSession);
+    pageScope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active === false) teardownEditSession();
     }) as EventListener);
+
+    pageScope.add(() => {
+      replacementSession += 1;
+      invalidateReplacement();
+      closeBackgroundPicker();
+      unregisterHistoryScope?.();
+      unmountPageStage({ immediate: true });
+      resizeObserver?.disconnect();
+      previewLabelObserver?.disconnect();
+      previewLabelInputCleanup?.();
+      previewLabelFitCleanup?.();
+      delete tuner.dataset.initialized;
+    });
 
     // Prime the preview canvas without mutating the live page image.
     selectTarget(initialTarget, false);
 
     viewportButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const viewport = button.dataset.cropViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
         commitDraftSettings();
@@ -2930,7 +2947,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     mobileInsetButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         if (selectedViewport !== 'mobile' || !mobileBleedEligible(editTarget)) return;
         const next = button.dataset.cropMobileInsetValue === 'true';
         if (next === draftMobileInset) return;
@@ -2944,7 +2961,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       });
     });
 
-    aspectRatioSelect.addEventListener('change', () => {
+    pageScope.listen(aspectRatioSelect, 'change', () => {
       pushUndo();
       beginCropEdit('both');
       // Hold the zoom level across the reshape; `w` follows the new cover bound.
@@ -2981,7 +2998,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Restored inheritance — unsaved changes.';
     };
     settingResetButtons.forEach((button) => {
-      button.addEventListener('click', () => resetSetting(button.dataset.cropResetSetting as ImageVariantSetting | 'width'));
+      pageScope.listen(button, 'click', () => resetSetting(button.dataset.cropResetSetting as ImageVariantSetting | 'width'));
     });
     for (const [setting, label] of [
       ['aspect', tuner.querySelector('[data-crop-aspect-ratio-wrap] .dev-field__label')],
@@ -2990,7 +3007,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     ] as const) {
       if (!(label instanceof HTMLElement)) continue;
       label.title = 'Option/Alt-click to reset to inherited value';
-      label.addEventListener('click', (event) => {
+      pageScope.listen(label, 'click', (event) => {
         if (!event.altKey) return;
         event.preventDefault();
         resetSetting(setting);
@@ -2998,7 +3015,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     }
 
     let zoomEditing = false;
-    zoomInput.addEventListener('input', () => {
+    pageScope.listen(zoomInput, 'input', () => {
       if (!zoomEditing) { pushUndo(); zoomEditing = true; }
       beginCropEdit();
       draft.w = wForZoom(draft.aspect, clamp(Number(zoomInput.value), minZoom(), ZOOM_MAX));
@@ -3006,8 +3023,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Unsaved changes.';
     });
 
-    zoomInput.addEventListener('change', () => { zoomEditing = false; });
-    zoomInput.addEventListener('blur', () => { zoomEditing = false; });
+    pageScope.listen(zoomInput, 'change', () => { zoomEditing = false; });
+    pageScope.listen(zoomInput, 'blur', () => { zoomEditing = false; });
 
     let startX = 0;
     let startY = 0;
@@ -3068,7 +3085,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     resizeHandles.forEach((handle) => {
-      handle.addEventListener('pointerdown', (event) => {
+      pageScope.listen(handle, 'pointerdown', (event) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
@@ -3085,7 +3102,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         handle.setPointerCapture(event.pointerId);
       });
 
-      handle.addEventListener('pointermove', (event) => {
+      pageScope.listen(handle, 'pointermove', (event) => {
         if (resizePointerId !== event.pointerId) return;
         applyResizeFromPointer(event.clientX, event.clientY);
       });
@@ -3101,13 +3118,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         }
       };
 
-      handle.addEventListener('pointerup', endResize);
-      handle.addEventListener('pointercancel', endResize);
+      pageScope.listen(handle, 'pointerup', endResize);
+      pageScope.listen(handle, 'pointercancel', endResize);
     });
 
     wireCropGestures(preview, { ignoreSelector: '[data-crop-resize]' });
 
-    centerXButton.addEventListener('click', () => {
+    pageScope.listen(centerXButton, 'click', () => {
       pushUndo();
       beginCropEdit();
       draft.cx = 0.5;
@@ -3115,7 +3132,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Centred horizontally — unsaved changes.';
     });
 
-    centerYButton.addEventListener('click', () => {
+    pageScope.listen(centerYButton, 'click', () => {
       pushUndo();
       beginCropEdit();
       draft.cy = 0.5;
@@ -3123,7 +3140,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Centred vertically — unsaved changes.';
     });
 
-    fitButton.addEventListener('click', () => {
+    pageScope.listen(fitButton, 'click', () => {
       pushUndo();
       beginCropEdit();
       constrainByViewport = {
@@ -3139,7 +3156,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Fit to frame — unsaved changes.';
     });
 
-    constraintButton.addEventListener('click', () => {
+    pageScope.listen(constraintButton, 'click', () => {
       pushUndo();
       const before = { ...draft };
       const next = !constrainToFrame();
@@ -3157,7 +3174,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : `Crop unlocked on ${selectedViewport} — image edges may enter the frame.`;
     });
 
-    widthConstrainSelect.addEventListener('change', () => {
+    pageScope.listen(widthConstrainSelect, 'change', () => {
       if (!isStandaloneMedia(editTarget)) {
         widthConstrainSelect.value = '100';
         return;
@@ -3181,7 +3198,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncDraftDirty();
     });
 
-    maxVhSelect.addEventListener('change', () => {
+    pageScope.listen(maxVhSelect, 'change', () => {
       if (!supportsMaxVh(editTarget)) {
         maxVhSelect.value = '';
         return;
@@ -3213,16 +3230,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         syncDraftDirty();
       } else syncBackgroundControl();
     };
-    backgroundInput?.addEventListener('change', () => changeBackground(backgroundInput.value));
-    backgroundNone?.addEventListener('click', () => {
+    pageScope.listen(backgroundInput, 'change', () => changeBackground(backgroundInput.value));
+    pageScope.listen(backgroundNone, 'click', () => {
       changeBackground('transparent');
       closeBackgroundPicker();
     });
-    backgroundSwatch?.addEventListener('click', () => {
+    pageScope.listen(backgroundSwatch, 'click', () => {
       backgroundPicker?.setAttribute('hex', draftBackground === 'transparent' ? '#ffffffff' : `${draftBackground}ff`);
       backgroundPicker?.setAttribute('open', 'true');
     });
-    backgroundPicker?.addEventListener('update-color', ((event: CustomEvent<{ hex?: string }>) => {
+    pageScope.listen(backgroundPicker, 'update-color', ((event: CustomEvent<{ hex?: string }>) => {
       if (event.detail?.hex) changeBackground(event.detail.hex);
     }) as EventListener);
 
@@ -3300,8 +3317,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const readUploadedImageDims = (src: string) => new Promise<{ srcWidth: number; srcHeight: number }>((resolve, reject) => {
       const image = new Image();
       const fail = () => reject(new Error('Could not load the replacement image.'));
-      image.addEventListener('error', fail, { once: true });
-      image.addEventListener('load', () => {
+      pageScope.listen(image, 'error', fail, { once: true });
+      pageScope.listen(image, 'load', () => {
         if (!image.naturalWidth || !image.naturalHeight) {
           fail();
           return;
@@ -3387,8 +3404,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (typeof node.decode === 'function') return node.decode();
         if (node.complete && node.naturalWidth) return Promise.resolve();
         return new Promise<void>((resolve, reject) => {
-          node.addEventListener('load', () => resolve(), { once: true });
-          node.addEventListener('error', () => reject(new Error('Could not load the replacement image.')), { once: true });
+          pageScope.listen(node, 'load', () => resolve(), { once: true });
+          pageScope.listen(node, 'error', () => reject(new Error('Could not load the replacement image.')), { once: true });
         });
       };
       void Promise.all([ready(image), ready(previewImage)])
@@ -3440,22 +3457,22 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     // Click focuses the well for paste. Ghost buttons own Finder / library;
     // double-click (and Enter/Space on the well) still open the file picker.
-    replaceDrop.addEventListener('click', (event) => {
+    pageScope.listen(replaceDrop, 'click', (event) => {
       if (replaceControlFrom(event)) return;
       replaceDrop.focus();
     });
-    replaceDrop.addEventListener('dblclick', (event) => {
+    pageScope.listen(replaceDrop, 'dblclick', (event) => {
       if (replaceControlFrom(event)) return;
       replaceFileInput.click();
     });
-    replaceDrop.addEventListener('keydown', (event) => {
+    pageScope.listen(replaceDrop, 'keydown', (event) => {
       if (replaceControlFrom(event)) return;
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         replaceFileInput.click();
       }
     });
-    replaceDrop.addEventListener('paste', (event) => {
+    pageScope.listen(replaceDrop, 'paste', (event) => {
       const items = event.clipboardData?.items;
       if (!items) return;
       const file = [...items]
@@ -3466,18 +3483,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       replaceWithFile(file);
     });
 
-    replaceChooseButton.addEventListener('click', (event) => {
+    pageScope.listen(replaceChooseButton, 'click', (event) => {
       event.stopPropagation();
       replaceFileInput.click();
     });
 
-    replaceFileInput.addEventListener('change', () => {
+    pageScope.listen(replaceFileInput, 'change', () => {
       const file = replaceFileInput.files?.[0];
       replaceFileInput.value = '';
       replaceWithFile(file);
     });
 
-    replaceAssetsButton.addEventListener('click', (event) => {
+    pageScope.listen(replaceAssetsButton, 'click', (event) => {
       event.stopPropagation();
       const context = replacementContext();
       replacementAttempt = context.attempt;
@@ -3507,30 +3524,30 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     // Stop page-level image-drop from inserting a section when the well is the target.
-    replaceDrop.addEventListener('dragenter', (event) => {
+    pageScope.listen(replaceDrop, 'dragenter', (event) => {
       event.preventDefault();
       event.stopPropagation();
       replaceDrop.classList.add('is-dragover');
     });
-    replaceDrop.addEventListener('dragover', (event) => {
+    pageScope.listen(replaceDrop, 'dragover', (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
       replaceDrop.classList.add('is-dragover');
     });
-    replaceDrop.addEventListener('dragleave', (event) => {
+    pageScope.listen(replaceDrop, 'dragleave', (event) => {
       event.stopPropagation();
       replaceDrop.classList.remove('is-dragover');
     });
-    replaceDrop.addEventListener('drop', (event) => {
+    pageScope.listen(replaceDrop, 'drop', (event) => {
       event.preventDefault();
       event.stopPropagation();
       replaceDrop.classList.remove('is-dragover');
       replaceWithFile(event.dataTransfer?.files?.[0]);
     });
 
-    saveButton.addEventListener('click', saveDraft);
-    makeCarouselButton?.addEventListener('click', async () => {
+    pageScope.listen(saveButton, 'click', saveDraft);
+    pageScope.listen(makeCarouselButton, 'click', async () => {
       const target = editTarget;
       if (!isGridTarget(target) || isCarouselItem(target) || makeCarouselButton.disabled) return;
       const documentKey = target.dataset.devDocument || '';
@@ -3569,7 +3586,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         makeCarouselButton.disabled = false;
       }
     });
-    window.addEventListener('vcd:dev-before-save', (event) => {
+    pageScope.listen(window, 'vcd:dev-before-save', (event) => {
       if (!editingSession) return;
       if (replacementPending) {
         event.preventDefault();
@@ -3579,7 +3596,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncDraftDirty();
       if (draftDirty) saveDraft();
     });
-    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
       if (editingSession) { syncDraftDirty(); if (draftDirty && event.detail) event.detail.dirty = true; }
     }) as EventListener);
 
@@ -3599,13 +3616,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Redid last edit.';
     };
 
-    cancelButton?.addEventListener('click', () => {
+    pageScope.listen(cancelButton, 'click', () => {
       revertToSaved();
       renderDraft();
       closePanel();
     });
 
-    revertButton.addEventListener('click', () => {
+    pageScope.listen(revertButton, 'click', () => {
       revertToSaved();
       renderDraft();
       // The frame may have changed shape; re-glue the on-page surface to it.
@@ -3613,7 +3630,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Reverted to the last saved crop.';
     });
 
-    resetButton.addEventListener('click', () => {
+    pageScope.listen(resetButton, 'click', () => {
       pushUndo();
       beginCropEdit();
       draft = { aspect: draft.aspect, cx: 0.5, cy: 0.5, w: coverW(draft.aspect) };
@@ -3621,7 +3638,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Reset to centred cover — unsaved changes.';
     });
 
-    useGridDefaultButton.addEventListener('click', () => {
+    pageScope.listen(useGridDefaultButton, 'click', () => {
       if (!isGridTarget(editTarget) || editTarget.dataset.devHasOwnVariants !== 'true') return;
       const target = editTarget;
       const beforeDefault = snapshotViewport();
@@ -3704,7 +3721,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       closePanel();
     });
 
-    window.addEventListener('vcd:dev-media-source-changed', ((event: CustomEvent<{
+    pageScope.listen(window, 'vcd:dev-media-source-changed', ((event: CustomEvent<{
       target: HTMLElement; src: string; srcWidth: number; srcHeight: number;
     }>) => {
       const { target, src, srcWidth, srcHeight } = event.detail;
@@ -3722,7 +3739,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    pageScope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
       for (const [target, snapshot] of appliedSnapshots) {
         if (!ids || ids.some((id) => id === pendingIdFor(target, 'cover') || id === pendingIdFor(target, 'hover'))) {
@@ -3754,13 +3771,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-reverted', (() => {
+    pageScope.listen(window, 'vcd:dev-pending-reverted', (() => {
       stagedSources.clear();
       diskBaselines.clear();
     }) as EventListener);
   };
 
   document.querySelectorAll<HTMLElement>('[data-project-image-crop-tuner]').forEach(initProjectImageCropTuner);
+  return () => pageScope.destroy();
+  });
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style>

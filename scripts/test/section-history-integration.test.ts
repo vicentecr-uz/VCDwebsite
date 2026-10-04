@@ -1,3 +1,4 @@
+import { createPageScope } from '../../src/lib/pageLifecycle';
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createHistory } from '../../src/lib/devHistory';
@@ -80,7 +81,10 @@ for (const motion of ['custom', 'native', 'reduced']) {
         history: { replaceState: () => { throw new Error('History reveal must not change the URL'); } },
         setTimeout: (fn: Function) => { timers.set(++nextId, fn); return nextId; },
         clearTimeout: (id: number) => timers.delete(id),
-        addEventListener: (type: string, fn: Function) => handlers.set(type, fn),
+        addEventListener: (type: string, fn: Function, options?: AddEventListenerOptions) => {
+          handlers.set(type, fn);
+          options?.signal?.addEventListener('abort', () => handlers.delete(type), { once: true });
+        },
         removeEventListener: (type: string) => handlers.delete(type),
       },
       performance: { now: () => 0 },
@@ -89,6 +93,9 @@ for (const motion of ['custom', 'native', 'reduced']) {
       cancelAnimationFrame: (id: number) => frames.delete(id),
       setActiveLink: (id: string) => links.push(id), updateActiveFromScroll: () => {},
     };
+    const scope = createPageScope();
+    Object.assign(scope, { frame: env.requestAnimationFrame, timeout: env.window.setTimeout });
+    Object.assign(env, { scope });
     new Function('env', `with (env) { ${scrollScript} }`)(env);
     const reveal = handlers.get('vcd:section-history-reveal')!;
     const previous = new Block('distant', 7000);
@@ -109,7 +116,12 @@ for (const motion of ['custom', 'native', 'reduced']) {
     const count = scrolls.length;
     reveal({ detail: { block: restored } });
     expect(scrolls).toHaveLength(count);
-    handlers.get('astro:before-swap')!();
+    const previousCancel = globalThis.cancelAnimationFrame;
+    globalThis.cancelAnimationFrame = env.cancelAnimationFrame;
+    try { scope.destroy(); } finally {
+      if (previousCancel) globalThis.cancelAnimationFrame = previousCancel;
+      else Reflect.deleteProperty(globalThis, 'cancelAnimationFrame');
+    }
     expect(handlers.has('vcd:section-history-reveal')).toBe(false);
   });
 }

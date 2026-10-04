@@ -3,6 +3,7 @@ import { test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { sectionEditTarget } from '../../src/scripts/devEditTarget';
 
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const start = source.indexOf('    type DetailsSnapshot =');
@@ -96,9 +97,9 @@ function harness(): Harness {
   const run = new Function(
     'document', 'textStates', 'pendingMedia', 'editorSignal', 'pageHistory', 'registerTextStates',
     'detachSectionStates', 'renderValue', 'updateActions', 'captureFieldHistory', 'cleanText',
-    'isDevContentEditing', 'actionsBusy', 'syncIntroRunControls', 'fetch', 'readApiJson', compiled,
+    'isDevContentEditing', 'actionsBusy', 'syncIntroRunControls', 'fetch', 'readApiJson', 'pageScope', 'sectionEditTarget', compiled,
   );
-  const persist = run(document, textStates, pending, editorSignal, pageHistory, registerTextStates, detachSectionStates, renderValue, updateActions, captureFieldHistory, cleanText, isDevContentEditing, actionsBusy, syncIntroRunControls, fetch, readApiJson);
+  const persist = run(document, textStates, pending, editorSignal, pageHistory, registerTextStates, detachSectionStates, renderValue, updateActions, captureFieldHistory, cleanText, isDevContentEditing, actionsBusy, syncIntroRunControls, fetch, readApiJson, { frame: (callback: () => void) => callback() }, sectionEditTarget);
   return { dom, root, textStates, pending, history, persist, writes, click(selector) {
     const target = root.querySelector<HTMLElement>(selector)!;
     target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));

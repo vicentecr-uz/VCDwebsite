@@ -132,6 +132,7 @@ import {
 </style>
 
 <script>
+  import { onPageLoad, createPageScope } from '../../lib/pageLifecycle';
   import {
     HEADER_SURFACE_DEFAULTS,
     HEADER_SURFACE_FIELDS,
@@ -145,6 +146,8 @@ import {
     type HeaderSurfaceSettings,
   } from '../../lib/headerSurfaceSettings';
 
+  const dispose = onPageLoad(() => {
+  const scope = createPageScope();
   const overlay = document.querySelector<HTMLElement>('[data-dev-panel-key="header-surface"]');
   const form = overlay?.querySelector<HTMLFormElement>('[data-header-surface-form]');
   if (overlay && form) {
@@ -282,26 +285,31 @@ import {
     profile = media.matches ? 'mobile' : 'desktop';
     syncProfile();
   };
-  media.addEventListener('change', onProfileViewportChange);
+  scope.listen(media, 'change', onProfileViewportChange);
 
-  window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+  scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
     if (event.detail?.panel !== overlay) return;
     setPreview('start');
   }) as EventListener);
-  window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+  scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
     if (event.detail?.panel !== overlay) return;
     setPreview('off');
   }) as EventListener);
-  window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+  scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
     if (event.detail?.active === false) setPreview('off');
   }) as EventListener);
-  document.addEventListener('header:force-close', () => setPreview('off'));
+  scope.listen(document, 'header:force-close', () => setPreview('off'));
 
-  new MutationObserver(() => {
+  const observer = new MutationObserver(() => {
     if (overlay.hidden) setPreview('off');
-  }).observe(overlay, { attributes: true, attributeFilter: ['hidden', 'class'] });
+  });
+  observer.observe(overlay, { attributes: true, attributeFilter: ['hidden', 'class'] });
+  scope.add(() => { observer.disconnect(); setPreview('off'); });
 
   applySettings();
   syncProfile();
   }
+  return scope.destroy;
+  });
+  if (import.meta.hot) import.meta.hot.dispose(dispose);
 </script>

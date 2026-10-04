@@ -203,6 +203,11 @@ const SHIPPED_MEDIA_EM = 50;
 </style>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+
   type WidthMode = 'original' | 'emil' | 'custom';
   type Scope = 'text' | 'media';
 
@@ -354,7 +359,7 @@ const SHIPPED_MEDIA_EM = 50;
   };
 
   textButtons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       const mode = button.dataset.widthMode;
       if (mode === 'original') {
         textMode = 'original';
@@ -369,7 +374,7 @@ const SHIPPED_MEDIA_EM = 50;
   });
 
   mediaButtons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       if (linked) return;
       const mode = button.dataset.widthMode;
       if (mode === 'original') {
@@ -393,14 +398,14 @@ const SHIPPED_MEDIA_EM = 50;
     render();
   };
 
-  textCustomInput?.addEventListener('keydown', (event) => {
+  scope.listen(textCustomInput, 'keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     applyTextCustomValue();
     textCustomInput.blur();
   });
 
-  textCustomInput?.addEventListener('blur', applyTextCustomValue);
+  scope.listen(textCustomInput, 'blur', applyTextCustomValue);
 
   const applyMediaCustomValue = () => {
     if (!mediaCustomInput || linked) return;
@@ -411,16 +416,16 @@ const SHIPPED_MEDIA_EM = 50;
     render();
   };
 
-  mediaCustomInput?.addEventListener('keydown', (event) => {
+  scope.listen(mediaCustomInput, 'keydown', (event) => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     applyMediaCustomValue();
     mediaCustomInput.blur();
   });
 
-  mediaCustomInput?.addEventListener('blur', applyMediaCustomValue);
+  scope.listen(mediaCustomInput, 'blur', applyMediaCustomValue);
 
-  linkButton?.addEventListener('click', () => {
+  scope.listen(linkButton, 'click', () => {
     setLinked(!linked);
   });
 
@@ -430,4 +435,7 @@ const SHIPPED_MEDIA_EM = 50;
   // matches what ships any more, so both rows open on `custom`, and the panel
   // opens unlinked because text and media are no longer the same number.
   render();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>

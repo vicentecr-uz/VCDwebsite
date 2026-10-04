@@ -97,7 +97,13 @@ import TextField from './ui/TextField.astro';
 <div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { getLastPointerPosition } from '../lib/lastPointer';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const pageFetch: typeof fetch = (input, options) => fetch(input, { ...options, signal: scope.signal });
+
 
   type Attachment = { filename: string; data: string; mimeType: string };
 
@@ -106,8 +112,6 @@ import TextField from './ui/TextField.astro';
     const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
     const outline = document.querySelector<HTMLElement>('[data-log-pick-outline]');
     if (!root || !panel || !outline) return;
-    if (root.dataset.initialized === 'true') return;
-    root.dataset.initialized = 'true';
 
     const titleInput = root.querySelector<HTMLInputElement>('[data-log-title]');
     const bodyInput = root.querySelector<HTMLTextAreaElement>('[data-log-body]');
@@ -240,7 +244,7 @@ import TextField from './ui/TextField.astro';
         detail: { panel, clientX: x, clientY: y },
       }));
       void loadMeta().then(() => autoFillPageLabel());
-      requestAnimationFrame(() => titleInput.focus());
+      scope.frame(() => titleInput.focus());
     };
 
     const closePanel = () => {
@@ -277,8 +281,8 @@ import TextField from './ui/TextField.astro';
         veil.classList.add('is-dev-log-veil-open');
         return;
       }
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
+      scope.frame(() => {
+        scope.frame(() => {
           veil.classList.add('is-dev-log-veil-open');
         });
       });
@@ -301,7 +305,7 @@ import TextField from './ui/TextField.astro';
         finish();
         return;
       }
-      veilMotionTimer = window.setTimeout(finish, 200);
+      veilMotionTimer = scope.timeout(finish, 200);
     };
 
     const showCancelConfirm = (source: 'escape' | 'button') => {
@@ -363,7 +367,7 @@ import TextField from './ui/TextField.astro';
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = 'Remove';
-        remove.addEventListener('click', (event) => {
+        scope.listen(remove, 'click', (event) => {
           event.stopPropagation();
           attachments.splice(index, 1);
           renderFiles();
@@ -385,8 +389,9 @@ import TextField from './ui/TextField.astro';
 
     const loadMeta = async () => {
       try {
-        const response = await fetch('/api/dev-issue');
+        const response = await pageFetch('/api/dev-issue');
         const payload = await response.json();
+      scope.signal.throwIfAborted();
         if (!response.ok) throw new Error(payload.error || 'Could not load labels.');
         metaBranch = String(payload.branch || '');
         labelSelect.replaceChildren(new Option('Select…', ''));
@@ -405,6 +410,7 @@ import TextField from './ui/TextField.astro';
           );
         }
       } catch (error) {
+      if (scope.signal.aborted) return;
         dropLabel.textContent = error instanceof Error
           ? error.message
           : 'Could not reach the issue API.';
@@ -534,7 +540,7 @@ import TextField from './ui/TextField.astro';
       cancelButton.disabled = true;
 
       try {
-        const response = await fetch('/api/dev-issue', {
+        const response = await pageFetch('/api/dev-issue', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
@@ -547,6 +553,7 @@ import TextField from './ui/TextField.astro';
           }),
         });
         const payload = await response.json();
+      scope.signal.throwIfAborted();
         if (!response.ok) throw new Error(payload.error || 'Could not create the issue.');
 
         const number = payload.number ? `#${payload.number}` : 'created';
@@ -560,10 +567,11 @@ import TextField from './ui/TextField.astro';
           link.textContent = payload.url;
           veilMessage.append(document.createElement('br'), link);
         }
-        window.setTimeout(() => {
+        scope.timeout(() => {
           if (veilMode === 'done') resetForm();
         }, 2500);
       } catch (error) {
+      if (scope.signal.aborted) return;
         hideVeil();
         veilMode = 'idle';
         dropLabel.hidden = false;
@@ -580,15 +588,15 @@ import TextField from './ui/TextField.astro';
     // no separate "File system" button in this state, so the file picker
     // needs its own gesture. Double-click opens it; Enter/Space do too, since
     // a keyboard user has no double-click.
-    drop.addEventListener('click', () => drop.focus());
-    drop.addEventListener('dblclick', () => fileInput.click());
-    drop.addEventListener('keydown', (event) => {
+    scope.listen(drop, 'click', () => drop.focus());
+    scope.listen(drop, 'dblclick', () => fileInput.click());
+    scope.listen(drop, 'keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         fileInput.click();
       }
     });
-    drop.addEventListener('paste', (event) => {
+    scope.listen(drop, 'paste', (event) => {
       const items = event.clipboardData?.items;
       if (!items) return;
       const files = [...items]
@@ -599,35 +607,35 @@ import TextField from './ui/TextField.astro';
         void addFiles(files);
       }
     });
-    fileInput.addEventListener('change', () => {
+    scope.listen(fileInput, 'change', () => {
       if (fileInput.files?.length) void addFiles(fileInput.files);
       fileInput.value = '';
     });
-    drop.addEventListener('dragover', (event) => {
+    scope.listen(drop, 'dragover', (event) => {
       event.preventDefault();
       drop.classList.add('is-dragover');
     });
-    drop.addEventListener('dragleave', () => drop.classList.remove('is-dragover'));
-    drop.addEventListener('drop', (event) => {
+    scope.listen(drop, 'dragleave', () => drop.classList.remove('is-dragover'));
+    scope.listen(drop, 'drop', (event) => {
       event.preventDefault();
       drop.classList.remove('is-dragover');
       if (event.dataTransfer?.files?.length) void addFiles(event.dataTransfer.files);
     });
 
-    pageLabelSelect.addEventListener('change', () => {
+    scope.listen(pageLabelSelect, 'change', () => {
       pageLabelTouched = true;
     });
 
-    pickButton.addEventListener('click', () => {
+    scope.listen(pickButton, 'click', () => {
       if (pickMode) stopPickMode();
       else startPickMode();
     });
 
-    clearPickButton.addEventListener('click', () => {
+    scope.listen(clearPickButton, 'click', () => {
       clearPickedElement();
     });
 
-    document.addEventListener('pointermove', (event) => {
+    scope.listen(document, 'pointermove', (event) => {
       if (!pickMode) return;
       const el = document.elementFromPoint(event.clientX, event.clientY);
       if (!el || el === outline || panel.contains(el)) {
@@ -640,7 +648,7 @@ import TextField from './ui/TextField.astro';
       placeOutline(host);
     }, true);
 
-    document.addEventListener('click', (event) => {
+    scope.listen(document, 'click', (event) => {
       if (!pickMode) return;
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -660,7 +668,7 @@ import TextField from './ui/TextField.astro';
       }
     }, true);
 
-    cancelButton.addEventListener('click', (event) => {
+    scope.listen(cancelButton, 'click', (event) => {
       if (event.altKey) {
         closePanel();
         return;
@@ -668,13 +676,13 @@ import TextField from './ui/TextField.astro';
       requestCancel('button');
     });
 
-    veilNo.addEventListener('click', () => hideVeil());
-    veilYes.addEventListener('click', () => closePanel());
-    submitButton.addEventListener('click', () => void submitIssue());
+    scope.listen(veilNo, 'click', () => hideVeil());
+    scope.listen(veilYes, 'click', () => closePanel());
+    scope.listen(submitButton, 'click', () => void submitIssue());
 
     // Done veil: clicking anywhere but the issue link dismisses back to the
     // (now-reset) form instead of waiting for the auto-close timer to lapse.
-    veil.addEventListener('click', (event) => {
+    scope.listen(veil, 'click', (event) => {
       if (veilMode !== 'done') return;
       const target = event.target;
       if (target instanceof Element && target.closest('a')) return;
@@ -682,7 +690,7 @@ import TextField from './ui/TextField.astro';
     });
 
     // Capture Esc so cancel-confirm / pick-mode / form-dismiss win over DevModeController.
-    document.addEventListener('keydown', (event) => {
+    scope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyI') {
         event.preventDefault();
         if (panel.hidden) openPanel();
@@ -728,9 +736,13 @@ import TextField from './ui/TextField.astro';
       event.stopImmediatePropagation();
       requestCancel('escape');
     }, true);
+    scope.add(stopPickMode);
   };
 
   initDevLogIssue();
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>

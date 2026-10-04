@@ -92,6 +92,11 @@ import Button from './ui/Button.astro';
 </style>
 
 <script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+
   type ThemeMode = 'system' | 'light' | 'dark';
 
   const STORAGE_KEY = 'vcd:theme';
@@ -148,7 +153,7 @@ import Button from './ui/Button.astro';
   };
 
   buttons.forEach((button) => {
-    button.addEventListener('click', () => {
+    scope.listen(button, 'click', () => {
       const mode = button.dataset.themeMode;
       if (isThemeMode(mode)) setMode(mode);
     });
@@ -159,7 +164,7 @@ import Button from './ui/Button.astro';
     return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
   };
 
-  document.addEventListener('keydown', (event) => {
+  scope.listen(document, 'keydown', (event) => {
     // Deliberately NOT gated on is-dev-mode: the shortcut switches which theme
     // you are looking at, which is useful while working on the page itself.
     // The whole component is dev-build-only, so this never reaches production.
@@ -179,4 +184,7 @@ import Button from './ui/Button.astro';
     }
     setMode(nextMode);
   });
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>
