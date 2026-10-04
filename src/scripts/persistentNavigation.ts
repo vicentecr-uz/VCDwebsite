@@ -14,11 +14,16 @@ export function installPersistentNavigation(hooks: Hooks) {
   if (!document.querySelector('[name="astro-view-transitions-enabled"]')) return;
   let navigation: TransitionBeforePreparationEvent | undefined;
   let swapped = false;
+  const unseenHome = (url: URL) => {
+    if (url.pathname !== '/') return false;
+    try { return sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { return true; }
+  };
   const announceTitle = (title?: string) => {
     const visible = document.querySelector('.header-trigger__wordmark[aria-hidden="false"]');
     document.dispatchEvent(new CustomEvent('header:navigation-start', {
       detail: { pending: { title: visible?.textContent?.trim(), targetTitle: title } },
     }));
+    if (navigation && unseenHome(navigation.to)) document.documentElement.removeAttribute('data-header-navigation');
   };
   document.addEventListener('astro:before-preparation', ((event: TransitionBeforePreparationEvent) => {
     if (event.defaultPrevented) return;
@@ -66,11 +71,7 @@ export function installPersistentNavigation(hooks: Hooks) {
       const safeVh = document.documentElement.style.getPropertyValue('--vh-safe');
       swapFunctions.swapRootAttributes(event.newDocument);
       if (safeVh) document.documentElement.style.setProperty('--vh-safe', safeVh);
-      let unseenHome = false;
-      if (event.to.pathname === '/') {
-        try { unseenHome = sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { unseenHome = true; }
-      }
-      if (!unseenHome) document.documentElement.dataset.headerNavigation = '';
+      if (!unseenHome(event.to)) document.documentElement.dataset.headerNavigation = '';
       swapFunctions.swapHeadElements(event.newDocument);
       swapPageContent(document, event.newDocument);
       document.dispatchEvent(new CustomEvent('header:navigation-commit', { detail: { header: nextHeader, url: event.to } }));
