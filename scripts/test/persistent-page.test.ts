@@ -198,3 +198,30 @@ test('dev readiness marker stays attached to the retained transition controller 
   expect(doc.getElementById(marker.id)).toBe(marker);
   expect(marker.isConnected).toBe(true);
 });
+
+
+test('unseen Home navigation covers the retained header with the outgoing veil before swapping', () => {
+  const win = fixture(); const doc = win.document;
+  doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
+  doc.body.innerHTML = '<span class="header-trigger__wordmark" aria-hidden="false">Project</span>';
+  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
+  let stored: string | null = null;
+  let storageThrows = false;
+  const covered: boolean[] = [];
+  // The actual title controller also raises the retained header when navigation starts.
+  doc.addEventListener('header:navigation-start', () => { doc.documentElement.dataset.headerNavigation = ''; });
+  new Function('document', 'sessionStorage', 'CustomEvent', 'hooks', `${script}; installPersistentNavigation(hooks);`)(
+    doc, { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return stored; } }, win.CustomEvent,
+    { cover: () => { covered.push(doc.documentElement.hasAttribute('data-header-navigation')); return Promise.resolve(); } },
+  );
+  const prepare = (path: string) => {
+    const event = new win.Event('astro:before-preparation', { cancelable: true });
+    Object.assign(event, { to: new URL(path, 'https://vcd.test'), signal: new AbortController().signal, loader: async () => {}, sourceElement: { dataset: { headerNavigationTitle: 'Home' } } });
+    doc.dispatchEvent(event);
+  };
+  prepare('/'); expect(covered.at(-1)).toBe(false);
+  stored = 'true'; prepare('/'); expect(covered.at(-1)).toBe(true);
+  stored = null; prepare('/about'); expect(covered.at(-1)).toBe(true);
+  storageThrows = true; prepare('/'); expect(covered.at(-1)).toBe(false);
+});
