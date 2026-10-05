@@ -742,7 +742,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const MENU_TIMELINE_OPEN_DURATION = 0.25;
     const MENU_TIMELINE_CLOSE_DURATION = 0.18;
     const MENU_SURFACE_ENTRY_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
-    const MENU_SURFACE_EXIT_EASING = 'cubic-bezier(0.64, 0, 0.78, 0)';
     const MENU_LINK_ENTRY_EASING = 'ease';
     const MENU_LINK_EXIT_EASING = 'cubic-bezier(0.75, 0, 0.75, 0.9)';
     const timelineEnd = Math.max(
@@ -780,7 +779,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         setMenuSurfaceTiming(
           MENU_SURFACE_ORIGINAL_DURATION * closeScale,
           (timelineEnd - MENU_SURFACE_ORIGINAL_DURATION) * closeScale,
-          MENU_SURFACE_EXIT_EASING,
+          MENU_LINK_EXIT_EASING,
         );
         delete trigger.dataset.menuSurfaceOpen;
       }
@@ -1379,7 +1378,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       invalidateWordmarkRun();
       headerSlot?.__vcdTitleTransition?.cleanup();
       if (headerSlot) delete headerSlot.__vcdTitleTransition;
-      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
+      const detail = (event as CustomEvent<{ animateTitle?: boolean; pending?: Record<string, unknown> }>).detail;
+      if (detail?.animateTitle === false) return;
+      const pending = detail?.pending;
       if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
       const bridge = window.__vcdHeaderTitleTransition(pending);
       if (bridge) {
@@ -2013,9 +2014,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     opacity: 0;
     visibility: hidden;
-    /* The whole-viewport fade should run continuously through panel exit. */
+    /* Veil opacity follows the panel as links fade from bottom to top. */
     transition:
-      opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s,
+      opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+      var(--header-menu-surface-delay, 0s),
       visibility 0s calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s));
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
@@ -2027,7 +2029,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     ) {
     opacity: 1;
     visibility: visible;
-    transition-delay: 0s, 0s;
+    transition-delay: var(--header-menu-surface-delay, 0s), 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
@@ -2136,8 +2138,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     opacity: 0;
     pointer-events: none;
     transition:
-      opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s,
-      height calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s;
+      opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+        var(--header-menu-surface-delay, 0s),
+      height var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+        var(--header-menu-surface-delay, 0s);
   }
 
   .header-trigger__panel-bg::before {
@@ -2531,7 +2535,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     :global([data-page-shell] > :is(main, .project-layout, footer)) {
       opacity: 1;
       transition:
-        opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s;
+        opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+          var(--header-menu-surface-delay, 0s);
     }
 
     :global([data-page-shell]:has(> .site-header-slot .header-trigger[data-menu-surface-open]) > :is(main, .project-layout, footer)) {
