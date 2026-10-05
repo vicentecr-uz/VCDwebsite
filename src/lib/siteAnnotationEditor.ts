@@ -6,7 +6,6 @@ import type { SiteAnnotation } from './siteAnnotations';
 import { siteAnnotationSvg, siteAnnotationHasFreeInk } from './siteAnnotationSvg';
 import { captureTextParts, editableTextStrokes } from './siteAnnotationTextParts';
 import { annotationRect, annotationBaseRect, annotationVisibleRect, rangeForOffsets, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
-import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
 type Target = { section: HTMLElement; documentKey: string; sectionId: string };

@@ -174,6 +174,66 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
   current!.finish(); await second;
 });
 
+test('owned native view transitions skip immediately while unrelated transitions remain native', () => {
+  const win = fixture(); const doc = win.document;
+  doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
+  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
+  const events: string[] = [];
+  let queued: (() => void) | undefined;
+  let nativeTransition: unknown;
+  const native = (callback: () => void) => {
+    events.push('start');
+    queued = () => { events.push('update'); callback(); };
+    nativeTransition = { ready: Promise.resolve(), skipTransition: () => { events.push('skip'); } };
+    return nativeTransition;
+  };
+  doc.startViewTransition = native as any;
+  new Function('document', 'sessionStorage', 'CustomEvent', 'hooks', `${script}; installPersistentNavigation(hooks);`) (
+    doc, { getItem: () => 'true' }, win.CustomEvent,
+    { cover: () => Promise.resolve(), reveal() {}, cancel() {}, beforeSwap() {} },
+  );
+  const outside = doc.startViewTransition!(() => {});
+  expect(outside).toBe(nativeTransition);
+  expect(events).toEqual(['start']);
+  const controller = new AbortController();
+  const event = new win.Event('astro:before-preparation', { cancelable: true });
+  Object.assign(event, { to: new URL('/about', 'https://vcd.test'), signal: controller.signal, loader: async () => {}, sourceElement: { dataset: {} } });
+  doc.dispatchEvent(event);
+  const owned = doc.startViewTransition!(() => {});
+  expect(owned).toBe(nativeTransition);
+  expect(events).toEqual(['start', 'start', 'skip']);
+  queued?.();
+  expect(events).toEqual(['start', 'start', 'skip', 'update']);
+  controller.abort();
+  const aborted = doc.startViewTransition!(() => {});
+  expect(aborted).toBe(nativeTransition);
+  expect(events).toEqual(['start', 'start', 'skip', 'update', 'start']);
+  const prevented = new win.Event('astro:before-preparation', { cancelable: true });
+  Object.assign(prevented, { to: new URL('/about', 'https://vcd.test'), signal: new AbortController().signal, loader: async () => {}, sourceElement: { dataset: {} } });
+  doc.dispatchEvent(prevented);
+  prevented.preventDefault();
+  doc.startViewTransition!(() => {});
+  expect(events).toEqual(['start', 'start', 'skip', 'update', 'start', 'start']);
+});
+
+test('annotation editor styles survive the native head swap', () => {
+  const win = fixture(); const doc = win.document;
+  const css = readFileSync(new URL('../../src/styles/site-annotation-editor.css', import.meta.url), 'utf8');
+  const style = `<style data-vite-dev-id="/src/styles/site-annotation-editor.css">${css}</style>`;
+  doc.head.innerHTML = style;
+  doc.body.innerHTML = '<div class="site-draw-controls"><button data-site-draw-manage>Manage</button></div>';
+  const incoming = new win.DOMParser().parseFromString(`<head>${style}</head><body><div class="site-draw-controls"><button data-site-draw-manage>Manage</button></div></body>`, 'text/html');
+  const swapSource = readFileSync(new URL('../../node_modules/astro/dist/transitions/swap-functions.js', import.meta.url), 'utf8');
+  const compiled = new Bun.Transpiler({ loader: 'js' }).transformSync(swapSource.replace('import.meta.env.DEV', 'true').replace(/^export /gm, ''));
+  const swapHeadElements = new Function('document', `${compiled}; return swapHeadElements;`)(doc);
+  swapHeadElements(incoming);
+  const controls = doc.querySelector<HTMLElement>('.site-draw-controls')!;
+  expect(doc.head.querySelector('style[data-vite-dev-id="/src/styles/site-annotation-editor.css"]')).toBeTruthy();
+  expect(getComputedStyle(controls).display).toBe('none');
+  expect(getComputedStyle(controls).position).toBe('absolute');
+});
+
 
 test('dev editor islands navigate persistently while unsupported islands remain document surfaces', () => {
   const win = fixture();
