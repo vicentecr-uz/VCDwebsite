@@ -20,14 +20,16 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
-    {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
-      src={`/preview/${demo.id}`}
-      title={demo.title}
-      loading="lazy"
-      sandbox="allow-scripts allow-same-origin"
-      referrerpolicy="no-referrer"
-      style={`height:${demo.height}rem`}
-    />}
+    <div class="project-interactive-demo__content">
+      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
+        src={`/preview/${demo.id}`}
+        title={demo.title}
+        loading="lazy"
+        sandbox="allow-scripts allow-same-origin"
+        referrerpolicy="no-referrer"
+        style={`height:${demo.height}rem`}
+      />}
+    </div>
     {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 )}
@@ -39,6 +41,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: var(--comp-demo-frame-container);
   }
 
+  .project-interactive-demo__content {
+    border-radius: inherit;
+  }
+
   @media (max-width: 40em) {
     .project-interactive-demo {
       /* Negative margins expand a block's auto width into the page gutter.
@@ -47,6 +53,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       max-width: none;
       margin-inline: calc(-1 * var(--page-gutter));
       border-radius: 0;
+      display: block;
+      overflow: visible;
+    }
+
+    .project-interactive-demo__content {
       overflow-x: clip;
     }
   }
@@ -70,23 +81,39 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   @media (max-width: 40em) {
+    .project-interactive-demo::before {
+      content: '';
+      display: block;
+      width: 100%;
+      height: 4px;
+      margin-bottom: -4px;
+      position: sticky;
+      top: var(--site-header-height, calc(var(--space-unit) * 3.75));
+      z-index: 3;
+      pointer-events: none;
+      box-shadow:
+        inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
+        inset 0 1px 0 var(--sys-color-surface-outline);
+    }
+
+    :global(:root[data-theme='dark']) .project-interactive-demo::before {
+      box-shadow: inset 0 1px 0 var(--sys-color-surface-outline);
+    }
+
     .project-interactive-demo::after {
       box-shadow:
         inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
-        inset 0 1px 0 var(--sys-color-surface-outline),
         inset 0 -1px 0 var(--sys-color-surface-outline);
     }
 
     :global(:root[data-theme='dark']) .project-interactive-demo::after {
       box-shadow:
         inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 1px 0 var(--sys-color-surface-outline),
         inset 0 -1px 0 var(--sys-color-surface-outline);
     }
   }
 
-  .project-interactive-demo iframe {
+  .project-interactive-demo__content iframe {
     display: block;
     width: 100%;
     border: 0;
