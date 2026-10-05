@@ -130,12 +130,57 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
-  const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
+  const animations: any[] = [];
+  const overlay = Object.assign(new Target(), {
+    dataset: {},
+    style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } },
+    animate(keyframes: any, animationOptions: any) {
+      if (options.failAnimation) throw new Error('animation unavailable');
+      let ready = deferred();
+      void ready.promise.catch(() => undefined);
+      const settled = deferred();
+      let heldTime = 0;
+      let startTime: number | null = null;
+      const animation = {
+        keyframes, options: animationOptions, finished: settled.promise,
+        get ready() { return ready.promise; },
+        pending: false, playState: 'running', playCalls: 0,
+        get startTime() { return startTime; },
+        set startTime(value: number | null) {
+          startTime = value;
+          // WAAPI resolves pending readiness when an explicit start time takes over.
+          if (this.pending) { this.pending = false; ready.resolve(); }
+        },
+        get currentTime() { return this.playState === 'running' && this.startTime !== null ? now - this.startTime : heldTime; },
+        set currentTime(value: number) { heldTime = value; },
+        pause() { heldTime = this.currentTime; this.playState = 'paused'; this.startTime = null; },
+        play() {
+          this.playCalls++;
+          this.playState = 'running';
+          startTime = null;
+          this.pending = true;
+          ready = deferred();
+          void ready.promise.catch(() => undefined);
+          if (!options.deferAnimationReady) void Promise.resolve().then(() => this.start());
+        },
+        cancel() { this.pending = false; this.playState = 'idle'; settled.reject(new Error('animation canceled')); ready.reject(new Error('animation canceled')); },
+        start() {
+          if (!this.pending) return;
+          this.pending = false;
+          startTime = now - 82;
+          ready.resolve();
+        },
+        finish() { settled.resolve(); },
+      };
+      animations.push(animation);
+      return animation;
+    },
+  });
   const readinessMarker = { hidden: true };
   const homeIntro = options.homeIntro ? Object.assign(new ContainerFixture(), { hidden: options.homeIntro.state === 'dismissed', dataset: { state: options.homeIntro.state ?? 'active' } }) : null;
   for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
@@ -183,6 +228,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   });
   const marks: Array<{ name: string; options?: any }> = [];
   const tweens: any[] = [];
+  let persistentHooks: any;
   let upgrades = 0;
   let bound = 0;
   const fakeGsap = {
@@ -203,15 +249,16 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
       return tween;
     },
     killTweensOf(target: any) { tweens.filter((t) => t.element === target).forEach((t) => t.kill()); },
+    fromTo(target: any, from: any, vars: any) { Object.assign(target.style, from); return this.to(target, vars); },
     set(target: any, values: any) { Object.assign(target.style, values); },
   };
   const context = {
     document, window, location, URL, AbortController, Promise,
     CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
-    performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
+    performance: { now: () => now, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
     Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
-    installPersistentNavigation() {}, resetImagePreviewUpgrade() {},
+    installPersistentNavigation(hooks: any) { persistentHooks = hooks; }, resetImagePreviewUpgrade() {},
     gsap: fakeGsap, bindSafeVh() {}, bindExternalLinks() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
     getComputedStyle: (element: any) => ({
@@ -225,7 +272,8 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   if ((options as any).initialController) runInNewContext(earlyCompiled, context);
   runInNewContext(compiled, context);
   return {
-    overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers, marks,
+    overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks,
+    get persistentHooks() { return persistentHooks; },
     get upgrades() { return upgrades; }, get bound() { return bound; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
@@ -239,7 +287,8 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
       pending.forEach((callback) => callback(now));
       await flush();
     },
-    async paint() { await this.frame(); await this.frame(); },
+    async paint() { for (let i = 0; i < 5; i++) await this.frame(); },
+    async finishReveal() { animations.at(-1)?.finish(); await flush(); },
     async advance(ms: number) {
       const end = now + ms;
       while (true) {
@@ -256,19 +305,22 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   };
 }
 
-test('cached content still gets one opaque paint; both fades use the approved valid 250ms ease', async () => {
+test('cached content uses the native incoming fade and approved GSAP outgoing cover', async () => {
   const f = fixture();
   await flush();
   assert.equal(f.tweens.length, 0);
   await f.frame();
   assert.equal(f.tweens.length, 0);
   await f.frame();
-  assert.equal(f.tweens.length, 1);
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.upgrades, 0);
+  await f.frame();
+  assert.equal(f.upgrades, 0);
+  await f.frame();
   assert.equal(f.upgrades, 1);
   assert.equal(f.readinessMarker.hidden, true);
-  assert.equal(f.timers.size, 0);
-  const entry = f.tweens[0];
-  entry.finish();
+  assert.equal(f.animations.length, 1);
+  await f.finishReveal();
   assert.equal(f.overlay.hidden, true);
   f.click();
   assert.equal(f.overlay.hidden, false);
@@ -277,7 +329,215 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(tween.vars.ease, 'power1.out');
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
-  assert.equal(f.tweens[1].vars.opacity, 1);
+  assert.equal(f.tweens[0].vars.opacity, 1);
+});
+
+test('incoming WAAPI fade completes only when its owned animation finishes', async () => {
+  const f = fixture();
+  await f.paint();
+  assert.equal(f.animations[0].keyframes[0].opacity, 1);
+  assert.equal(f.animations[0].keyframes[1].opacity, 0);
+  assert.equal(f.animations[0].options.duration, 250);
+  assert.equal(f.animations[0].options.easing, 'cubic-bezier(0.25, 0.46, 0.45, 0.94)');
+  assert.equal(f.animations[0].options.fill, 'forwards');
+  assert.equal(f.overlay.hidden, false);
+  await f.advance(250);
+  await flush();
+  assert.equal(f.overlay.hidden, false);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  await f.finishReveal();
+  assert.equal(f.overlay.hidden, true);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(f.overlay.style.transition ?? '', '');
+});
+
+test('preview upgrades wait for a paint after animation readiness but overlap the active fade', async () => {
+  const f = fixture({ deferAnimationReady: true });
+  await f.paint();
+  assert.equal(f.animations.length, 1);
+  assert.equal(f.upgrades, 0);
+  f.animations[0].start();
+  await flush();
+  assert.equal(f.upgrades, 0);
+  await f.frame();
+  assert.equal(f.upgrades, 0);
+  await f.frame();
+  assert.equal(f.upgrades, 1);
+  assert.equal(f.overlay.hidden, false);
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, false);
+  await f.finishReveal();
+  assert.equal(f.overlay.hidden, true);
+});
+
+test('slow thumbnail decode gets two fresh opaque-paint frames before the incoming animation runs', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ images: [image] });
+  await f.paint();
+  image.load();
+  await flush();
+  assert.equal(f.animations.length, 0);
+  image.decoded.resolve();
+  await flush();
+  assert.equal(f.animations.length, 1);
+  assert.equal(f.animations[0].playState, 'paused');
+  await f.frame();
+  assert.equal(f.animations[0].playState, 'paused');
+  await f.frame();
+  assert.equal(f.animations[0].playState, 'running');
+  await f.paint();
+  await f.finishReveal();
+});
+
+test('a delayed paint cannot consume the beginning of the incoming fade', async () => {
+  const f = fixture();
+  await flush();
+  const animation = f.animations[0];
+  assert.equal(animation.playState, 'paused');
+  await f.advance(98);
+  await f.frame();
+  assert.equal(animation.currentTime, 0);
+  assert.equal(f.overlay.hidden, false);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  await f.advance(42);
+  await f.frame();
+  assert.equal(animation.playState, 'running');
+  assert.equal(animation.startTime, 140);
+  assert.equal(animation.currentTime, 0);
+  await f.advance(125);
+  assert.equal(animation.currentTime, 125);
+  assert.equal(animation.options.duration, 250);
+  await f.paint();
+  await f.finishReveal();
+});
+
+test('renderer setup after play cannot consume the beginning of the incoming fade', async () => {
+  const f = fixture({ deferAnimationReady: true });
+  await f.paint();
+  const animation = f.animations[0];
+  assert.equal(animation.pending, true);
+  assert.equal(animation.startTime, null);
+  await f.advance(119);
+  assert.equal(animation.currentTime, 0);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.marks.some(({ name }) => name === 'vcd:veil-fade-start'), false);
+  animation.start();
+  await flush();
+  assert.equal(animation.startTime, 119);
+  assert.equal(animation.currentTime, 0);
+  await f.advance(125);
+  assert.equal(animation.currentTime, 125);
+  assert.equal(f.overlay.hidden, false);
+  await f.paint();
+  await f.finishReveal();
+});
+
+test('navigation cancels a staged incoming fade before its first paint', async () => {
+  const f = fixture();
+  await flush();
+  const animation = f.animations[0];
+  assert.equal(animation.playState, 'paused');
+  f.click();
+  await f.paint();
+  assert.equal(animation.playState, 'idle');
+  assert.equal(animation.playCalls, 0);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.overlay.hidden, false);
+});
+
+test('hovered menus start underneath the fully opaque paused veil', async () => {
+  const f = fixture();
+  let revealTime: number | null = null;
+  f.document.addEventListener('header:navigation-reveal', () => {
+    revealTime = f.animations[0].currentTime;
+    assert.equal(f.animations[0].playState, 'paused');
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    assert.equal(f.upgrades, 0);
+  });
+  await f.paint();
+  assert.equal(revealTime, 0);
+});
+
+test('visible transition upgrade failure still releases the veil', async () => {
+  const f = fixture({ visible: true, failUpgrade: true });
+  await f.paint();
+  assert.equal(f.upgrades, 0);
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.overlay.hidden, true);
+});
+
+test('animation construction failure still releases the veil', async () => {
+  const f = fixture({ failAnimation: true });
+  await f.paint();
+  assert.equal(f.upgrades, 0);
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.overlay.hidden, true);
+});
+
+test('canceling before animation readiness cannot open a stale preview gate', async () => {
+  const f = fixture({ deferAnimationReady: true });
+  await f.paint();
+  assert.equal(f.animations.length, 1);
+  assert.equal(f.upgrades, 0);
+  f.click();
+  await flush();
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.overlay.hidden, false);
+  f.tweens[0].finish();
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
+});
+
+test('navigation cancels the preview paint fence after the fade has started', async () => {
+  const f = fixture();
+  await flush();
+  await f.frame();
+  await f.frame();
+  assert.equal(f.animations[0].playState, 'running');
+  assert.equal(f.upgrades, 0);
+  await f.frame();
+  f.click();
+  await f.frame();
+  assert.equal(f.frames.size, 0);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.animations[0].playState, 'idle');
+  assert.equal(f.overlay.hidden, false);
+});
+
+test('canceling an incoming owned animation cannot hide the next page', async () => {
+  const f = fixture();
+  await f.paint();
+  f.click();
+  assert.equal(f.overlay.style.transition ?? '', '');
+  assert.equal(f.overlay.hidden, false);
+  f.overlay.emit('transitionend', { target: f.overlay, propertyName: 'opacity' });
+  await flush();
+  assert.equal(f.overlay.style.transition ?? '', '');
+  assert.equal(f.overlay.hidden, false);
+  f.tweens[0].finish();
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
+});
+
+test('persistent cover starts from a hidden retained veil without snapping', async () => {
+  const f = fixture({ initialController: true });
+  f.overlay.hidden = true;
+  f.overlay.style.opacity = '1';
+  const covering = f.persistentHooks.cover();
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  f.tweens.at(-1)!.finish();
+  await covering;
+  assert.equal(Number(f.overlay.style.opacity), 1);
+});
+
+test('persistent cover preserves a partially visible veil opacity', async () => {
+  const f = fixture({ initialController: true });
+  f.overlay.hidden = false;
+  f.overlay.style.opacity = '0.42';
+  const covering = f.persistentHooks.cover();
+  assert.equal(Number(f.overlay.style.opacity), 0.42);
+  f.tweens.at(-1)!.finish();
+  await covering;
+  assert.equal(Number(f.overlay.style.opacity), 1);
 });
 
 for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
@@ -290,12 +550,12 @@ for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTwe
     });
     await f.paint();
     assert.equal(notices.length, 0);
-    image.load(); image.decoded.resolve(); await flush();
+    image.load(); image.decoded.resolve(); await flush(); await f.paint();
     assert.equal(notices.length, 1);
     assert.equal(notices[0].tweens, 0);
     if (!options.visible) assert.equal(notices[0].opacity, 1);
-    if (options.failTween || options.failUpgrade || options.visible) assert.equal(Number(f.overlay.style.opacity), 0);
-    else assert.equal(f.tweens[0].vars.opacity, 0);
+    if (options.visible || options.failUpgrade) assert.equal(Number(f.overlay.style.opacity), 0);
+    else assert.equal(Number(f.overlay.style.opacity), 1);
   });
 }
 
@@ -312,9 +572,9 @@ for (const options of [
     });
     await f.paint();
     await f.paint();
-    if (f.tweens.length) {
+    if (f.animations.length && !options.failUpgrade) {
       assert.equal(completions, 0);
-      f.tweens[0].finish();
+      await f.finishReveal();
     }
     await f.advance(250);
     assert.equal(completions, 1);
@@ -324,10 +584,10 @@ for (const options of [
 test('full-document fallback navigates after its 250ms cover without waiting for the header title', async () => {
   const f = fixture();
   await f.paint();
-  f.tweens[0].finish();
+  await f.finishReveal();
   f.click();
   assert.equal(f.destinations.length, 0);
-  f.tweens[1].finish();
+  f.tweens[0].finish();
   assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
 });
 
@@ -380,6 +640,17 @@ test('initial page stays covered until intro spacing is ready', async () => {
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
 });
 
+test('active Home intro reveals after two paints without layout or underlying image readiness', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image], fonts: new Promise(() => {}) });
+  await f.paint();
+  await f.paint();
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'running');
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(image.decodeCalls, 0);
+});
+
 test('browser trace marks are emitted without the DEV readiness marker', async () => {
   const f = fixture({ noReadinessMarker: true });
   await f.paint();
@@ -408,6 +679,7 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   image.load();
   image.decoded.resolve();
   await f.paint();
+  await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
@@ -422,6 +694,7 @@ test('visible mode media fallback marks readiness after four seconds', async () 
   await f.advance(3999);
   assert.equal(f.readinessMarker.hidden, true);
   await f.advance(1);
+  await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
@@ -460,6 +733,8 @@ test('visible decoded thumbnails gate reveal; fonts and offscreen images do not'
   const offscreen = new ImageFixture(false);
   const f = fixture({ fonts: fonts.promise, images: [visible, offscreen] });
   await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  assert.equal(f.overlay.style.transition ?? '', '');
   assert.equal(visible.decodeCalls, 0);
   visible.load();
   await flush();
@@ -468,7 +743,12 @@ test('visible decoded thumbnails gate reveal; fonts and offscreen images do not'
   assert.equal(f.tweens.length, 0);
   visible.decoded.resolve();
   await flush();
-  assert.equal(f.tweens.length, 1);
+  await f.paint();
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.animations.length, 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  await f.finishReveal();
+  assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(offscreen.count('load'), 0);
   assert.equal(offscreen.decodeCalls, 0);
   assert.equal(visible.count('load') + visible.count('error'), 0);
@@ -487,6 +767,8 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   hiddenHover.style.visibility = 'hidden';
   const f = fixture({ images: [active, rawAvatar, offscreenLoop, clippedAdjacent, hiddenHover] });
   await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  assert.equal(f.overlay.style.transition ?? '', '');
   assert.equal(active.count('load'), 1);
   assert.equal(rawAvatar.count('load') + rawAvatar.count('error'), 0);
   assert.equal(offscreenLoop.count('load') + offscreenLoop.count('error'), 0);
@@ -497,7 +779,12 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   assert.equal(active.decodeCalls, 1);
   active.decoded.resolve();
   await flush();
-  assert.equal(f.tweens.length, 1);
+  await f.paint();
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.animations.length, 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  await f.finishReveal();
+  assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
 for (const initialController of [false, true]) {
@@ -546,8 +833,16 @@ test('four-second fallback releases stalled fonts/media and removes losing liste
   await f.advance(3999);
   assert.equal(f.tweens.length, 0);
   await f.advance(1);
-  assert.equal(f.tweens.length, 1);
+  await f.paint();
+  assert.equal(f.tweens.length, 0);
   assert.equal(stalled.count('load') + stalled.count('error'), 0);
+  assert.equal(f.animations.length, 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  assert.equal(f.timers.size, 0);
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, false);
+  await f.finishReveal();
+  assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.timers.size, 0);
 });
 
@@ -563,8 +858,11 @@ test('broken images, rejected decodes and rejected fonts fail open', async () =>
   rejected.decoded.reject(new Error('decode failed'));
   fonts.reject(new Error('fonts failed'));
   await flush();
-  assert.equal(f.tweens.length, 1);
-  f.tweens[0].finish();
+  await f.paint();
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.animations.length, 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
@@ -573,33 +871,32 @@ test('navigation during readiness cancels image listeners, timeout and pending p
   const image = new ImageFixture();
   const f = fixture({ fonts: fonts.promise, images: [image] });
   assert.equal(f.click().defaultPrevented, true);
+  f.tweens[0].finish();
   assert.equal(image.count('load') + image.count('error'), 0);
   assert.equal(f.frames.size, 0);
-  assert.equal(f.timers.size, 0);
+  assert.equal(f.timers.size, 1);
   fonts.resolve(); image.load(); image.decoded.resolve();
   await f.paint();
   await f.advance(4000);
   assert.equal(f.tweens.length, 1);
   assert.equal(f.upgrades, 0);
-  f.tweens[0].finish();
+  await f.finishReveal();
   assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
 });
 
 test('rapid clicks keep the first destination and interrupt entry at its rendered opacity', async () => {
   const f = fixture();
   await f.paint();
-  const entry = f.tweens[0];
   f.overlay.style.opacity = '0.4';
   f.click(0);
   assert.equal(f.click(1).defaultPrevented, true, 'A competing destination must not navigate natively');
   assert.equal(f.click(0).defaultPrevented, true);
-  assert.equal(entry.killed, true);
-  assert.equal(f.tweens.length, 2);
-  assert.equal(f.tweens[1].startOpacity, 0.4);
-  entry.vars.onComplete?.();
+  assert.equal(f.overlay.style.transition ?? '', '');
+  assert.equal(f.tweens.length, 1);
+  assert.equal(f.tweens[0].startOpacity, 0.4);
   assert.equal(f.click(1).defaultPrevented, true);
-  assert.equal(f.tweens.length, 2);
-  f.tweens[1].finish();
+  assert.equal(f.tweens.length, 1);
+  f.tweens[0].finish();
   assert.deepEqual(f.destinations, ['https://vcd.test/about/']);
 });
 
@@ -616,8 +913,9 @@ test('pagehide cancels callbacks; bfcache restore replays readiness and unlocks 
   assert.equal(Number(f.overlay.style.opacity), 1);
   await f.paint();
   const restoredEntry = f.tweens.at(-1);
-  assert.equal(restoredEntry.vars.opacity, 0);
-  restoredEntry.finish();
+  assert.equal(restoredEntry?.vars.opacity, 1);
+  await f.finishReveal();
+  await flush();
   staleExit.vars.onComplete();
   f.click(1);
   f.tweens.at(-1).finish();
@@ -636,7 +934,8 @@ test('stale decode and font completions after restore cannot start an extra reve
   await f.paint();
   image.decoded.resolve(); fonts.resolve();
   await flush();
-  assert.equal(f.tweens.length, 1);
+  await f.paint();
+  assert.equal(f.tweens.length, 0);
   assert.equal(f.upgrades, 1);
 });
 
@@ -644,7 +943,7 @@ test('ordinary pageshow does not restart entry', async () => {
   const f = fixture();
   f.window.emit('pageshow', { persisted: false });
   await f.paint();
-  assert.equal(f.tweens.length, 1);
+  assert.equal(f.tweens.length, 0);
 });
 
 for (const properties of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { defaultPrevented: true }]) {
@@ -692,23 +991,23 @@ test('missing overlay opens previews and leaves links native', () => {
 test('reduced motion retains the same opacity fades', async () => {
   const f = fixture({ reduced: true });
   await f.paint();
-  f.tweens[0].finish();
+  assert.equal(f.animations.length, 1);
+  assert.equal(f.animations[0].options.duration, 250);
+  await f.finishReveal();
   f.click();
-  assert.deepEqual(f.tweens.map((t) => [t.vars.opacity, t.vars.duration, t.vars.ease]), [
-    [0, 0.25, 'power1.out'], [1, 0.25, 'power1.out'],
-  ]);
+  assert.deepEqual(f.tweens.map((t) => [t.vars.opacity, t.vars.duration, t.vars.ease]), [[1, 0.25, 'power1.out']]);
 });
 
 test('canceled or stalled navigation recovers and accepts a fresh destination', async () => {
   const f = fixture();
   await f.paint();
-  f.tweens[0].finish();
+  await f.finishReveal();
   f.click();
   f.tweens.at(-1).finish();
   await f.advance(4000);
   await f.paint();
-  assert.equal(f.tweens.at(-1).vars.opacity, 0);
-  f.tweens.at(-1).finish();
+  await f.finishReveal();
+  await flush();
   f.click(1);
   f.tweens.at(-1).finish();
   assert.deepEqual(f.destinations, ['https://vcd.test/about/', 'https://vcd.test/play/']);
@@ -724,16 +1023,18 @@ test('successful navigation pagehide clears its recovery timer', async () => {
   assert.equal(f.tweens.length, 1);
 });
 
-test('entry tween failure exposes content instead of stranding the veil', async () => {
+test('incoming reveal does not depend on GSAP tween availability', async () => {
   const f = fixture({ failTween: true });
   await f.paint();
+  assert.equal(f.animations.length, 1);
+  await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
 test('preview upgrade failure does not strand the veil', async () => {
   const f = fixture({ failUpgrade: true });
   await f.paint();
-  f.tweens.at(-1)?.finish();
+  await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
@@ -744,7 +1045,7 @@ test('a decode implementation throwing synchronously still releases readiness', 
   image.decode = () => { throw new Error('decode unavailable'); };
   const f = fixture({ images: [image] });
   await f.paint();
-  f.tweens.at(-1)?.finish();
+  await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
@@ -778,7 +1079,7 @@ test('outgoing tween failure still follows the accepted link', () => {
 test('synchronous navigation failure restores content and unlocks the next attempt', async () => {
   const f = fixture({ failNavigation: true });
   f.click(); f.tweens[0].finish(); await f.paint();
-  f.tweens.at(-1).finish();
+  await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.timers.size, 0);
   f.click(1);
@@ -802,8 +1103,8 @@ for (const initialController of [false, true]) {
       await f.advance(250);
       assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
     } else {
-      assert.equal(f.tweens.length, 1);
-      f.tweens[0].finish();
+      assert.equal(f.tweens.length, 0);
+      await f.finishReveal();
       assert.equal(Number(f.overlay.style.opacity), 0);
     }
     const reveals = f.upgrades;

@@ -161,17 +161,34 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
   const source = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
   const cover = source.slice(source.indexOf('        cover: () => {'), source.indexOf('        reveal: () => {'));
   let current: { kill: () => void; finish: () => void };
-  const gsap = { to(_target: unknown, options: { onComplete: () => void; onInterrupt: () => void }) {
+  const gsap = { fromTo(_target: unknown, _from: unknown, options: { onComplete: () => void; onInterrupt: () => void }) {
     current = { kill: options.onInterrupt, finish: options.onComplete }; return current;
   } };
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(`let activeTween; const invalidate = () => activeTween?.kill(); return { ${cover} };`);
-  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', script)(gsap, { style: {}, hidden: false }, false, 'power1.out');
+  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', 'getComputedStyle', script)(gsap, { style: {}, hidden: false }, false, 'power1.out', () => ({ opacity: '0' }));
   let firstSettled = false;
   const first = hooks.cover().then(() => { firstSettled = true; });
   await Promise.resolve(); expect(firstSettled).toBe(false);
   const second = hooks.cover();
   await first; expect(firstSettled).toBe(true);
   current!.finish(); await second;
+});
+
+test('annotation editor styles survive the native head swap', () => {
+  const win = fixture(); const doc = win.document;
+  const css = readFileSync(new URL('../../src/styles/site-annotation-editor.css', import.meta.url), 'utf8');
+  const style = `<style data-vite-dev-id="/src/styles/site-annotation-editor.css">${css}</style>`;
+  doc.head.innerHTML = style;
+  doc.body.innerHTML = '<div class="site-draw-controls"><button data-site-draw-manage>Manage</button></div>';
+  const incoming = new win.DOMParser().parseFromString(`<head>${style}</head><body><div class="site-draw-controls"><button data-site-draw-manage>Manage</button></div></body>`, 'text/html');
+  const swapSource = readFileSync(new URL('../../node_modules/astro/dist/transitions/swap-functions.js', import.meta.url), 'utf8');
+  const compiled = new Bun.Transpiler({ loader: 'js' }).transformSync(swapSource.replace('import.meta.env.DEV', 'true').replace(/^export /gm, ''));
+  const swapHeadElements = new Function('document', `${compiled}; return swapHeadElements;`)(doc);
+  swapHeadElements(incoming);
+  const controls = doc.querySelector<HTMLElement>('.site-draw-controls')!;
+  expect(doc.head.querySelector('style[data-vite-dev-id="/src/styles/site-annotation-editor.css"]')).toBeTruthy();
+  expect(getComputedStyle(controls).display).toBe('none');
+  expect(getComputedStyle(controls).position).toBe('absolute');
 });
 
 

@@ -123,6 +123,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     preparation = (async () => {
       await waitForFonts();
       if (disposed || !armed || preparationGeneration !== generation) return;
+      if (isIntroDismissed() && !dismissPending) { cancel(); return; }
       for (const unit of [...units].filter((item) => item.kind === 'text')) {
         const source = unit.element!;
         const clone = source.cloneNode(true) as HTMLElement;
@@ -157,6 +158,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     return preparation;
   };
   const onDismissed = () => { dismissPending = true; void (preparation ?? Promise.resolve()).then(() => { if (dismissPending) runNow(); }); };
+  const onIntroSync = () => { if (isIntroDismissed() && !dismissPending) cancel(); };
   const onModeChange = (event: Event) => { if ((event as CustomEvent<{ active?: boolean }>).detail?.active) cancel(); };
   const rebuildBeforeDismissal = () => {
     if (!armed) return;
@@ -169,9 +171,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const onOrientationChange = rebuildBeforeDismissal;
   const onPageHide = () => cancel();
   const onPageShow = (event: PageTransitionEvent) => { if (!event.persisted) return; cancel(); void Promise.resolve().then(() => { if (!disposed) prepare(); }); };
-  win.addEventListener('vcd:home-intro-dismissed', onDismissed); win.addEventListener('vcd:dev-mode-change', onModeChange); win.addEventListener('resize', onResize); win.addEventListener('orientationchange', onOrientationChange); win.addEventListener('pagehide', onPageHide); win.addEventListener('pageshow', onPageShow);
+  win.addEventListener('vcd:home-intro-dismissed', onDismissed); win.addEventListener('vcd:intro-layout-sync', onIntroSync); win.addEventListener('vcd:dev-mode-change', onModeChange); win.addEventListener('resize', onResize); win.addEventListener('orientationchange', onOrientationChange); win.addEventListener('pagehide', onPageHide); win.addEventListener('pageshow', onPageShow);
   prepare();
-  const destroy = () => { if (disposed) return; disposed = true; cancel(); win.removeEventListener('vcd:home-intro-dismissed', onDismissed); win.removeEventListener('vcd:dev-mode-change', onModeChange); win.removeEventListener('resize', onResize); win.removeEventListener('orientationchange', onOrientationChange); win.removeEventListener('pagehide', onPageHide); win.removeEventListener('pageshow', onPageShow); };
+  const destroy = () => { if (disposed) return; disposed = true; cancel(); win.removeEventListener('vcd:home-intro-dismissed', onDismissed); win.removeEventListener('vcd:intro-layout-sync', onIntroSync); win.removeEventListener('vcd:dev-mode-change', onModeChange); win.removeEventListener('resize', onResize); win.removeEventListener('orientationchange', onOrientationChange); win.removeEventListener('pagehide', onPageHide); win.removeEventListener('pageshow', onPageShow); };
   return { prepare, run: () => { dismissPending = true; void (preparation ?? Promise.resolve()).then(() => { if (dismissPending) runNow(); }); }, cancel, isArmed: () => armed, isRunning: () => running, cleanup: destroy, destroy };
 }
 

@@ -757,6 +757,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     let navigationClosing = false;
     let navigationOutgoing = false;
+    let menuWasOpenAtNavigationStart = false;
     const releaseNavigationWeights = () => links.forEach((link) => { delete link.dataset.navigationCurrent; });
 
     const clearCloseTimer = () => {
@@ -815,7 +816,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let previewPinned = false;
 
     const openMenu = (event?: Event) => {
-      if (navigationClosing || isOpen()) return;
+      if (navigationClosing || isOpen() || trigger.dataset.headerTitlePending !== undefined) return;
       if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
       if (import.meta.env.DEV) {
         const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
@@ -900,6 +901,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:force-close', () => {
       navigationClosing = false;
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
       releaseNavigationWeights();
     });
 
@@ -913,6 +915,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     document.addEventListener('header:navigation-start', () => {
+      menuWasOpenAtNavigationStart = isOpen();
       navigationClosing = true;
       navigationOutgoing = true;
       if (isOpen()) links.forEach((link) => {
@@ -921,16 +924,42 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     document.addEventListener('header:navigation-reveal', () => {
       if (!navigationOutgoing) return;
+      const reopenHoveredMenu =
+        !menuWasOpenAtNavigationStart &&
+        !isTapMode() &&
+        trigger.matches(':hover') &&
+        !isDevEditing();
+      const active = document.activeElement;
+      const reopenFocusedMenu =
+        !menuWasOpenAtNavigationStart &&
+        active instanceof HTMLElement &&
+        trigger.contains(active) &&
+        active.matches(':focus-visible') &&
+        !isDevEditing();
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
+      if (reopenHoveredMenu || reopenFocusedMenu) {
+        navigationClosing = false;
+        releaseNavigationWeights();
+        openMenu();
+        return;
+      }
       closeMenu(true);
       if (!closeTimer) {
         navigationClosing = false;
         releaseNavigationWeights();
       }
     });
+    trigger.addEventListener('header:title-ready', () => {
+      if (menuScrollClosed || isOpen() || navigationClosing || isDevEditing()) return;
+      const active = document.activeElement;
+      const keyboardFocus = active instanceof HTMLElement && trigger.contains(active) && active.matches(':focus-visible');
+      if ((!isTapMode() && trigger.matches(':hover')) || keyboardFocus) openMenu();
+    });
     document.addEventListener('header:navigation-cancel', () => {
       navigationClosing = false;
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
       releaseNavigationWeights();
       if (isOpen() && !trigger.matches(':hover') && !trigger.contains(document.activeElement)) closeMenu(true);
     });
@@ -1152,14 +1181,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let navigationOutgoing = false;
     let wordmarkRunToken = 0;
     let wordmarkFadeInFrame: number | undefined;
-    let navigationRestoreTimer: number | undefined;
 
     const invalidateWordmarkRun = () => {
       wordmarkRunToken += 1;
-      if (navigationRestoreTimer !== undefined) {
-        window.clearTimeout(navigationRestoreTimer);
-        navigationRestoreTimer = undefined;
-      }
       if (wordmarkFadeInFrame !== undefined) {
         cancelAnimationFrame(wordmarkFadeInFrame);
         wordmarkFadeInFrame = undefined;
@@ -1240,48 +1264,32 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const applyWordmarkOpen = () => {
       setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
-      applyWordmarkFadeIn(homeChars);
+      applyWordmarkFadeIn(homeChars, 0);
 
       pageWordmark?.setAttribute('aria-hidden', 'true');
       homeWordmarkEl?.setAttribute('aria-hidden', 'false');
     };
 
     const applyWordmarkClose = () => {
-      homeChars.forEach((char, i) => {
-        char.style.setProperty(
-          '--char-delay',
-          `${Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale}s`,
-        );
-        char.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
-        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
-        char.style.setProperty('--char-blur', `${BLUR_PX}px`);
-        char.style.opacity = '0';
+      homeChars.forEach((visual, i) => {
+        const delay = Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale;
+        visual.style.setProperty('--char-delay', `${delay}s`);
+        visual.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
+        visual.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+        visual.style.setProperty('--char-blur', `${BLUR_PX}px`);
+        visual.style.opacity = '0';
       });
-      pageChars.forEach((char, i) => {
-        char.style.setProperty(
-          '--char-delay',
-          `${Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale}s`,
-        );
-        char.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
-        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
-        char.style.setProperty('--char-blur', '0px');
-        char.style.opacity = '1';
+      pageChars.forEach((visual, i) => {
+        const delay = Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale;
+        visual.style.setProperty('--char-delay', `${delay}s`);
+        visual.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
+        visual.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+        visual.style.setProperty('--char-blur', '0px');
+        visual.style.opacity = '1';
       });
 
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
-    };
-
-    const finishNavigationTitle = () => {
-      const transition = headerSlot?.__vcdTitleTransition;
-      const finish = () => {
-        if (transition && headerSlot?.__vcdTitleTransition !== transition) return;
-        transition?.cleanup();
-        if (headerSlot) delete headerSlot.__vcdTitleTransition;
-        navigationOutgoing = false;
-        startTrigger.classList.remove('is-wordmark-swapped');
-      };
-      navigationRestoreTimer = window.setTimeout(finish, Math.max(0, (transition?.finishesAt ?? 0) - Date.now()));
     };
 
     document.addEventListener('header:navigation-commit', (event) => {
@@ -1291,10 +1299,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (!next || !nextWordmark || !pageWordmark) return;
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
+      startTrigger.classList.remove('is-wordmark-swapped');
       pageWordmark.replaceWith(nextWordmark);
       pageWordmark = nextWordmark;
       pageChars = [...nextWordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
-      homeChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.opacity = '0'; });
+      pageChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = '1'; });
+      homeChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = '0'; });
+      nextWordmark.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
       startTrigger.dataset.headerTitleSwap = next.dataset.headerTitleSwap;
       startTrigger.classList.toggle('header-trigger--home', next.classList.contains('header-trigger--home'));
@@ -1311,7 +1322,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       titleEntryEnd = Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
       titleCloseScale = 0.18 / titleEntryEnd;
       applyWordmarkKerning();
-      finishNavigationTitle();
+      const transition = headerSlot?.__vcdTitleTransition;
+      const runToken = wordmarkRunToken;
+      const finish = (completed: boolean) => {
+        if (!completed || runToken !== wordmarkRunToken || (transition && headerSlot?.__vcdTitleTransition !== transition)) return;
+        transition?.cleanup();
+        if (headerSlot) delete headerSlot.__vcdTitleTransition;
+        delete startTrigger.dataset.headerTitlePending;
+        navigationOutgoing = false;
+        startTrigger.dispatchEvent(new CustomEvent('header:title-ready'));
+      };
+      if (transition?.finished) void transition.finished.then(finish);
+      else finish(true);
     });
 
     const runWordmarkOpen = () => {
@@ -1334,26 +1356,23 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const onWordmarkPointerActive = () => {
       if (isDevEditing()) return;
-      if (navigationOutgoing) return;
-      if (startTrigger.dataset.headerTitleSwap !== 'true') return;
-      if (headerSlot?.__vcdTitleTransition) {
-        headerSlot.__vcdTitleTransition.cleanup();
-        delete headerSlot.__vcdTitleTransition;
-      }
+      if (startTrigger.dataset.headerTitlePending !== undefined || startTrigger.dataset.headerTitleSwap !== 'true') return;
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
     const onWordmarkPointerInactive = () => {
-      if (navigationOutgoing) return;
+      if (!navigationOutgoing && startTrigger.dataset.headerTitleSwap !== 'true') return;
       if (wordmarkIsOpen) runWordmarkClose();
     };
 
     document.addEventListener('header:navigation-start', (event) => {
       navigationOutgoing = true;
-      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
-      if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
+      startTrigger.dataset.headerTitlePending = '';
       invalidateWordmarkRun();
       headerSlot?.__vcdTitleTransition?.cleanup();
+      if (headerSlot) delete headerSlot.__vcdTitleTransition;
+      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
+      if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
       const bridge = window.__vcdHeaderTitleTransition(pending);
       if (bridge) {
         headerSlot.__vcdTitleTransition = bridge;
@@ -1362,22 +1381,23 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }, true);
     document.addEventListener('header:navigation-cancel', () => {
       navigationOutgoing = false;
+      delete startTrigger.dataset.headerTitlePending;
       if (headerSlot?.__vcdTitleTransition) {
         headerSlot.__vcdTitleTransition.cleanup();
         delete headerSlot.__vcdTitleTransition;
       }
+      invalidateWordmarkRun();
+      wordmarkIsOpen = startTrigger.dataset.menuOpen === 'true' && startTrigger.dataset.headerTitleSwap === 'true';
+      startTrigger.classList.toggle('is-wordmark-swapped', wordmarkIsOpen);
+      pageChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = wordmarkIsOpen ? '0' : '1'; });
+      homeChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.setProperty('--char-delay', '0s'); char.style.setProperty('--char-blur', '0px'); char.style.opacity = wordmarkIsOpen ? '1' : '0'; });
+      pageWordmark?.setAttribute('aria-hidden', wordmarkIsOpen ? 'true' : 'false');
+      homeWordmarkEl?.setAttribute('aria-hidden', wordmarkIsOpen ? 'false' : 'true');
+    });
+    document.addEventListener('header:navigation-reveal', () => {
+      navigationOutgoing = false;
     });
 
-    startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
-    startTrigger.addEventListener('focusin', onWordmarkPointerActive);
-    startTrigger.addEventListener('mouseleave', onWordmarkPointerInactive);
-    startTrigger.addEventListener('focusout', (event) => {
-      if (!startTrigger.contains(event.relatedTarget as Node | null)) {
-        onWordmarkPointerInactive();
-      }
-    });
-
-    // Tap mode has no hover to follow — swap with the menu itself.
     startTrigger.addEventListener('header:trigger-open', onWordmarkPointerActive);
     startTrigger.addEventListener('header:trigger-close', onWordmarkPointerInactive);
 
@@ -1412,7 +1432,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         headerSlot.__vcdTitleTransition.cleanup();
         delete headerSlot.__vcdTitleTransition;
       }
-      if (!preserveNavigation) navigationOutgoing = false;
+      if (!preserveNavigation) {
+        navigationOutgoing = false;
+        delete startTrigger.dataset.headerTitlePending;
+      }
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
@@ -2376,11 +2399,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     pointer-events: auto;
   }
 
-  .header-trigger__char {
+  .header-trigger__char,
+  :global(.header-navigation-title-mask) {
     /* inline (not inline-block) so the browser keeps native kerning between letters */
     display: inline;
     opacity: 1;
-    filter: blur(var(--char-blur, 0px));
+    filter: var(--char-filter, blur(var(--char-blur, 0px)));
     transition:
       opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
       filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
@@ -2390,16 +2414,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     display: inline;
     margin: 0;
     transition: none;
-  }
-
-  @keyframes vcd-header-title-out {
-    from { opacity: 1; filter: blur(0); }
-    to { opacity: 0; filter: blur(4px); }
-  }
-
-  @keyframes vcd-header-title-in {
-    from { opacity: 0; filter: blur(4px); }
-    to { opacity: 1; filter: blur(0); }
   }
 
   .header-trigger__wordmark--home .header-trigger__char {

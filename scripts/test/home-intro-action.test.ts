@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { renderHomeIntroAction } from '../../src/lib/homeIntroAction';
@@ -109,4 +110,30 @@ test('View/Edit roundtrip retains a custom source label', () => {
   syncHomeIntroActions(surface, false);
   expect(surface.querySelector('button')!.textContent).toBe('Renamed action');
   expect(readParagraphsValue(body)).toEqual(['<span data-home-intro-okay="true">Renamed action</span>']);
+});
+
+const introSource = readFileSync(new URL('../../src/components/home/HomeIntroController.astro', import.meta.url), 'utf8');
+const skipSeenIntro = introSource.match(/<script is:inline data-astro-rerun>([\s\S]*?)<\/script>/)![1];
+
+test('inline seen check cannot dismiss an intro already activated by its controller', () => {
+  const { dom, document, surface, home } = fixture();
+  surface.id = 'home-intro-surface';
+  surface.dataset.state = 'pending';
+  const controller = createHomeIntroController(surface, home, document.documentElement, dom as unknown as globalThis.Window);
+  controllers.push(controller);
+  expect(dom.sessionStorage.getItem('vcd:home-intro-seen')).toBe('true');
+  new Function('document', 'sessionStorage', skipSeenIntro)(document, dom.sessionStorage);
+  expect(controller.getState()).toBe('active');
+  expect(surface.dataset.state).toBe('active');
+  expect(surface.hidden).toBe(false);
+});
+
+test('inline seen check still hides a pending intro on a repeat visit', () => {
+  const { dom, document, surface } = fixture();
+  surface.id = 'home-intro-surface';
+  surface.dataset.state = 'pending';
+  dom.sessionStorage.setItem('vcd:home-intro-seen', 'true');
+  new Function('document', 'sessionStorage', skipSeenIntro)(document, dom.sessionStorage);
+  expect(surface.dataset.state).toBe('dismissed');
+  expect(surface.hidden).toBe(true);
 });
