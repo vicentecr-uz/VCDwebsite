@@ -141,18 +141,40 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } },
     animate(keyframes: any, animationOptions: any) {
       if (options.failAnimation) throw new Error('animation unavailable');
-      const ready = options.deferAnimationReady ? deferred() : null;
+      let ready = deferred();
+      void ready.promise.catch(() => undefined);
       const settled = deferred();
       let heldTime = 0;
+      let startTime: number | null = null;
       const animation = {
-        keyframes, options: animationOptions, ready: ready?.promise ?? Promise.resolve(), finished: settled.promise,
-        startTime: now - 82 as number | null, playState: 'running', playCalls: 0,
+        keyframes, options: animationOptions, finished: settled.promise,
+        get ready() { return ready.promise; },
+        pending: false, playState: 'running', playCalls: 0,
+        get startTime() { return startTime; },
+        set startTime(value: number | null) {
+          startTime = value;
+          // WAAPI resolves pending readiness when an explicit start time takes over.
+          if (this.pending) { this.pending = false; ready.resolve(); }
+        },
         get currentTime() { return this.playState === 'running' && this.startTime !== null ? now - this.startTime : heldTime; },
         set currentTime(value: number) { heldTime = value; },
         pause() { heldTime = this.currentTime; this.playState = 'paused'; this.startTime = null; },
-        play() { this.playCalls++; this.playState = 'running'; this.startTime = now - 82; },
-        cancel() { this.playState = 'idle'; settled.reject(new Error('animation canceled')); ready?.reject(new Error('animation canceled')); },
-        start() { ready?.resolve(); },
+        play() {
+          this.playCalls++;
+          this.playState = 'running';
+          startTime = null;
+          this.pending = true;
+          ready = deferred();
+          void ready.promise.catch(() => undefined);
+          if (!options.deferAnimationReady) void Promise.resolve().then(() => this.start());
+        },
+        cancel() { this.pending = false; this.playState = 'idle'; settled.reject(new Error('animation canceled')); ready.reject(new Error('animation canceled')); },
+        start() {
+          if (!this.pending) return;
+          this.pending = false;
+          startTime = now - 82;
+          ready.resolve();
+        },
         finish() { settled.resolve(); },
       };
       animations.push(animation);
@@ -385,6 +407,27 @@ test('a delayed paint cannot consume the beginning of the incoming fade', async 
   await f.advance(125);
   assert.equal(animation.currentTime, 125);
   assert.equal(animation.options.duration, 250);
+  await f.paint();
+  await f.finishReveal();
+});
+
+test('renderer setup after play cannot consume the beginning of the incoming fade', async () => {
+  const f = fixture({ deferAnimationReady: true });
+  await f.paint();
+  const animation = f.animations[0];
+  assert.equal(animation.pending, true);
+  assert.equal(animation.startTime, null);
+  await f.advance(119);
+  assert.equal(animation.currentTime, 0);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.marks.some(({ name }) => name === 'vcd:veil-fade-start'), false);
+  animation.start();
+  await flush();
+  assert.equal(animation.startTime, 119);
+  assert.equal(animation.currentTime, 0);
+  await f.advance(125);
+  assert.equal(animation.currentTime, 125);
+  assert.equal(f.overlay.hidden, false);
   await f.paint();
   await f.finishReveal();
 });
