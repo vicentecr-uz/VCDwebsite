@@ -134,6 +134,35 @@ test('destination title commits behind the same running title layer, then unlock
   expect(f.slot.isConnected).toBe(true);
 });
 
+test('Home commit clears retained wordmark timing and blur before the transition layer cleans up', () => {
+  const f = titleFixture();
+  const homeChars = [...f.stack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char')];
+  homeChars.forEach((char) => {
+    char.style.setProperty('--char-duration', '.25s');
+    char.style.setProperty('--char-delay', '.55s');
+    char.style.setProperty('--char-blur', '4px');
+    char.style.opacity = '1';
+  });
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Home' } } }));
+  const live = f.stack.querySelector('.live-title-transition');
+  const incoming = f.slot.cloneNode(true) as any;
+  incoming.querySelector('.live-title-transition').remove();
+  incoming.querySelector('.header-trigger--start').classList.add('header-trigger--home');
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
+
+  const expectReset = () => {
+    expect(homeChars.every((char) => char.style.getPropertyValue('--char-duration') === '0s')).toBe(true);
+    expect(homeChars.every((char) => char.style.getPropertyValue('--char-delay') === '0s')).toBe(true);
+    expect(homeChars.every((char) => char.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
+    expect(homeChars.every((char) => char.style.opacity === '0')).toBe(true);
+  };
+  expectReset();
+  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
+  [...f.timers.values()].forEach((finish) => finish());
+  expectReset();
+  expect(live?.isConnected).toBe(false);
+});
+
 test('cancellation removes only the transition layer and keeps the current page title', () => {
   const f = titleFixture();
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));

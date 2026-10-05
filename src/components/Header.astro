@@ -1294,7 +1294,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       pageWordmark.replaceWith(nextWordmark);
       pageWordmark = nextWordmark;
       pageChars = [...nextWordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
-      homeChars.forEach((char) => { char.style.setProperty('--char-duration', '0s'); char.style.opacity = '0'; });
+      homeChars.forEach((char) => {
+        char.style.setProperty('--char-duration', '0s');
+        char.style.setProperty('--char-delay', '0s');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.opacity = '0';
+      });
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
       startTrigger.dataset.headerTitleSwap = next.dataset.headerTitleSwap;
       startTrigger.classList.toggle('header-trigger--home', next.classList.contains('header-trigger--home'));
