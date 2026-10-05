@@ -1182,8 +1182,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
     };
 
+    const animateOwnedMask = (char: HTMLElement, opacity: number, blurPx: number, duration: number, delay: number, easing = 'ease') =>
+      headerSlot?.__vcdTitleTransition?.animateMask?.(char, {
+        opacity,
+        blurPx,
+        durationMs: duration * 1000,
+        delayMs: delay * 1000,
+        easing,
+      }) === true;
+
     const setCharFadeOut = (chars: HTMLElement[], stagger: number, duration: number, baseDelay = 0) => {
       chars.forEach((char, i) => {
+        if (animateOwnedMask(char, 0, BLUR_PX, duration, baseDelay + i * stagger)) return;
         char.style.setProperty('--char-delay', `${baseDelay + i * stagger}s`);
         char.style.setProperty('--char-duration', `${duration}s`);
         char.style.setProperty('--char-easing', 'ease');
@@ -1213,6 +1223,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (wordmarkFadeInFrame !== undefined) cancelAnimationFrame(wordmarkFadeInFrame);
       const runToken = wordmarkRunToken;
       [...chars, ...mirrors].forEach((char) => {
+        if (animateOwnedMask(char, 0, BLUR_PX, 0, 0)) return;
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
         char.style.setProperty('--char-blur', `${BLUR_PX}px`);
@@ -1227,6 +1238,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
             baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
 
           [char, mirrors[i]].filter(Boolean).forEach((target) => {
+            if (animateOwnedMask(target, 1, 0, FADE_IN_DURATION, delay)) return;
             target.style.setProperty('--char-delay', `${delay}s`);
             target.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
             target.style.setProperty('--char-easing', 'ease');
@@ -1279,9 +1291,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const chars = wordmarkAnimationChars();
       chars.home.forEach((visual, i) => {
         [visual, ...(visual === homeChars[i] ? [] : [homeChars[i]])].forEach((char) => {
+          const delay = Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale;
+          if (animateOwnedMask(char, 0, BLUR_PX, FADE_IN_DURATION * titleCloseScale, delay, 'cubic-bezier(0.75, 0, 0.75, 0.9)')) return;
           char.style.setProperty(
             '--char-delay',
-            `${Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale}s`,
+            `${delay}s`,
           );
           char.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
           char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
@@ -1291,9 +1305,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
       chars.page.forEach((visual, i) => {
         [visual, ...(visual === pageChars[i] ? [] : [pageChars[i]])].forEach((char) => {
+          const delay = Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale;
+          if (animateOwnedMask(char, 1, 0, FADE_OUT_DURATION * titleCloseScale, delay, 'cubic-bezier(0.75, 0, 0.75, 0.9)')) return;
           char.style.setProperty(
             '--char-delay',
-            `${Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale}s`,
+            `${delay}s`,
           );
           char.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
           char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
@@ -1321,6 +1337,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const transition = headerSlot?.__vcdTitleTransition;
       const finish = () => {
         if (transition && headerSlot?.__vcdTitleTransition !== transition) return;
+        if (startTrigger.dataset.headerTitleSwap !== 'true') wordmarkIsOpen = false;
         pageChars.forEach((char) => {
           char.style.setProperty('--char-duration', '0s');
           char.style.setProperty('--char-delay', '0s');
@@ -1419,6 +1436,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const onWordmarkPointerInactive = () => {
       if (navigationOutgoing && !canInteractDuringNavigation()) return;
+      if (!navigationOutgoing && startTrigger.dataset.headerTitleSwap !== 'true') return;
       if (wordmarkIsOpen) runWordmarkClose();
     };
 
@@ -1426,6 +1444,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       navigationOutgoing = true;
       const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
       if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
+      const existing = headerSlot?.__vcdTitleTransition;
+      const homeTitle = homeWordmarkTitle();
+      const targetTitle = String(pending.targetTitle).replace(/\s+/g, ' ').trim();
+      if (existing && wordmarkIsOpen && targetTitle === homeTitle) {
+        existing.targetTitle = targetTitle;
+        return;
+      }
       invalidateWordmarkRun();
       headerSlot?.__vcdTitleTransition?.cleanup();
       const bridge = window.__vcdHeaderTitleTransition(pending);

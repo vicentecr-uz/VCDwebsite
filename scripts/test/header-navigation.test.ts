@@ -193,6 +193,7 @@ test('title trigger opens during navigation, then preserves the retained entranc
   expect(f.timers.size).toBe(1);
   const incoming = f.slot.cloneNode(true) as any;
   incoming.querySelector('.live-title-transition').remove();
+  incoming.querySelector('.header-trigger--start').dataset.headerTitleSwap = 'true';
   incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/play') } }));
   expect(f.stack.querySelector('.live-title-transition')).toBe(live);
@@ -221,6 +222,38 @@ test('title trigger opens during navigation, then preserves the retained entranc
   const settledHome = f.stack.querySelector<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char')!;
   expect(settledHome.style.opacity).toBe('1');
   expect(settledHome.style.getPropertyValue('--char-blur')).toBe('0px');
+});
+
+test('Home click during an open collision reuses the bridge through commit and finish', () => {
+  const f = titleFixture();
+  const startTrigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  const homeWordmark = f.stack.querySelector<HTMLElement>('.header-trigger__wordmark--home')!;
+  homeWordmark.querySelector<HTMLElement>('.header-trigger__char')!.textContent = 'Home';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
+  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
+  const live = f.stack.querySelector('.live-title-transition');
+  const homeMask = live!.querySelector('.test-home-mask');
+  expect(f.timers.size).toBe(1);
+
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Play', targetTitle: 'Home' } } }));
+  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
+  expect(f.timers.size).toBe(1);
+
+  const incoming = f.slot.cloneNode(true) as any;
+  incoming.querySelector('.live-title-transition').remove();
+  incoming.querySelector('.header-trigger--start').classList.add('header-trigger--home');
+  incoming.querySelector('.header-trigger--start').dataset.headerTitleSwap = 'false';
+  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Home';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
+  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
+  expect(f.stack.querySelector('.test-home-mask')).toBe(homeMask);
+  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
+  f.frame();
+  expect(homeMask?.style.opacity).toBe('1');
+  [...f.timers.values()].forEach((finish) => finish());
+  expect(live?.isConnected).toBe(false);
+  expect(startTrigger.classList.contains('is-wordmark-swapped')).toBe(false);
+  expect(f.stack.querySelector('.header-trigger__wordmark--home .header-trigger__char')?.style.opacity).toBe('0');
 });
 
 test('cancellation removes only the transition layer and keeps the current page title', () => {
