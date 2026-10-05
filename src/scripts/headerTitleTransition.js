@@ -142,28 +142,34 @@
     });
     applyMetrics(result, metrics);
     const template = source.querySelector(".header-trigger__char");
-    if (!template) return result;
+    const masks = [];
+    if (!template) return { element: result, masks };
     codepoints(text).forEach((character, index) => {
       const char = template.cloneNode(false);
-      char.style.cssText = "";
-      char.className = "header-trigger__char header-navigation-title-char";
+      char.classList.add("header-navigation-title-char");
       char.textContent = character;
       Object.assign(char.style, {
+        position: "relative",
+        left: "0",
+        top: "0",
+        display: "inline-block",
+        margin: "0",
+        whiteSpace: "nowrap",
+      });
+      const mask = document.createElement("span");
+      mask.className = "header-navigation-title-mask";
+      Object.assign(mask.style, {
         position: "absolute",
         left: `${geometry.offsets[index]}em`,
         top: "0",
-        margin: "0",
-        transition: "none",
         opacity: fixed ? "1" : "0",
-        filter: fixed ? "blur(0)" : "blur(4px)",
-        whiteSpace: "nowrap",
-        animation: fixed
-          ? "none"
-          : `${mode === "out" ? "vcd-header-title-out" : "vcd-header-title-in"} ${timings?.[index]?.durationMs ?? (mode === "out" ? 150 : 250)}ms ease ${(timings?.[index]?.delayMs ?? (mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length))) - (Date.now() - startedAt)}ms both`,
       });
-      result.append(char);
+      mask.style.setProperty("--char-blur", fixed ? "0px" : "4px");
+      mask.append(char);
+      result.append(mask);
+      masks.push(mask);
     });
-    return result;
+    return { element: result, masks };
   };
   const charTimings = (element, text, mode) =>
     codepoints(text).map((_, index) => {
@@ -272,21 +278,20 @@
     });
     applyMetrics(overlay, pending.fontMetrics);
     const fixed = sourceText === targetText;
-    overlay.append(
-      layer(
-        source,
-        sourceText,
-        pending.fromGeometry,
-        pending.fontMetrics,
-        "out",
-        pending.startedAt,
-        fixed,
-        pending.fromCharTimings,
-      ),
+    const outgoingLayer = layer(
+      source,
+      sourceText,
+      pending.fromGeometry,
+      pending.fontMetrics,
+      "out",
+      pending.startedAt,
+      fixed,
+      pending.fromCharTimings,
     );
-    if (!fixed)
-      overlay.append(
-        layer(
+    overlay.append(outgoingLayer.element);
+    const incomingLayer = fixed
+      ? outgoingLayer
+      : layer(
           source,
           targetText,
           pending.toGeometry,
@@ -295,8 +300,8 @@
           pending.startedAt,
           false,
           pending.toCharTimings,
-        ),
-      );
+        );
+    if (!fixed) overlay.append(incomingLayer.element);
     stack.append(overlay);
     const timingEnd = (timings, fallback) =>
       Array.isArray(timings)
@@ -309,7 +314,33 @@
     const finishesAt =
       Date.now() +
       (fixed ? 0 : Math.max(0, endMs - (Date.now() - pending.startedAt)));
+    let wordmarkMasks;
     return {
+      wordmarkChars: (homeSource) => {
+        if (wordmarkMasks) return wordmarkMasks;
+        const homeText = homeSource?.textContent?.replace(/\s+/g, " ").trim();
+        if (!homeSource || !homeText) return null;
+        const homeGeometry = geometryFor(homeSource, homeText);
+        if (!validGeometry(homeGeometry, codepoints(homeText).length)) return null;
+        const homeLayer = layer(
+          homeSource,
+          homeText,
+          homeGeometry,
+          pending.fontMetrics,
+          "in",
+          pending.startedAt,
+          false,
+          null,
+        );
+        homeLayer.masks.forEach((mask) => {
+          mask.style.opacity = "0";
+          mask.style.setProperty("--char-blur", "4px");
+        });
+        overlay.append(homeLayer.element);
+        void overlay.offsetWidth;
+        wordmarkMasks = { page: incomingLayer.masks, home: homeLayer.masks };
+        return wordmarkMasks;
+      },
       cleanup: () => {
         stack.style.visibility = previousVisibility;
         overlay.remove();
