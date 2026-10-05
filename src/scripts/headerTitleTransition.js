@@ -380,6 +380,13 @@
       const animation = mask.animate(keyframes, { duration: total, delay: 0, easing: "linear", fill: "both" });
       animation.id = `vcd-header-title-mask-${opacity}-${blurPx}`;
       maskAnimations.set(mask, animation);
+      animation.pause();
+      animation.currentTime = 0;
+      window.requestAnimationFrame(() => {
+        if (maskAnimations.get(mask) !== animation) return;
+        animation.play();
+        animation.startTime = window.performance.now();
+      });
       return true;
     };
     const timelineAnchor = document.timeline?.currentTime;

@@ -156,7 +156,7 @@ function actualTitleFixture(pageTitle = 'Project', isHome = false) {
   win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 24 });
   const animateCalls: any[] = [];
   win.HTMLElement.prototype.animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-    const animation = { id: '', startTime: null, cancel() { this.cancelled = true; }, cancelled: false } as any;
+    const animation = { id: '', startTime: null, currentTime: null, cancel() { this.cancelled = true; }, pause() { this.paused = true; }, play() { this.paused = false; }, paused: false, cancelled: false } as any;
     animateCalls.push({ element: this, keyframes, options, animation });
     return animation;
   };
@@ -164,8 +164,9 @@ function actualTitleFixture(pageTitle = 'Project', isHome = false) {
   const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: element?.style.opacity || '1', filter: element?.style.filter || 'none' });
   new Function('window', 'document', 'getComputedStyle', titleTransition)(win, doc, computed);
   const timers = new Map<number, () => void>();
-  let id = 0;
   const frames = new Map<number, () => void>();
+  let id = 0;
+  win.requestAnimationFrame = (fn: FrameRequestCallback) => { frames.set(++id, () => fn(0)); return id; };
   const clock = {
     setTimeout(fn: () => void) { timers.set(++id, fn); return id; },
     clearTimeout(timer: number) { timers.delete(timer); },

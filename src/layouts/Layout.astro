@@ -546,7 +546,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         return { ready, cleanup: settle, get releaseReason() { return releaseReason; } };
       };
 
-      const waitForOpaquePaint = (signal: AbortSignal) =>
+      const waitForPaint = (signal: AbortSignal) =>
         new Promise<void>((resolve) => {
           let first: number | null = null;
           let second: number | null = null;
@@ -582,14 +582,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
           }));
           await readiness;
           if (current !== generation || suspended) return;
-          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
-          await opaquePaint;
-          if (current !== generation || suspended) return;
-          emitTransitionMilestone('fade-authorized');
           readinessCleanup?.();
           readinessCleanup = null;
-          readinessAbort = null;
-          if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
           if (!visibleTransition) {
             incomingAnimation = overlay.animate(
               [{ opacity: 1 }, { opacity: 0 }],
@@ -597,14 +591,29 @@ const initialThemeColor = resolveToken('sys.color.srf');
             );
             revealAnimation = incomingAnimation;
             void incomingAnimation.finished.catch(() => undefined);
+            incomingAnimation.pause();
+            incomingAnimation.currentTime = 0;
+          }
+          await waitForPaint(controller.signal);
+          if (current !== generation || suspended) return;
+          emitTransitionMilestone('opaque-paint');
+          emitTransitionMilestone('fade-authorized');
+          if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
+          revealAnnounced = true;
+          document.dispatchEvent(new Event('header:navigation-reveal'));
+          if (incomingAnimation) {
+            // Safari can backdate automatic starts to the frame before page setup.
+            incomingAnimation.play();
+            incomingAnimation.startTime = performance.now();
             emitTransitionMilestone('veil-fade-start');
             await incomingAnimation.ready;
             if (current !== generation || suspended) return;
+            await waitForPaint(controller.signal);
+            if (current !== generation || suspended) return;
           }
+          readinessAbort = null;
           emitTransitionMilestone('preview-gate-open');
           openImagePreviewUpgrade();
-          revealAnnounced = true;
-          document.dispatchEvent(new Event('header:navigation-reveal'));
           if (visibleTransition) {
             overlay.style.opacity = '0';
             emitTransitionMilestone('veil-fade-start');

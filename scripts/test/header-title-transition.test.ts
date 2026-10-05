@@ -26,16 +26,20 @@ function fixture() {
     return rects.get(this) ?? { left: 0, top: 0, width: this.textContent?.length ? this.textContent.length * 16 : 64, height: 24 };
   };
   win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 24 });
+  const frames: Array<() => void> = [];
+  let performanceNow = 7000;
   win.HTMLElement.prototype.animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-    const animation = { id: '', startTime: null, cancel: () => { animation.cancelled = true; }, cancelled: false } as any;
+    const animation = { id: '', startTime: null, currentTime: null, cancel: () => { animation.cancelled = true; }, pause: () => { animation.paused = true; }, play: () => { animation.paused = false; }, paused: false, cancelled: false } as any;
     animateCalls.push({ element: this, keyframes, options, animation });
     return animation;
   };
+  win.requestAnimationFrame = (callback: FrameRequestCallback) => { frames.push(() => callback(0)); return frames.length; };
+  Object.defineProperty(win, 'performance', { configurable: true, value: { now: () => performanceNow } });
   Object.defineProperty(doc, 'timeline', { configurable: true, value: { currentTime: 5000 } });
   const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: presentations.get(element)?.opacity || element?.style.opacity || '1', filter: presentations.get(element)?.filter || 'none' });
   const run = new Function('window', 'document', 'getComputedStyle', source);
   run(win, doc, computed);
-  return { win, doc, stack, page, home, animateCalls, presentations };
+  return { win, doc, stack, page, home, animateCalls, presentations, frame: () => { const pending = frames.splice(0); pending.forEach((callback) => callback()); }, setPerformanceNow: (value: number) => { performanceNow = value; } };
 }
 
 test('title transition uses shared zero-delay WAAPI effects and preserves reusable masks', () => {
@@ -95,6 +99,12 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   f.presentations.set(first.home[0], { opacity: '0.43', filter: 'blur(1.7px)' });
   expect(bridge.animateMask(first.home[0], { opacity: 1, blurPx: 0, durationMs: 250, delayMs: 40, easing: 'ease' })).toBe(true);
   const maskAnimation = f.animateCalls.at(-1)!;
+  expect(maskAnimation.animation.paused).toBe(true);
+  expect(maskAnimation.animation.currentTime).toBe(0);
+  f.setPerformanceNow(8123);
+  f.frame();
+  expect(maskAnimation.animation.paused).toBe(false);
+  expect(maskAnimation.animation.startTime).toBe(8123);
   expect(maskAnimation.options).toEqual({ duration: 290, delay: 0, easing: 'linear', fill: 'both' });
   expect(maskAnimation.keyframes[0]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 0 });
   expect(maskAnimation.keyframes[1]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 40 / 290, easing: 'ease' });
@@ -108,6 +118,42 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   expect(f.animateCalls.every(({ animation }) => animation.cancelled)).toBe(true);
   expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
   expect(f.stack.style.visibility).toBe(visibility === 'hidden' ? '' : visibility);
+});
+
+test('queued mask starts cannot resurrect canceled or replaced effects', () => {
+  const f = fixture();
+  const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Play' });
+  const homeMask = bridge.wordmarkChars(f.home).home[0];
+
+  expect(bridge.animateMask(homeMask, { opacity: 1, blurPx: 0, durationMs: 250 })).toBe(true);
+  const first = f.animateCalls.at(-1)!.animation;
+  expect(bridge.animateMask(homeMask, { opacity: 0, blurPx: 4, durationMs: 100 })).toBe(true);
+  const second = f.animateCalls.at(-1)!.animation;
+  bridge.cleanup();
+  f.frame();
+
+  expect(first.paused).toBe(true);
+  expect(second.paused).toBe(true);
+  expect(first.cancelled).toBe(true);
+  expect(second.cancelled).toBe(true);
+});
+
+test('replaced mask starts leave only the current effect running', () => {
+  const f = fixture();
+  const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Play' });
+  const homeMask = bridge.wordmarkChars(f.home).home[0];
+
+  bridge.animateMask(homeMask, { opacity: 1, blurPx: 0, durationMs: 250 });
+  const first = f.animateCalls.at(-1)!.animation;
+  bridge.animateMask(homeMask, { opacity: 0, blurPx: 4, durationMs: 100 });
+  const second = f.animateCalls.at(-1)!.animation;
+  f.frame();
+
+  expect(first.paused).toBe(true);
+  expect(second.paused).toBe(false);
+  expect(first.startTime).toBeNull();
+  expect(second.startTime).toBe(7000);
+  bridge.cleanup();
 });
 
 test('negative measured delay resumes against the same timeline anchor', () => {
