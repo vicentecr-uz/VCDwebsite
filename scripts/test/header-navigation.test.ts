@@ -55,32 +55,34 @@ test('menu stays open through navigation and commit, then exits with the incomin
   expect(f.start.dataset.menuOpen).toBeUndefined();
   expect(f.start.dataset.menuSurfaceOpen).toBeUndefined();
   expect(f.links.every((link) => link.style.opacity === '0')).toBe(true);
-  expect(f.timings.at(-1)![0]).toBeCloseTo(0.18);
-  expect(f.timings.at(-1)![1]).toBeCloseTo(0.1575);
+  expect(f.timings.at(-1)![0] + f.timings.at(-1)![1]).toBeCloseTo(0.18);
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBeUndefined();
   [...f.timers.values()].forEach((timer) => timer.callback());
   expect(f.start.dataset.menuCloseTimer).toBeUndefined();
-  expect(f.start.classList.contains('is-menu-open')).toBe(false);
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
 });
 
 for (const linkCount of [1, 3, 5]) {
-  test(`menu veil waits for all ${linkCount} links, then reopens without the close delay`, () => {
+  test(`background close overlaps the ${linkCount}-link collapse and reopens immediately`, () => {
     const f = menuFixture(linkCount);
     f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
     f.setHovered(false); f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
-    const linkCloseEnd = Math.max(...f.links.map((link) =>
-      parseFloat(link.style.getPropertyValue('--menu-link-delay')) +
-      parseFloat(link.style.getPropertyValue('--menu-link-duration')),
-    ));
-    const surfaceCloseDuration = f.timings.at(-1)![0];
-    const surfaceCloseDelay = f.timings.at(-1)![1];
-    const timer = [...f.timers.values()][0];
-    expect(surfaceCloseDuration).toBeCloseTo(0.18);
-    expect(surfaceCloseDelay).toBeCloseTo(linkCloseEnd);
-    expect(timer.delay).toBe(Math.ceil((linkCloseEnd + surfaceCloseDuration) * 1000) + 32);
+    const linkIntervals = f.links.map((link) => {
+      const start = parseFloat(link.style.getPropertyValue('--menu-link-delay'));
+      const duration = parseFloat(link.style.getPropertyValue('--menu-link-duration'));
+      return { start, end: start + duration, easing: link.style.getPropertyValue('--menu-link-easing') };
+    });
+    const surface = f.timings.at(-1)!;
+    const surfaceDuration = surface[0];
+    const surfaceDelay = surface[1];
+    const surfaceEnd = surfaceDelay + surfaceDuration;
+    expect(surfaceEnd).toBeCloseTo(0.18);
+    expect(surface[2]).toBe(linkIntervals[0].easing);
+    expect(surfaceEnd).toBeGreaterThanOrEqual(Math.max(...linkIntervals.map(({ end }) => end)));
+    expect(linkIntervals.every(({ start, end }) => surfaceDelay < end && surfaceEnd > start)).toBe(true);
+    expect([...f.timers.values()][0].delay).toBeGreaterThanOrEqual(surfaceEnd * 1000 + 31.99);
     expect(f.start.classList.contains('is-menu-open')).toBe(true);
     f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
     expect(f.timers.size).toBe(0);

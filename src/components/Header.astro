@@ -742,7 +742,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const MENU_TIMELINE_OPEN_DURATION = 0.25;
     const MENU_TIMELINE_CLOSE_DURATION = 0.18;
     const MENU_SURFACE_ENTRY_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
-    const MENU_SURFACE_EXIT_EASING = 'cubic-bezier(0.64, 0, 0.78, 0)';
     const MENU_LINK_ENTRY_EASING = 'ease';
     const MENU_LINK_EXIT_EASING = 'cubic-bezier(0.75, 0, 0.75, 0.9)';
     const timelineEnd = Math.max(
@@ -753,10 +752,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     const openScale = MENU_TIMELINE_OPEN_DURATION / timelineEnd;
     const closeScale = MENU_TIMELINE_CLOSE_DURATION / timelineEnd;
-    const surfaceCloseDuration = MENU_TIMELINE_CLOSE_DURATION;
-    const linkCloseEnd =
-      Math.max(MENU_LINK_ORIGINAL_DURATION, timelineEnd - MENU_LINK_ORIGINAL_FIRST_DELAY) * closeScale;
-    const closeLayoutMs = Math.ceil((linkCloseEnd + surfaceCloseDuration) * 1000) + 32;
+    const closeLayoutMs = Math.ceil(MENU_TIMELINE_CLOSE_DURATION * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     let navigationClosing = false;
     let navigationOutgoing = false;
@@ -781,9 +777,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         trigger.dataset.menuSurfaceOpen = '';
       } else {
         setMenuSurfaceTiming(
-          surfaceCloseDuration,
-          linkCloseEnd,
-          MENU_SURFACE_EXIT_EASING,
+          MENU_SURFACE_ORIGINAL_DURATION * closeScale,
+          (timelineEnd - MENU_SURFACE_ORIGINAL_DURATION) * closeScale,
+          MENU_LINK_EXIT_EASING,
         );
         delete trigger.dataset.menuSurfaceOpen;
       }
@@ -2016,9 +2012,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     opacity: 0;
     visibility: hidden;
-    /* Links finish first; the veil and panel share the delayed fade. */
+    /* Veil opacity follows the panel as links fade from bottom to top. */
     transition:
-      opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s),
+      opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+      var(--header-menu-surface-delay, 0s),
       visibility 0s calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s));
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
@@ -2139,8 +2136,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     opacity: 0;
     pointer-events: none;
     transition:
-      opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s),
-      height var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s);
+      opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+        var(--header-menu-surface-delay, 0s),
+      height var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+        var(--header-menu-surface-delay, 0s);
   }
 
   .header-trigger__panel-bg::before {
@@ -2534,7 +2533,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     :global([data-page-shell] > :is(main, .project-layout, footer)) {
       opacity: 1;
       transition:
-        opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s);
+        opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+          var(--header-menu-surface-delay, 0s);
     }
 
     :global([data-page-shell]:has(> .site-header-slot .header-trigger[data-menu-surface-open]) > :is(main, .project-layout, footer)) {
