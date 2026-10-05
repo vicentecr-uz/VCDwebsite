@@ -602,12 +602,12 @@ const initialThemeColor = resolveToken('sys.color.srf');
           revealAnnounced = true;
           document.dispatchEvent(new Event('header:navigation-reveal'));
           if (incomingAnimation) {
-            // Safari can backdate automatic starts to the frame before page setup.
+            // Setting startTime cancels pending playback, so reset only after renderer readiness.
             incomingAnimation.play();
-            incomingAnimation.startTime = performance.now();
-            emitTransitionMilestone('veil-fade-start');
             await incomingAnimation.ready;
             if (current !== generation || suspended) return;
+            incomingAnimation.startTime = performance.now();
+            emitTransitionMilestone('veil-fade-start');
             await waitForPaint(controller.signal);
             if (current !== generation || suspended) return;
           }
