@@ -259,7 +259,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
       pending.forEach((callback) => callback(now));
       await flush();
     },
-    async paint() { await this.frame(); await this.frame(); },
+    async paint() { await this.frame(); await this.frame(); await this.frame(); },
     async finishReveal() { animations.at(-1)?.finish(); await flush(); },
     async advance(ms: number) {
       const end = now + ms;
@@ -332,6 +332,23 @@ test('preview upgrades wait for animation readiness but overlap the active fade'
   assert.equal(f.overlay.hidden, false);
   await f.finishReveal();
   assert.equal(f.overlay.hidden, true);
+});
+
+test('slow thumbnail decode gets two fresh opaque-paint frames before incoming animation', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ images: [image] });
+  await f.paint();
+  image.load();
+  await flush();
+  assert.equal(f.animations.length, 0);
+  image.decoded.resolve();
+  await flush();
+  assert.equal(f.animations.length, 0);
+  await f.frame();
+  assert.equal(f.animations.length, 0);
+  await f.frame();
+  assert.equal(f.animations.length, 1);
+  await f.finishReveal();
 });
 
 test('visible transition upgrade failure still releases the veil', async () => {
@@ -409,7 +426,7 @@ for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTwe
     });
     await f.paint();
     assert.equal(notices.length, 0);
-    image.load(); image.decoded.resolve(); await flush();
+    image.load(); image.decoded.resolve(); await flush(); await f.paint();
     assert.equal(notices.length, 1);
     assert.equal(notices[0].tweens, 0);
     if (!options.visible) assert.equal(notices[0].opacity, 1);
@@ -538,6 +555,7 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   image.load();
   image.decoded.resolve();
   await f.paint();
+  await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
@@ -552,6 +570,7 @@ test('visible mode media fallback marks readiness after four seconds', async () 
   await f.advance(3999);
   assert.equal(f.readinessMarker.hidden, true);
   await f.advance(1);
+  await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
@@ -600,6 +619,7 @@ test('visible decoded thumbnails gate reveal; fonts and offscreen images do not'
   assert.equal(f.tweens.length, 0);
   visible.decoded.resolve();
   await flush();
+  await f.paint();
   assert.equal(f.tweens.length, 0);
   assert.equal(f.animations.length, 1);
   assert.equal(Number(f.overlay.style.opacity), 1);
@@ -635,6 +655,7 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   assert.equal(active.decodeCalls, 1);
   active.decoded.resolve();
   await flush();
+  await f.paint();
   assert.equal(f.tweens.length, 0);
   assert.equal(f.animations.length, 1);
   assert.equal(Number(f.overlay.style.opacity), 1);
@@ -688,6 +709,7 @@ test('four-second fallback releases stalled fonts/media and removes losing liste
   await f.advance(3999);
   assert.equal(f.tweens.length, 0);
   await f.advance(1);
+  await f.paint();
   assert.equal(f.tweens.length, 0);
   assert.equal(stalled.count('load') + stalled.count('error'), 0);
   assert.equal(f.animations.length, 1);
@@ -712,6 +734,7 @@ test('broken images, rejected decodes and rejected fonts fail open', async () =>
   rejected.decoded.reject(new Error('decode failed'));
   fonts.reject(new Error('fonts failed'));
   await flush();
+  await f.paint();
   assert.equal(f.tweens.length, 0);
   assert.equal(f.animations.length, 1);
   assert.equal(Number(f.overlay.style.opacity), 1);
@@ -787,6 +810,7 @@ test('stale decode and font completions after restore cannot start an extra reve
   await f.paint();
   image.decoded.resolve(); fonts.resolve();
   await flush();
+  await f.paint();
   assert.equal(f.tweens.length, 0);
   assert.equal(f.upgrades, 1);
 });

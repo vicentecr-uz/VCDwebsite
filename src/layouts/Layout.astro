@@ -577,12 +577,12 @@ const initialThemeColor = resolveToken('sys.color.srf');
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
-          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
           const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied', {
             release: wait.releaseReason === 'timeout' ? 'timeout' : 'resources',
           }));
           await readiness;
           if (current !== generation || suspended) return;
+          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
           await opaquePaint;
           if (current !== generation || suspended) return;
           emitTransitionMilestone('fade-authorized');

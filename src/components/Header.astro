@@ -1166,6 +1166,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     let wordmarkIsOpen = false;
     let navigationOutgoing = false;
+    let titleCommitPending = false;
     let wordmarkRunToken = 0;
     let wordmarkFadeInFrame: number | undefined;
     let navigationRestoreTimer: number | undefined;
@@ -1335,8 +1336,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const finishNavigationTitle = (holdMs = 0) => {
       const transition = headerSlot?.__vcdTitleTransition;
+      const runToken = wordmarkRunToken;
       const finish = () => {
+        if (runToken !== wordmarkRunToken) return;
         if (transition && headerSlot?.__vcdTitleTransition !== transition) return;
+        navigationRestoreTimer = undefined;
+        if (titleCommitPending) return;
         if (startTrigger.dataset.headerTitleSwap !== 'true') wordmarkIsOpen = false;
         pageChars.forEach((char) => {
           char.style.setProperty('--char-duration', '0s');
@@ -1354,6 +1359,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if (headerSlot) delete headerSlot.__vcdTitleTransition;
         navigationOutgoing = false;
         startTrigger.classList.toggle('is-wordmark-swapped', wordmarkIsOpen);
+        pageWordmark?.setAttribute('aria-hidden', wordmarkIsOpen ? 'true' : 'false');
+        homeWordmarkEl?.setAttribute('aria-hidden', wordmarkIsOpen ? 'false' : 'true');
       };
       navigationRestoreTimer = window.setTimeout(finish, Math.max(holdMs, (transition?.finishesAt ?? 0) - Date.now()));
     };
@@ -1363,7 +1370,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const next = incoming.querySelector<HTMLElement>('.header-trigger--start');
       const nextWordmark = next?.querySelector<HTMLElement>('.header-trigger__wordmark--page');
       if (!next || !nextWordmark || !pageWordmark) return;
-      const preserveOpen = wordmarkIsOpen && !!headerSlot?.__vcdTitleTransition;
+      titleCommitPending = false;
+      const preserveOpen = wordmarkIsOpen;
       if (!preserveOpen) {
         invalidateWordmarkRun();
         wordmarkIsOpen = false;
@@ -1404,7 +1412,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       titleEntryEnd = Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
       titleCloseScale = 0.18 / titleEntryEnd;
       applyWordmarkKerning();
-      if (!preserveOpen) finishNavigationTitle();
+      if (!preserveOpen || navigationRestoreTimer === undefined) finishNavigationTitle();
     });
 
     const runWordmarkOpen = () => {
@@ -1442,6 +1450,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     document.addEventListener('header:navigation-start', (event) => {
       navigationOutgoing = true;
+      titleCommitPending = true;
       const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
       if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
       const existing = headerSlot?.__vcdTitleTransition;
@@ -1453,6 +1462,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       invalidateWordmarkRun();
       headerSlot?.__vcdTitleTransition?.cleanup();
+      if (headerSlot) delete headerSlot.__vcdTitleTransition;
       const bridge = window.__vcdHeaderTitleTransition(pending);
       if (bridge) {
         headerSlot.__vcdTitleTransition = bridge;
@@ -1461,10 +1471,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }, true);
     document.addEventListener('header:navigation-cancel', () => {
       navigationOutgoing = false;
+      titleCommitPending = false;
       if (headerSlot?.__vcdTitleTransition) {
         headerSlot.__vcdTitleTransition.cleanup();
         delete headerSlot.__vcdTitleTransition;
       }
+      invalidateWordmarkRun();
+      finishNavigationTitle();
     });
     document.addEventListener('header:navigation-reveal', () => {
       navigationOutgoing = false;
@@ -1514,7 +1527,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         headerSlot.__vcdTitleTransition.cleanup();
         delete headerSlot.__vcdTitleTransition;
       }
-      if (!preserveNavigation) navigationOutgoing = false;
+      if (!preserveNavigation) {
+        navigationOutgoing = false;
+        titleCommitPending = false;
+      }
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
