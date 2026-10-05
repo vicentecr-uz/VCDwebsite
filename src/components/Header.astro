@@ -298,6 +298,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
       if (headerSlot instanceof HTMLElement) {
         headerSlot.style.height = `${headerHeight}px`;
+        headerSlot.parentElement?.style.setProperty('--site-header-height', `${headerHeight}px`);
       }
     };
     syncSlot();
@@ -321,7 +322,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // Capture synchronously to guard the gap before the font recapture can run.
     captureGeo();
     void document.fonts?.ready.then(() => captureGeo());
-    document.fonts?.addEventListener('loadingdone', () => captureGeo());
+    document.fonts?.addEventListener('loadingdone', () => {
+      syncSlot();
+      captureGeo();
+    });
 
     const applyGeo = () => {
       captureGeo();
@@ -655,7 +659,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       syncHeaderWidth(headerHeight);
     });
 
-    void document.fonts?.ready.then(() => syncHeaderWidth(headerHeight));
+    void document.fonts?.ready.then(() => {
+      syncSlot();
+      syncHeaderWidth(headerHeight);
+    });
     syncMobileHeaderMode();
     syncSlot();
     captureGeo();
