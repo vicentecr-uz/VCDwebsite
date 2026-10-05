@@ -753,7 +753,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     const openScale = MENU_TIMELINE_OPEN_DURATION / timelineEnd;
     const closeScale = MENU_TIMELINE_CLOSE_DURATION / timelineEnd;
-    const closeLayoutMs = Math.ceil(MENU_TIMELINE_CLOSE_DURATION * 1000) + 32;
+    const surfaceCloseDuration = MENU_TIMELINE_CLOSE_DURATION;
+    const linkCloseEnd =
+      Math.max(MENU_LINK_ORIGINAL_DURATION, timelineEnd - MENU_LINK_ORIGINAL_FIRST_DELAY) * closeScale;
+    const closeLayoutMs = Math.ceil((linkCloseEnd + surfaceCloseDuration) * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     let navigationClosing = false;
     let navigationOutgoing = false;
@@ -778,8 +781,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         trigger.dataset.menuSurfaceOpen = '';
       } else {
         setMenuSurfaceTiming(
-          MENU_SURFACE_ORIGINAL_DURATION * closeScale,
-          (timelineEnd - MENU_SURFACE_ORIGINAL_DURATION) * closeScale,
+          surfaceCloseDuration,
+          linkCloseEnd,
           MENU_SURFACE_EXIT_EASING,
         );
         delete trigger.dataset.menuSurfaceOpen;
@@ -2013,9 +2016,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     opacity: 0;
     visibility: hidden;
-    /* The whole-viewport fade should run continuously through panel exit. */
+    /* Links finish first; the veil and panel share the delayed fade. */
     transition:
-      opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s,
+      opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s),
       visibility 0s calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s));
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
@@ -2027,7 +2030,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     ) {
     opacity: 1;
     visibility: visible;
-    transition-delay: 0s, 0s;
+    transition-delay: var(--header-menu-surface-delay, 0s), 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
@@ -2136,8 +2139,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     opacity: 0;
     pointer-events: none;
     transition:
-      opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s,
-      height calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s;
+      opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s),
+      height var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s);
   }
 
   .header-trigger__panel-bg::before {
@@ -2531,7 +2534,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     :global([data-page-shell] > :is(main, .project-layout, footer)) {
       opacity: 1;
       transition:
-        opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s;
+        opacity var(--header-menu-surface-duration, 0.48s) ease var(--header-menu-surface-delay, 0s);
     }
 
     :global([data-page-shell]:has(> .site-header-slot .header-trigger[data-menu-surface-open]) > :is(main, .project-layout, footer)) {

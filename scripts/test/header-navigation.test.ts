@@ -7,10 +7,11 @@ const header = readFileSync(resolve(root, 'src/components/Header.astro'), 'utf8'
 const titleTransition = readFileSync(resolve(root, 'src/scripts/headerTitleTransition.js'), 'utf8');
 const settleMicrotasks = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
-function menuFixture() {
+function menuFixture(linkCount = 2) {
   const win = new Window();
   const doc = win.document;
-  doc.body.innerHTML = '<div id="transition-overlay" data-vcd-initial-reveal="running"></div><div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a><a class="header-menu__link">About</a><a class="header-menu__link">Play</a></div>';
+  const linksHtml = Array.from({ length: linkCount }, (_, index) => `<a class="header-menu__link">Link ${index + 1}</a>`).join('');
+  doc.body.innerHTML = `<div id="transition-overlay" data-vcd-initial-reveal="running"></div><div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a>${linksHtml}</div>`;
   const start = doc.querySelector<HTMLElement>('.header-trigger')!;
   const brand = start.querySelector<HTMLElement>('.header-trigger__brand-link')!;
   const links = [...start.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -54,13 +55,39 @@ test('menu stays open through navigation and commit, then exits with the incomin
   expect(f.start.dataset.menuOpen).toBeUndefined();
   expect(f.start.dataset.menuSurfaceOpen).toBeUndefined();
   expect(f.links.every((link) => link.style.opacity === '0')).toBe(true);
-  expect(f.timings.at(-1)![0] + f.timings.at(-1)![1]).toBeCloseTo(0.18);
+  expect(f.timings.at(-1)![0]).toBeCloseTo(0.18);
+  expect(f.timings.at(-1)![1]).toBeCloseTo(0.1575);
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBeUndefined();
   [...f.timers.values()].forEach((timer) => timer.callback());
+  expect(f.start.dataset.menuCloseTimer).toBeUndefined();
+  expect(f.start.classList.contains('is-menu-open')).toBe(false);
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
 });
+
+for (const linkCount of [1, 3, 5]) {
+  test(`menu veil waits for all ${linkCount} links, then reopens without the close delay`, () => {
+    const f = menuFixture(linkCount);
+    f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
+    f.setHovered(false); f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+    const linkCloseEnd = Math.max(...f.links.map((link) =>
+      parseFloat(link.style.getPropertyValue('--menu-link-delay')) +
+      parseFloat(link.style.getPropertyValue('--menu-link-duration')),
+    ));
+    const surfaceCloseDuration = f.timings.at(-1)![0];
+    const surfaceCloseDelay = f.timings.at(-1)![1];
+    const timer = [...f.timers.values()][0];
+    expect(surfaceCloseDuration).toBeCloseTo(0.18);
+    expect(surfaceCloseDelay).toBeCloseTo(linkCloseEnd);
+    expect(timer.delay).toBe(Math.ceil((linkCloseEnd + surfaceCloseDuration) * 1000) + 32);
+    expect(f.start.classList.contains('is-menu-open')).toBe(true);
+    f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+    expect(f.timers.size).toBe(0);
+    expect(f.timings.at(-1)![1]).toBe(0);
+    expect(f.start.classList.contains('is-menu-open')).toBe(true);
+  });
+}
 
 test('current link appearance stays stable until the retained menu finishes closing', () => {
   const f = menuFixture();
