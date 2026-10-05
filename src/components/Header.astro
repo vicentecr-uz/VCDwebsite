@@ -415,7 +415,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           clearTimeout(offscreenTimer);
           offscreenTimer = null;
         }
-        if (mode !== 'docked') setMode('docked');
+        const nextMode = window.scrollY <= 0 ? 'flow' : 'docked';
+        if (mode !== nextMode) setMode(nextMode);
         header.classList.remove('is-scrolled-hidden');
         header.style.opacity = '';
         header.style.pointerEvents = '';
@@ -1894,12 +1895,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     .site-header {
       --header-chrome-height: 0px;
       box-sizing: border-box;
-      position: fixed;
+      /* Keep the page top in native flow so mobile pull-to-refresh owns the gap. */
+      position: relative;
       top: 0;
-      left: 0;
-      width: 100%;
+      left: calc(-1 * var(--page-gutter, 0px));
+      width: calc(100% + 2 * var(--page-gutter, 0px));
       margin-top: 0;
       padding-inline: var(--page-gutter, 0px);
+    }
+
+    .site-header.is-docked {
+      position: fixed;
+      left: 0;
+      width: 100%;
     }
 
     .site-header__bg {
