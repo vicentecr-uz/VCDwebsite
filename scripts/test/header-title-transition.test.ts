@@ -54,6 +54,8 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   expect(incomingChar.style.opacity).toBe('0');
   expect(incomingChar.style.filter).toBe('blur(4px)');
   expect(incomingChar.style.transition).toBe('none');
+  expect(incomingChar.style.paddingBlock).toBe('var(--wordmark-trim, 0.1515em)');
+  expect(incomingChar.style.marginBlock).toBe('calc(-1 * var(--wordmark-trim, 0.1515em))');
   expect([...pageMasks].every((mask) => mask.style.opacity === '1')).toBe(true);
   expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
   expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-filter') === 'none')).toBe(true);
@@ -118,16 +120,11 @@ test('negative measured delay resumes against the same timeline anchor', () => {
   bridge.cleanup();
 });
 
-test('fixed letters and settled zero-duration letters do not create effects', () => {
+test('settled title stays untouched while partially faded Home still transitions', () => {
   const fixed = fixture();
   const fixedBridge = (fixed.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Project' });
+  expect(fixedBridge).toBeNull();
   expect(fixed.animateCalls).toHaveLength(0);
-  const fixedChar = fixed.stack.querySelector<HTMLElement>('.header-navigation-title-char')!;
-  expect(fixedChar.style.animation).toBe('none');
-  expect(fixedChar.style.opacity).toBe('1');
-  expect(fixedChar.style.filter).toBe('none');
-  expect(fixed.stack.querySelector<HTMLElement>('.header-navigation-title-char')!.style.transition).toBe('none');
-  fixedBridge.cleanup();
 
   const settled = fixture();
   [...settled.page.querySelectorAll<HTMLElement>('.header-trigger__char')].forEach((char) => {

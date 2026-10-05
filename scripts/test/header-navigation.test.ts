@@ -12,6 +12,9 @@ function menuFixture() {
   const start = doc.querySelector<HTMLElement>('.header-trigger')!;
   const brand = start.querySelector<HTMLElement>('.header-trigger__brand-link')!;
   const links = [...start.querySelectorAll<HTMLElement>('.header-menu__link')];
+  let hovered = false;
+  const originalMatches = start.matches.bind(start);
+  start.matches = ((selector: string) => selector === ':hover' ? hovered : originalMatches(selector)) as typeof start.matches;
   const begin = header.indexOf("\n  document.querySelectorAll<HTMLElement>('.header-trigger').forEach", header.indexOf('const forceCloseMenus'));
   const end = header.indexOf('  // Switching between hover and tap', begin);
   expect(begin).toBeGreaterThan(0);
@@ -28,7 +31,7 @@ function menuFixture() {
   );
   const forceScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(header.slice(header.indexOf('  const forceCloseMenus ='), begin));
   const forceClose = new Function('document', 'HTMLElement', 'CustomEvent', 'setMenuSurfaceTiming', 'clearTimeout', `let menuScrollClosed = false; ${forceScript}; return forceCloseMenus;`)(doc, win.HTMLElement, win.CustomEvent, (...values: number[]) => timings.push(values), clearTimer);
-  return { win, doc, start, brand, links, timers, timings, forceClose, frame: () => frames.splice(0).forEach((callback) => callback()) };
+  return { win, doc, start, brand, links, timers, timings, forceClose, setHovered: (value: boolean) => { hovered = value; }, frame: () => frames.splice(0).forEach((callback) => callback()) };
 }
 
 
@@ -106,11 +109,12 @@ function titleFixture() {
   const timers = new Map<number, () => void>(); let id = 0;
   const frames = new Map<number, () => void>();
   const clock = { setTimeout(fn: () => void) { timers.set(++id, fn); return id; }, clearTimeout(id: number) { timers.delete(id); }, addEventListener() {},
-    __vcdHeaderTitleTransition() {
+    __vcdHeaderTitleTransition(pending: { title?: string; targetTitle?: string }) {
+      if (pending?.title === pending?.targetTitle) return null;
       stack.style.visibility = 'hidden';
       const layer = doc.createElement('div'); layer.className = 'live-title-transition'; stack.append(layer);
       let chars: { page: HTMLElement[]; home: HTMLElement[] } | undefined;
-      return { finishesAt: Date.now() + 1000,
+      return { targetTitle: 'Play', finishesAt: Date.now() + 1000,
         wordmarkChars() {
           if (!chars) {
             const page = doc.createElement('span'); page.className = 'test-page-mask';
@@ -177,19 +181,26 @@ test('Home commit clears retained wordmark timing and blur before the transition
   expect(live?.isConnected).toBe(false);
 });
 
-test('title trigger stays locked until reveal, then overlaps wordmark exit with the retained entrance', () => {
+test('title trigger opens during navigation, then preserves the retained entrance through reveal', () => {
   const f = titleFixture();
   const startTrigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  startTrigger.dataset.headerTitleSwap = 'false';
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
   const live = f.stack.querySelector('.live-title-transition');
+  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
+  const retainedMask = live!.querySelector('.test-page-mask');
+  const homeMask = live!.querySelector('.test-home-mask');
+  expect(f.timers.size).toBe(1);
   const incoming = f.slot.cloneNode(true) as any;
   incoming.querySelector('.live-title-transition').remove();
   incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/play') } }));
-
-  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
   expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
+  expect(f.stack.querySelector('.test-page-mask')).toBe(retainedMask);
+  expect(f.stack.querySelector('.test-home-mask')).toBe(homeMask);
+  expect(f.timers.size).toBe(1);
+  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('true');
+  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
 
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
   startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
@@ -219,6 +230,33 @@ test('cancellation removes only the transition layer and keeps the current page 
   expect(f.stack.querySelector('.live-title-transition')).toBeNull();
   expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Project');
   expect(f.stack.style.visibility).toBe('');
+});
+
+test('settled navigation without a title bridge keeps Home interaction locked', () => {
+  const f = titleFixture();
+  const trigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Project' } } }));
+  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
+  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
+});
+
+test('closed menu reopens for a hovered trigger after reveal, but not after leaving', () => {
+  const f = menuFixture();
+  f.setHovered(true);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  expect(f.start.dataset.menuOpen).toBe('true');
+
+  const left = menuFixture();
+  left.setHovered(true);
+  left.doc.dispatchEvent(new left.win.CustomEvent('header:navigation-start'));
+  left.setHovered(false);
+  left.doc.dispatchEvent(new left.win.CustomEvent('header:navigation-reveal'));
+  expect(left.start.dataset.menuOpen).toBeUndefined();
 });
 
 
@@ -259,4 +297,26 @@ test('closing and reopening during a title collision reuses the masks without to
   expect(mask.style.opacity).toBe('0');
   [...f.timers.values()].forEach((finish) => finish());
   expect(trigger.classList.contains('is-wordmark-swapped')).toBe(true);
+});
+
+
+test('leaving an early title hover before commit keeps the destination title selected', () => {
+  const f = titleFixture();
+  const trigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  trigger.dataset.headerTitleSwap = 'false';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
+  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  const mask = f.stack.querySelector<HTMLElement>('.test-page-mask')!;
+  expect(mask.style.opacity).toBe('0');
+  trigger.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+  expect(mask.style.opacity).toBe('1');
+  const incoming = f.slot.cloneNode(true) as any;
+  incoming.querySelector('.live-title-transition').remove();
+  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming } }));
+  f.frame();
+  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
+  expect(f.stack.querySelector<HTMLElement>('.test-home-mask')!.style.opacity).toBe('0');
+  [...f.timers.values()].forEach((finish) => finish());
+  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
 });

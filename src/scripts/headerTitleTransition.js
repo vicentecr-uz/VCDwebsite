@@ -126,7 +126,6 @@
     geometry,
     metrics,
     mode,
-    startedAt,
     fixed,
     timings,
   ) => {
@@ -166,6 +165,8 @@
         top: "0",
         display: "inline-block",
         margin: "0",
+        paddingBlock: "var(--wordmark-trim, 0.1515em)",
+        marginBlock: "calc(-1 * var(--wordmark-trim, 0.1515em))",
         transition: "none",
         opacity: fixed ? "1" : initial.opacity,
         filter: fixed ? "none" : initial.filter,
@@ -282,6 +283,7 @@
           sourceText = pending.title.replace(/\s+/g, " ").trim();
         }
       }
+      if (sourceText === targetText) return null;
       const outgoingText = pending.title.replace(/\s+/g, " ").trim();
       const fromGeometry = geometryFor(outgoingSource, outgoingText);
       const toGeometry =
@@ -329,7 +331,6 @@
       pending.fromGeometry,
       pending.fontMetrics,
       "out",
-      pending.startedAt,
       fixed,
       pending.fromCharTimings,
     );
@@ -342,7 +343,6 @@
           pending.toGeometry,
           pending.fontMetrics,
           "in",
-          pending.startedAt,
           false,
           pending.toCharTimings,
         );
@@ -369,6 +369,7 @@
       (fixed ? 0 : Math.max(0, endMs - (Date.now() - pending.startedAt)));
     let wordmarkMasks;
     return {
+      targetTitle: targetText,
       wordmarkChars: (homeSource) => {
         if (wordmarkMasks) return wordmarkMasks;
         const homeText = homeSource?.textContent?.replace(/\s+/g, " ").trim();
@@ -381,7 +382,6 @@
           homeGeometry,
           pending.fontMetrics,
           "in",
-          pending.startedAt,
           true,
           null,
         );
