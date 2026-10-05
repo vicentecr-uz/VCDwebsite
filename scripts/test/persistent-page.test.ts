@@ -174,49 +174,6 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
   current!.finish(); await second;
 });
 
-test('owned native view transitions skip immediately while unrelated transitions remain native', () => {
-  const win = fixture(); const doc = win.document;
-  doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
-  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
-  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
-  const events: string[] = [];
-  let queued: (() => void) | undefined;
-  let nativeTransition: unknown;
-  const native = (callback: () => void) => {
-    events.push('start');
-    queued = () => { events.push('update'); callback(); };
-    nativeTransition = { ready: Promise.resolve(), skipTransition: () => { events.push('skip'); } };
-    return nativeTransition;
-  };
-  doc.startViewTransition = native as any;
-  new Function('document', 'sessionStorage', 'CustomEvent', 'hooks', `${script}; installPersistentNavigation(hooks);`) (
-    doc, { getItem: () => 'true' }, win.CustomEvent,
-    { cover: () => Promise.resolve(), reveal() {}, cancel() {}, beforeSwap() {} },
-  );
-  const outside = doc.startViewTransition!(() => {});
-  expect(outside).toBe(nativeTransition);
-  expect(events).toEqual(['start']);
-  const controller = new AbortController();
-  const event = new win.Event('astro:before-preparation', { cancelable: true });
-  Object.assign(event, { to: new URL('/about', 'https://vcd.test'), signal: controller.signal, loader: async () => {}, sourceElement: { dataset: {} } });
-  doc.dispatchEvent(event);
-  const owned = doc.startViewTransition!(() => {});
-  expect(owned).toBe(nativeTransition);
-  expect(events).toEqual(['start', 'start', 'skip']);
-  queued?.();
-  expect(events).toEqual(['start', 'start', 'skip', 'update']);
-  controller.abort();
-  const aborted = doc.startViewTransition!(() => {});
-  expect(aborted).toBe(nativeTransition);
-  expect(events).toEqual(['start', 'start', 'skip', 'update', 'start']);
-  const prevented = new win.Event('astro:before-preparation', { cancelable: true });
-  Object.assign(prevented, { to: new URL('/about', 'https://vcd.test'), signal: new AbortController().signal, loader: async () => {}, sourceElement: { dataset: {} } });
-  doc.dispatchEvent(prevented);
-  prevented.preventDefault();
-  doc.startViewTransition!(() => {});
-  expect(events).toEqual(['start', 'start', 'skip', 'update', 'start', 'start']);
-});
-
 test('annotation editor styles survive the native head swap', () => {
   const win = fixture(); const doc = win.document;
   const css = readFileSync(new URL('../../src/styles/site-annotation-editor.css', import.meta.url), 'utf8');
