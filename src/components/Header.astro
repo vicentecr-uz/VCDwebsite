@@ -2417,7 +2417,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     /* inline (not inline-block) so the browser keeps native kerning between letters */
     display: inline;
     opacity: 1;
-    filter: blur(var(--char-blur, 0px));
+    filter: var(--char-filter, blur(var(--char-blur, 0px)));
     transition:
       opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
       filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
@@ -2430,13 +2430,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   @keyframes vcd-header-title-out {
-    from { opacity: 1; filter: blur(0); }
+    from { opacity: 1; filter: none; }
     to { opacity: 0; filter: blur(4px); }
   }
 
   @keyframes vcd-header-title-in {
     from { opacity: 0; filter: blur(4px); }
-    to { opacity: 1; filter: blur(0); }
+    to { opacity: 1; filter: none; }
   }
 
   .header-trigger__wordmark--home .header-trigger__char {
