@@ -5,6 +5,7 @@ const source = fs.readFileSync(new URL('../../src/components/Header.astro', impo
 assert.match(source, /window\.innerWidth <= 767/);
 assert.match(source, /const nextMode = window\.scrollY <= 0 \? 'flow' : 'docked';/);
 assert.match(source, /if \(mode !== nextMode\) setMode\(nextMode\)/);
+assert.match(source, /if \(window\.innerWidth <= 767\) \{\s*update\(\);\s*return;/);
 assert.match(source, /header\.classList\.remove\('is-scrolled-hidden'\)/);
 assert.match(source, /if \(mode !== 'flow'\) setMode\('flow'\)/);
 assert.match(source, /--header-chrome-height/);
@@ -31,6 +32,11 @@ const mobileModeStart = source.indexOf(mobileModeMarker);
 const mobileModeEnd = source.indexOf('\n    // Opening a menu', mobileModeStart);
 assert.ok(mobileModeStart >= 0 && mobileModeEnd > mobileModeStart, 'mobile mode sync should remain discoverable');
 const mobileModeSource = source.slice(mobileModeStart, mobileModeEnd);
+const scrollMarker = "window.addEventListener(\n      'scroll',\n      () => {";
+const scrollStart = source.indexOf(scrollMarker);
+const scrollEnd = source.indexOf('\n      },\n      { passive: true },', scrollStart);
+assert.ok(scrollStart >= 0 && scrollEnd > scrollStart, 'scroll callback should remain discoverable');
+const scrollCallbackBody = source.slice(scrollStart + scrollMarker.length, scrollEnd);
 const marker = "window.addEventListener('resize', () => {";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n    });', start);
@@ -119,6 +125,32 @@ function createMobileModeHarness({ width = 390, scrollY = 0, mode = 'docked' } =
   };
   execute();
   return { calls, header, state, execute };
+}
+
+function runScrollCallback({ width, ticking = false } = {}) {
+  const calls = { update: 0, requestAnimationFrame: 0 };
+  const state = { updateFrame: null, ticking };
+  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
+    let updateFrame = ${state.updateFrame};
+    let ticking = ${state.ticking};
+    const update = () => { calls.update += 1; ticking = false; updateFrame = null; };
+    const requestAnimationFrame = () => { calls.requestAnimationFrame += 1; return 1; };
+    ${scrollCallbackBody}
+    state.updateFrame = updateFrame;
+    state.ticking = ticking;
+  `);
+  new Function('window', 'calls', 'state', compiled)({ innerWidth: width }, calls, state);
+  return { calls, state };
+}
+
+{
+  const mobile = runScrollCallback({ width: 390 });
+  assert.deepEqual(mobile.calls, { update: 1, requestAnimationFrame: 0 });
+  assert.equal(mobile.state.ticking, false);
+
+  const desktop = runScrollCallback({ width: 800 });
+  assert.deepEqual(desktop.calls, { update: 0, requestAnimationFrame: 1 });
+  assert.equal(desktop.state.ticking, true);
 }
 
 {
