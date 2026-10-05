@@ -1499,6 +1499,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   };
 
   let currentPageRemoved = false;
+  const pendingCurrentPageRestores = new Set<HTMLElement>();
   let idleTimer: number | null = null;
   let idlePhase: 'none' | 'good-boy' | 'hey' = 'none';
   let needsResume = false;
@@ -1626,8 +1627,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const focused = active instanceof HTMLElement && currentPageLinks.includes(active as HTMLAnchorElement);
     const activeTrigger = active instanceof HTMLElement ? active.closest<HTMLElement>('.header-trigger') : null;
     const fallback = activeTrigger?.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])');
+    const itemsToRemove = [...currentPageItems];
     currentPageNotes.forEach(cancelNote);
-    currentPageItems.forEach((item) => {
+    itemsToRemove.forEach((item) => {
       item.style.setProperty('--current-page-row-height', `${item.getBoundingClientRect().height}px`);
       item.classList.add('is-removing');
       item.setAttribute('inert', '');
@@ -1641,9 +1643,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     else if (focused && active instanceof HTMLElement) active.blur();
     try { window.localStorage.setItem(currentPageStorageKey, 'true'); } catch { /* Storage is optional; this visit still completes. */ }
     window.setTimeout(() => {
-      currentPageItems.forEach((item) => {
+      itemsToRemove.forEach((item) => {
         const trigger = item.closest<HTMLElement>('.header-trigger');
         const finish = () => {
+          if (!item.classList.contains('is-removing')) return;
           item.classList.remove('is-removing');
           item.classList.add('is-removed');
           cancelAnimations(item);
@@ -1678,6 +1681,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger?.addEventListener('header:trigger-open', () => {
       cancelNote(note);
+      const itemsToRestore = [...pendingCurrentPageRestores].filter(
+        (item) => item.closest<HTMLElement>('.header-trigger') === trigger,
+      );
+      if (itemsToRestore.length) {
+        itemsToRestore.forEach((item) => {
+          pendingCurrentPageRestores.delete(item);
+          item.classList.remove('is-removed', 'is-removing');
+          item.removeAttribute('inert');
+          item.removeAttribute('aria-hidden');
+          item.style.removeProperty('--current-page-row-height');
+        });
+        syncMenuSurfaceInlineSize(trigger);
+      }
       if (!currentPageNotes.includes(note)) return;
       trackExposure(trigger);
       if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
@@ -1801,8 +1817,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (!item) return;
       cancelAnimations(item);
       item.classList.toggle('header-menu__item--current-page', current);
-      item.classList.remove('is-removed', 'is-removing');
-      item.removeAttribute('inert'); item.removeAttribute('aria-hidden'); item.style.removeProperty('--current-page-row-height');
+      const wasHidden = item.classList.contains('is-removed') || item.classList.contains('is-removing');
+      if (wasHidden) {
+        item.classList.remove('is-removing');
+        item.classList.add('is-removed');
+        pendingCurrentPageRestores.add(item);
+      } else {
+        item.removeAttribute('inert'); item.removeAttribute('aria-hidden'); item.style.removeProperty('--current-page-row-height');
+      }
       const note = item.querySelector<HTMLElement>('[data-current-page-note]');
       if (note) { cancelNote(note); note.classList.remove('is-visible'); note.setAttribute('aria-hidden', 'true'); }
     });
@@ -2259,7 +2281,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     white-space: nowrap;
   }
 
-  .header-menu__item--current-page.is-removed {
+  .header-menu__item.is-removed {
     display: block;
     width: 0;
     height: var(--current-page-row-height, 1em);
@@ -2267,12 +2289,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     pointer-events: none;
   }
 
-  .header-menu__item--current-page.is-removing {
+  .header-menu__item.is-removing {
     pointer-events: none;
     height: var(--current-page-row-height);
   }
 
-  .header-menu__item--current-page.is-removed > * {
+  .header-menu__item.is-removed > * {
     display: none !important;
   }
 
