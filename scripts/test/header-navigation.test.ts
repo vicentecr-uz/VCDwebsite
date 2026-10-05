@@ -163,6 +163,28 @@ test('Home commit clears retained wordmark timing and blur before the transition
   expect(live?.isConnected).toBe(false);
 });
 
+test('title trigger stays locked until reveal, then opens and clears the bridge', () => {
+  const f = titleFixture();
+  const startTrigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
+  const live = f.stack.querySelector('.live-title-transition');
+  const incoming = f.slot.cloneNode(true) as any;
+  incoming.querySelector('.live-title-transition').remove();
+  incoming.querySelector('.header-trigger__wordmark--page').textContent = 'Play';
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/play') } }));
+
+  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
+  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
+  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
+
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
+  expect(f.stack.querySelector('.live-title-transition')).toBeNull();
+  expect(startTrigger.classList.contains('is-wordmark-swapped')).toBe(true);
+  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
+  expect(f.timers.size).toBe(0);
+});
+
 test('cancellation removes only the transition layer and keeps the current page title', () => {
   const f = titleFixture();
   f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
