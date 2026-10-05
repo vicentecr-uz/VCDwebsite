@@ -3,7 +3,8 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
 assert.match(source, /window\.innerWidth <= 767/);
-assert.match(source, /if \(mode !== 'docked'\) setMode\('docked'\)/);
+assert.match(source, /const nextMode = window\.scrollY <= 0 \? 'flow' : 'docked';/);
+assert.match(source, /if \(mode !== nextMode\) setMode\(nextMode\)/);
 assert.match(source, /header\.classList\.remove\('is-scrolled-hidden'\)/);
 assert.match(source, /if \(mode !== 'flow'\) setMode\('flow'\)/);
 assert.match(source, /--header-chrome-height/);
@@ -22,8 +23,14 @@ assert.match(
 );
 const mobileStyles = source.slice(source.indexOf('  @media (max-width: 767px) {'), source.indexOf('\n  }\n\n  /* Deliberately', source.indexOf('  @media (max-width: 767px) {')));
 assert.match(mobileStyles, /\.site-header-slot\s*\{[\s\S]*height:\s*calc\(var\(--space-unit\) \* 3\.75\)/);
-assert.match(mobileStyles, /\.site-header\s*\{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*100%/);
+assert.match(mobileStyles, /\.site-header\s*\{[\s\S]*position:\s*relative;[\s\S]*top:\s*0;[\s\S]*left:\s*calc\(-1 \* var\(--page-gutter, 0px\)\);[\s\S]*width:\s*calc\(100% \+ 2 \* var\(--page-gutter, 0px\)\)/);
+assert.match(mobileStyles, /\.site-header\.is-docked\s*\{[\s\S]*position:\s*fixed;[\s\S]*left:\s*0;[\s\S]*width:\s*100%/);
 assert.match(source.slice(0, source.indexOf('  @media (max-width: 767px) {')), /\.site-header\s*\{[\s\S]*position:\s*relative;/);
+const mobileModeMarker = '    const syncMobileHeaderMode = () => {';
+const mobileModeStart = source.indexOf(mobileModeMarker);
+const mobileModeEnd = source.indexOf('\n    // Opening a menu', mobileModeStart);
+assert.ok(mobileModeStart >= 0 && mobileModeEnd > mobileModeStart, 'mobile mode sync should remain discoverable');
+const mobileModeSource = source.slice(mobileModeStart, mobileModeEnd);
 const marker = "window.addEventListener('resize', () => {";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n    });', start);
@@ -69,6 +76,79 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
     );
   };
   return { calls, header, state, execute };
+}
+
+function createMobileModeHarness({ width = 390, scrollY = 0, mode = 'docked' } = {}) {
+  const calls = { setMode: [], cancelAnimationFrame: 0, clearTimeout: 0 };
+  const header = {
+    classList: { remove: () => {}, add: () => {} },
+    style: { opacity: '0.4', pointerEvents: 'none', transform: 'translateY(-2px)' },
+  };
+  const document = {};
+  const state = { width, scrollY, mode };
+  const runSource = [
+    'window', 'document', 'header', 'calls', 'state', 'cancelAnimationFrame', 'clearTimeout',
+  ];
+  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
+    let updateFrame = 'frame';
+    let ticking = true;
+    let offscreenTimer = 'timer';
+    let mobileHeader = true;
+    let mode = ${JSON.stringify(mode)};
+    const setMode = (next) => { mode = next; calls.setMode.push(next); };
+    ${mobileModeSource}
+    syncMobileHeaderMode();
+    state.mode = mode;
+  `);
+  const run = new Function(
+    ...runSource,
+    compiled,
+  );
+  const execute = (nextWidth = state.width, nextScrollY = state.scrollY) => {
+    state.width = nextWidth;
+    state.scrollY = nextScrollY;
+    run(
+      { innerWidth: nextWidth, scrollY: nextScrollY },
+      document,
+      header,
+      calls,
+      state,
+      () => { calls.cancelAnimationFrame += 1; },
+      () => { calls.clearTimeout += 1; },
+    );
+  };
+  execute();
+  return { calls, header, state, execute };
+}
+
+{
+  const harness = createMobileModeHarness({ scrollY: 0 });
+  assert.deepEqual(harness.calls.setMode, ['flow']);
+  assert.equal(harness.state.mode, 'flow');
+  assert.equal(harness.calls.cancelAnimationFrame, 1);
+  assert.equal(harness.calls.clearTimeout, 1);
+  assert.equal(harness.header.style.opacity, '');
+  assert.equal(harness.header.style.pointerEvents, '');
+  assert.equal(harness.header.style.transform, '');
+}
+
+{
+  const harness = createMobileModeHarness({ scrollY: -12 });
+  assert.deepEqual(harness.calls.setMode, ['flow']);
+  assert.equal(harness.state.mode, 'flow');
+}
+
+{
+  const harness = createMobileModeHarness({ scrollY: 24, mode: 'flow' });
+  assert.deepEqual(harness.calls.setMode, ['docked']);
+  assert.equal(harness.state.mode, 'docked');
+}
+
+{
+  const harness = createMobileModeHarness({ width: 390, scrollY: 24, mode: 'docked' });
+  harness.execute(800, 24);
+  assert.deepEqual(harness.calls.setMode, ['flow']);
+  assert.equal(harness.state.mode, 'flow');
 }
 
 {
