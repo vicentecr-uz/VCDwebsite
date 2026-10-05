@@ -48,6 +48,7 @@ test('title transition preserves source animation and creates reusable page and 
   expect(incomingAnimation).toContain('250ms ease');
   expect([...pageMasks].every((mask) => mask.style.opacity === '1')).toBe(true);
   expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
+  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-filter') === 'none')).toBe(true);
   expect(incomingChar.style.opacity).toBe('0');
   expect(incomingChar.style.filter).toBe('blur(4px)');
   expect(incomingChar.style.transition).toBe('none');
@@ -60,12 +61,14 @@ test('title transition preserves source animation and creates reusable page and 
   expect(pageLayer.querySelector('.header-navigation-title-char')).toBe(incomingChar);
   expect(incomingChar.parentElement).toBe(first.page[0]);
   expect(incomingChar.style.animation).toBe(incomingAnimation);
+  expect(first.page.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
   expect(second).toBe(first);
   expect(first.page).not.toBe(first.home);
   expect(first.page.length).toBe(4);
   expect(first.home.length).toBe(4);
   expect(first.home.every((mask: HTMLElement) => mask.style.opacity === '0')).toBe(true);
   expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-blur') === '4px')).toBe(true);
+  expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
   expect(f.stack.querySelectorAll('.header-navigation-title-layer').length).toBe(3);
   const visibility = f.stack.style.visibility;
   bridge.cleanup();
@@ -83,5 +86,6 @@ test('same-title transition keeps fixed inner letters visible without animation'
   expect(char.style.opacity).toBe('1');
   expect(mask.style.opacity).toBe('1');
   expect(mask.style.getPropertyValue('--char-blur')).toBe('0px');
+  expect(mask.style.getPropertyValue('--char-filter')).toBe('none');
   bridge.cleanup();
 });

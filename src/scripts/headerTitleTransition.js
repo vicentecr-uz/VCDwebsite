@@ -157,7 +157,7 @@
         margin: "0",
         transition: "none",
         opacity: fixed ? "1" : "0",
-        filter: fixed ? "blur(0)" : "blur(4px)",
+        filter: fixed ? "none" : "blur(4px)",
         whiteSpace: "nowrap",
         animation: fixed
           ? "none"
@@ -172,6 +172,7 @@
         opacity: "1",
       });
       mask.style.setProperty("--char-blur", "0px");
+      mask.style.setProperty("--char-filter", "none");
       mask.append(char);
       result.append(mask);
       masks.push(mask);
@@ -342,7 +343,9 @@
         homeLayer.masks.forEach((mask) => {
           mask.style.opacity = "0";
           mask.style.setProperty("--char-blur", "4px");
+          mask.style.removeProperty("--char-filter");
         });
+        incomingLayer.masks.forEach((mask) => mask.style.removeProperty("--char-filter"));
         overlay.append(homeLayer.element);
         void overlay.offsetWidth;
         wordmarkMasks = { page: incomingLayer.masks, home: homeLayer.masks };
