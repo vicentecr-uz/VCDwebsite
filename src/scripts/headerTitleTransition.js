@@ -146,7 +146,8 @@
     if (!template) return { element: result, masks };
     codepoints(text).forEach((character, index) => {
       const char = template.cloneNode(false);
-      char.classList.add("header-navigation-title-char");
+      char.style.cssText = "";
+      char.className = `${template.className} header-navigation-title-char`;
       char.textContent = character;
       Object.assign(char.style, {
         position: "relative",
@@ -154,7 +155,13 @@
         top: "0",
         display: "inline-block",
         margin: "0",
+        transition: "none",
+        opacity: fixed ? "1" : "0",
+        filter: fixed ? "blur(0)" : "blur(4px)",
         whiteSpace: "nowrap",
+        animation: fixed
+          ? "none"
+          : `${mode === "out" ? "vcd-header-title-out" : "vcd-header-title-in"} ${timings?.[index]?.durationMs ?? (mode === "out" ? 150 : 250)}ms ease ${(timings?.[index]?.delayMs ?? (mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length))) - (Date.now() - startedAt)}ms both`,
       });
       const mask = document.createElement("span");
       mask.className = "header-navigation-title-mask";
@@ -162,9 +169,9 @@
         position: "absolute",
         left: `${geometry.offsets[index]}em`,
         top: "0",
-        opacity: fixed ? "1" : "0",
+        opacity: "1",
       });
-      mask.style.setProperty("--char-blur", fixed ? "0px" : "4px");
+      mask.style.setProperty("--char-blur", "0px");
       mask.append(char);
       result.append(mask);
       masks.push(mask);
@@ -329,7 +336,7 @@
           pending.fontMetrics,
           "in",
           pending.startedAt,
-          false,
+          true,
           null,
         );
         homeLayer.masks.forEach((mask) => {
