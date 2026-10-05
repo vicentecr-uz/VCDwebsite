@@ -9,6 +9,7 @@ const source = readFileSync(resolve(root, 'src/scripts/headerTitleTransition.js'
 function fixture() {
   const win = new Window({ url: 'https://vcd.test/project' });
   const doc = win.document;
+  const animateCalls: Array<{ element: HTMLElement; keyframes: Keyframe[]; options: KeyframeAnimationOptions; animation: any }> = [];
   const chars = (text: string, animation = '') => [...text].map((char) => `<span class="header-trigger__char" style="animation:${animation}">${char}</span>`).join('');
   doc.body.innerHTML = `<div class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">${chars('Project', 'page-in 1s')}</h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">${chars('Home', 'home-in 1s')}</span></div>`;
   const stack = doc.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
@@ -24,13 +25,19 @@ function fixture() {
     return rects.get(this) ?? { left: 0, top: 0, width: this.textContent?.length ? this.textContent.length * 16 : 64, height: 24 };
   };
   win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 24 });
-  const computed = () => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: '1' });
+  win.HTMLElement.prototype.animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+    const animation = { id: '', startTime: null, cancel: () => { animation.cancelled = true; }, cancelled: false } as any;
+    animateCalls.push({ element: this, keyframes, options, animation });
+    return animation;
+  };
+  Object.defineProperty(doc, 'timeline', { configurable: true, value: { currentTime: 5000 } });
+  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: element?.style.opacity || '1' });
   const run = new Function('window', 'document', 'getComputedStyle', source);
   run(win, doc, computed);
-  return { win, doc, stack, page, home };
+  return { win, doc, stack, page, home, animateCalls };
 }
 
-test('title transition preserves source animation and creates reusable page and Home masks', () => {
+test('title transition uses shared zero-delay WAAPI effects and preserves reusable masks', () => {
   const f = fixture();
   const sourceChar = f.page.querySelector<HTMLElement>('.header-trigger__char')!;
   const sourceAnimation = sourceChar.style.animation;
@@ -43,49 +50,98 @@ test('title transition preserves source animation and creates reusable page and 
   expect(pageLayer.style.left).toBe('0em');
   expect(pageLayer.style.top).toBe('0em');
   const incomingChar = pageLayer.querySelector<HTMLElement>('.header-navigation-title-char')!;
-  const incomingAnimation = incomingChar.style.animation;
-  expect(incomingAnimation).toContain('vcd-header-title-in');
-  expect(incomingAnimation).toContain('250ms ease');
-  expect([...pageMasks].every((mask) => mask.style.opacity === '1')).toBe(true);
-  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
-  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-filter') === 'none')).toBe(true);
+  expect(incomingChar.style.animation).toBe('none');
   expect(incomingChar.style.opacity).toBe('0');
   expect(incomingChar.style.filter).toBe('blur(4px)');
   expect(incomingChar.style.transition).toBe('none');
+  expect([...pageMasks].every((mask) => mask.style.opacity === '1')).toBe(true);
+  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
+  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-filter') === 'none')).toBe(true);
   expect(sourceChar.parentElement).toBe(f.page);
   expect(sourceChar.style.animation).toBe(sourceAnimation);
   expect(pending.fromGeometry.offsets).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(f.animateCalls.length).toBe(11);
+  const incomingCall = f.animateCalls.find(({ animation }) => animation.id === 'vcd-header-title-in-0')!;
+  expect(incomingCall.options).toEqual({ duration: 250, delay: 0, easing: 'linear', fill: 'both' });
+  expect(incomingCall.keyframes[0]).toEqual({ opacity: '0', filter: 'blur(4px)', offset: 0, easing: 'ease' });
+  expect(incomingCall.keyframes[1]).toEqual({ opacity: '1', filter: 'none', offset: 1 });
+  expect(incomingCall.animation.id).toBe('vcd-header-title-in-0');
+  const delayedIncoming = f.animateCalls.find(({ animation }) => animation.id === 'vcd-header-title-in-1')!;
+  expect(delayedIncoming.options).toEqual({ duration: 290, delay: 0, easing: 'linear', fill: 'both' });
+  expect(delayedIncoming.keyframes).toHaveLength(3);
+  expect(delayedIncoming.keyframes[0]).toEqual({ opacity: '0', filter: 'blur(4px)', offset: 0 });
+  expect(delayedIncoming.keyframes[1]).toEqual({ opacity: '0', filter: 'blur(4px)', offset: 40 / 290, easing: 'ease' });
+  expect(delayedIncoming.keyframes[2]).toEqual({ opacity: '1', filter: 'none', offset: 1 });
+  expect(incomingCall.animation.startTime).toBeLessThanOrEqual(5000);
+  expect(f.animateCalls.every(({ animation }) => animation.startTime === incomingCall.animation.startTime)).toBe(true);
 
+  const animationCount = f.animateCalls.length;
   const first = bridge.wordmarkChars(f.home);
   const second = bridge.wordmarkChars(f.home);
-  expect(pageLayer.querySelector('.header-navigation-title-char')).toBe(incomingChar);
+  expect(first).toBe(second);
   expect(incomingChar.parentElement).toBe(first.page[0]);
-  expect(incomingChar.style.animation).toBe(incomingAnimation);
-  expect(first.page.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
-  expect(second).toBe(first);
   expect(first.page).not.toBe(first.home);
-  expect(first.page.length).toBe(4);
-  expect(first.home.length).toBe(4);
   expect(first.home.every((mask: HTMLElement) => mask.style.opacity === '0')).toBe(true);
   expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-blur') === '4px')).toBe(true);
+  expect(first.page.length).toBe(4);
+  expect(first.home.length).toBe(4);
   expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
+  expect(f.animateCalls.length).toBe(animationCount);
   expect(f.stack.querySelectorAll('.header-navigation-title-layer').length).toBe(3);
   const visibility = f.stack.style.visibility;
   bridge.cleanup();
+  expect(f.animateCalls.every(({ animation }) => animation.cancelled)).toBe(true);
   expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
   expect(f.stack.style.visibility).toBe(visibility === 'hidden' ? '' : visibility);
 });
 
-test('same-title transition keeps fixed inner letters visible without animation', () => {
+test('negative measured delay resumes against the same timeline anchor', () => {
   const f = fixture();
-  const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Project' });
-  const layer = f.stack.querySelector<HTMLElement>('.header-navigation-title-layer')!;
-  const char = layer.querySelector<HTMLElement>('.header-navigation-title-char')!;
-  const mask = layer.querySelector<HTMLElement>('.header-navigation-title-mask')!;
-  expect(char.style.animation).toBe('none');
-  expect(char.style.opacity).toBe('1');
-  expect(mask.style.opacity).toBe('1');
-  expect(mask.style.getPropertyValue('--char-blur')).toBe('0px');
-  expect(mask.style.getPropertyValue('--char-filter')).toBe('none');
+  f.home.setAttribute('aria-hidden', 'false');
+  f.page.setAttribute('aria-hidden', 'true');
+  f.home.querySelector<HTMLElement>('.header-trigger__char')!.style.opacity = '0.5';
+  [...f.page.querySelectorAll<HTMLElement>('.header-trigger__char')].forEach((char) => {
+    char.getAnimations = () => [{
+      transitionProperty: 'opacity',
+      currentTime: 200,
+      effect: { getTiming: () => ({ duration: 150, delay: 100 }) },
+    }] as any;
+  });
+  const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Home', targetTitle: 'Home' });
+  expect(bridge).toBeTruthy();
+  const outgoing = f.animateCalls.find(({ animation }) => animation.id === 'vcd-header-title-out-0')!;
+  const incoming = f.animateCalls.find(({ animation }) => animation.id === 'vcd-header-title-in-0')!;
+  expect(outgoing.options).toEqual({ duration: 150, delay: 0, easing: 'linear', fill: 'both' });
+  expect(outgoing.keyframes).toHaveLength(2);
+  expect(outgoing.keyframes[0]).toMatchObject({ opacity: '1', filter: 'none', easing: 'ease' });
+  expect(outgoing.animation.startTime).toBe(incoming.animation.startTime - 100);
   bridge.cleanup();
+});
+
+test('fixed letters and settled zero-duration letters do not create effects', () => {
+  const fixed = fixture();
+  const fixedBridge = (fixed.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Project' });
+  expect(fixed.animateCalls).toHaveLength(0);
+  const fixedChar = fixed.stack.querySelector<HTMLElement>('.header-navigation-title-char')!;
+  expect(fixedChar.style.animation).toBe('none');
+  expect(fixedChar.style.opacity).toBe('1');
+  expect(fixedChar.style.filter).toBe('none');
+  expect(fixed.stack.querySelector<HTMLElement>('.header-navigation-title-char')!.style.transition).toBe('none');
+  fixedBridge.cleanup();
+
+  const settled = fixture();
+  [...settled.page.querySelectorAll<HTMLElement>('.header-trigger__char')].forEach((char) => {
+    char.getAnimations = () => [{
+      transitionProperty: 'opacity',
+      currentTime: 150,
+      effect: { getTiming: () => ({ duration: 0, delay: 0 }) },
+    }] as any;
+  });
+  settled.home.setAttribute('aria-hidden', 'false');
+  settled.page.setAttribute('aria-hidden', 'true');
+  settled.home.querySelector<HTMLElement>('.header-trigger__char')!.style.opacity = '0.5';
+  const settledBridge = (settled.win as any).__vcdHeaderTitleTransition({ title: 'Home', targetTitle: 'Home' });
+  expect(settledBridge).toBeTruthy();
+  expect(settled.animateCalls.filter(({ animation }) => animation.id.startsWith('vcd-header-title-out-'))).toHaveLength(0);
+  settledBridge.cleanup();
 });
