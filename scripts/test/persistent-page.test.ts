@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { swapPageContent, supportsPersistentPage } from '../../src/lib/persistentPageSwap';
+import { persistentPageParts, swapPageContent, supportsPersistentPage } from '../../src/lib/persistentPageSwap';
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 
 const windows: Window[] = [];
@@ -220,7 +220,8 @@ test('dev readiness marker stays attached to the retained transition controller 
 test('unseen Home navigation covers the retained header with the outgoing veil before swapping', () => {
   const win = fixture(); const doc = win.document;
   doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
-  doc.body.innerHTML = '<span class="header-trigger__wordmark" aria-hidden="false">Project</span>';
+  doc.body.innerHTML = '<div id="site-wrapper"><div data-page-shell><div class="site-header-slot"><header class="site-header"><span class="header-trigger__wordmark" aria-hidden="false">Project</span></header></div><div class="header-menu-backdrop"></div></div><main></main></div><div id="transition-overlay"></div>';
+  Object.defineProperty(doc.querySelector('.site-header'), 'getBoundingClientRect', { value: () => ({ width: 100, height: 48, top: 10, bottom: 58 }) });
   const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
   let stored: string | null = null;
@@ -241,4 +242,60 @@ test('unseen Home navigation covers the retained header with the outgoing veil b
   stored = 'true'; prepare('/'); expect(covered.at(-1)).toBe(true);
   stored = null; prepare('/about'); expect(covered.at(-1)).toBe(true);
   storageThrows = true; prepare('/'); expect(covered.at(-1)).toBe(false);
+});
+
+function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10, bottom: 58 }, hiddenClass = false, ancestorOpacity = '' } = {}) {
+  const win = fixture(); const doc = win.document;
+  doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
+  doc.body.innerHTML = '<div id="site-wrapper"><div data-page-shell><div class="site-header-slot"><header class="site-header"><span class="header-trigger__wordmark" aria-hidden="false">Project</span></header></div><div class="header-menu-backdrop"></div></div><main></main></div><div id="transition-overlay"></div>';
+  const header = doc.querySelector<HTMLElement>('.site-header')!;
+  const wrapper = doc.getElementById('site-wrapper')!;
+  Object.defineProperty(header, 'getBoundingClientRect', { value: () => rect, configurable: true });
+  if (hiddenClass) header.classList.add('is-scrolled-hidden');
+  wrapper.style.opacity = ancestorOpacity;
+  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
+  const starts: Array<{ animateTitle?: boolean }> = [];
+  doc.addEventListener('header:navigation-start', (event) => starts.push((event as CustomEvent).detail));
+  const stored = { getItem: () => 'true' };
+  new Function('document', 'sessionStorage', 'CustomEvent', 'persistentPageParts', 'supportsPersistentPage', 'hooks', `${script}; installPersistentNavigation(hooks);`)(
+    doc, stored, win.CustomEvent, persistentPageParts, supportsPersistentPage,
+    { cover: () => Promise.resolve(), reveal() {}, cancel() {}, beforeSwap() {} },
+  );
+  const prepare = (path: string, sourceTitle?: string) => {
+    const event = new win.Event('astro:before-preparation', { cancelable: true }) as any;
+    Object.assign(event, {
+      to: new URL(path, 'https://vcd.test'), signal: new AbortController().signal,
+      loader: async () => {}, sourceElement: sourceTitle ? { dataset: { headerNavigationTitle: sourceTitle } } : { dataset: {} },
+      newDocument: doc,
+    });
+    doc.dispatchEvent(event);
+    return event;
+  };
+  return { doc, header, starts, prepare };
+}
+
+for (const [name, options, expected] of [
+  ['hidden above the viewport', { rect: { width: 100, height: 48, top: -80, bottom: -32 } }, false],
+  ['partially visible', { rect: { width: 100, height: 48, top: -12, bottom: 36 } }, true],
+  ['docked and scrolled hidden', { hiddenClass: true }, false],
+  ['covered by a transparent ancestor', { ancestorOpacity: '0' }, false],
+] as const) {
+  test(`persistent title motion detects a ${name} header`, () => {
+    const f = navigationVisibilityFixture(options);
+    f.prepare('/about', 'About');
+    expect(f.starts.at(-1)?.animateTitle).toBe(expected);
+    expect(f.doc.documentElement.hasAttribute('data-header-navigation')).toBe(expected);
+  });
+}
+
+test('persistent title motion snapshots hidden Back navigation and recovers on the next navigation', async () => {
+  const f = navigationVisibilityFixture({ rect: { width: 100, height: 48, top: -80, bottom: -32 } });
+  const back = f.prepare('/about');
+  Object.defineProperty(f.header, 'getBoundingClientRect', { value: () => ({ width: 100, height: 48, top: 10, bottom: 58 }), configurable: true });
+  await back.loader();
+  expect(f.starts.map(({ animateTitle }) => animateTitle)).toEqual([false, false]);
+  expect(f.starts.at(-1)?.animateTitle).toBe(false);
+  f.prepare('/about', 'About');
+  expect(f.starts.at(-1)?.animateTitle).toBe(true);
 });

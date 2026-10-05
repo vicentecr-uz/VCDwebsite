@@ -1378,7 +1378,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       invalidateWordmarkRun();
       headerSlot?.__vcdTitleTransition?.cleanup();
       if (headerSlot) delete headerSlot.__vcdTitleTransition;
-      const pending = (event as CustomEvent<{ pending?: Record<string, unknown> }>).detail?.pending;
+      const detail = (event as CustomEvent<{ animateTitle?: boolean; pending?: Record<string, unknown> }>).detail;
+      if (detail?.animateTitle === false) return;
+      const pending = detail?.pending;
       if (!pending?.targetTitle || !window.__vcdHeaderTitleTransition) return;
       const bridge = window.__vcdHeaderTitleTransition(pending);
       if (bridge) {
