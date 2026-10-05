@@ -5,6 +5,7 @@ import { Window } from 'happy-dom';
 const root = resolve(import.meta.dir, '../..');
 const header = readFileSync(resolve(root, 'src/components/Header.astro'), 'utf8');
 const titleTransition = readFileSync(resolve(root, 'src/scripts/headerTitleTransition.js'), 'utf8');
+const settleMicrotasks = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
 function menuFixture() {
   const win = new Window();
@@ -101,464 +102,204 @@ test('cancellation releases the outgoing menu lock', () => {
   expect(f.start.dataset.menuOpen).toBe('true');
 });
 
-function titleFixture() {
-  const win = new Window({ url: 'https://vcd.test/project' });
-  const doc = win.document;
-  doc.body.innerHTML = '<div class="site-header-slot"><header class="site-header"><div class="header-trigger--start" data-header-title-swap="true"><span class="header-trigger__sizer">Project</span><a class="header-trigger__brand-link" href="/"><span class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false"><span class="header-trigger__char">Project</span></h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true"><span class="header-trigger__char">Vicente Cruz</span></span></span></a></div><div class="header-trigger--end"><a class="header-trigger__brand-link" href="/">Logo</a></div></header></div>';
-  const slot = doc.querySelector('.site-header-slot')!;
-  const stack = doc.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
-  const timers = new Map<number, () => void>(); let id = 0;
-  const frames = new Map<number, () => void>();
-  const clock = { setTimeout(fn: () => void) { timers.set(++id, fn); return id; }, clearTimeout(id: number) { timers.delete(id); }, addEventListener() {},
-    __vcdHeaderTitleTransition(pending: { title?: string; targetTitle?: string }) {
-      if (pending?.title === pending?.targetTitle) return null;
-      stack.style.visibility = 'hidden';
-      const layer = doc.createElement('div'); layer.className = 'live-title-transition'; stack.append(layer);
-      let chars: { page: HTMLElement[]; home: HTMLElement[] } | undefined;
-      return { targetTitle: 'Play', finishesAt: Date.now() + 1000,
-        wordmarkChars() {
-          if (!chars) {
-            const page = doc.createElement('span'); page.className = 'test-page-mask';
-            const entering = doc.createElement('span'); entering.style.animation = 'title-in 250ms ease 900ms both'; page.append(entering);
-            const home = doc.createElement('span'); home.className = 'test-home-mask';
-            layer.append(page, home);
-            chars = { page: [page] as any, home: [home] as any };
-          }
-          return chars;
-        },
-        cleanup() { stack.style.visibility = ''; layer.remove(); } };
+async function flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); }
 
-    },
-  };
-  const script = header.slice(header.indexOf("  const startTrigger = document.querySelector('.header-trigger--start');"), header.indexOf('  let currentPageLinks = [')).replaceAll('import.meta.env.DEV', 'false');
-  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(script);
-  new Function('document', 'window', 'headerSlot', 'requestAnimationFrame', 'cancelAnimationFrame', 'applyWordmarkKerning', 'isDevEditing', compiled)(doc, clock, slot, (fn: () => void) => { frames.set(++id, fn); return id; }, (id: number) => frames.delete(id), () => {}, () => false);
-  return { win, doc, slot, stack, timers, frame: () => { const pending = [...frames.values()]; frames.clear(); pending.forEach((fn) => fn()); } };
-}
-
-function actualTitleFixture(pageTitle = 'Project', isHome = false) {
-  const win = new Window({ url: 'https://vcd.test/project' });
-  const doc = win.document;
+function navigationFixture(pageTitle = 'Home') {
+  const f = menuFixture();
+  const { win, doc, start, brand } = f;
   const chars = (text: string) => [...text].map((char) => `<span class="header-trigger__char">${char}</span>`).join('');
-  doc.body.innerHTML = `<div class="site-header-slot"><header class="site-header"><div class="header-trigger--start${isHome ? ' header-trigger--home' : ''}" data-header-title-swap="${isHome ? 'false' : 'true'}"><span class="header-trigger__sizer">${pageTitle}</span><a class="header-trigger__brand-link" href="/"><span class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">${chars(pageTitle)}</h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">${chars('Home')}</span></span></a></div></header></div>`;
-  const slot = doc.querySelector('.site-header-slot')!;
-  const stack = doc.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
-  const page = doc.querySelector<HTMLElement>('.header-trigger__wordmark--page')!;
-  const home = doc.querySelector<HTMLElement>('.header-trigger__wordmark--home')!;
-  const rects = new WeakMap<Element, { left: number; top: number; width: number; height: number }>();
-  rects.set(stack, { left: 100, top: 20, width: 160, height: 24 });
-  rects.set(page, { left: 100, top: 20, width: 112, height: 24 });
-  rects.set(home, { left: 100, top: 20, width: 64, height: 24 });
-  [page, home].forEach((wordmark) => [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')].forEach((char, index) => rects.set(char, { left: 100 + index * 16, top: 20, width: 16, height: 24 })));
+  const slot = doc.createElement('div');
+  slot.className = 'site-header-slot';
+  start.replaceWith(slot);
+  const siteHeader = doc.createElement('header');
+  siteHeader.className = 'site-header';
+  slot.append(siteHeader);
+  siteHeader.append(start);
+  siteHeader.insertAdjacentHTML('beforeend', '<div class="header-trigger--end"><a class="header-trigger__brand-link" href="/">Logo</a></div>');
+  start.dataset.headerTitleSwap = String(pageTitle !== 'Home');
+  start.classList.toggle('header-trigger--home', pageTitle === 'Home');
+  brand.innerHTML = `<span class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">${chars(pageTitle)}</h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">${chars('Home')}</span></span>`;
+  const stack = brand.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
+  const animations: Array<{ id: string; startTime: number | null; finished: Promise<void>; finish: () => void; cancel: () => void }> = [];
   win.HTMLElement.prototype.getBoundingClientRect = function () {
-    return rects.get(this) ?? { left: 0, top: 0, width: this.textContent?.length ? this.textContent.length * 16 : 64, height: 24 };
+    return { left: 0, top: 0, width: Math.max(16, (this.textContent?.length ?? 1) * 16), height: 24 } as any;
   };
-  win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 24 });
-  const animateCalls: any[] = [];
-  win.HTMLElement.prototype.animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-    const animation = { id: '', startTime: null, currentTime: null, cancel() { this.cancelled = true; }, pause() { this.paused = true; }, play() { this.paused = false; }, paused: false, cancelled: false } as any;
-    animateCalls.push({ element: this, keyframes, options, animation });
-    return animation;
+  win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 16, height: 24 }) as any;
+  win.HTMLElement.prototype.animate = function () {
+    let finish!: () => void;
+    let reject!: (error: Error) => void;
+    const finished = new Promise<void>((resolve, fail) => { finish = resolve; reject = fail; });
+    const animation = { id: '', startTime: null, finished, finish, cancel() { reject(new Error('canceled')); } };
+    animations.push(animation);
+    return animation as any;
   };
-  Object.defineProperty(doc, 'timeline', { configurable: true, value: { currentTime: 5000 } });
-  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: element?.style.opacity || '1', filter: element?.style.filter || 'none' });
+  Object.defineProperty(doc, 'timeline', { value: { currentTime: 5000 } });
+  const computed = (el: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: el.style.opacity || '1', filter: el.style.filter || 'none' });
   new Function('window', 'document', 'getComputedStyle', titleTransition)(win, doc, computed);
-  const timers = new Map<number, () => void>();
+  let sequence = 1000;
   const frames = new Map<number, () => void>();
-  let id = 0;
-  win.requestAnimationFrame = (fn: FrameRequestCallback) => { frames.set(++id, () => fn(0)); return id; };
   const clock = {
-    setTimeout(fn: () => void) { timers.set(++id, fn); return id; },
-    clearTimeout(timer: number) { timers.delete(timer); },
-    addEventListener() {},
+    setTimeout(callback: () => void, delay: number) { f.timers.set(++sequence, { callback, delay }); return sequence; },
+    clearTimeout(id: number) { f.timers.delete(id); }, addEventListener() {},
     __vcdHeaderTitleTransition: (win as any).__vcdHeaderTitleTransition,
   };
   const script = header.slice(header.indexOf("  const startTrigger = document.querySelector('.header-trigger--start');"), header.indexOf('  let currentPageLinks = [')).replaceAll('import.meta.env.DEV', 'false');
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(script);
-  new Function('document', 'window', 'headerSlot', 'requestAnimationFrame', 'cancelAnimationFrame', 'applyWordmarkKerning', 'isDevEditing', compiled)(doc, clock, slot, (fn: () => void) => { frames.set(++id, fn); return id; }, (frame: number) => frames.delete(frame), () => {}, () => false);
-  const drainTimers = () => {
-    while (timers.size) {
-      const [timer, callback] = timers.entries().next().value as [number, () => void];
-      timers.delete(timer);
-      callback();
-    }
+  new Function('document', 'window', 'headerSlot', 'requestAnimationFrame', 'cancelAnimationFrame', 'applyWordmarkKerning', 'isDevEditing', 'CustomEvent', compiled)(doc, clock, slot, (fn: () => void) => { frames.set(++sequence, fn); return sequence; }, (id: number) => frames.delete(id), () => {}, () => false, win.CustomEvent);
+  const page = () => stack.querySelector<HTMLElement>('.header-trigger__wordmark--page')!;
+  const home = stack.querySelector<HTMLElement>('.header-trigger__wordmark--home')!;
+  return {
+    ...f, slot, stack, page, home,
+    hover(value: boolean) { f.setHovered(value); start.dispatchEvent(new win.MouseEvent(value ? 'mouseenter' : 'mouseleave')); },
+    focus() {
+      const matches = brand.matches.bind(brand);
+      brand.matches = (selector: string) => selector === ':focus-visible' || matches(selector);
+      brand.focus();
+    },
+    navigate(title: string) {
+      const count = animations.length;
+      doc.dispatchEvent(new win.CustomEvent('header:navigation-start', { detail: { pending: { title: page().textContent, targetTitle: title } } }));
+      return animations.slice(count);
+    },
+    commit(title: string) {
+      const incoming = slot.cloneNode(true) as HTMLElement;
+      const next = incoming.querySelector<HTMLElement>('.header-trigger--start')!;
+      next.dataset.headerTitleSwap = String(title !== 'Home');
+      next.classList.toggle('header-trigger--home', title === 'Home');
+      next.querySelector('.header-trigger__wordmark--page')!.innerHTML = chars(title);
+      incoming.querySelectorAll('a.header-trigger__brand-link').forEach((link) => link.setAttribute('href', title === 'Home' ? '#' : '/'));
+      doc.dispatchEvent(new win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
+    },
+    reveal() { doc.dispatchEvent(new win.CustomEvent('header:navigation-reveal')); },
+    async finish(effects: typeof animations) { effects.forEach((animation) => animation.finish()); await flush(); },
+    frame() { f.frame(); const pending = [...frames.values()]; frames.clear(); pending.forEach((fn) => fn()); },
   };
-  const fireNextTimer = () => {
-    const entry = timers.entries().next().value as [number, () => void] | undefined;
-    if (!entry) return;
-    timers.delete(entry[0]);
-    entry[1]();
-  };
-  return { win, doc, slot, stack, page, home, animateCalls, timers, frame: () => { const pending = [...frames.values()]; frames.clear(); pending.forEach((fn) => fn()); }, drainTimers, fireNextTimer };
 }
 
-function actualIncoming(f: ReturnType<typeof actualTitleFixture>, title: string, isHome = false) {
-  const incoming = f.slot.cloneNode(true) as HTMLElement;
-  const incomingStart = incoming.querySelector('.header-trigger--start')!;
-  incomingStart.classList.toggle('header-trigger--home', isHome);
-  incomingStart.setAttribute('data-header-title-swap', isHome ? 'false' : 'true');
-  const incomingPage = incoming.querySelector('.header-trigger__wordmark--page')!;
-  incomingPage.replaceChildren(...[...title].map((char) => {
-    const node = f.doc.createElement('span');
-    node.className = 'header-trigger__char';
-    node.textContent = char;
-    return node;
-  }));
-  return incoming;
-}
-
-test('destination title commits behind the same running title layer, then unlocks hover', () => {
-  const f = titleFixture();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  const live = f.stack.querySelector('.live-title-transition');
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/play') } }));
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  expect(f.stack.style.visibility).toBe('hidden');
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Play');
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(live?.isConnected).toBe(false);
-  expect(f.stack.style.visibility).toBe('');
-  expect(f.slot.isConnected).toBe(true);
-});
-
-test('Home commit clears retained wordmark timing and blur before the transition layer cleans up', () => {
-  const f = titleFixture();
-  const homeChars = [...f.stack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char')];
-  homeChars.forEach((char) => {
-    char.style.setProperty('--char-duration', '.25s');
-    char.style.setProperty('--char-delay', '.55s');
-    char.style.setProperty('--char-blur', '4px');
-    char.style.opacity = '1';
-  });
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Home' } } }));
-  const live = f.stack.querySelector('.live-title-transition');
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  incoming.querySelector('.header-trigger--start').classList.add('header-trigger--home');
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
-
-  const expectReset = () => {
-    expect(homeChars.every((char) => char.style.getPropertyValue('--char-duration') === '0s')).toBe(true);
-    expect(homeChars.every((char) => char.style.getPropertyValue('--char-delay') === '0s')).toBe(true);
-    expect(homeChars.every((char) => char.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
-    expect(homeChars.every((char) => char.style.opacity === '0')).toBe(true);
-  };
-  expectReset();
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  [...f.timers.values()].forEach((finish) => finish());
-  expectReset();
-  expect(live?.isConnected).toBe(false);
-});
-
-test('title trigger opens during navigation, then preserves the retained entrance through reveal', () => {
-  const f = titleFixture();
-  const startTrigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
-  startTrigger.dataset.headerTitleSwap = 'false';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  const live = f.stack.querySelector('.live-title-transition');
-  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  const retainedMask = live!.querySelector('.test-page-mask');
-  const homeMask = live!.querySelector('.test-home-mask');
-  expect(f.timers.size).toBe(1);
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  incoming.querySelector('.header-trigger--start').dataset.headerTitleSwap = 'true';
-  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/play') } }));
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  expect(f.stack.querySelector('.test-page-mask')).toBe(retainedMask);
-  expect(f.stack.querySelector('.test-home-mask')).toBe(homeMask);
-  expect(f.timers.size).toBe(1);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('true');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
-  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  const mask = live!.querySelector<HTMLElement>('.test-page-mask')!;
-  const entering = mask.firstElementChild as HTMLElement;
-  expect(entering.style.animation).toBe('title-in 250ms ease 900ms both');
-  expect(mask.style.opacity).toBe('0');
-  expect(mask.style.getPropertyValue('--char-blur')).toBe('4px');
-  f.frame();
-  expect(live!.querySelector<HTMLElement>('.test-home-mask')!.style.opacity).toBe('1');
-  expect(startTrigger.classList.contains('is-wordmark-swapped')).toBe(true);
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
-  expect(f.timers.size).toBe(1);
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(live?.isConnected).toBe(false);
-  expect(startTrigger.classList.contains('is-wordmark-swapped')).toBe(true);
-  const settledHome = f.stack.querySelector<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char')!;
-  expect(settledHome.style.opacity).toBe('1');
-  expect(settledHome.style.getPropertyValue('--char-blur')).toBe('0px');
-});
-
-test('Home click during an open collision reuses the bridge through commit and finish', () => {
-  const f = titleFixture();
-  const startTrigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
-  const homeWordmark = f.stack.querySelector<HTMLElement>('.header-trigger__wordmark--home')!;
-  homeWordmark.querySelector<HTMLElement>('.header-trigger__char')!.textContent = 'Home';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  startTrigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  const live = f.stack.querySelector('.live-title-transition');
-  const homeMask = live!.querySelector('.test-home-mask');
-  expect(f.timers.size).toBe(1);
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Play', targetTitle: 'Home' } } }));
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  expect(f.timers.size).toBe(1);
-
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  incoming.querySelector('.header-trigger--start').classList.add('header-trigger--home');
-  incoming.querySelector('.header-trigger--start').dataset.headerTitleSwap = 'false';
-  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Home';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
-  expect(f.stack.querySelector('.live-title-transition')).toBe(live);
-  expect(f.stack.querySelector('.test-home-mask')).toBe(homeMask);
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
-  f.frame();
-  expect(homeMask?.style.opacity).toBe('1');
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(live?.isConnected).toBe(false);
-  expect(startTrigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  expect(f.stack.querySelector('.header-trigger__wordmark--home .header-trigger__char')?.style.opacity).toBe('0');
-});
-
-test('actual bridge and Header handlers complete Home navigation after an early open', () => {
-  const f = actualTitleFixture();
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  expect(() => trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'))).not.toThrow();
-  expect(f.animateCalls.some(({ animation }) => animation.id.startsWith('vcd-header-title-mask-'))).toBe(true);
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Play', targetTitle: 'Home' } } }));
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.header-navigation-title')?.remove();
-  const incomingStart = incoming.querySelector('.header-trigger--start');
-  incomingStart.classList.add('header-trigger--home');
-  incomingStart.dataset.headerTitleSwap = 'false';
-  const incomingPage = incoming.querySelector('.header-trigger__wordmark--page');
-  incomingPage.replaceChildren(...[...'Home'].map((char) => {
-    const node = f.doc.createElement('span');
-    node.className = 'header-trigger__char';
-    node.textContent = char;
-    return node;
-  }));
-  expect(() => f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }))).not.toThrow();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Home');
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-});
-
-test('completed hover survives a timer before delayed project commit', () => {
-  const f = actualTitleFixture('Home', true);
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
-  f.frame();
-  f.fireNextTimer();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Home');
-  expect(f.stack.querySelector('.header-navigation-title')).not.toBeNull();
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Play'), url: new URL('https://vcd.test/play') } }));
-  f.drainTimers();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Play');
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(true);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('true');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('false');
-});
-
-test('completed hover then leave keeps delayed project navigation closed', () => {
-  const f = actualTitleFixture('Home', true);
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
-  f.frame();
-  f.fireNextTimer();
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseleave'));
-  f.fireNextTimer();
-  expect(f.stack.querySelector('.header-navigation-title')).not.toBeNull();
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Play'), url: new URL('https://vcd.test/play') } }));
-  f.drainTimers();
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('false');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
-});
-
-test('completed hover never reveals the old project before delayed Home commit', () => {
-  const f = actualTitleFixture('Home', true);
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
-  f.frame();
-  f.fireNextTimer();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Play'), url: new URL('https://vcd.test/play') } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Play', targetTitle: 'Home' } } }));
-  f.fireNextTimer();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Play');
-  expect(f.stack.querySelector('.header-navigation-title')).not.toBeNull();
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Home', true), url: new URL('https://vcd.test/') } }));
-  f.drainTimers();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Home');
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('false');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
-});
-
-test('late hover after commit works, then Home navigation settles the semantic title', () => {
-  const f = actualTitleFixture();
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Play'), url: new URL('https://vcd.test/play') } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  f.frame();
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(true);
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Play', targetTitle: 'Home' } } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Home', true), url: new URL('https://vcd.test/') } }));
-  f.drainTimers();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Home');
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('false');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
-});
-
-test('superseding a Home navigation removes a null replacement bridge', () => {
-  const f = actualTitleFixture('Home', true);
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  expect(f.stack.querySelector('.header-navigation-title')).not.toBeNull();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Home' } } }));
-  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
-  expect((f.slot as any).__vcdTitleTransition).toBeUndefined();
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: actualIncoming(f, 'Home', true), url: new URL('https://vcd.test/') } }));
-  f.drainTimers();
-  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-});
-
-test('cancellation after an early hover restores Home and stale work cannot resurrect it', () => {
-  const f = actualTitleFixture('Home', true);
-  const trigger = f.slot.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
-  const staleTimer = f.timers.values().next().value as (() => void) | undefined;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-cancel'));
-  staleTimer?.();
-  f.frame();
-  f.drainTimers();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Home');
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.getAttribute('aria-hidden')).toBe('false');
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
-});
-
-test('cancellation removes only the transition layer and keeps the current page title', () => {
-  const f = titleFixture();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-cancel'));
-  expect(f.stack.querySelector('.live-title-transition')).toBeNull();
-  expect(f.stack.querySelector('.header-trigger__wordmark--page')?.textContent).toBe('Project');
-  expect(f.stack.style.visibility).toBe('');
-});
-
-test('settled navigation without a title bridge keeps Home interaction locked', () => {
-  const f = titleFixture();
-  const trigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Project' } } }));
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open'));
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
-});
-
-test('closed menu reopens for a hovered trigger after reveal, but not after leaving', () => {
-  const f = menuFixture();
-  f.setHovered(true);
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start'));
-  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+test('early hover waits for commit and every native title effect, then opens name and menu together', async () => {
+  const f = navigationFixture();
+  const effects = f.navigate('GoodHome');
+  f.hover(true);
+  f.commit('GoodHome');
+  f.reveal();
+  await f.finish(effects.slice(0, -1));
   expect(f.start.dataset.menuOpen).toBeUndefined();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
+  expect(f.start.classList.contains('is-wordmark-swapped')).toBe(false);
+  expect(f.stack.querySelector('.header-navigation-title')).not.toBeNull();
+  await f.finish(effects.slice(-1));
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
   expect(f.start.dataset.menuOpen).toBe('true');
-
-  const left = menuFixture();
-  left.setHovered(true);
-  left.doc.dispatchEvent(new left.win.CustomEvent('header:navigation-start'));
-  left.setHovered(false);
-  left.doc.dispatchEvent(new left.win.CustomEvent('header:navigation-reveal'));
-  expect(left.start.dataset.menuOpen).toBeUndefined();
-});
-
-
-test('both brand links update on Home and project commits without replacing either anchor', () => {
-  const f = titleFixture();
-  const brands = [...f.doc.querySelectorAll('.header-trigger__brand-link')];
-  expect(brands.length).toBe(2);
-  for (const href of [null, '/']) {
-    const incoming = f.slot.cloneNode(true) as any;
-    incoming.querySelectorAll('.header-trigger__brand-link').forEach((link: Element) => {
-      if (href) link.setAttribute('href', href); else link.removeAttribute('href');
-    });
-    f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
-    expect([...f.doc.querySelectorAll('.header-trigger__brand-link')]).toEqual(brands);
-    expect(brands.map((link) => link.getAttribute('href'))).toEqual([href, href]);
-  }
-});
-
-
-test('closing and reopening during a title collision reuses the masks without touching the entrance', () => {
-  const f = titleFixture();
-  const trigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Project', targetTitle: 'Play' } } }));
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming } }));
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-reveal'));
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open')); f.frame();
-  const mask = f.stack.querySelector<HTMLElement>('.test-page-mask')!;
-  const entering = mask.firstElementChild as HTMLElement;
-  const animation = entering.style.animation;
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-close'));
-  expect(mask.style.opacity).toBe('1');
-  trigger.dispatchEvent(new f.win.CustomEvent('header:trigger-open')); f.frame();
-  expect(f.stack.querySelector('.test-page-mask')).toBe(mask);
-  expect(mask.firstElementChild).toBe(entering);
-  expect(entering.style.animation).toBe(animation);
-  expect(mask.style.opacity).toBe('0');
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(true);
-});
-
-
-test('leaving an early title hover before commit keeps the destination title selected', () => {
-  const f = titleFixture();
-  const trigger = f.doc.querySelector<HTMLElement>('.header-trigger--start')!;
-  trigger.dataset.headerTitleSwap = 'false';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', { detail: { pending: { title: 'Home', targetTitle: 'Play' } } }));
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseenter'));
-  const mask = f.stack.querySelector<HTMLElement>('.test-page-mask')!;
-  expect(mask.style.opacity).toBe('0');
-  trigger.dispatchEvent(new f.win.MouseEvent('mouseleave'));
-  expect(mask.style.opacity).toBe('1');
-  const incoming = f.slot.cloneNode(true) as any;
-  incoming.querySelector('.live-title-transition').remove();
-  incoming.querySelector('.header-trigger__wordmark--page .header-trigger__char').textContent = 'Play';
-  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-commit', { detail: { header: incoming } }));
+  expect(f.start.classList.contains('is-wordmark-swapped')).toBe(true);
+  expect(f.page().getAttribute('aria-hidden')).toBe('true');
   f.frame();
-  expect(f.stack.querySelector('.header-trigger__wordmark--home')?.getAttribute('aria-hidden')).toBe('true');
-  expect(f.stack.querySelector<HTMLElement>('.test-home-mask')!.style.opacity).toBe('0');
-  [...f.timers.values()].forEach((finish) => finish());
-  expect(trigger.classList.contains('is-wordmark-swapped')).toBe(false);
+  expect([...f.home.children].every((char) => (char as HTMLElement).style.opacity === '1')).toBe(true);
+});
+
+test('leaving before the title finishes cancels the queued opening', async () => {
+  const f = navigationFixture();
+  const effects = f.navigate('Knife');
+  f.commit('Knife'); f.reveal(); f.hover(true); f.hover(false);
+  await f.finish(effects);
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect(f.page().getAttribute('aria-hidden')).toBe('false');
+  expect(f.home.getAttribute('aria-hidden')).toBe('true');
+});
+
+test('native completion before a delayed commit cannot unlock the old title', async () => {
+  const f = navigationFixture();
+  const effects = f.navigate('Knife');
+  f.hover(true);
+  await f.finish(effects);
+  expect(f.page().textContent).toBe('Home');
+  expect(f.start.dataset.headerTitlePending).toBe('');
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  f.commit('Knife');
+  await flush();
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  f.reveal();
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.start.classList.contains('is-wordmark-swapped')).toBe(true);
+});
+
+for (const revealFirst of [true, false]) {
+  test(`keyboard focus opens after both title completion and reveal (${revealFirst})`, async () => {
+    const f = navigationFixture();
+    const effects = f.navigate('Knife');
+    f.commit('Knife'); f.focus();
+    if (revealFirst) f.reveal();
+    expect(f.start.dataset.menuOpen).toBeUndefined();
+    await f.finish(effects);
+    if (!revealFirst) { expect(f.start.dataset.menuOpen).toBeUndefined(); f.reveal(); }
+    expect(f.start.dataset.menuOpen).toBe('true');
+    expect(f.home.getAttribute('aria-hidden')).toBe('false');
+  });
+}
+
+test('superseded completion cannot clean or unlock the current title', async () => {
+  const f = navigationFixture();
+  const first = f.navigate('Knife'); f.commit('Knife'); f.hover(true);
+  const second = f.navigate('GoodHome'); f.commit('GoodHome'); f.reveal();
+  await f.finish(first);
+  expect(f.start.dataset.headerTitlePending).toBe('');
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  expect(f.page().textContent).toBe('GoodHome');
+  await f.finish(second);
+  expect(f.start.dataset.menuOpen).toBe('true');
+});
+
+test('canceling navigation releases the title lock and ignores stale completion', async () => {
+  const f = navigationFixture();
+  const effects = f.navigate('Knife'); f.hover(true);
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-cancel'));
+  await f.finish(effects);
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect(f.page().textContent).toBe('Home');
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
+});
+
+test('cancellation keeps the name visible when the current menu remains open', async () => {
+  const f = navigationFixture('Knife');
+  f.hover(true);
+  const effects = f.navigate('GoodHome');
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-cancel'));
+  await f.finish(effects);
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.start.classList.contains('is-wordmark-swapped')).toBe(true);
+  expect(f.home.getAttribute('aria-hidden')).toBe('false');
+  expect([...f.home.children].every((char) => (char as HTMLElement).style.opacity === '1')).toBe(true);
+});
+
+test('ordinary hover still opens immediately and Home return settles its semantic title', async () => {
+  const f = navigationFixture('Knife');
+  f.hover(true); f.frame();
+  expect(f.start.dataset.menuOpen).toBe('true');
+  expect(f.home.getAttribute('aria-hidden')).toBe('false');
+  const effects = f.navigate('Home');
+  f.commit('Home'); f.reveal();
+  await f.finish(effects);
+  expect(f.page().textContent).toBe('Home');
+  expect(f.page().getAttribute('aria-hidden')).toBe('false');
+  expect(f.home.getAttribute('aria-hidden')).toBe('true');
+  expect(f.start.classList.contains('is-wordmark-swapped')).toBe(false);
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+});
+
+test('same-title navigation without a bridge releases the lock on commit', () => {
+  const f = navigationFixture();
+  f.navigate('Home'); f.commit('Home'); f.reveal();
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
+});
+
+test('both brand links update on commits without replacing either anchor', () => {
+  const f = navigationFixture();
+  const links = [...f.slot.querySelectorAll('.header-trigger__brand-link')];
+  f.commit('Knife');
+  expect(links.map((link) => link.getAttribute('href'))).toEqual(['/', '/']);
+  f.commit('Home');
+  expect(links.map((link) => link.getAttribute('href'))).toEqual(['#', '#']);
+  expect([...f.slot.querySelectorAll('.header-trigger__brand-link')]).toEqual(links);
 });
