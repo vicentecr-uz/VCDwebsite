@@ -2475,11 +2475,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }
 
     .header-menu-backdrop {
-      background-color: color-mix(
-        in srgb,
-        var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%),
-        transparent
-      );
+      /* Safari can sample fixed backdrops into the opaque toolbar extension. */
+      background-color: transparent;
+    }
+
+    :global([data-page-shell] > :is(main, .project-layout, footer)) {
+      opacity: 1;
+      transition:
+        opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
+        var(--header-menu-surface-delay, 0s);
+    }
+
+    :global([data-page-shell]:has(> .site-header-slot .header-trigger[data-menu-surface-open]) > :is(main, .project-layout, footer)) {
+      opacity: calc(100% - var(--header-surface-mobile-backdrop-opacity, 90%));
     }
   }
 
