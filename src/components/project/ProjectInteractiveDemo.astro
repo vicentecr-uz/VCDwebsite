@@ -70,18 +70,33 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   @media (max-width: 40em) {
+    .project-interactive-demo::before {
+      content: '';
+      display: block;
+      height: 4px;
+      margin-bottom: -4px;
+      position: sticky;
+      top: calc(var(--space-unit) * 3.75);
+      z-index: 3;
+      pointer-events: none;
+      box-shadow:
+        inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
+        inset 0 1px 0 var(--sys-color-surface-outline);
+    }
+
+    :global(:root[data-theme='dark']) .project-interactive-demo::before {
+      box-shadow: inset 0 1px 0 var(--sys-color-surface-outline);
+    }
+
     .project-interactive-demo::after {
       box-shadow:
         inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
-        inset 0 1px 0 var(--sys-color-surface-outline),
         inset 0 -1px 0 var(--sys-color-surface-outline);
     }
 
     :global(:root[data-theme='dark']) .project-interactive-demo::after {
       box-shadow:
         inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 1px 0 var(--sys-color-surface-outline),
         inset 0 -1px 0 var(--sys-color-surface-outline);
     }
   }
