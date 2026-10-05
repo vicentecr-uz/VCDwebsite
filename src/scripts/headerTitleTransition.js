@@ -158,6 +158,8 @@
         transition: "none",
         opacity: fixed ? "1" : "0",
         filter: fixed ? "none" : "blur(4px)",
+        // Transient animated letters avoid Safari's software filter path during page swaps.
+        transform: fixed ? "none" : "translateZ(0)",
         whiteSpace: "nowrap",
         animation: fixed
           ? "none"
