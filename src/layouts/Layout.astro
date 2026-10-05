@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import designTokens from '../../tokens/design-tokens.json';
 import { ClientRouter } from 'astro:transitions';
 import Analytics from '../components/Analytics.astro';
 // The dev-chrome atoms (.dev-btn, .dev-field, .dev-panel, …) are consumed by
@@ -75,6 +76,23 @@ const ogImageUrl = new URL(ogImage, Astro.site);
 const showDevTools = import.meta.env.DEV;
 const pageHtml = await Astro.slots.render('default') ?? '';
 const mediaFeatures = getPageMediaFeatures(pageHtml);
+type TokenNode = { $value?: unknown; [key: string]: unknown };
+const resolveToken = (path: string, seen = new Set<string>()): string => {
+  if (seen.has(path)) throw new Error(`Token alias cycle at ${path}`);
+  seen.add(path);
+  const node = path.split('.').reduce<unknown>((value, key) =>
+    value && typeof value === 'object' ? (value as TokenNode)[key] : undefined,
+    designTokens as unknown,
+  );
+  const token = node && typeof node === 'object' ? node as TokenNode : undefined;
+  const value = token?.$extensions && typeof token.$extensions === 'object'
+    ? ((token.$extensions as TokenNode).modes as TokenNode | undefined)?.light ?? token.$value
+    : token?.$value;
+  if (typeof value !== 'string') throw new Error(`Token value is missing at ${path}`);
+  const alias = value.match(/^\{([^}]+)\}$/)?.[1];
+  return alias ? resolveToken(alias, seen) : value;
+};
+const initialThemeColor = resolveToken('sys.color.srf');
 // Production is light until dark mode ships (#256): pin data-theme="light" and
 // omit the OS media query from the generated production sheet. Local DEV omits
 // the attribute so the theme toggle can still set Dark.
@@ -91,12 +109,8 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
     {persistentNavigation && <ClientRouter fallback="swap" />}
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    {!showDevTools && (
-      <>
-        <meta name="color-scheme" content="only light" />
-        <meta name="theme-color" content="#ffffff" />
-      </>
-    )}
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content={initialThemeColor} />
     <meta name="description" content={description} />
     <style is:inline>
       /* Cover the first paint. Bundled global.css (and Vite's JS-injected sheet
@@ -320,6 +334,36 @@ const mediaFeatures = getPageMediaFeatures(pageHtml);
     {(showDevTools || mediaFeatures.gallery) && <GalleryMediaInk />}
     {(showDevTools || mediaFeatures.captions) && <CaptionMediaInk />}
     {(showDevTools || mediaFeatures.video) && <ProjectVideoControls />}
+
+    <script>
+      import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+      const disposeBrowserTheme = onPageLoad(() => {
+        const scope = createPageScope();
+        const root = document.documentElement;
+        const themeMeta = document.head.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+        const schemeMeta = document.head.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+        if (!themeMeta || !schemeMeta) return scope.destroy;
+
+        const sync = () => {
+          const styles = getComputedStyle(root);
+          const background = styles.backgroundColor.trim();
+          const colorScheme = (styles.colorScheme || styles.getPropertyValue('color-scheme')).trim();
+          if (background) themeMeta.content = background;
+          if (colorScheme) schemeMeta.content = colorScheme;
+        };
+
+        sync();
+        const observer = new MutationObserver(sync);
+        observer.observe(root, { attributes: true, attributeFilter: ['data-theme', 'style'] });
+        scope.add(() => observer.disconnect());
+        const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+        if (media) scope.listen(media, 'change', sync);
+        return scope.destroy;
+      });
+
+      if (import.meta.hot) import.meta.hot.dispose(disposeBrowserTheme);
+    </script>
 
     <script>
       import gsap from 'gsap';
