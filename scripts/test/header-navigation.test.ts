@@ -323,6 +323,17 @@ test('same-title navigation without a bridge releases the lock on commit', () =>
   expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
 });
 
+test('navigation without title motion settles the incoming wordmark immediately', () => {
+  const f = navigationFixture();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', {
+    detail: { animateTitle: false, pending: { title: 'Home', targetTitle: 'Knife' } },
+  }));
+  f.commit('Knife');
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect([...f.page().children].every((char) => (char as HTMLElement).style.opacity === '1')).toBe(true);
+});
+
 test('both brand links update on commits without replacing either anchor', () => {
   const f = navigationFixture();
   const links = [...f.slot.querySelectorAll('.header-trigger__brand-link')];
