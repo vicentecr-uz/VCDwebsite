@@ -10,6 +10,7 @@ function fixture() {
   const win = new Window({ url: 'https://vcd.test/project' });
   const doc = win.document;
   const animateCalls: Array<{ element: HTMLElement; keyframes: Keyframe[]; options: KeyframeAnimationOptions; animation: any }> = [];
+  const presentations = new WeakMap<Element, { opacity: string; filter: string }>();
   const chars = (text: string, animation = '') => [...text].map((char) => `<span class="header-trigger__char" style="animation:${animation}">${char}</span>`).join('');
   doc.body.innerHTML = `<div class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">${chars('Project', 'page-in 1s')}</h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">${chars('Home', 'home-in 1s')}</span></div>`;
   const stack = doc.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
@@ -31,10 +32,10 @@ function fixture() {
     return animation;
   };
   Object.defineProperty(doc, 'timeline', { configurable: true, value: { currentTime: 5000 } });
-  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: element?.style.opacity || '1' });
+  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: presentations.get(element)?.opacity || element?.style.opacity || '1', filter: presentations.get(element)?.filter || 'none' });
   const run = new Function('window', 'document', 'getComputedStyle', source);
   run(win, doc, computed);
-  return { win, doc, stack, page, home, animateCalls };
+  return { win, doc, stack, page, home, animateCalls, presentations };
 }
 
 test('title transition uses shared zero-delay WAAPI effects and preserves reusable masks', () => {
@@ -90,6 +91,18 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
   expect(f.animateCalls.length).toBe(animationCount);
   expect(f.stack.querySelectorAll('.header-navigation-title-layer').length).toBe(3);
+  const innerStartTime = incomingCall.animation.startTime;
+  f.presentations.set(first.home[0], { opacity: '0.43', filter: 'blur(1.7px)' });
+  expect(bridge.animateMask(first.home[0], { opacity: 1, blurPx: 0, durationMs: 250, delayMs: 40, easing: 'ease' })).toBe(true);
+  const maskAnimation = f.animateCalls.at(-1)!;
+  expect(maskAnimation.options).toEqual({ duration: 290, delay: 0, easing: 'linear', fill: 'both' });
+  expect(maskAnimation.keyframes[0]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 0 });
+  expect(maskAnimation.keyframes[1]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 40 / 290, easing: 'ease' });
+  expect(bridge.animateMask(first.home[0], { opacity: 0, blurPx: 4, durationMs: 100, delayMs: 0 })).toBe(true);
+  expect(maskAnimation.animation.cancelled).toBe(true);
+  const interruptedMask = f.animateCalls.at(-1)!;
+  expect(interruptedMask.keyframes[0]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)' });
+  expect(incomingCall.animation.startTime).toBe(innerStartTime);
   const visibility = f.stack.style.visibility;
   bridge.cleanup();
   expect(f.animateCalls.every(({ animation }) => animation.cancelled)).toBe(true);

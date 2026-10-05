@@ -324,6 +324,8 @@
       visibility: "visible",
     });
     applyMetrics(overlay, pending.fontMetrics);
+    const ownedMasks = new Set();
+    const maskAnimations = new Map();
     const fixed = sourceText === targetText;
     const outgoingLayer = layer(
       source,
@@ -334,6 +336,7 @@
       fixed,
       pending.fromCharTimings,
     );
+    outgoingLayer.masks.forEach((mask) => ownedMasks.add(mask));
     overlay.append(outgoingLayer.element);
     const incomingLayer = fixed
       ? outgoingLayer
@@ -347,8 +350,38 @@
           pending.toCharTimings,
         );
     if (!fixed) overlay.append(incomingLayer.element);
+    incomingLayer.masks.forEach((mask) => ownedMasks.add(mask));
     stack.append(overlay);
     const ownedAnimations = [];
+    const setMaskFilter = (mask, blurPx) => {
+      mask.style.setProperty("--char-filter", blurPx > 0 ? `blur(${blurPx}px)` : "none");
+    };
+    const animateMask = (mask, { opacity, blurPx, durationMs, delayMs = 0, easing = "ease" }) => {
+      if (!ownedMasks.has(mask)) return false;
+      const current = getComputedStyle(mask);
+      const previous = maskAnimations.get(mask);
+      const initial = { opacity: current.opacity, filter: current.filter || "none" };
+      previous?.cancel?.();
+      mask.style.transition = "none";
+      const final = { opacity: String(opacity), filter: blurPx > 0 ? `blur(${blurPx}px)` : "none" };
+      mask.style.opacity = final.opacity;
+      setMaskFilter(mask, blurPx);
+      if (!(durationMs > 0)) {
+        maskAnimations.delete(mask);
+        return true;
+      }
+      const prefix = Math.max(delayMs, 0);
+      const total = prefix + durationMs;
+      const keyframes = [
+        { ...initial, offset: 0, ...(prefix === 0 ? { easing } : {}) },
+        ...(prefix > 0 ? [{ ...initial, offset: prefix / total, easing }] : []),
+        { ...final, offset: 1 },
+      ];
+      const animation = mask.animate(keyframes, { duration: total, delay: 0, easing: "linear", fill: "both" });
+      animation.id = `vcd-header-title-mask-${opacity}-${blurPx}`;
+      maskAnimations.set(mask, animation);
+      return true;
+    };
     const timelineAnchor = document.timeline?.currentTime;
     const elapsed = Date.now() - pending.startedAt;
     const startLayer = (entry) => {
@@ -370,6 +403,7 @@
     let wordmarkMasks;
     return {
       targetTitle: targetText,
+      animateMask,
       wordmarkChars: (homeSource) => {
         if (wordmarkMasks) return wordmarkMasks;
         const homeText = homeSource?.textContent?.replace(/\s+/g, " ").trim();
@@ -385,6 +419,7 @@
           true,
           null,
         );
+        homeLayer.masks.forEach((mask) => ownedMasks.add(mask));
         homeLayer.masks.forEach((mask) => {
           mask.style.opacity = "0";
           mask.style.setProperty("--char-blur", "4px");
@@ -398,6 +433,8 @@
       },
       cleanup: () => {
         ownedAnimations.forEach((animation) => animation.cancel?.());
+        maskAnimations.forEach((animation) => animation.cancel?.());
+        maskAnimations.clear();
         stack.style.visibility = previousVisibility;
         overlay.remove();
       },

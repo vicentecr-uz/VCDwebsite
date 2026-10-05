@@ -456,7 +456,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
       let generation = 0;
       let activeTween: gsap.core.Tween | null = null;
-      let revealCleanup: (() => void) | null = null;
+      let revealAnimation: Animation | null = null;
       let readinessAbort: AbortController | null = null;
       let readinessCleanup: (() => void) | null = null;
       let navigationWatchdog: ReturnType<typeof setTimeout> | null = null;
@@ -469,8 +469,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
           overlay.style.removeProperty('transition');
         }
         generation += 1;
-        revealCleanup?.();
-        revealCleanup = null;
+        revealAnimation?.cancel();
+        revealAnimation = null;
         activeTween?.kill();
         activeTween = null;
         readinessAbort?.abort();
@@ -569,6 +569,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         const current = generation;
         const controller = new AbortController();
         let revealAnnounced = false;
+        let incomingAnimation: Animation | null = null;
         readinessAbort = controller;
         overlay.style.animation = 'none';
         overlay.hidden = visibleTransition;
@@ -589,6 +590,17 @@ const initialThemeColor = resolveToken('sys.color.srf');
           readinessCleanup = null;
           readinessAbort = null;
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
+          if (!visibleTransition) {
+            incomingAnimation = overlay.animate(
+              [{ opacity: 1 }, { opacity: 0 }],
+              { duration: 250, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', fill: 'forwards' },
+            );
+            revealAnimation = incomingAnimation;
+            void incomingAnimation.finished.catch(() => undefined);
+            emitTransitionMilestone('veil-fade-start');
+            await incomingAnimation.ready;
+            if (current !== generation || suspended) return;
+          }
           emitTransitionMilestone('preview-gate-open');
           openImagePreviewUpgrade();
           revealAnnounced = true;
@@ -601,36 +613,21 @@ const initialThemeColor = resolveToken('sys.color.srf');
             window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
             return;
           }
-          emitTransitionMilestone('veil-fade-start');
-          await new Promise<void>((resolve) => {
-            let timer: ReturnType<typeof setTimeout> | null = null;
-            let settled = false;
-            const cleanup = () => {
-              if (settled) return;
-              settled = true;
-              if (timer !== null) clearTimeout(timer);
-              overlay.removeEventListener('transitionend', onTransitionEnd);
-              overlay.style.removeProperty('transition');
-              if (revealCleanup === cleanup) revealCleanup = null;
-              resolve();
-            };
-            const onTransitionEnd = (event: TransitionEvent) => {
-              if (event.target !== overlay || event.propertyName !== 'opacity') return;
-              cleanup();
-            };
-            revealCleanup = cleanup;
-            overlay.addEventListener('transitionend', onTransitionEnd);
-            overlay.style.transition = 'opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-            overlay.style.opacity = '0';
-            timer = setTimeout(cleanup, 250);
-          });
+          await incomingAnimation?.finished;
           if (current !== generation || suspended) return;
+          overlay.style.opacity = '0';
+          if (revealAnimation === incomingAnimation) revealAnimation = null;
+          incomingAnimation.cancel();
           emitTransitionMilestone('veil-fade-end');
           overlay.hidden = true;
           overlay.dataset.vcdInitialReveal = 'complete';
           window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
         } catch {
           if (current === generation) {
+            if (incomingAnimation && revealAnimation === incomingAnimation) {
+              revealAnimation.cancel();
+              revealAnimation = null;
+            }
             controller.abort();
             readinessCleanup?.();
             readinessCleanup = null;
