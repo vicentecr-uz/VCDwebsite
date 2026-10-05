@@ -13,7 +13,11 @@ class FakeElement {
     this.listeners = {};
     this.attributes = {};
     this.dataset = {};
-    this.style = { setProperty: (key, value) => { this.style[key] = value; }, getPropertyValue: (key) => this.style[key] ?? '' };
+    this.style = {
+      setProperty: (key, value) => { this.style[key] = value; },
+      getPropertyValue: (key) => this.style[key] ?? '',
+      removeProperty: (key) => { delete this.style[key]; },
+    };
     this.classList = {
       values: new Set(),
       add: (...values) => values.forEach((value) => this.classList.values.add(value)),
@@ -27,11 +31,12 @@ class FakeElement {
   dispatch(type, event = {}) { for (const callback of this.listeners[type] ?? []) callback({ preventDefault() {}, ...event }); }
   closest(selector) {
     if (selector === '.header-menu__item') return this.kind === 'item' ? this : this.parent;
-    if (selector === '.header-trigger') return this.kind === 'trigger' ? this : this.parent?.trigger;
+    if (selector === '.header-trigger') return this.kind === 'trigger' ? this : this.trigger ?? this.parent?.trigger;
     return null;
   }
   querySelector(selector) {
     if (selector === '.header-menu__link-label') return this.label;
+    if (selector === '[data-current-page-note]') return this.note;
     if (selector.includes('not([data-current-page])')) return this.fallback ?? this.trigger?.fallback ?? null;
     if (selector === '.header-trigger__panel-bg') return this.panelBg;
     return null;
@@ -44,6 +49,8 @@ class FakeElement {
   animate() { this.animateCalls = (this.animateCalls ?? 0) + 1; const animation = { cancel() {} }; (this.animations ??= []).push(animation); return animation; }
   getBoundingClientRect() { return { width: this.width ?? 100, height: this.height }; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
+  removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute(name, enabled) { if (enabled) this.setAttribute(name, ''); else this.removeAttribute(name); }
   hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
   matches(selector) { return selector.includes('.is-menu-open') && this.classList.contains('is-menu-open'); }
   focus() { globalThis.document.activeElement = this; this.focused = true; }
@@ -57,6 +64,7 @@ function createHarness({
   analytics = true,
   analyticsDomains = 'example.test',
   pathname = '/work',
+  linkPaths = ['/work', '/work'],
   hostname = 'example.test',
   analyticsThrows = false,
   analyticsRejects = false,
@@ -69,13 +77,15 @@ function createHarness({
   let now = 0;
   const triggers = [new FakeElement('trigger'), new FakeElement('trigger')];
   triggers[0].dataset.menuOpen = 'true';
-  const links = triggers.map((trigger) => {
+  const links = triggers.map((trigger, index) => {
     trigger.panelBg = new FakeElement('panel-bg', trigger);
     trigger.fallback = new FakeElement('fallback', trigger);
     const item = new FakeElement('item', trigger);
     item.trigger = trigger;
+    if (linkPaths[index] === pathname) item.classList.add('header-menu__item--current-page');
     const link = new FakeElement('link', item);
-    link.setAttribute('data-current-page', '');
+    link.href = `https://example.test${linkPaths[index]}`;
+    if (linkPaths[index] === pathname) link.setAttribute('data-current-page', '');
     link.label = new FakeElement('label', link);
     const note = new FakeElement('note', item);
     item.link = link;
@@ -94,11 +104,17 @@ function createHarness({
   globalThis.document = {
     hidden: false,
     activeElement: null,
-    querySelectorAll: (selector) => selector.includes('[data-current-page]') || selector === '.header-menu__link' ? links : notes,
+    querySelectorAll: (selector) => {
+      if (selector === '[data-current-page]') return links.filter((link) => link.hasAttribute('data-current-page'));
+      if (selector === '.header-menu__link') return links;
+      if (selector.includes('.header-menu__item--current-page')) return notes.filter((note) => note.parent?.classList.contains('header-menu__item--current-page'));
+      return notes;
+    },
     querySelector: (selector) => selector === 'script[data-website-id]' ? analyticsScript : triggers[0].fallback,
     documentElement: { clientWidth: 1200 },
     fonts: { ready: Promise.resolve() },
     addEventListener: (type, callback) => { (documentListeners[type] ??= []).push(callback); },
+    dispatchEvent: (event) => { for (const callback of documentListeners[event.type] ?? []) callback(event); },
   };
   globalThis.window = {
     matchMedia: () => ({ matches: false }),
@@ -145,7 +161,10 @@ function createHarness({
     }
     now = target;
   };
-  return { links, notes, items, triggers, timers, values, advance, documentListeners, analyticsEvents, executeController };
+  const navigate = (path) => document.dispatchEvent({
+    type: 'header:navigation-commit', detail: { url: new URL(`https://example.test${path}`) },
+  });
+  return { links, notes, items, triggers, timers, values, advance, navigate, documentListeners, analyticsEvents, executeController };
 }
 
 function click(link, detail = 1) { link.dispatch('click', { detail, button: 0 }); }
@@ -464,5 +483,55 @@ for (const options of [{ analyticsThrows: true }, { analyticsRejects: true }]) {
   assert.equal(h.notes[0].textContent, "who's a good boy?");
   assert.equal(h.analyticsEvents.some(([name]) => name === 'header-story-main-not-playing'), false);
 }
+
+{
+  const h = createHarness({ stored: true, linkPaths: ['/work', '/about'] });
+  for (let index = 0; index < 3; index += 1) readClick(h, h.links[0]);
+  click(h.links[0]);
+  h.advance(100);
+  assert.equal(h.items[0].classList.contains('is-removed'), true);
+  h.navigate('/about');
+  h.triggers[0].dispatch('header:trigger-close');
+  assert.equal(h.items[0].classList.contains('is-removed'), true);
+  assert.equal(h.items[0].hasAttribute('inert'), true);
+  h.triggers[0].dispatch('header:trigger-open');
+  assert.equal(h.items[0].classList.contains('is-removed'), false);
+  assert.equal(h.items[0].hasAttribute('inert'), false);
+  h.triggers[1].dispatch('header:trigger-open');
+  assert.equal(h.items[1].classList.contains('is-removed'), false);
+  assert.equal(h.links[0].hasAttribute('data-current-page'), false);
+  assert.equal(h.links[1].hasAttribute('data-current-page'), true);
+}
+
+{
+  const h = createHarness({ stored: true });
+  for (let index = 0; index < 3; index += 1) readClick(h, h.links[0]);
+  click(h.links[0]);
+  h.advance(100);
+  h.navigate('/about');
+  h.triggers[0].dispatch('header:trigger-open');
+  assert.equal(h.items[0].classList.contains('is-removed'), false);
+  assert.equal(h.items[1].classList.contains('is-removed'), true);
+  assert.equal(h.items[1].hasAttribute('inert'), true);
+  h.triggers[1].dispatch('header:trigger-open');
+  assert.equal(h.items[1].classList.contains('is-removed'), false);
+  assert.equal(h.items[1].hasAttribute('inert'), false);
+}
+
+{
+  const h = createHarness({ stored: true, linkPaths: ['/work', '/about'] });
+  for (let index = 0; index < 3; index += 1) readClick(h, h.links[0]);
+  h.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(h.items[0].classList.contains('is-removing'), true);
+  h.navigate('/about');
+  h.triggers[0].dispatch('header:trigger-open');
+  assert.equal(h.items[0].classList.contains('is-removed'), false);
+  h.advance(100);
+  assert.equal(h.items[0].classList.contains('is-removed'), false);
+  assert.equal(h.items[1].classList.contains('is-removed'), false);
+}
+
+assert.match(source, /\.header-menu__item\.is-removed/);
+assert.match(source, /\.header-menu__item\.is-removing/);
 
 console.log('header-current-page: ok');
