@@ -141,9 +141,8 @@
     });
     applyMetrics(result, metrics);
     const template = source.querySelector(".header-trigger__char");
-    const masks = [];
     const starters = [];
-    if (!template) return { element: result, masks, start: () => [] };
+    if (!template) return { element: result, start: () => [] };
     codepoints(text).forEach((character, index) => {
       const char = template.cloneNode(false);
       char.style.cssText = "";
@@ -213,9 +212,8 @@
       mask.style.setProperty("--char-filter", "none");
       mask.append(char);
       result.append(mask);
-      masks.push(mask);
     });
-    return { element: result, masks, start: (anchor, elapsed) => starters.map((start) => start(anchor, elapsed)) };
+    return { element: result, start: (anchor, elapsed) => starters.map((start) => start(anchor, elapsed)) };
   };
   const charTimings = (element, text, mode) =>
     codepoints(text).map((_, index) => {
@@ -324,8 +322,6 @@
       visibility: "visible",
     });
     applyMetrics(overlay, pending.fontMetrics);
-    const ownedMasks = new Set();
-    const maskAnimations = new Map();
     const fixed = sourceText === targetText;
     const outgoingLayer = layer(
       source,
@@ -336,7 +332,6 @@
       fixed,
       pending.fromCharTimings,
     );
-    outgoingLayer.masks.forEach((mask) => ownedMasks.add(mask));
     overlay.append(outgoingLayer.element);
     const incomingLayer = fixed
       ? outgoingLayer
@@ -350,45 +345,8 @@
           pending.toCharTimings,
         );
     if (!fixed) overlay.append(incomingLayer.element);
-    incomingLayer.masks.forEach((mask) => ownedMasks.add(mask));
     stack.append(overlay);
     const ownedAnimations = [];
-    const setMaskFilter = (mask, blurPx) => {
-      mask.style.setProperty("--char-filter", blurPx > 0 ? `blur(${blurPx}px)` : "none");
-    };
-    const animateMask = (mask, { opacity, blurPx, durationMs, delayMs = 0, easing = "ease" }) => {
-      if (!ownedMasks.has(mask)) return false;
-      const current = getComputedStyle(mask);
-      const previous = maskAnimations.get(mask);
-      const initial = { opacity: current.opacity, filter: current.filter || "none" };
-      previous?.cancel?.();
-      mask.style.transition = "none";
-      const final = { opacity: String(opacity), filter: blurPx > 0 ? `blur(${blurPx}px)` : "none" };
-      mask.style.opacity = final.opacity;
-      setMaskFilter(mask, blurPx);
-      if (!(durationMs > 0)) {
-        maskAnimations.delete(mask);
-        return true;
-      }
-      const prefix = Math.max(delayMs, 0);
-      const total = prefix + durationMs;
-      const keyframes = [
-        { ...initial, offset: 0, ...(prefix === 0 ? { easing } : {}) },
-        ...(prefix > 0 ? [{ ...initial, offset: prefix / total, easing }] : []),
-        { ...final, offset: 1 },
-      ];
-      const animation = mask.animate(keyframes, { duration: total, delay: 0, easing: "linear", fill: "both" });
-      animation.id = `vcd-header-title-mask-${opacity}-${blurPx}`;
-      maskAnimations.set(mask, animation);
-      animation.pause();
-      animation.currentTime = 0;
-      window.requestAnimationFrame(() => {
-        if (maskAnimations.get(mask) !== animation) return;
-        animation.play();
-        animation.startTime = window.performance.now();
-      });
-      return true;
-    };
     const timelineAnchor = document.timeline?.currentTime;
     const elapsed = Date.now() - pending.startedAt;
     const startLayer = (entry) => {
@@ -396,57 +354,16 @@
     };
     startLayer(outgoingLayer);
     if (!fixed) startLayer(incomingLayer);
-    const timingEnd = (timings, fallback) =>
-      Array.isArray(timings)
-        ? Math.max(0, ...timings.map((item) => item.durationMs + item.delayMs))
-        : fallback;
-    const endMs = Math.max(
-      timingEnd(pending.fromCharTimings, (codepoints(sourceText).length - 1) * 30 + 150),
-      timingEnd(pending.toCharTimings, progressiveDelay(codepoints(targetText).length - 1, codepoints(targetText).length) + 250),
-    );
-    const finishesAt =
-      Date.now() +
-      (fixed ? 0 : Math.max(0, endMs - (Date.now() - pending.startedAt)));
-    let wordmarkMasks;
     return {
-      targetTitle: targetText,
-      animateMask,
-      wordmarkChars: (homeSource) => {
-        if (wordmarkMasks) return wordmarkMasks;
-        const homeText = homeSource?.textContent?.replace(/\s+/g, " ").trim();
-        if (!homeSource || !homeText) return null;
-        const homeGeometry = geometryFor(homeSource, homeText);
-        if (!validGeometry(homeGeometry, codepoints(homeText).length)) return null;
-        const homeLayer = layer(
-          homeSource,
-          homeText,
-          homeGeometry,
-          pending.fontMetrics,
-          "in",
-          true,
-          null,
-        );
-        homeLayer.masks.forEach((mask) => ownedMasks.add(mask));
-        homeLayer.masks.forEach((mask) => {
-          mask.style.opacity = "0";
-          mask.style.setProperty("--char-blur", "4px");
-          mask.style.removeProperty("--char-filter");
-        });
-        incomingLayer.masks.forEach((mask) => mask.style.removeProperty("--char-filter"));
-        overlay.append(homeLayer.element);
-        void overlay.offsetWidth;
-        wordmarkMasks = { page: incomingLayer.masks, home: homeLayer.masks };
-        return wordmarkMasks;
-      },
+      finished: Promise.all(ownedAnimations.map((animation) => animation.finished)).then(
+        () => true,
+        () => false,
+      ),
       cleanup: () => {
         ownedAnimations.forEach((animation) => animation.cancel?.());
-        maskAnimations.forEach((animation) => animation.cancel?.());
-        maskAnimations.clear();
         stack.style.visibility = previousVisibility;
         overlay.remove();
       },
-      finishesAt,
-      remainingMs: Math.max(0, finishesAt - Date.now()),
     };
   };
 })();

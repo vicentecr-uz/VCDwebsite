@@ -10,7 +10,6 @@ function fixture() {
   const win = new Window({ url: 'https://vcd.test/project' });
   const doc = win.document;
   const animateCalls: Array<{ element: HTMLElement; keyframes: Keyframe[]; options: KeyframeAnimationOptions; animation: any }> = [];
-  const presentations = new WeakMap<Element, { opacity: string; filter: string }>();
   const chars = (text: string, animation = '') => [...text].map((char) => `<span class="header-trigger__char" style="animation:${animation}">${char}</span>`).join('');
   doc.body.innerHTML = `<div class="header-trigger__wordmark-stack"><h1 class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">${chars('Project', 'page-in 1s')}</h1><span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">${chars('Home', 'home-in 1s')}</span></div>`;
   const stack = doc.querySelector<HTMLElement>('.header-trigger__wordmark-stack')!;
@@ -26,23 +25,22 @@ function fixture() {
     return rects.get(this) ?? { left: 0, top: 0, width: this.textContent?.length ? this.textContent.length * 16 : 64, height: 24 };
   };
   win.Range.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 64, height: 24 });
-  const frames: Array<() => void> = [];
-  let performanceNow = 7000;
   win.HTMLElement.prototype.animate = function (keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-    const animation = { id: '', startTime: null, currentTime: null, cancel: () => { animation.cancelled = true; }, pause: () => { animation.paused = true; }, play: () => { animation.paused = false; }, paused: false, cancelled: false } as any;
+    let finish!: () => void;
+    let cancel!: (reason: Error) => void;
+    const finished = new Promise<void>((resolve, reject) => { finish = resolve; cancel = reject; });
+    const animation = { id: '', startTime: null, finished, finish, cancel() { this.cancelled = true; cancel(new Error('canceled')); }, cancelled: false } as any;
     animateCalls.push({ element: this, keyframes, options, animation });
     return animation;
   };
-  win.requestAnimationFrame = (callback: FrameRequestCallback) => { frames.push(() => callback(0)); return frames.length; };
-  Object.defineProperty(win, 'performance', { configurable: true, value: { now: () => performanceNow } });
   Object.defineProperty(doc, 'timeline', { configurable: true, value: { currentTime: 5000 } });
-  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: presentations.get(element)?.opacity || element?.style.opacity || '1', filter: presentations.get(element)?.filter || 'none' });
+  const computed = (element: HTMLElement) => ({ font: '400 16px sans-serif', fontSize: '16px', lineHeight: '24px', letterSpacing: '0px', fontKerning: 'auto', fontFeatureSettings: 'normal', opacity: element?.style.opacity || '1', filter: element?.style.filter || 'none' });
   const run = new Function('window', 'document', 'getComputedStyle', source);
   run(win, doc, computed);
-  return { win, doc, stack, page, home, animateCalls, presentations, frame: () => { const pending = frames.splice(0); pending.forEach((callback) => callback()); }, setPerformanceNow: (value: number) => { performanceNow = value; } };
+  return { win, doc, stack, page, home, animateCalls };
 }
 
-test('title transition uses shared zero-delay WAAPI effects and preserves reusable masks', () => {
+test('title transition preserves shared zero-delay effects and descender bounds', () => {
   const f = fixture();
   const sourceChar = f.page.querySelector<HTMLElement>('.header-trigger__char')!;
   const sourceAnimation = sourceChar.style.animation;
@@ -82,37 +80,6 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   expect(incomingCall.animation.startTime).toBeLessThanOrEqual(5000);
   expect(f.animateCalls.every(({ animation }) => animation.startTime === incomingCall.animation.startTime)).toBe(true);
 
-  const animationCount = f.animateCalls.length;
-  const first = bridge.wordmarkChars(f.home);
-  const second = bridge.wordmarkChars(f.home);
-  expect(first).toBe(second);
-  expect(incomingChar.parentElement).toBe(first.page[0]);
-  expect(first.page).not.toBe(first.home);
-  expect(first.home.every((mask: HTMLElement) => mask.style.opacity === '0')).toBe(true);
-  expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-blur') === '4px')).toBe(true);
-  expect(first.page.length).toBe(4);
-  expect(first.home.length).toBe(4);
-  expect(first.home.every((mask: HTMLElement) => mask.style.getPropertyValue('--char-filter') === '')).toBe(true);
-  expect(f.animateCalls.length).toBe(animationCount);
-  expect(f.stack.querySelectorAll('.header-navigation-title-layer').length).toBe(3);
-  const innerStartTime = incomingCall.animation.startTime;
-  f.presentations.set(first.home[0], { opacity: '0.43', filter: 'blur(1.7px)' });
-  expect(bridge.animateMask(first.home[0], { opacity: 1, blurPx: 0, durationMs: 250, delayMs: 40, easing: 'ease' })).toBe(true);
-  const maskAnimation = f.animateCalls.at(-1)!;
-  expect(maskAnimation.animation.paused).toBe(true);
-  expect(maskAnimation.animation.currentTime).toBe(0);
-  f.setPerformanceNow(8123);
-  f.frame();
-  expect(maskAnimation.animation.paused).toBe(false);
-  expect(maskAnimation.animation.startTime).toBe(8123);
-  expect(maskAnimation.options).toEqual({ duration: 290, delay: 0, easing: 'linear', fill: 'both' });
-  expect(maskAnimation.keyframes[0]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 0 });
-  expect(maskAnimation.keyframes[1]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)', offset: 40 / 290, easing: 'ease' });
-  expect(bridge.animateMask(first.home[0], { opacity: 0, blurPx: 4, durationMs: 100, delayMs: 0 })).toBe(true);
-  expect(maskAnimation.animation.cancelled).toBe(true);
-  const interruptedMask = f.animateCalls.at(-1)!;
-  expect(interruptedMask.keyframes[0]).toMatchObject({ opacity: '0.43', filter: 'blur(1.7px)' });
-  expect(incomingCall.animation.startTime).toBe(innerStartTime);
   const visibility = f.stack.style.visibility;
   bridge.cleanup();
   expect(f.animateCalls.every(({ animation }) => animation.cancelled)).toBe(true);
@@ -120,40 +87,26 @@ test('title transition uses shared zero-delay WAAPI effects and preserves reusab
   expect(f.stack.style.visibility).toBe(visibility === 'hidden' ? '' : visibility);
 });
 
-test('queued mask starts cannot resurrect canceled or replaced effects', () => {
+test('title completion waits for the last native letter effect', async () => {
   const f = fixture();
   const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Play' });
-  const homeMask = bridge.wordmarkChars(f.home).home[0];
-
-  expect(bridge.animateMask(homeMask, { opacity: 1, blurPx: 0, durationMs: 250 })).toBe(true);
-  const first = f.animateCalls.at(-1)!.animation;
-  expect(bridge.animateMask(homeMask, { opacity: 0, blurPx: 4, durationMs: 100 })).toBe(true);
-  const second = f.animateCalls.at(-1)!.animation;
+  let complete = false;
+  void bridge.finished.then((finished: boolean) => { complete = finished; });
+  for (const { animation } of f.animateCalls.slice(0, -1)) animation.finish();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(complete).toBe(false);
+  f.animateCalls.at(-1)!.animation.finish();
+  expect(await bridge.finished).toBe(true);
   bridge.cleanup();
-  f.frame();
-
-  expect(first.paused).toBe(true);
-  expect(second.paused).toBe(true);
-  expect(first.cancelled).toBe(true);
-  expect(second.cancelled).toBe(true);
 });
 
-test('replaced mask starts leave only the current effect running', () => {
+test('canceled title completion cannot authorize a queued hover', async () => {
   const f = fixture();
   const bridge = (f.win as any).__vcdHeaderTitleTransition({ title: 'Project', targetTitle: 'Play' });
-  const homeMask = bridge.wordmarkChars(f.home).home[0];
-
-  bridge.animateMask(homeMask, { opacity: 1, blurPx: 0, durationMs: 250 });
-  const first = f.animateCalls.at(-1)!.animation;
-  bridge.animateMask(homeMask, { opacity: 0, blurPx: 4, durationMs: 100 });
-  const second = f.animateCalls.at(-1)!.animation;
-  f.frame();
-
-  expect(first.paused).toBe(true);
-  expect(second.paused).toBe(false);
-  expect(first.startTime).toBeNull();
-  expect(second.startTime).toBe(7000);
   bridge.cleanup();
+  expect(await bridge.finished).toBe(false);
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
 });
 
 test('negative measured delay resumes against the same timeline anchor', () => {
