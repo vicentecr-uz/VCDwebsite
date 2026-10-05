@@ -147,7 +147,7 @@
     codepoints(text).forEach((character, index) => {
       const char = template.cloneNode(false);
       char.style.cssText = "";
-      char.className = `${template.className} header-navigation-title-char`;
+      char.className = "header-trigger__char header-navigation-title-char";
       char.textContent = character;
       Object.assign(char.style, {
         position: "relative",
