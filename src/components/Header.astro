@@ -757,6 +757,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
     let navigationClosing = false;
     let navigationOutgoing = false;
+    let menuWasOpenAtNavigationStart = false;
     const releaseNavigationWeights = () => links.forEach((link) => { delete link.dataset.navigationCurrent; });
 
     const clearCloseTimer = () => {
@@ -900,6 +901,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:force-close', () => {
       navigationClosing = false;
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
       releaseNavigationWeights();
     });
 
@@ -913,6 +915,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     document.addEventListener('header:navigation-start', () => {
+      menuWasOpenAtNavigationStart = isOpen();
       navigationClosing = true;
       navigationOutgoing = true;
       if (isOpen()) links.forEach((link) => {
@@ -921,7 +924,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     document.addEventListener('header:navigation-reveal', () => {
       if (!navigationOutgoing) return;
+      const reopenHoveredMenu =
+        !menuWasOpenAtNavigationStart &&
+        !isTapMode() &&
+        trigger.matches(':hover') &&
+        !isDevEditing();
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
+      if (reopenHoveredMenu) {
+        navigationClosing = false;
+        releaseNavigationWeights();
+        openMenu();
+        return;
+      }
       closeMenu(true);
       if (!closeTimer) {
         navigationClosing = false;
@@ -931,6 +946,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.addEventListener('header:navigation-cancel', () => {
       navigationClosing = false;
       navigationOutgoing = false;
+      menuWasOpenAtNavigationStart = false;
       releaseNavigationWeights();
       if (isOpen() && !trigger.matches(':hover') && !trigger.contains(document.activeElement)) closeMenu(true);
     });
@@ -1290,6 +1306,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
+    const homeWordmarkTitle = () => homeWordmarkEl?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    const canInteractDuringNavigation = () => {
+      const transition = headerSlot?.__vcdTitleTransition;
+      return Boolean(
+        navigationOutgoing &&
+          transition &&
+          typeof transition.targetTitle === 'string' &&
+          transition.targetTitle !== homeWordmarkTitle(),
+      );
+    };
+
     const finishNavigationTitle = (holdMs = 0) => {
       const transition = headerSlot?.__vcdTitleTransition;
       const finish = () => {
@@ -1319,18 +1346,32 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const next = incoming.querySelector<HTMLElement>('.header-trigger--start');
       const nextWordmark = next?.querySelector<HTMLElement>('.header-trigger__wordmark--page');
       if (!next || !nextWordmark || !pageWordmark) return;
-      invalidateWordmarkRun();
-      wordmarkIsOpen = false;
+      const preserveOpen = wordmarkIsOpen && !!headerSlot?.__vcdTitleTransition;
+      if (!preserveOpen) {
+        invalidateWordmarkRun();
+        wordmarkIsOpen = false;
+      }
       pageWordmark.replaceWith(nextWordmark);
       pageWordmark = nextWordmark;
       pageChars = [...nextWordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
-      homeChars.forEach((char) => {
-        char.style.setProperty('--char-duration', '0s');
-        char.style.setProperty('--char-delay', '0s');
-        char.style.setProperty('--char-blur', '0px');
-        char.style.opacity = '0';
-      });
-      homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      if (preserveOpen) {
+        pageChars.forEach((char) => {
+          char.style.setProperty('--char-duration', '0s');
+          char.style.setProperty('--char-delay', '0s');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = '0';
+        });
+        nextWordmark.setAttribute('aria-hidden', 'true');
+        homeWordmarkEl?.setAttribute('aria-hidden', 'false');
+      } else {
+        homeChars.forEach((char) => {
+          char.style.setProperty('--char-duration', '0s');
+          char.style.setProperty('--char-delay', '0s');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = '0';
+        });
+        homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      }
       startTrigger.dataset.headerTitleSwap = next.dataset.headerTitleSwap;
       startTrigger.classList.toggle('header-trigger--home', next.classList.contains('header-trigger--home'));
       document.querySelectorAll('.site-header .header-trigger__brand-link').forEach((brand, index) => {
@@ -1346,7 +1387,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       titleEntryEnd = Math.max(getFadeOutEnd(pageChars.length), getFadeInEnd(homeChars.length, 0));
       titleCloseScale = 0.18 / titleEntryEnd;
       applyWordmarkKerning();
-      finishNavigationTitle();
+      if (!preserveOpen) finishNavigationTitle();
     });
 
     const runWordmarkOpen = () => {
@@ -1371,13 +1412,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const onWordmarkPointerActive = () => {
       if (isDevEditing()) return;
-      if (navigationOutgoing) return;
-      if (startTrigger.dataset.headerTitleSwap !== 'true') return;
+      if (navigationOutgoing && !canInteractDuringNavigation()) return;
+      if (!navigationOutgoing && startTrigger.dataset.headerTitleSwap !== 'true') return;
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
     const onWordmarkPointerInactive = () => {
-      if (navigationOutgoing) return;
+      if (navigationOutgoing && !canInteractDuringNavigation()) return;
       if (wordmarkIsOpen) runWordmarkClose();
     };
 
@@ -2427,16 +2468,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     display: inline;
     margin: 0;
     transition: none;
-  }
-
-  @keyframes vcd-header-title-out {
-    from { opacity: 1; filter: none; }
-    to { opacity: 0; filter: blur(4px); }
-  }
-
-  @keyframes vcd-header-title-in {
-    from { opacity: 0; filter: blur(4px); }
-    to { opacity: 1; filter: none; }
   }
 
   .header-trigger__wordmark--home .header-trigger__char {
