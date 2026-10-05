@@ -126,7 +126,6 @@
     geometry,
     metrics,
     mode,
-    startedAt,
     fixed,
     timings,
   ) => {
@@ -142,28 +141,79 @@
     });
     applyMetrics(result, metrics);
     const template = source.querySelector(".header-trigger__char");
-    if (!template) return result;
+    const starters = [];
+    if (!template) return { element: result, start: () => [] };
     codepoints(text).forEach((character, index) => {
       const char = template.cloneNode(false);
       char.style.cssText = "";
       char.className = "header-trigger__char header-navigation-title-char";
       char.textContent = character;
+      const duration = timings?.[index]?.durationMs ?? (mode === "out" ? 150 : 250);
+      const delay =
+        timings?.[index]?.delayMs ??
+        (mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length));
+      const initial = mode === "out"
+        ? { opacity: "1", filter: "none" }
+        : { opacity: "0", filter: "blur(4px)" };
+      const final = mode === "out"
+        ? { opacity: "0", filter: "blur(4px)" }
+        : { opacity: "1", filter: "none" };
       Object.assign(char.style, {
+        position: "relative",
+        left: "0",
+        top: "0",
+        display: "inline-block",
+        margin: "0",
+        paddingBlock: "var(--wordmark-trim, 0.1515em)",
+        marginBlock: "calc(-1 * var(--wordmark-trim, 0.1515em))",
+        transition: "none",
+        opacity: fixed ? "1" : initial.opacity,
+        filter: fixed ? "none" : initial.filter,
+        whiteSpace: "nowrap",
+        animation: "none",
+      });
+      if (!fixed && duration > 0) {
+        const prefix = Math.max(delay, 0);
+        const total = prefix + duration;
+        // A flat prefix keeps delayed letters active while the page swap is in flight.
+        const keyframes = [
+          { ...initial, offset: 0, ...(prefix === 0 ? { easing: "ease" } : {}) },
+          ...(prefix > 0
+            ? [{ ...initial, offset: prefix / total, easing: "ease" }]
+            : []),
+          { ...final, offset: 1 },
+        ];
+        starters.push((anchor, elapsed) => {
+          const animation = char.animate(keyframes, {
+            duration: total,
+            delay: 0,
+            easing: "linear",
+            fill: "both",
+          });
+          animation.id = `vcd-header-title-${mode}-${index}`;
+          if (Number.isFinite(anchor)) {
+            animation.startTime =
+              anchor - elapsed - Math.max(-delay, 0);
+          }
+          return animation;
+        });
+      } else if (!fixed) {
+        Object.assign(char.style, final);
+      }
+      const mask = document.createElement("span");
+      mask.className = "header-navigation-title-mask";
+      Object.assign(mask.style, {
         position: "absolute",
         left: `${geometry.offsets[index]}em`,
         top: "0",
-        margin: "0",
-        transition: "none",
-        opacity: fixed ? "1" : "0",
-        filter: fixed ? "blur(0)" : "blur(4px)",
-        whiteSpace: "nowrap",
-        animation: fixed
-          ? "none"
-          : `${mode === "out" ? "vcd-header-title-out" : "vcd-header-title-in"} ${timings?.[index]?.durationMs ?? (mode === "out" ? 150 : 250)}ms ease ${(timings?.[index]?.delayMs ?? (mode === "out" ? index * 30 : progressiveDelay(index, codepoints(text).length))) - (Date.now() - startedAt)}ms both`,
+        opacity: "1",
       });
-      result.append(char);
+      mask.style.setProperty("--char-blur", "0px");
+      mask.style.setProperty("--char-filter", "none");
+      mask.append(char);
+      result.append(mask);
     });
-    return result;
+    return { element: result, start: (anchor, elapsed) => starters.map((start) => start(anchor, elapsed)) };
   };
   const charTimings = (element, text, mode) =>
     codepoints(text).map((_, index) => {
@@ -231,6 +281,7 @@
           sourceText = pending.title.replace(/\s+/g, " ").trim();
         }
       }
+      if (sourceText === targetText) return null;
       const outgoingText = pending.title.replace(/\s+/g, " ").trim();
       const fromGeometry = geometryFor(outgoingSource, outgoingText);
       const toGeometry =
@@ -272,50 +323,47 @@
     });
     applyMetrics(overlay, pending.fontMetrics);
     const fixed = sourceText === targetText;
-    overlay.append(
-      layer(
-        source,
-        sourceText,
-        pending.fromGeometry,
-        pending.fontMetrics,
-        "out",
-        pending.startedAt,
-        fixed,
-        pending.fromCharTimings,
-      ),
+    const outgoingLayer = layer(
+      source,
+      sourceText,
+      pending.fromGeometry,
+      pending.fontMetrics,
+      "out",
+      fixed,
+      pending.fromCharTimings,
     );
-    if (!fixed)
-      overlay.append(
-        layer(
+    overlay.append(outgoingLayer.element);
+    const incomingLayer = fixed
+      ? outgoingLayer
+      : layer(
           source,
           targetText,
           pending.toGeometry,
           pending.fontMetrics,
           "in",
-          pending.startedAt,
           false,
           pending.toCharTimings,
-        ),
-      );
+        );
+    if (!fixed) overlay.append(incomingLayer.element);
     stack.append(overlay);
-    const timingEnd = (timings, fallback) =>
-      Array.isArray(timings)
-        ? Math.max(0, ...timings.map((item) => item.durationMs + item.delayMs))
-        : fallback;
-    const endMs = Math.max(
-      timingEnd(pending.fromCharTimings, (codepoints(sourceText).length - 1) * 30 + 150),
-      timingEnd(pending.toCharTimings, progressiveDelay(codepoints(targetText).length - 1, codepoints(targetText).length) + 250),
-    );
-    const finishesAt =
-      Date.now() +
-      (fixed ? 0 : Math.max(0, endMs - (Date.now() - pending.startedAt)));
+    const ownedAnimations = [];
+    const timelineAnchor = document.timeline?.currentTime;
+    const elapsed = Date.now() - pending.startedAt;
+    const startLayer = (entry) => {
+      ownedAnimations.push(...entry.start(timelineAnchor, elapsed));
+    };
+    startLayer(outgoingLayer);
+    if (!fixed) startLayer(incomingLayer);
     return {
+      finished: Promise.all(ownedAnimations.map((animation) => animation.finished)).then(
+        () => true,
+        () => false,
+      ),
       cleanup: () => {
+        ownedAnimations.forEach((animation) => animation.cancel?.());
         stack.style.visibility = previousVisibility;
         overlay.remove();
       },
-      finishesAt,
-      remainingMs: Math.max(0, finishesAt - Date.now()),
     };
   };
 })();

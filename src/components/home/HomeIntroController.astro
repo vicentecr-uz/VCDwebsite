@@ -15,6 +15,10 @@ const sections = page.sections.map((section) => section.type === 'bodyText'
   ? { ...section, paragraphs: (section.paragraphs as string[]).map(renderHomeIntroAction) }
   : section);
 const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.sections) : undefined;
+const rawIntroHeight = Number(page.introHeight);
+const homeIntroHeight = Number.isFinite(rawIntroHeight)
+  ? Math.min(100, Math.max(1, Math.round(rawIntroHeight)))
+  : 75;
 const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { translateYPx?: number }).translateYPx ?? 0;
 ---
 
@@ -25,7 +29,7 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   data-state="pending"
   data-reduced-motion-preview="false"
   aria-label="Introduction"
-  style={`${columnStyle ?? ''};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale};--home-intro-exit-y:-${introTranslateY}px`}
+  style={`${columnStyle ?? ''};--home-intro-height:${homeIntroHeight};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale};--home-intro-exit-y:-${introTranslateY}px`}
 >
   <div class="home-intro-surface__column">
     <div class="listing-main">
@@ -46,7 +50,7 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   try {
     if (sessionStorage.getItem('vcd:home-intro-seen') === 'true') {
       const surface = document.getElementById('home-intro-surface');
-      if (surface) {
+      if (surface?.dataset.state === 'pending') {
         surface.dataset.state = 'dismissed';
         surface.hidden = true;
         surface.inert = true;
@@ -90,6 +94,17 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   .home-intro-surface__column {
     min-height: 100%;
     padding-inline: var(--page-gutter);
+  }
+
+  .home-intro-surface__column > .listing-main > :global([data-dev-project-drop-zone]:has(> .project-block--intro:first-child)) {
+    min-height: calc(var(--vh-safe, 1svh) * var(--home-intro-height, 75));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  #home-intro-surface .home-intro-surface__column > .listing-main > :global([data-dev-project-drop-zone] > .project-block--intro:first-child) {
+    margin-top: 0;
   }
 
   #home-intro-surface :global([data-home-intro-okay]) {

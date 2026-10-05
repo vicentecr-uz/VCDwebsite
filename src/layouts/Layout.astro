@@ -214,7 +214,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
     )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" /></noscript>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -281,8 +282,10 @@ const initialThemeColor = resolveToken('sys.color.srf');
         overlay.dataset.vcdInitialReveal = 'running';
         overlay.style.animation = 'none';
         mark('initial-readiness-start');
+        const intro = document.querySelector('[data-home-intro-surface]');
+        const activeHomeIntro = intro && !intro.hidden && intro.dataset.state !== 'dismissed';
         const introLayoutReady = new Promise((resolve) => {
-          if (!document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
+          if (activeHomeIntro || !document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
           window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
         });
         const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
@@ -453,6 +456,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
       let generation = 0;
       let activeTween: gsap.core.Tween | null = null;
+      let revealAnimation: Animation | null = null;
       let readinessAbort: AbortController | null = null;
       let readinessCleanup: (() => void) | null = null;
       let navigationWatchdog: ReturnType<typeof setTimeout> | null = null;
@@ -465,6 +469,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
           overlay.style.removeProperty('transition');
         }
         generation += 1;
+        revealAnimation?.cancel();
+        revealAnimation = null;
         activeTween?.kill();
         activeTween = null;
         readinessAbort?.abort();
@@ -540,7 +546,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         return { ready, cleanup: settle, get releaseReason() { return releaseReason; } };
       };
 
-      const waitForOpaquePaint = (signal: AbortSignal) =>
+      const waitForPaint = (signal: AbortSignal) =>
         new Promise<void>((resolve) => {
           let first: number | null = null;
           let second: number | null = null;
@@ -563,6 +569,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         const current = generation;
         const controller = new AbortController();
         let revealAnnounced = false;
+        let incomingAnimation: Animation | null = null;
         readinessAbort = controller;
         overlay.style.animation = 'none';
         overlay.hidden = visibleTransition;
@@ -570,48 +577,66 @@ const initialThemeColor = resolveToken('sys.color.srf');
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
-          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
           const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied', {
             release: wait.releaseReason === 'timeout' ? 'timeout' : 'resources',
           }));
           await readiness;
           if (current !== generation || suspended) return;
-          await opaquePaint;
-          if (current !== generation || suspended) return;
-          emitTransitionMilestone('fade-authorized');
           readinessCleanup?.();
           readinessCleanup = null;
-          readinessAbort = null;
+          if (!visibleTransition) {
+            incomingAnimation = overlay.animate(
+              [{ opacity: 1 }, { opacity: 0 }],
+              { duration: 250, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', fill: 'forwards' },
+            );
+            revealAnimation = incomingAnimation;
+            void incomingAnimation.finished.catch(() => undefined);
+            incomingAnimation.pause();
+            incomingAnimation.currentTime = 0;
+          }
+          await waitForPaint(controller.signal);
+          if (current !== generation || suspended) return;
+          emitTransitionMilestone('opaque-paint');
+          emitTransitionMilestone('fade-authorized');
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
-          emitTransitionMilestone('preview-gate-open');
-          openImagePreviewUpgrade();
           revealAnnounced = true;
           document.dispatchEvent(new Event('header:navigation-reveal'));
+          if (incomingAnimation) {
+            // Setting startTime cancels pending playback, so reset only after renderer readiness.
+            incomingAnimation.play();
+            await incomingAnimation.ready;
+            if (current !== generation || suspended) return;
+            incomingAnimation.startTime = performance.now();
+            emitTransitionMilestone('veil-fade-start');
+            await waitForPaint(controller.signal);
+            if (current !== generation || suspended) return;
+          }
+          readinessAbort = null;
+          emitTransitionMilestone('preview-gate-open');
+          openImagePreviewUpgrade();
           if (visibleTransition) {
             overlay.style.opacity = '0';
             emitTransitionMilestone('veil-fade-start');
-            if (visibleTransition) emitTransitionMilestone('veil-fade-end');
+            emitTransitionMilestone('veil-fade-end');
             overlay.dataset.vcdInitialReveal = 'complete';
             window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
             return;
           }
-          emitTransitionMilestone('veil-fade-start');
-          activeTween = gsap.to(overlay, {
-            opacity: 0,
-            duration: 0.25,
-            ease: REVEAL_EASE,
-            onComplete: () => {
-              emitTransitionMilestone('veil-fade-end');
-              if (current === generation) {
-                overlay.hidden = true;
-                activeTween = null;
-                overlay.dataset.vcdInitialReveal = 'complete';
-                window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
-              }
-            },
-          });
+          await incomingAnimation?.finished;
+          if (current !== generation || suspended) return;
+          overlay.style.opacity = '0';
+          if (revealAnimation === incomingAnimation) revealAnimation = null;
+          incomingAnimation.cancel();
+          emitTransitionMilestone('veil-fade-end');
+          overlay.hidden = true;
+          overlay.dataset.vcdInitialReveal = 'complete';
+          window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
         } catch {
           if (current === generation) {
+            if (incomingAnimation && revealAnimation === incomingAnimation) {
+              revealAnimation.cancel();
+              revealAnimation = null;
+            }
             controller.abort();
             readinessCleanup?.();
             readinessCleanup = null;
@@ -634,12 +659,13 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
       installPersistentNavigation({
         cover: () => {
+          const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
           invalidate();
           overlay.style.animation = 'none';
           overlay.hidden = visibleTransition;
           return new Promise<void>((resolve) => {
             if (visibleTransition) { resolve(); return; }
-            activeTween = gsap.to(overlay, { opacity: 1, duration: 0.25, ease: REVEAL_EASE, onComplete: resolve, onInterrupt: resolve });
+            activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, { opacity: 1, duration: 0.25, ease: REVEAL_EASE, onComplete: resolve, onInterrupt: resolve });
           });
         },
         reveal: () => { bindImagePreviewUpgrade(); void revealPage(); },
@@ -692,8 +718,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
           };
           if (visibleTransition) { finishExit(); return; }
           try {
+            const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
             overlay.hidden = false;
-            activeTween = gsap.to(overlay, {
+            activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, {
               opacity: 1,
               duration: 0.25,
               ease: REVEAL_EASE,

@@ -223,3 +223,37 @@ describe('home reveal choreography', () => {
     expect(mediaSelector).toContain('.project-grid__cover'); expect(mediaSelector).not.toContain('.project-grid__stack'); expect(mediaSelector).not.toContain('.project-grid__meta'); controller.destroy();
   });
 });
+
+
+test('late dismissed intro initialization restores prepared Home without waiting for a dismissal event', async () => {
+  const header = new FakeElement(); const home = new FakeElement();
+  home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+  introSurface = new FakeElement(); introSurface.dataset.state = 'pending';
+  Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+  home.ownerDocument = globalThis.document;
+  const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+  expect(header.style.opacity).toBe('0');
+  introSurface.dataset.state = 'dismissed';
+  win.emit('vcd:intro-layout-sync');
+  await Promise.resolve();
+  expect(controller.isArmed()).toBe(false);
+  expect(header.style.opacity).toBe('');
+  expect(header.style.filter).toBe('');
+  expect(header.animations).toHaveLength(0);
+  controller.destroy();
+  expect(win.listenerCount('vcd:intro-layout-sync')).toBe(0);
+});
+
+test('dismissed intro discovered during async preparation restores Home without an initialization event', async () => {
+  const header = new FakeElement(); const home = new FakeElement();
+  home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+  introSurface = new FakeElement(); introSurface.dataset.state = 'pending';
+  Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+  home.ownerDocument = globalThis.document;
+  const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+  introSurface.dataset.state = 'dismissed';
+  await controller.prepare();
+  expect(controller.isArmed()).toBe(false);
+  expect(header.style.opacity).toBe('');
+  controller.destroy();
+});
