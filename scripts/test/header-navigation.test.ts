@@ -7,10 +7,11 @@ const header = readFileSync(resolve(root, 'src/components/Header.astro'), 'utf8'
 const titleTransition = readFileSync(resolve(root, 'src/scripts/headerTitleTransition.js'), 'utf8');
 const settleMicrotasks = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
-function menuFixture() {
+function menuFixture(linkCount = 2) {
   const win = new Window();
   const doc = win.document;
-  doc.body.innerHTML = '<div id="transition-overlay" data-vcd-initial-reveal="running"></div><div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a><a class="header-menu__link">About</a><a class="header-menu__link">Play</a></div>';
+  const linksHtml = Array.from({ length: linkCount }, (_, index) => `<a class="header-menu__link">Link ${index + 1}</a>`).join('');
+  doc.body.innerHTML = `<div id="transition-overlay" data-vcd-initial-reveal="running"></div><div class="header-trigger header-trigger--start"><div class="header-trigger__panel-bg"></div><a href="/" class="header-trigger__brand-link">Home</a>${linksHtml}</div>`;
   const start = doc.querySelector<HTMLElement>('.header-trigger')!;
   const brand = start.querySelector<HTMLElement>('.header-trigger__brand-link')!;
   const links = [...start.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -58,9 +59,37 @@ test('menu stays open through navigation and commit, then exits with the incomin
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBeUndefined();
   [...f.timers.values()].forEach((timer) => timer.callback());
+  expect(f.start.dataset.menuCloseTimer).toBeUndefined();
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
 });
+
+for (const linkCount of [1, 3, 5]) {
+  test(`background close overlaps the ${linkCount}-link collapse and reopens immediately`, () => {
+    const f = menuFixture(linkCount);
+    f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter')); f.frame();
+    f.setHovered(false); f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+    const linkIntervals = f.links.map((link) => {
+      const start = parseFloat(link.style.getPropertyValue('--menu-link-delay'));
+      const duration = parseFloat(link.style.getPropertyValue('--menu-link-duration'));
+      return { start, end: start + duration, easing: link.style.getPropertyValue('--menu-link-easing') };
+    });
+    const surface = f.timings.at(-1)!;
+    const surfaceDuration = surface[0];
+    const surfaceDelay = surface[1];
+    const surfaceEnd = surfaceDelay + surfaceDuration;
+    expect(surfaceEnd).toBeCloseTo(0.18);
+    expect(surface[2]).toBe(linkIntervals[0].easing);
+    expect(surfaceEnd).toBeGreaterThanOrEqual(Math.max(...linkIntervals.map(({ end }) => end)));
+    expect(linkIntervals.every(({ start, end }) => surfaceDelay < end && surfaceEnd > start)).toBe(true);
+    expect([...f.timers.values()][0].delay).toBeGreaterThanOrEqual(surfaceEnd * 1000 + 31.99);
+    expect(f.start.classList.contains('is-menu-open')).toBe(true);
+    f.setHovered(true); f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+    expect(f.timers.size).toBe(0);
+    expect(f.timings.at(-1)![1]).toBe(0);
+    expect(f.start.classList.contains('is-menu-open')).toBe(true);
+  });
+}
 
 test('current link appearance stays stable until the retained menu finishes closing', () => {
   const f = menuFixture();
@@ -292,6 +321,17 @@ test('same-title navigation without a bridge releases the lock on commit', () =>
   f.navigate('Home'); f.commit('Home'); f.reveal();
   expect(f.start.dataset.headerTitlePending).toBeUndefined();
   expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
+});
+
+test('navigation without title motion settles the incoming wordmark immediately', () => {
+  const f = navigationFixture();
+  f.doc.dispatchEvent(new f.win.CustomEvent('header:navigation-start', {
+    detail: { animateTitle: false, pending: { title: 'Home', targetTitle: 'Knife' } },
+  }));
+  f.commit('Knife');
+  expect(f.stack.querySelector('.header-navigation-title')).toBeNull();
+  expect(f.start.dataset.headerTitlePending).toBeUndefined();
+  expect([...f.page().children].every((char) => (char as HTMLElement).style.opacity === '1')).toBe(true);
 });
 
 test('both brand links update on commits without replacing either anchor', () => {
