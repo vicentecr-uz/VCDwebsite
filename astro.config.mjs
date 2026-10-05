@@ -3,6 +3,7 @@ import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
 
@@ -2667,6 +2668,19 @@ export function stubLapseWhenUnavailable() {
   };
 }
 
+const isolatedViteCommandCache = () => ({
+  name: 'isolated-vite-command-cache',
+  hooks: {
+    'astro:config:setup': ({ config, command, updateConfig }) => {
+      updateConfig({
+        vite: {
+          cacheDir: fileURLToPath(new URL(`./node_modules/.vite-${command}/`, config.root)),
+        },
+      });
+    },
+  },
+});
+
 export default defineConfig({
   // Absolute base for canonical links and og:image URLs. Social scrapers and
   // search engines both reject relative ones, so this has to be a real origin.
@@ -2674,7 +2688,7 @@ export default defineConfig({
   // change needed, just the env var in Cloudflare.
   site: process.env.PUBLIC_SITE_URL || 'https://wip.vcruzdesigns.com',
   devToolbar: { enabled: false },
-  integrations: [react(), mediaCollectorIntegration(), devInspectors()],
+  integrations: [react(), mediaCollectorIntegration(), devInspectors(), isolatedViteCommandCache()],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
   // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {

@@ -135,7 +135,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
-  const overlay = Object.assign(new Target(), { dataset: {}, removeAttribute(name: string) { if (name === 'data-navigation-cover') delete (this as any).dataset.navigationCover; }, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
+  const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
   const readinessMarker = { hidden: true };
   const homeIntro = options.homeIntro ? Object.assign(new ContainerFixture(), { hidden: options.homeIntro.state === 'dismissed', dataset: { state: options.homeIntro.state ?? 'active' } }) : null;
   for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
@@ -303,23 +303,6 @@ test('persistent cover preserves a partially visible veil opacity', async () => 
   f.tweens.at(-1)!.finish();
   await covering;
   assert.equal(Number(f.overlay.style.opacity), 1);
-});
-
-test('navigation cover state outlives header flag cleanup and clears after reveal', async () => {
-  const f = fixture({ initialController: true });
-  f.document.documentElement.dataset.headerNavigation = '';
-  const covering = f.persistentHooks.cover();
-  assert.equal(f.overlay.dataset.navigationCover, '');
-  f.document.documentElement.removeAttribute('data-header-navigation');
-  assert.equal(f.overlay.dataset.navigationCover, '');
-  f.tweens.at(-1)!.finish();
-  await covering;
-  f.persistentHooks.reveal();
-  await f.paint();
-  await f.paint();
-  f.tweens.at(-1)!.finish();
-  await flush();
-  assert.equal(f.overlay.dataset.navigationCover, undefined);
 });
 
 for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {

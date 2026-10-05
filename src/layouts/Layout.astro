@@ -125,8 +125,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         opacity: 1;
         animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
       }
-      #transition-overlay[data-navigation-cover] { z-index: 40; }
-      body:has(> #transition-overlay[data-navigation-cover]) [data-home-page] { z-index: auto; }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
       html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
       :root { view-transition-name: none; }
@@ -594,8 +592,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
           document.dispatchEvent(new Event('header:navigation-reveal'));
           if (visibleTransition) {
             overlay.style.opacity = '0';
-            overlay.hidden = true;
-            overlay.removeAttribute('data-navigation-cover');
             emitTransitionMilestone('veil-fade-start');
             if (visibleTransition) emitTransitionMilestone('veil-fade-end');
             overlay.dataset.vcdInitialReveal = 'complete';
@@ -611,7 +607,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
               emitTransitionMilestone('veil-fade-end');
               if (current === generation) {
                 overlay.hidden = true;
-                overlay.removeAttribute('data-navigation-cover');
                 activeTween = null;
                 overlay.dataset.vcdInitialReveal = 'complete';
                 window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
@@ -627,7 +622,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             if (!revealAnnounced) document.dispatchEvent(new Event('header:navigation-reveal'));
             overlay.style.opacity = '0';
             overlay.hidden = true;
-            overlay.removeAttribute('data-navigation-cover');
             overlay.dataset.vcdInitialReveal = 'complete';
             window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
           }
@@ -646,7 +640,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
           const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
           invalidate();
           overlay.style.animation = 'none';
-          overlay.dataset.navigationCover = '';
           overlay.hidden = visibleTransition;
           return new Promise<void>((resolve) => {
             if (visibleTransition) { resolve(); return; }
@@ -704,7 +697,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
           if (visibleTransition) { finishExit(); return; }
           try {
             const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
-            overlay.dataset.navigationCover = '';
             overlay.hidden = false;
             activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, {
               opacity: 1,
