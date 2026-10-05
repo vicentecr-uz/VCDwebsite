@@ -2013,9 +2013,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     opacity: 0;
     visibility: hidden;
+    /* The whole-viewport fade should run continuously through panel exit. */
     transition:
-      opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
-      var(--header-menu-surface-delay, 0s),
+      opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s,
       visibility 0s calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s));
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
@@ -2027,7 +2027,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     ) {
     opacity: 1;
     visibility: visible;
-    transition-delay: var(--header-menu-surface-delay, 0s), 0s;
+    transition-delay: 0s, 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
@@ -2533,8 +2533,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     :global([data-page-shell] > :is(main, .project-layout, footer)) {
       opacity: 1;
       transition:
-        opacity var(--header-menu-surface-duration, 0.48s) var(--header-menu-surface-easing, cubic-bezier(0.22, 1, 0.36, 1))
-        var(--header-menu-surface-delay, 0s);
+        opacity calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s)) ease 0s;
     }
 
     :global([data-page-shell]:has(> .site-header-slot .header-trigger[data-menu-surface-open]) > :is(main, .project-layout, footer)) {
