@@ -161,11 +161,11 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
   const source = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
   const cover = source.slice(source.indexOf('        cover: () => {'), source.indexOf('        reveal: () => {'));
   let current: { kill: () => void; finish: () => void };
-  const gsap = { to(_target: unknown, options: { onComplete: () => void; onInterrupt: () => void }) {
+  const gsap = { fromTo(_target: unknown, _from: unknown, options: { onComplete: () => void; onInterrupt: () => void }) {
     current = { kill: options.onInterrupt, finish: options.onComplete }; return current;
   } };
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(`let activeTween; const invalidate = () => activeTween?.kill(); return { ${cover} };`);
-  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', script)(gsap, { style: {}, hidden: false }, false, 'power1.out');
+  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', 'getComputedStyle', script)(gsap, { style: {}, hidden: false }, false, 'power1.out', () => ({ opacity: '0' }));
   let firstSettled = false;
   const first = hooks.cover().then(() => { firstSettled = true; });
   await Promise.resolve(); expect(firstSettled).toBe(false);
