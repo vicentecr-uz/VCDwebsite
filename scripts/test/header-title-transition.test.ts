@@ -46,14 +46,19 @@ test('title transition preserves source animation and creates reusable page and 
   const incomingAnimation = incomingChar.style.animation;
   expect(incomingAnimation).toContain('vcd-header-title-in');
   expect(incomingAnimation).toContain('250ms ease');
-  expect(pageMasks[0].style.opacity).toBe('1');
-  expect(pageMasks[0].style.getPropertyValue('--char-blur')).toBe('0px');
+  expect([...pageMasks].every((mask) => mask.style.opacity === '1')).toBe(true);
+  expect([...pageMasks].every((mask) => mask.style.getPropertyValue('--char-blur') === '0px')).toBe(true);
+  expect(incomingChar.style.opacity).toBe('0');
+  expect(incomingChar.style.filter).toBe('blur(4px)');
+  expect(incomingChar.style.transition).toBe('none');
   expect(sourceChar.parentElement).toBe(f.page);
   expect(sourceChar.style.animation).toBe(sourceAnimation);
   expect(pending.fromGeometry.offsets).toEqual([0, 1, 2, 3, 4, 5, 6]);
 
   const first = bridge.wordmarkChars(f.home);
   const second = bridge.wordmarkChars(f.home);
+  expect(pageLayer.querySelector('.header-navigation-title-char')).toBe(incomingChar);
+  expect(incomingChar.parentElement).toBe(first.page[0]);
   expect(incomingChar.style.animation).toBe(incomingAnimation);
   expect(second).toBe(first);
   expect(first.page).not.toBe(first.home);

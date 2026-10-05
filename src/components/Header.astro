@@ -1192,11 +1192,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       return delay;
     };
 
-    const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0) => {
+    const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0, mirrors: HTMLElement[] = []) => {
       // Snap to blurred/invisible, then fade + deblur into place (staggered)
       if (wordmarkFadeInFrame !== undefined) cancelAnimationFrame(wordmarkFadeInFrame);
       const runToken = wordmarkRunToken;
-      chars.forEach((char) => {
+      [...chars, ...mirrors].forEach((char) => {
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
         char.style.setProperty('--char-blur', `${BLUR_PX}px`);
@@ -1210,11 +1210,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           const delay =
             baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
 
-          char.style.setProperty('--char-delay', `${delay}s`);
-          char.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
-          char.style.setProperty('--char-easing', 'ease');
-          char.style.setProperty('--char-blur', '0px');
-          char.style.opacity = '1';
+          [char, mirrors[i]].filter(Boolean).forEach((target) => {
+            target.style.setProperty('--char-delay', `${delay}s`);
+            target.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
+            target.style.setProperty('--char-easing', 'ease');
+            target.style.setProperty('--char-blur', '0px');
+            target.style.opacity = '1';
+          });
         });
       });
     };
@@ -1238,50 +1240,78 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     let titleCloseScale = 0.18 / titleEntryEnd;
 
+    const wordmarkAnimationChars = () => {
+      const transition = headerSlot?.__vcdTitleTransition;
+      const chars = transition?.wordmarkChars?.(homeWordmarkEl);
+      if (chars) return chars;
+      transition?.cleanup();
+      if (headerSlot) delete headerSlot.__vcdTitleTransition;
+      return { page: pageChars, home: homeChars };
+    };
+
     const applyWordmarkOpen = () => {
-      setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
-      applyWordmarkFadeIn(homeChars);
+      const chars = wordmarkAnimationChars();
+      setCharFadeOut(chars.page, FADE_OUT_STAGGER, FADE_OUT_DURATION);
+      if (chars.page !== pageChars) setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
+      applyWordmarkFadeIn(chars.home, 0, chars.home === homeChars ? [] : homeChars);
 
       pageWordmark?.setAttribute('aria-hidden', 'true');
       homeWordmarkEl?.setAttribute('aria-hidden', 'false');
     };
 
     const applyWordmarkClose = () => {
-      homeChars.forEach((char, i) => {
-        char.style.setProperty(
-          '--char-delay',
-          `${Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale}s`,
-        );
-        char.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
-        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
-        char.style.setProperty('--char-blur', `${BLUR_PX}px`);
-        char.style.opacity = '0';
+      const chars = wordmarkAnimationChars();
+      chars.home.forEach((visual, i) => {
+        [visual, ...(visual === homeChars[i] ? [] : [homeChars[i]])].forEach((char) => {
+          char.style.setProperty(
+            '--char-delay',
+            `${Math.max(0, titleEntryEnd - (progressiveStaggerDelay(i, homeChars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END) + FADE_IN_DURATION)) * titleCloseScale}s`,
+          );
+          char.style.setProperty('--char-duration', `${FADE_IN_DURATION * titleCloseScale}s`);
+          char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+          char.style.setProperty('--char-blur', `${BLUR_PX}px`);
+          char.style.opacity = '0';
+        });
       });
-      pageChars.forEach((char, i) => {
-        char.style.setProperty(
-          '--char-delay',
-          `${Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale}s`,
-        );
-        char.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
-        char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
-        char.style.setProperty('--char-blur', '0px');
-        char.style.opacity = '1';
+      chars.page.forEach((visual, i) => {
+        [visual, ...(visual === pageChars[i] ? [] : [pageChars[i]])].forEach((char) => {
+          char.style.setProperty(
+            '--char-delay',
+            `${Math.max(0, titleEntryEnd - (i * FADE_OUT_STAGGER + FADE_OUT_DURATION)) * titleCloseScale}s`,
+          );
+          char.style.setProperty('--char-duration', `${FADE_OUT_DURATION * titleCloseScale}s`);
+          char.style.setProperty('--char-easing', 'cubic-bezier(0.75, 0, 0.75, 0.9)');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = '1';
+        });
       });
 
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
     };
 
-    const finishNavigationTitle = () => {
+    const finishNavigationTitle = (holdMs = 0) => {
       const transition = headerSlot?.__vcdTitleTransition;
       const finish = () => {
         if (transition && headerSlot?.__vcdTitleTransition !== transition) return;
+        pageChars.forEach((char) => {
+          char.style.setProperty('--char-duration', '0s');
+          char.style.setProperty('--char-delay', '0s');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = wordmarkIsOpen ? '0' : '1';
+        });
+        homeChars.forEach((char) => {
+          char.style.setProperty('--char-duration', '0s');
+          char.style.setProperty('--char-delay', '0s');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = wordmarkIsOpen ? '1' : '0';
+        });
         transition?.cleanup();
         if (headerSlot) delete headerSlot.__vcdTitleTransition;
         navigationOutgoing = false;
-        startTrigger.classList.remove('is-wordmark-swapped');
+        startTrigger.classList.toggle('is-wordmark-swapped', wordmarkIsOpen);
       };
-      navigationRestoreTimer = window.setTimeout(finish, Math.max(0, (transition?.finishesAt ?? 0) - Date.now()));
+      navigationRestoreTimer = window.setTimeout(finish, Math.max(holdMs, (transition?.finishesAt ?? 0) - Date.now()));
     };
 
     document.addEventListener('header:navigation-commit', (event) => {
@@ -1324,6 +1354,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       wordmarkIsOpen = true;
       startTrigger.classList.add('is-wordmark-swapped');
       applyWordmarkOpen();
+      if (headerSlot?.__vcdTitleTransition) finishNavigationTitle(titleEntryEnd * 1000 + 32);
     };
 
     const runWordmarkClose = () => {
@@ -1331,6 +1362,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const runToken = wordmarkRunToken;
       wordmarkIsOpen = false;
       applyWordmarkClose();
+      if (headerSlot?.__vcdTitleTransition) finishNavigationTitle(180 + 32);
       window.setTimeout(() => {
         if (runToken !== wordmarkRunToken || navigationOutgoing) return;
         startTrigger.classList.remove('is-wordmark-swapped');
@@ -1341,10 +1373,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (isDevEditing()) return;
       if (navigationOutgoing) return;
       if (startTrigger.dataset.headerTitleSwap !== 'true') return;
-      if (headerSlot?.__vcdTitleTransition) {
-        headerSlot.__vcdTitleTransition.cleanup();
-        delete headerSlot.__vcdTitleTransition;
-      }
       if (!wordmarkIsOpen) runWordmarkOpen();
     };
 
@@ -2384,7 +2412,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     pointer-events: auto;
   }
 
-  .header-trigger__char {
+  .header-trigger__char,
+  :global(.header-navigation-title-mask) {
     /* inline (not inline-block) so the browser keeps native kerning between letters */
     display: inline;
     opacity: 1;
