@@ -1113,8 +1113,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const chars = [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
       if (chars.length < 2) return;
 
+      const rect = wordmark.getBoundingClientRect();
+      const layoutWidth = parseFloat(getComputedStyle(wordmark).width);
       // An unrendered wordmark measures as zero and would poison every residual.
-      if (!wordmark.getBoundingClientRect().width) return;
+      if (!Number.isFinite(rect.width) || rect.width <= 0 || !Number.isFinite(layoutWidth) || layoutWidth <= 0) return;
 
       const text = chars.map((char) => char.textContent ?? '').join('');
       const target = measureShapedOffsets(wordmark, text);
@@ -1128,9 +1130,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const applied = chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) || 0);
 
       for (let pass = 0; pass < KERN_MAX_PASSES; pass++) {
-        const origin = wordmark.getBoundingClientRect().left;
+        // Rect offsets are viewport pixels under an intro scale; normalize them
+        // against the wordmark's layout width before comparing CSS-pixel probes.
+        const liveRect = wordmark.getBoundingClientRect();
+        const liveLayoutWidth = parseFloat(getComputedStyle(wordmark).width);
+        const horizontalScale = liveRect.width / liveLayoutWidth;
+        if (!Number.isFinite(horizontalScale) || horizontalScale <= 0) return;
+        const origin = liveRect.left;
         const residual = chars.map(
-          (char, i) => target[i] - (char.getBoundingClientRect().left - origin),
+          (char, i) => target[i] - (char.getBoundingClientRect().left - origin) / horizontalScale,
         );
         // Margins accumulate down the line, so each char only needs the part of
         // its residual that its predecessor didn't already account for.
