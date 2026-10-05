@@ -172,6 +172,7 @@ export function bindSafeVh(): void {
   // whole body: preview clones and DEV readouts mutate during scroll but cannot
   // change intro geometry, and recalculating here disrupts native momentum.
   document.fonts.ready.then(scheduleIntroSync);
+  document.fonts.addEventListener?.('loadingdone', scheduleIntroSync);
   window.addEventListener('vcd:intro-layout-sync', scheduleIntroSync);
   window.addEventListener('vcd:dev-mode-change', scheduleIntroSync);
 

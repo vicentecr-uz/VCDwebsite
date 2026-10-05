@@ -183,6 +183,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   });
   const marks: Array<{ name: string; options?: any }> = [];
   const tweens: any[] = [];
+  let persistentHooks: any;
   let upgrades = 0;
   let bound = 0;
   const fakeGsap = {
@@ -203,6 +204,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
       return tween;
     },
     killTweensOf(target: any) { tweens.filter((t) => t.element === target).forEach((t) => t.kill()); },
+    fromTo(target: any, from: any, vars: any) { Object.assign(target.style, from); return this.to(target, vars); },
     set(target: any, values: any) { Object.assign(target.style, values); },
   };
   const context = {
@@ -211,7 +213,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
     Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
-    installPersistentNavigation() {}, resetImagePreviewUpgrade() {},
+    installPersistentNavigation(hooks: any) { persistentHooks = hooks; }, resetImagePreviewUpgrade() {},
     gsap: fakeGsap, bindSafeVh() {}, bindExternalLinks() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
     getComputedStyle: (element: any) => ({
@@ -226,6 +228,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   runInNewContext(compiled, context);
   return {
     overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers, marks,
+    get persistentHooks() { return persistentHooks; },
     get upgrades() { return upgrades; }, get bound() { return bound; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
@@ -278,6 +281,28 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+test('persistent cover starts from a hidden retained veil without snapping', async () => {
+  const f = fixture({ initialController: true });
+  f.overlay.hidden = true;
+  f.overlay.style.opacity = '1';
+  const covering = f.persistentHooks.cover();
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  f.tweens.at(-1)!.finish();
+  await covering;
+  assert.equal(Number(f.overlay.style.opacity), 1);
+});
+
+test('persistent cover preserves a partially visible veil opacity', async () => {
+  const f = fixture({ initialController: true });
+  f.overlay.hidden = false;
+  f.overlay.style.opacity = '0.42';
+  const covering = f.persistentHooks.cover();
+  assert.equal(Number(f.overlay.style.opacity), 0.42);
+  f.tweens.at(-1)!.finish();
+  await covering;
+  assert.equal(Number(f.overlay.style.opacity), 1);
 });
 
 for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
@@ -378,6 +403,17 @@ test('initial page stays covered until intro spacing is ready', async () => {
   await f.paint();
   await f.advance(250);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+});
+
+test('active Home intro reveals after two paints without layout or underlying image readiness', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image], fonts: new Promise(() => {}) });
+  await f.paint();
+  await f.paint();
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'running');
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(image.decodeCalls, 0);
 });
 
 test('browser trace marks are emitted without the DEV readiness marker', async () => {

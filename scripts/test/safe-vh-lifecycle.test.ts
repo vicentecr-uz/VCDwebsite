@@ -16,7 +16,7 @@ function setup(finePointer = true) {
   };
   const env = {
     window,
-    document: { documentElement: { dataset: {}, classList: { contains: () => dragging } }, fonts: { ready: { then() {} } } },
+    document: { documentElement: { dataset: {}, classList: { contains: () => dragging } }, fonts: { ready: { then() {} }, addEventListener: (type: string, fn: () => void) => handlers.set(type, fn) } },
     BOUND_FLAG: '__bound',
     requestAnimationFrame: (fn: () => void) => { frames.set(++nextFrame, fn); return nextFrame; },
     cancelAnimationFrame: (id: number) => frames.delete(id),
@@ -61,6 +61,15 @@ test('mode changes synchronize after listeners finish and coalesce within a fram
   context.content(600);
   context.fire('vcd:dev-mode-change');
   expect(context.state()).toEqual({ height: 800, measurements: 3, gap: 100 });
+});
+
+test('late font completion schedules one intro geometry sync', () => {
+  const context = setup();
+  context.handlers.get('loadingdone')?.();
+  context.handlers.get('loadingdone')?.();
+  expect(context.state().measurements).toBe(1);
+  context.flush();
+  expect(context.state().measurements).toBe(2);
 });
 
 test('unchanged resize and repeated binding do not trigger layout work', () => {
