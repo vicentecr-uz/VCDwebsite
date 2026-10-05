@@ -14,6 +14,20 @@ export function installPersistentNavigation(hooks: Hooks) {
   if (!document.querySelector('[name="astro-view-transitions-enabled"]')) return;
   let navigation: TransitionBeforePreparationEvent | undefined;
   let swapped = false;
+  // Astro 6 has no native-snapshot opt-out; skip before the router can render a suspended snapshot.
+  // Remove this wrapper when the router exposes that opt-out.
+  const nativeStartViewTransition = document.startViewTransition;
+  if (nativeStartViewTransition) {
+    document.startViewTransition = function (updateCallback) {
+      const ownedNavigation = navigation && !navigation.signal.aborted && !navigation.defaultPrevented;
+      const transition = nativeStartViewTransition.call(document, updateCallback);
+      if (ownedNavigation) {
+        void transition.ready.catch(() => {});
+        transition.skipTransition();
+      }
+      return transition;
+    };
+  }
   const unseenHome = (url: URL) => {
     if (url.pathname !== '/') return false;
     try { return sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { return true; }
