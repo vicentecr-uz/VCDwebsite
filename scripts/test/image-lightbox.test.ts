@@ -680,14 +680,20 @@ test('coarse walkthrough keeps the right finger through pan while the left finge
 
 for (const coarse of [false, true]) {
   test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
-    const f = fixture(false, { loaded: true, coarse }); startDemo(f);
-    advance(f, 1350); const beforeRelease = pointerX(f);
-    advance(f, 10); const afterRelease = pointerX(f);
-    expect(Math.abs(afterRelease - beforeRelease)).toBeLessThan(8);
-    advance(f, 185); const panStart = pointerX(f);
-    advance(f, 10); expect(Math.abs(pointerX(f) - panStart)).toBeLessThan(8);
-    advance(f, 950); const zoomOutStart = pointerX(f);
-    advance(f, 10); expect(Math.abs(pointerX(f) - zoomOutStart)).toBeLessThan(8);
+    for (const boundary of [1755, 1950, 2900, 3100, 4250, 4750]) {
+      const f = fixture(false, { loaded: true, coarse }); startDemo(f);
+      advance(f, boundary - 1);
+      const rightBefore = pointerX(f);
+      const leftBefore = pointerX(f, 'one');
+      const leftVisible = demoPointer(f).classList.contains('is-visible');
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+      advance(f, 2);
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(1);
+      if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
+        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(1);
+      }
+    }
   });
 }
 
