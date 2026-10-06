@@ -556,11 +556,16 @@ function mountImageCarouselSection(
       });
     }
     if (item.awardBadge === 'red-dot-2026' && !video && !placeholder) {
-      const badge = document.createElement('img');
+      const badge = document.createElement('a');
       badge.className = 'project-image-carousel__award-badge';
-      badge.src = '/awards/red-dot-2026.png';
-      badge.alt = 'Red Dot Award: Product Design 2026';
-      badge.draggable = false;
+      badge.href = 'https://www.red-dot.org/project/goodhome-87719';
+      badge.target = '_blank';
+      badge.rel = 'noopener noreferrer';
+      const badgeImage = document.createElement('img');
+      badgeImage.src = '/awards/red-dot-2026.png';
+      badgeImage.alt = 'Red Dot Award: Product Design 2026';
+      badgeImage.draggable = false;
+      badge.append(badgeImage);
       frame.append(badge);
     }
     surface.append(frame);
