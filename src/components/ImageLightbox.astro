@@ -1,6 +1,8 @@
 <dialog class="image-lightbox" data-image-lightbox aria-label="Image viewer">
   <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="Escape + - 0 ArrowUp ArrowDown ArrowLeft ArrowRight">
     <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
+    <span class="image-lightbox__demo-pointer image-lightbox__demo-pointer--one" data-image-lightbox-demo-pointer="one" aria-hidden="true"></span>
+    <span class="image-lightbox__demo-pointer image-lightbox__demo-pointer--two" data-image-lightbox-demo-pointer="two" aria-hidden="true"></span>
     <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
     <label class="image-lightbox__input-mode"> <span class="sr-only">Input mode</span><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label>
   </div>
@@ -14,6 +16,9 @@
     const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
     const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
     if (!viewer || !image || !error) return () => {};
+    const demoOne = viewer.querySelector<HTMLElement>('[data-image-lightbox-demo-pointer="one"]');
+    const demoTwo = viewer.querySelector<HTMLElement>('[data-image-lightbox-demo-pointer="two"]');
+    if (!demoOne || !demoTwo) return () => {};
     const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
     type View = { x: number; y: number; scale: number; rotation: number };
     type Gesture = 'drag' | 'pan' | 'pinch' | 'rotate' | 'blocked' | null;
@@ -81,6 +86,16 @@
     let pointerRotationTarget: number | null = null;
     let session = 0;
     let observer: MutationObserver | null = null;
+    let originalLoader: HTMLImageElement | null = null;
+    let showingPreview = false;
+    let demoFrame = 0;
+    let demoTimer: number | null = null;
+    let demoActive = false;
+    let demoSession = 0;
+    let demoStarted = false;
+    let demoDismissing = false;
+    let demoInteracted = false;
+    const demoStorageKey = 'vcd:image-lightbox-demo-seen';
 
     const threshold = () => clamp(Math.min(viewer.clientWidth, viewer.clientHeight) * .22, 90, 150);
     const centre = (): Point => {
@@ -102,7 +117,7 @@
       : feedback === 'pinch' ? Math.max(0, (1 - view.scale) / .25) : 0;
     const render = () => {
       const amount = progress();
-      armed = amount >= 1 && (gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true || wheelTrackpadActive);
+      armed = amount >= 1 && (demoDismissing || gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true || wheelTrackpadActive);
       image.classList.toggle('is-armed', armed);
       const dismissScale = reducedMotion() ? 1 : 1 - .08 * clamp(amount, 0, 1);
       image.style.transform = `translate(${view.x}px, ${view.y}px) rotate(${view.rotation}deg) scale(${view.scale * dismissScale})`;
@@ -164,6 +179,76 @@
       view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; lastPointer = null; nativeUntil = 0; pointerRotationTarget = null;
       render();
     };
+    const clearDemo = () => {
+      if (demoFrame) cancelAnimationFrame(demoFrame);
+      demoFrame = 0;
+      if (demoTimer !== null) window.clearTimeout(demoTimer);
+      demoTimer = null;
+      demoActive = false; demoDismissing = false;
+      demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible');
+    };
+    const interruptDemo = () => {
+      demoInteracted = true;
+      if (!demoActive && !demoFrame && demoTimer === null) return;
+      clearDemo(); feedback = null; render();
+    };
+    const demoReady = () => dialog.open && closeTimer === null && image.complete && image.naturalWidth > 0;
+    const startDemo = (openingSession: number) => {
+      if (restoreKeyboardFocus || reducedMotion() || !demoReady() || demoStarted || demoActive || demoTimer !== null || demoInteracted || session !== openingSession) return;
+      try { if (sessionStorage.getItem(demoStorageKey)) return; } catch {}
+      demoActive = true; demoSession = openingSession;
+      let origin = 0;
+      const duration = 6500;
+      const ease = (value: number) => value < .5 ? 2 * value * value : 1 - Math.pow(-2 * value + 2, 2) / 2;
+      const setPointer = (node: HTMLElement, x: number, y: number, visible = true) => {
+        node.style.transform = `translate(${x - 22}px, ${y - 22}px) scale(${visible ? .88 : 0})`;
+        node.classList.toggle('is-visible', visible);
+      };
+      const tick = (now: number) => {
+        if (!demoActive || demoSession !== session || !dialog.open || closeTimer !== null) { clearDemo(); return; }
+        const t = Math.min(1, (now - origin) / duration);
+        const point = centre();
+        const x = point.x - viewer.getBoundingClientRect().left;
+        const y = point.y - viewer.getBoundingClientRect().top;
+        if (t < .08) {
+          setPointer(demoOne, x - 56, y, true); setPointer(demoTwo, x + 56, y, true);
+        } else if (t < .27) {
+          const scale = 1 + ease((t - .08) / .19) * 1.3;
+          const spread = 56 * scale;
+          setPointer(demoOne, x - spread, y); setPointer(demoTwo, x + spread, y);
+          zoom(1 + ease((t - .08) / .19) * 1.3, point);
+        } else if (t < .43) {
+          const progress = ease((t - .27) / .16);
+          view.scale = 2.3;
+          setPointer(demoOne, x - 36 + progress * 72, y + progress * 38); demoTwo.classList.remove('is-visible');
+          view.x = progress * Math.min(80, Math.max(0, image.offsetWidth * (view.scale - 1) / 2)); clampPan(); render();
+        } else if (t < .61) {
+          const spread = 30 - ease((t - .43) / .18) * 10;
+          setPointer(demoOne, x + spread, y - 16); setPointer(demoTwo, x - spread, y + 16);
+          zoom(2.3 - ease((t - .43) / .18) * 1.3, point);
+        } else if (t < .72) {
+          demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible'); view = fit(); render();
+        } else if (t < .83) {
+          demoDismissing = true; feedback = 'pinch';
+          const spread = 45 - ease((t - .72) / .11) * 15;
+          setPointer(demoOne, x - spread, y); setPointer(demoTwo, x + spread, y); zoom(1 - ease((t - .72) / .11) * .3, point, .7);
+        } else if (t < .93) {
+          setPointer(demoOne, x, y); demoTwo.classList.remove('is-visible'); zoom(.7, point, .7);
+        } else {
+          clearDemo(); allowUnderzoom = true; demoDismissing = true; view.scale = .7; feedback = 'pinch'; render(); dismiss(); return;
+        }
+        demoFrame = requestAnimationFrame(tick);
+      };
+      demoTimer = window.setTimeout(() => {
+        demoTimer = null;
+        if (!demoActive || demoSession !== session || !demoReady()) { clearDemo(); return; }
+        try { if (sessionStorage.getItem(demoStorageKey)) { clearDemo(); return; } } catch {}
+        demoStarted = true;
+        try { sessionStorage.setItem(demoStorageKey, '1'); } catch {}
+        origin = performance.now();
+        demoFrame = requestAnimationFrame(tick);
+      }, 400);
+    };
     const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
       stopSpring();
       if (reducedMotion()) { image.classList.add('is-settling'); view = target; feedback = null; render(); return; }
@@ -193,10 +278,14 @@
       if (closeTimer !== null) window.clearTimeout(closeTimer);
       closeTimer = null;
       observer?.disconnect();
+      clearDemo();
+      originalLoader?.removeAttribute('src'); originalLoader = null;
+      showingPreview = false;
       if (dialog.open) dialog.close();
-      image.removeAttribute('src'); image.alt = ''; image.style.backgroundColor = '';
+      image.removeAttribute('src'); image.removeAttribute('width'); image.removeAttribute('height'); image.alt = ''; image.style.backgroundColor = '';
       image.style.removeProperty('transition');
       error.hidden = true;
+      error.textContent = 'Image could not be loaded.';
       reset();
       const target = opener; opener = null;
       if (target?.isConnected) {
@@ -209,6 +298,7 @@
       if (!dialog.open) return;
       const closingSession = ++session;
       cancelAnimationFrame(revealFrame); revealFrame = 0;
+      clearDemo();
       stopSpring(); clearWheel(); releasePointers(); nativeGesture = false;
       dialog.classList.remove('is-visible');
       image.style.transition = 'opacity 150ms ease'; image.style.opacity = '0';
@@ -223,19 +313,49 @@
       const openingSession = ++session;
       cancelAnimationFrame(revealFrame);
       reset(); moved = false; nativeUntil = 0;
+      clearDemo(); demoStarted = false; demoInteracted = false;
       opener = target;
       restoreKeyboardFocus = keyboard;
       image.style.removeProperty('transition');
       image.style.backgroundColor = getComputedStyle(target).getPropertyValue('--project-image-background').trim() || 'transparent';
-      image.alt = target.alt; image.src = target.dataset.imageOriginal;
+      image.alt = target.alt;
+      const source = target.dataset.imageOriginal;
+      const loadedPreview = target.complete && target.naturalWidth > 0 ? (target.currentSrc || target.src) : '';
+      const sameSource = loadedPreview && new URL(loadedPreview, document.baseURI).href === new URL(source, document.baseURI).href;
+      const aspect = target.naturalWidth > 0 && target.naturalHeight > 0 ? target.naturalWidth / target.naturalHeight : 0;
+      if (aspect) { image.style.setProperty('--image-aspect', String(aspect)); image.width = target.naturalWidth; image.height = target.naturalHeight; }
+      else { image.style.removeProperty('--image-aspect'); image.removeAttribute('width'); image.removeAttribute('height'); }
+      showingPreview = Boolean(loadedPreview && !sameSource);
+      image.src = loadedPreview || source;
       error.hidden = true;
+      if (loadedPreview && !sameSource) {
+        originalLoader?.removeAttribute('src');
+        const loader = document.createElement('img'); originalLoader = loader;
+        let loaded = false; let decoded = false;
+        const upgrade = () => {
+          if (!loaded || !decoded) return;
+          if (session !== openingSession || !dialog.open || closeTimer !== null || originalLoader !== loader) return;
+          showingPreview = false;
+          if (loader.naturalWidth > 0 && loader.naturalHeight > 0) image.style.setProperty('--image-aspect', String(loader.naturalWidth / loader.naturalHeight));
+          image.src = source;
+          loader.removeAttribute('src'); originalLoader = null;
+        };
+        const failed = () => {
+          if (session === openingSession && dialog.open && closeTimer === null) { error.textContent = 'Full-resolution image could not be loaded.'; error.hidden = false; }
+          if (originalLoader === loader) { loader.removeAttribute('src'); originalLoader = null; }
+        };
+        loader.addEventListener('load', () => { loaded = true; upgrade(); }, { once: true });
+        loader.addEventListener('error', failed, { once: true });
+        loader.src = source;
+        Promise.resolve(loader.decode?.()).then(() => { decoded = true; upgrade(); }, failed);
+      }
       viewer.removeAttribute('data-keyboard-focus');
       if (!dialog.open) dialog.showModal();
       observer?.disconnect();
       observer = new MutationObserver(() => { if (opener && !opener.isConnected) dismiss(); });
       observer.observe(document.body, { childList: true, subtree: true });
       revealFrame = requestAnimationFrame(() => {
-        revealFrame = requestAnimationFrame(() => { if (session === openingSession && dialog.open) dialog.classList.add('is-visible'); });
+        revealFrame = requestAnimationFrame(() => { if (session === openingSession && dialog.open) { dialog.classList.add('is-visible'); if (!keyboard) startDemo(openingSession); } });
       });
       viewer.focus({ preventScroll: true });
     };
@@ -259,8 +379,8 @@
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
     };
     const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
-    const onError = () => { if (dialog.open) error.hidden = false; };
-    const onLoad = () => { if (dialog.open && closeTimer === null) { if (!feedback) clampPan(); render(); } };
+    const onError = () => { if (dialog.open) { error.hidden = false; if (showingPreview) error.textContent = 'Full-resolution image could not be loaded.'; } };
+    const onLoad = () => { if (dialog.open && closeTimer === null) { if (!feedback) clampPan(); render(); if (!restoreKeyboardFocus) startDemo(session); } };
     const zoom = (nextScale: number, point: Point, minimum = 1) => {
       if (nextScale > 1) { allowUnderzoom = false; minimum = 1; }
       const next = clamp(nextScale, minimum, IMAGE_LIGHTBOX_MAX_SCALE);
@@ -270,6 +390,7 @@
       render();
     };
     const onKey = (event: KeyboardEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || event.defaultPrevented || isInteractiveControl(event.target)) return;
       restoreKeyboardFocus = true;
       viewer.setAttribute('data-keyboard-focus', '');
@@ -288,6 +409,7 @@
       return lastPointer ?? centre();
     };
     const onPointerDown = (event: PointerEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
       if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
       stopSpring(); clearWheel(); pointerRotationTarget = null;
@@ -424,6 +546,7 @@
       return event.deltaMode !== 0 || isCoarseWheel(event) ? 'mouse' : 'trackpad';
     };
     const onWheel = (event: WheelEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || isInteractiveControl(event.target)) return;
       event.preventDefault();
       const pinch = event.ctrlKey || event.metaKey;
@@ -490,6 +613,7 @@
       wheelTimer = window.setTimeout(finishWheel,160);
     };
     const onInputModeChange = () => {
+      interruptDemo();
       inputMode = validInputMode(inputModeSelect?.value ?? 'auto');
       if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
       try { localStorage.setItem(inputModeStorageKey, inputMode); } catch {}
@@ -497,6 +621,7 @@
     };
     type NativeGesture = Event & {scale?: number; rotation?: number; clientX?: number; clientY?: number};
       const onGestureStart = (event: NativeGesture) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null) return;
       event.preventDefault();
       if (pointers.size) return;
@@ -524,8 +649,8 @@
       nativeZoomPoint = null;
       finishPinch(false);
     };
-    const onResize = () => { if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
-    const onPageHide = () => dismiss(true);
+    const onResize = () => { interruptDemo(); if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
+    const onPageHide = () => { interruptDemo(); dismiss(true); };
     document.addEventListener('click',onClick);
     document.addEventListener('keydown',onDocumentKey);
     dialog.addEventListener('click',onDialogClick);
@@ -595,6 +720,13 @@
   .image-lightbox__viewer.is-dragging, .image-lightbox__viewer.is-dragging .image-lightbox__image { cursor: grabbing; }
   .image-lightbox__error { position: absolute; margin: 0; }
   .image-lightbox__input-mode { position: absolute; right: max(1rem, 10vw); bottom: max(1rem, calc(var(--vh-safe, 1svh) * 10)); }
+  .image-lightbox__demo-pointer { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border-radius: 50%; pointer-events: none; opacity: 0; background: color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent), 0 6px 18px rgb(0 0 0 / .16); transform: scale(0); transition: opacity 180ms ease; }
+  .image-lightbox__demo-pointer.is-visible { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .image-lightbox__demo-pointer { transition: none; } }
   @media (hover: none) and (pointer: coarse) { .image-lightbox__input-mode { display: none; } }
-  @media (max-width: 40em) { .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); } }
+  @media (max-width: 40em) {
+    .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); }
+    .image-lightbox__viewer { padding-inline: 0; }
+    .image-lightbox__image { width: min(100%, calc(var(--vh-safe, 1svh) * 80 * var(--image-aspect, 1))); }
+  }
 </style>

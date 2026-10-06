@@ -15,7 +15,7 @@ function fixture(reducedMotion = false) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
-    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p><label><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label></div>
+    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><span data-image-lightbox-demo-pointer="one" aria-hidden="true"></span><span data-image-lightbox-demo-pointer="two" aria-hidden="true"></span><p data-image-lightbox-error hidden></p><label><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label></div>
     </dialog>`;
   const original = document.querySelector<HTMLImageElement>('#source')!;
   const dialog = document.querySelector('dialog')!;
