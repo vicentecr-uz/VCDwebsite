@@ -11,7 +11,7 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
@@ -21,6 +21,7 @@ function fixture(reducedMotion = false) {
   const dialog = document.querySelector('dialog')!;
   const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]')!;
   const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]')!;
+  if (options.preview) { original.src = options.preview; original.dataset.imageOriginal = '/images/study.jpg'; }
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -38,10 +39,14 @@ function fixture(reducedMotion = false) {
   dialog.close = () => dialog.removeAttribute('open');
   Object.defineProperties(viewer, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
   Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
+  if (options.loaded) {
+    Object.defineProperties(original, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 }, currentSrc: { value: options.preview || '/images/study.jpg' } });
+    Object.defineProperties(image, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
+  }
   viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
-    getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, performance: { now: () => now },
+    getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
     matchMedia: () => ({ matches: reducedMotion }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
@@ -560,4 +565,52 @@ test('Safari zooming out stops at fit until a new gesture begins', () => {
   f.gesture('gestureend',.5); f.tick(150); expect(f.dialog.open).toBe(true);
   f.gesture('gesturestart'); f.gesture('gesturechange',.7); f.gesture('gestureend',.7);
   f.tick(150); expect(f.dialog.open).toBe(false);
+});
+
+test('a loaded page image appears immediately while the original upgrades after decode', async () => {
+  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+  let loader: HTMLImageElement | undefined;
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = ((name: string) => {
+    const node = create(name);
+    if (name === 'img') { loader = node as HTMLImageElement; (loader as HTMLImageElement & { decode: () => Promise<void> }).decode = () => Promise.resolve(); }
+    return node;
+  }) as typeof f.document.createElement;
+  f.click();
+  expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+  expect(loader).toBeDefined();
+  loader!.dispatchEvent(new f.window.Event('load'));
+  await Promise.resolve();
+  expect(f.image.getAttribute('src')).toBe('/images/study.jpg');
+});
+
+test('closing and reopening ignores a stale original upgrade and preserves preview errors', () => {
+  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+  let loader: HTMLImageElement | undefined;
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = ((name: string) => { const node = create(name); if (name === 'img') loader = node as HTMLImageElement; return node; }) as typeof f.document.createElement;
+  f.click(); expect(f.image.src).toContain('study.preview.webp');
+  f.key('Escape'); f.tick(150); f.click();
+  loader!.dispatchEvent(new f.window.Event('load'));
+  expect(f.image.src).toContain('study.preview.webp');
+  loader!.dispatchEvent(new f.window.Event('error'));
+  expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(false);
+});
+
+test('a keyboard opening skips the walkthrough and reduced motion never claims it', () => {
+  const keyboard = fixture(false, { loaded: true });
+  keyboard.original.dispatchEvent(new keyboard.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  keyboard.frame(); keyboard.frame(); keyboard.tick(1000); keyboard.frame();
+  expect(keyboard.viewer.querySelector('[data-image-lightbox-demo-pointer="one"]')!.classList.contains('is-visible')).toBe(false);
+  const reduced = fixture(true, { loaded: true });
+  reduced.click(); reduced.frame(); reduced.frame(); reduced.tick(1000); reduced.frame();
+  expect(reduced.window.sessionStorage.getItem('vcd:image-lightbox-demo-seen')).toBeNull();
+});
+
+test('an early pointer interruption cancels a pending walkthrough without later dismissal', () => {
+  const f = fixture(false, { loaded: true });
+  f.click(); f.frame(); f.frame();
+  f.pointer('pointerdown', 1); f.pointer('pointerup', 1);
+  f.tick(8000); for (let i = 0; i < 20; i++) f.frame();
+  expect(f.dialog.open).toBe(true);
 });
