@@ -688,6 +688,7 @@ for (const coarse of [false, true]) {
       const rightBefore = pointerX(f);
       const rightYBefore = pointerY(f);
       const leftBefore = pointerX(f, 'one');
+      const leftYBefore = pointerY(f, 'one');
       const leftVisible = demoPointer(f).classList.contains('is-visible');
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       advance(f, 2);
@@ -696,6 +697,7 @@ for (const coarse of [false, true]) {
       expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(1);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
         expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(1);
+        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(1);
       }
     }
   });
