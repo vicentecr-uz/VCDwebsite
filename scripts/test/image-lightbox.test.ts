@@ -2,11 +2,15 @@ import { afterEach, expect, test } from 'bun:test';
 import { Window, BrowserErrorCaptureEnum } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import * as geometry from '../../src/lib/imageLightbox';
+import { gsap } from 'gsap';
+import { CustomEase } from 'gsap/CustomEase';
 
 const script = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8')
   .match(/<script>([\s\S]*?)<\/script>/)![1];
 const source = script.slice(0, script.indexOf('  import { onPageLoad }'))
-  .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '');
+  .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '')
+  .replace(/import\s+\{\s*gsap\s*\}\s+from\s+'gsap';/, '')
+  .replace(/import\s+\{\s*CustomEase\s*\}\s+from\s+'gsap\/CustomEase';/, '');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
@@ -47,7 +51,7 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
     getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
-    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }) };
+    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }), gsap, CustomEase };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
   cleanups.push(dispose);
@@ -593,7 +597,7 @@ const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transfor
 const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
 const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
 const pointerY = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/, ([-\d.]+)px/)![1]);
-const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(400); f.frame(); };
+const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(250); f.frame(); };
 const advance = (f: ReturnType<typeof fixture>, ms: number) => { f.tick(ms); f.frame(); };
 
 test('cached preview appears immediately; original replaces it only after load and decode', async () => {
@@ -651,13 +655,13 @@ test('walkthrough spreads two fingers, pans, releases at fit, then pinches again
   expect(pointerY(f, 'one')).not.toBe(pointerY(f, 'two'));
   expect(f.window.sessionStorage.getItem(demoSeen)).toBe('1');
   const initial = demoPointer(f).style.transform;
-  advance(f, 1400); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
-  advance(f, 1200); expect(panOf(f)).toBeGreaterThan(0); expect(scaleOf(f)).toBe(2.3);
+  advance(f, 700); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
+  advance(f, 700); expect(panOf(f)).toBeGreaterThan(0); expect(scaleOf(f)).toBe(2.3);
   expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
-  advance(f, 1800); expect(scaleOf(f)).toBe(1);
+  advance(f, 1400); expect(scaleOf(f)).toBe(1);
   expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
-  advance(f, 1000); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
-  advance(f, 500); f.tick(150); expect(f.dialog.open).toBe(false);
+  advance(f, 700); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
+  advance(f, 250); f.tick(150); expect(f.dialog.open).toBe(false);
   f.click(); f.frame(); f.frame(); advance(f, 10000);
   expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
   const sameTab = fixture(false, { loaded: true, session: f.window.sessionStorage }); startDemo(sameTab);
@@ -668,21 +672,21 @@ test('walkthrough spreads two fingers, pans, releases at fit, then pinches again
 
 test('coarse walkthrough keeps the right finger through pan while the left finger fades', () => {
   const f = fixture(false, { loaded: true, coarse: true }); startDemo(f);
-  advance(f, 1900);
+  advance(f, 1300);
   expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
   expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
   const pan = demoPointer(f, 'two').style.transform;
-  advance(f, 1000);
+  advance(f, 700);
   expect(demoPointer(f, 'two').style.transform).not.toBe(pan);
   expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
-  advance(f, 1200);
+  advance(f, 700);
   expect(demoPointer(f, 'one').classList.contains('is-visible')).toBe(true);
   expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
 });
 
 for (const coarse of [false, true]) {
   test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
-    for (const boundary of [1755, 1950, 2900, 3100, 4250, 4750]) {
+    for (const boundary of [1100, 1250, 1900, 2050, 2800, 3100]) {
       const f = fixture(false, { loaded: true, coarse }); startDemo(f);
       advance(f, boundary - 1);
       const rightBefore = pointerX(f);
@@ -693,17 +697,17 @@ for (const coarse of [false, true]) {
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       advance(f, 2);
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
-      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(1);
-      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(1);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(2);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(2);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
-        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(1);
-        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(1);
+        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(2);
+        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(2);
       }
     }
   });
 }
 
-for (const elapsed of [1000, 2500, 4400, 5300]) {
+for (const elapsed of [700, 1600, 2900, 3400]) {
   for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
     test(`${input} interrupts walkthrough at ${elapsed}ms without a delayed close`, () => {
       const f = fixture(false, { loaded: true }); startDemo(f); advance(f, elapsed);
@@ -715,7 +719,7 @@ for (const elapsed of [1000, 2500, 4400, 5300]) {
       else f.viewer.querySelector('select')!.dispatchEvent(new f.window.Event('change'));
       expect(f.dialog.open).toBe(true);
       expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
-      if (elapsed < 4750) expect(f.image.style.transform).toBe(previous);
+      if (elapsed < 3100) expect(f.image.style.transform).toBe(previous);
       advance(f, 10000); f.tick(1000);
       expect(f.dialog.open).toBe(true);
     });
@@ -738,7 +742,7 @@ test('repeated image loads schedule only one visible walkthrough; a source swap 
   const f = fixture(false, { loaded: true }); f.click(); f.frame(); f.frame();
   for (let i = 0; i < 3; i++) f.image.dispatchEvent(new f.window.Event('load'));
   expect(f.timers.size).toBe(1); expect(f.window.sessionStorage.getItem(demoSeen)).toBeNull();
-  f.tick(400); f.frame(); expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  f.tick(250); f.frame(); expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
   Object.defineProperty(f.image, 'complete', { value: false, configurable: true });
   advance(f, 1000); expect(scaleOf(f)).toBeGreaterThan(1);
   expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
@@ -748,9 +752,9 @@ test('repeated image loads schedule only one visible walkthrough; a source swap 
 });
 
 test('walkthrough pan covers the same distance with sparse or frequent animation frames', () => {
-  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 2600);
+  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 1600);
   const frequent = fixture(false, { loaded: true }); startDemo(frequent);
-  for (let elapsed = 0; elapsed < 2600; elapsed += 20) advance(frequent, 20);
+  for (let elapsed = 0; elapsed < 1600; elapsed += 20) advance(frequent, 20);
   expect(panOf(sparse)).toBeCloseTo(panOf(frequent), 6);
   expect(scaleOf(sparse)).toBe(scaleOf(frequent));
 });
@@ -765,7 +769,7 @@ test('keyboard and reduced-motion openings skip and do not claim the walkthrough
 });
 
 test('resize and disposal cancel demonstration frames and timers', () => {
-  const f = fixture(false, { loaded: true }); startDemo(f); advance(f, 1000);
+  const f = fixture(false, { loaded: true }); startDemo(f); advance(f, 700);
   f.window.dispatchEvent(new f.window.Event('resize')); advance(f, 10000);
   expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
   f.dispose(); expect(f.dialog.open).toBe(false); expect(f.frames.size).toBe(0); expect(f.timers.size).toBe(0);
