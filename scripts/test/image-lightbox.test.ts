@@ -661,7 +661,10 @@ test('walkthrough spreads two fingers, pans, releases at fit, then pinches again
   advance(f, 1400); expect(scaleOf(f)).toBe(1);
   expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
   advance(f, 700); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
-  advance(f, 250); f.tick(150); expect(f.dialog.open).toBe(false);
+  advance(f, 249); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+  advance(f, 1); expect(f.dialog.classList.contains('is-visible')).toBe(false);
+  f.tick(149); expect(f.dialog.open).toBe(true);
+  f.tick(1); expect(f.dialog.open).toBe(false);
   f.click(); f.frame(); f.frame(); advance(f, 10000);
   expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
   const sameTab = fixture(false, { loaded: true, session: f.window.sessionStorage }); startDemo(sameTab);
