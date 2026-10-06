@@ -595,6 +595,7 @@ const demoSeen = 'vcd:image-lightbox-demo-seen';
 const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.querySelector<HTMLElement>(`[data-image-lightbox-demo-pointer="${which}"]`)!;
 const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
 const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
+const panYOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\([^,]+, ([-\d.]+)px/)![1]);
 const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
 const pointerY = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/, ([-\d.]+)px/)![1]);
 const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(250); f.frame(); };
@@ -703,9 +704,11 @@ test('first zoom-out keeps the fingers visibly separated around the focal point'
 
 for (const coarse of [false, true]) {
   test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
-    for (const boundary of [1900, 2800]) {
+    for (const boundary of [1100, 1250, 1900, 2050, 2800, 3100]) {
       const f = fixture(false, { loaded: true, coarse }); startDemo(f);
       advance(f, boundary - 1);
+      const imageBefore = panOf(f);
+      const imageYBefore = panYOf(f);
       const rightBefore = pointerX(f);
       const rightYBefore = pointerY(f);
       const leftBefore = pointerX(f, 'one');
@@ -714,15 +717,35 @@ for (const coarse of [false, true]) {
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       advance(f, 2);
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
-      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(5);
-      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(5);
+      expect(Math.abs(panOf(f) - imageBefore)).toBeLessThan(1);
+      expect(Math.abs(panYOf(f) - imageYBefore)).toBeLessThan(1);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(3);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(3);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
-        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(5);
-        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(5);
+        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(3);
+        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(3);
       }
     }
   });
 }
+
+test('walkthrough moves to distinct focal points and closes off-center independently of frame rate', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  const fingerMidpoint = () => ({ x: (pointerX(f, 'one') + pointerX(f, 'two')) / 2, y: (pointerY(f, 'one') + pointerY(f, 'two')) / 2 });
+  const opening = fingerMidpoint();
+  advance(f, 700); expect(panOf(f)).toBeLessThan(0);
+  advance(f, 550); const pan = fingerMidpoint();
+  expect(Math.hypot(pan.x - opening.x, pan.y - opening.y)).toBeGreaterThan(20);
+  advance(f, 800); const zoomOut = fingerMidpoint();
+  expect(Math.hypot(zoomOut.x - pan.x, zoomOut.y - pan.y)).toBeGreaterThan(20);
+  advance(f, 1050); const closing = fingerMidpoint();
+  expect(Math.hypot(closing.x - zoomOut.x, closing.y - zoomOut.y)).toBeGreaterThan(20);
+  advance(f, 300); expect(panOf(f)).toBeGreaterThan(0); expect(panYOf(f)).toBeGreaterThan(0);
+  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 3400);
+  const frequent = fixture(false, { loaded: true }); startDemo(frequent);
+  for (let elapsed = 0; elapsed < 3400; elapsed += 20) advance(frequent, 20);
+  expect(sparse.image.style.transform).toBe(frequent.image.style.transform);
+});
 
 for (const elapsed of [700, 1600, 2900, 3400]) {
   for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
