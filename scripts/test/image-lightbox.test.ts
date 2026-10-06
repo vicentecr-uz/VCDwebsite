@@ -15,7 +15,7 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean } = {}) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
@@ -41,13 +41,13 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   viewer.releasePointerCapture = (id: number) => { captured.delete(id); };
   dialog.showModal = () => dialog.setAttribute('open', '');
   dialog.close = () => dialog.removeAttribute('open');
-  Object.defineProperties(viewer, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+  Object.defineProperties(viewer, { clientWidth: { value: options.width ?? 800 }, clientHeight: { value: 600 } });
   Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
   if (options.loaded) {
     Object.defineProperties(original, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 }, currentSrc: { value: options.preview || '/images/study.jpg' } });
     Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
   }
-  viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
+  viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: options.width ?? 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
     getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
@@ -693,8 +693,12 @@ test('first zoom-out keeps the fingers visibly separated around the focal point'
   const startDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
   advance(f, 750);
   const endDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
+  expect(startDistance).toBeGreaterThan(200);
   expect(startDistance - endDistance).toBeGreaterThan(50);
-  expect(endDistance).toBeGreaterThan(44);
+  expect(endDistance).toBeGreaterThan(90);
+  const phone = fixture(false, { loaded: true, coarse: true, width: 320 }); startDemo(phone);
+  advance(phone, 2050);
+  expect(pointerX(phone, 'two') + 44).toBeLessThanOrEqual(320);
 });
 
 for (const coarse of [false, true]) {
