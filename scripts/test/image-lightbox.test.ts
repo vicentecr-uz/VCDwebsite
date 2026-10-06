@@ -595,7 +595,7 @@ const demoSeen = 'vcd:image-lightbox-demo-seen';
 const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.querySelector<HTMLElement>(`[data-image-lightbox-demo-pointer="${which}"]`)!;
 const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
 const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
-const panYOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\([^,]+, ([-\d.]+)px/)![1]);
+const panYOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\([^,]+, ([-\d.e+]+)px/)![1]);
 const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
 const pointerY = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/, ([-\d.]+)px/)![1]);
 const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(250); f.frame(); };
@@ -813,6 +813,34 @@ for (const method of ['swipe', 'pan']) {
     expect(panOf(right)).toBeGreaterThan(0); expect(panOf(left)).toBeLessThan(0);
     expect(panOf(right)).toBeCloseTo(-panOf(left), 6);
   });
+
+  for (const [direction, angle] of [['right', 0], ['left', .5], ['vertical', .25], ['diagonal', .125]] as const) {
+    test(`${method} demo tilt matches native ${direction} dismissal, including the tilt limit`, () => {
+      const choice = dismissalCases.find((entry) => entry.method === method)!;
+      const { f: demo } = endingFixture(choice, angle); startDemo(demo);
+      const native = fixture(false, { loaded: true, imageHeight: 480 });
+      if (method === 'pan') {
+        const select = native.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+        select.value = 'trackpad'; select.dispatchEvent(new native.window.Event('change', { bubbles: true }));
+      }
+      native.click();
+      if (method === 'swipe') native.pointer('pointerdown', 1, 400, 400);
+      let previousX = 0; let previousY = 0;
+      advance(demo, 3100);
+      for (const elapsed of [200, 249]) {
+        advance(demo, elapsed);
+        const dx = panOf(demo); const dy = panYOf(demo);
+        if (method === 'swipe') native.pointer('pointermove', 1, 400 + dx, 400 + dy);
+        else native.wheel(previousY - dy, false, 0, 500, 400, previousX - dx);
+        expect(rotationOf(demo.image)).toBeCloseTo(rotationOf(native.image), 5);
+        expect(Math.abs(rotationOf(demo.image))).toBeLessThanOrEqual(12);
+        previousX = dx; previousY = dy;
+      }
+      if (direction === 'right') expect(rotationOf(demo.image)).toBe(12);
+      if (direction === 'left') expect(rotationOf(demo.image)).toBe(-12);
+      if (direction === 'vertical') expect(rotationOf(demo.image)).toBeCloseTo(0, 5);
+    });
+  }
 }
 
 for (const elapsed of [700, 1600, 2900, 3400]) {
