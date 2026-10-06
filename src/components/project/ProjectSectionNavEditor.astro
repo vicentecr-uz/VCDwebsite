@@ -95,6 +95,7 @@ import SelectField from '../ui/EditorSelectField.astro';
   import { sizeIcon } from '../../lib/icons';
   import { getSectionRootsInDomOrder, sectionIndexFromElement } from '../../scripts/devSectionPaths';
   import { pageHistory, registerHistoryScope } from '../../lib/devHistory';
+  import { onPageLoad } from '../../lib/pageLifecycle';
 
   type ShowTitle = { desktop: boolean; tablet: boolean; mobile: boolean };
   type BlockState = {
@@ -104,10 +105,7 @@ import SelectField from '../ui/EditorSelectField.astro';
     showTitle: ShowTitle | null;
   };
 
-  let dispose: (() => void) | undefined;
-
   const initSectionNavEditor = () => {
-    dispose?.();
     const root = document.querySelector<HTMLElement>('[data-section-nav-root]');
     const shell = document.querySelector<HTMLElement>('[data-section-nav-editor]');
     const documentKey = root?.dataset.sectionNavDocument;
@@ -520,6 +518,7 @@ import SelectField from '../ui/EditorSelectField.astro';
         return;
       }
       if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
+      if (target.closest('[data-editor-select-popup]')) return;
       if (event.key === 'Escape' && !panel.hidden) {
         event.preventDefault(); event.stopImmediatePropagation(); closePanel();
       }
@@ -548,7 +547,7 @@ import SelectField from '../ui/EditorSelectField.astro';
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       inputSession = null; renderSelection(); if (dirty) stage();
     }, { signal });
-    dispose = () => {
+    const dispose = () => {
       controller.abort();
       unregisterHistoryScope?.();
       panel.inert = false;
@@ -558,10 +557,11 @@ import SelectField from '../ui/EditorSelectField.astro';
       blocks().forEach((block) => block.classList.remove('is-section-nav-active', 'is-section-nav-hover'));
     };
     syncMode();
+    return dispose;
   };
 
-  initSectionNavEditor();
-  if (import.meta.hot) import.meta.hot.dispose(() => dispose?.());
+  const disposePage = onPageLoad(initSectionNavEditor);
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style is:global>

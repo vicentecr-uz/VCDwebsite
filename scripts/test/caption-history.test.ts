@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { createHistory } from '../../src/lib/devHistory';
 import * as captions from '../../src/lib/imageCaptions';
 
-const source = readFileSync(new URL('../../src/components/project/ProjectImageCaptionTuner.astro', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../../src/components/project/ProjectImageCaptionTuner.astro', import.meta.url), 'utf8')
+  .replace(/pageScope\.listen\((\w+),\s*/g, '$1.addEventListener(')
+  .replace('pageScope.add(registerHistoryScope(', 'registerHistoryScope(');
 const between = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const functions = [
   between('    const captureDraft =', '    registerHistoryScope('),
