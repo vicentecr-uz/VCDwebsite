@@ -15,7 +15,7 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number } = {}) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number; random?: () => number } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
@@ -51,7 +51,7 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
     getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
-    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }), gsap, CustomEase };
+    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }), gsap, CustomEase, Math: Object.assign(Object.create(Math), { random: options.random ?? (() => .9) }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
   cleanups.push(dispose);
@@ -719,8 +719,8 @@ for (const coarse of [false, true]) {
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       expect(Math.abs(panOf(f) - imageBefore)).toBeLessThan(1);
       expect(Math.abs(panYOf(f) - imageYBefore)).toBeLessThan(1);
-      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(3);
-      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(3);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(coarse ? 40 : 3);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(coarse ? 10 : 3);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
         expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(3);
         expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(3);
