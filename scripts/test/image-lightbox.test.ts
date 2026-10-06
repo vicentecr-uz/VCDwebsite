@@ -687,6 +687,16 @@ test('coarse walkthrough keeps the right finger through pan while the left finge
   expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
 });
 
+test('first zoom-out keeps the fingers visibly separated around the focal point', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  advance(f, 2050);
+  const startDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
+  advance(f, 750);
+  const endDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
+  expect(startDistance - endDistance).toBeGreaterThan(50);
+  expect(endDistance).toBeGreaterThan(44);
+});
+
 for (const coarse of [false, true]) {
   test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
     for (const boundary of [1100, 1250, 1900, 2050, 2800, 3100]) {
