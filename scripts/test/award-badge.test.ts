@@ -26,11 +26,14 @@ test('mounted carousel items render only the recognized Red Dot badge', async ()
         ],
       }],
     }, 'fixture', 0);
-    const badges = [...grid.querySelectorAll<HTMLImageElement>('.project-image-carousel__award-badge')];
+    const badges = [...grid.querySelectorAll<HTMLAnchorElement>('.project-image-carousel__award-badge')];
     expect(badges).toHaveLength(1);
-    expect(badges[0].src).toContain('/awards/red-dot-2026.png');
-    expect(badges[0].alt).toBe('Red Dot Award: Product Design 2026');
-    expect(badges[0].draggable).toBe(false);
+    expect(badges[0].href).toBe('https://www.red-dot.org/project/goodhome-87719');
+    expect(badges[0].target).toBe('_blank');
+    expect(badges[0].rel).toBe('noopener noreferrer');
+    expect(badges[0].querySelector('img')?.src).toContain('/awards/red-dot-2026.png');
+    expect(badges[0].querySelector('img')?.alt).toBe('Red Dot Award: Product Design 2026');
+    expect(badges[0].querySelector('img')?.draggable).toBe(false);
     expect(grid.querySelectorAll('[data-image-original]').length).toBe(2);
   } finally {
     previous.forEach((descriptor, key) => descriptor
