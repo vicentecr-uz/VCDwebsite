@@ -2,25 +2,30 @@ import { afterEach, expect, test } from 'bun:test';
 import { Window, BrowserErrorCaptureEnum } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import * as geometry from '../../src/lib/imageLightbox';
+import { gsap } from 'gsap';
+import { CustomEase } from 'gsap/CustomEase';
 
 const script = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8')
   .match(/<script>([\s\S]*?)<\/script>/)![1];
 const source = script.slice(0, script.indexOf('  import { onPageLoad }'))
-  .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '');
+  .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '')
+  .replace(/import\s+\{\s*gsap\s*\}\s+from\s+'gsap';/, '')
+  .replace(/import\s+\{\s*CustomEase\s*\}\s+from\s+'gsap\/CustomEase';/, '');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number; imageHeight?: number; random?: () => number } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
-    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p><label><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label></div>
+    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><span data-image-lightbox-demo-pointer="one" aria-hidden="true"></span><span data-image-lightbox-demo-pointer="two" aria-hidden="true"></span><p data-image-lightbox-error hidden></p><label><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label></div>
     </dialog>`;
   const original = document.querySelector<HTMLImageElement>('#source')!;
   const dialog = document.querySelector('dialog')!;
   const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]')!;
   const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]')!;
+  if (options.preview) { original.src = options.preview; original.dataset.imageOriginal = '/images/study.jpg'; }
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -36,13 +41,17 @@ function fixture(reducedMotion = false) {
   viewer.releasePointerCapture = (id: number) => { captured.delete(id); };
   dialog.showModal = () => dialog.setAttribute('open', '');
   dialog.close = () => dialog.removeAttribute('open');
-  Object.defineProperties(viewer, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
-  Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
-  viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
+  Object.defineProperties(viewer, { clientWidth: { value: options.width ?? 800 }, clientHeight: { value: 600 } });
+  Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: options.imageHeight ?? 600 } });
+  if (options.loaded) {
+    Object.defineProperties(original, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 }, currentSrc: { value: options.preview || '/images/study.jpg' } });
+    Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
+  }
+  viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: options.width ?? 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
-    getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, performance: { now: () => now },
-    matchMedia: () => ({ matches: reducedMotion }) };
+    getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
+    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }), gsap, CustomEase, Math: Object.assign(Object.create(Math), { random: options.random ?? (() => .9) }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
   cleanups.push(dispose);
@@ -209,7 +218,7 @@ test('drag tracks, twists and fades; crossing and reversing the threshold keeps 
   f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,466,400);
   expect(f.image.style.transform).toContain('66px');
   expect(Number(f.image.style.opacity)).toBeCloseTo(.85,2);
-  expect(f.image.style.filter).toContain('blur(');
+  expect(f.image.style.filter).toBe('');
   f.pointer('pointermove',1,550,400);
   expect(Number(f.image.style.opacity)).toBeCloseTo(.1);
   expect(f.dialog.classList.contains('is-visible')).toBe(true);
@@ -251,6 +260,7 @@ test('pinching inward from fit can arm dismissal, reverse, or close only on rele
     f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
     f.pointer('pointermove',1,430,400); f.pointer('pointermove',2,570,400);
     expect(Number(f.image.style.opacity)).toBe(.1);
+    expect(f.image.style.filter).toBe('');
     expect(f.dialog.open).toBe(true);
     if(reverse) {f.pointer('pointermove',1,410,400); f.pointer('pointermove',2,590,400); expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);}
     f.pointer('pointerup',2,reverse?590:570,400); f.pointer('pointerup',1,reverse?410:430,400);
@@ -560,4 +570,322 @@ test('Safari zooming out stops at fit until a new gesture begins', () => {
   f.gesture('gestureend',.5); f.tick(150); expect(f.dialog.open).toBe(true);
   f.gesture('gesturestart'); f.gesture('gesturechange',.7); f.gesture('gestureend',.7);
   f.tick(150); expect(f.dialog.open).toBe(false);
+});
+
+function loadersFor(f: ReturnType<typeof fixture>) {
+  const loaders: { image: HTMLImageElement; resolve: () => void; reject: () => void }[] = [];
+  const create = f.document.createElement.bind(f.document);
+  f.document.createElement = ((name: string) => {
+    const node = create(name);
+    if (name === 'img') {
+      const image = node as HTMLImageElement;
+      let resolve!: () => void;
+      let reject!: () => void;
+      const decoded = new Promise<void>((yes, no) => { resolve = yes; reject = () => no(new Error('decode failed')); });
+      Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 7200 }, naturalHeight: { value: 4800 } });
+      image.decode = () => decoded;
+      loaders.push({ image, resolve, reject });
+    }
+    return node;
+  }) as typeof f.document.createElement;
+  return loaders;
+}
+
+const demoSeen = 'vcd:image-lightbox-demo-seen';
+const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.querySelector<HTMLElement>(`[data-image-lightbox-demo-pointer="${which}"]`)!;
+const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
+const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
+const panYOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\([^,]+, ([-\d.]+)px/)![1]);
+const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
+const pointerY = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/, ([-\d.]+)px/)![1]);
+const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(250); f.frame(); };
+const advance = (f: ReturnType<typeof fixture>, ms: number) => { f.tick(ms); f.frame(); };
+
+test('cached preview appears immediately; original replaces it only after load and decode', async () => {
+  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+  const loaders = loadersFor(f);
+  f.click();
+  expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+  expect(f.image.style.getPropertyValue('--image-aspect')).toBe('1.5');
+  loaders[0].image.dispatchEvent(new f.window.Event('load'));
+  await Promise.resolve();
+  expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+  loaders[0].resolve(); await Promise.resolve(); await Promise.resolve();
+  expect(f.image.getAttribute('src')).toBe('/images/study.jpg');
+  expect(f.image.style.getPropertyValue('--image-aspect')).toBe('1.5');
+});
+
+test('already-loaded original URL avoids a redundant loader', () => {
+  const f = fixture(false, { loaded: true, preview: 'http://localhost:4323/images/study.jpg' });
+  const loaders = loadersFor(f); f.click();
+  expect(loaders.length).toBe(0);
+});
+
+for (const reject of [false, true]) {
+  test(`stale original ${reject ? 'decode failure' : 'decode completion'} cannot affect a reopened lightbox`, async () => {
+    const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+    const loaders = loadersFor(f);
+    f.click(); loaders[0].image.dispatchEvent(new f.window.Event('load'));
+    f.key('Escape'); f.tick(150); f.original.dataset.imageOriginal = '/images/next.jpg'; f.click();
+    reject ? loaders[0].reject() : loaders[0].resolve();
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+    expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(true);
+    loaders[1].image.dispatchEvent(new f.window.Event('load')); loaders[1].resolve();
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/next.jpg');
+  });
+}
+
+for (const decodeError of [false, true]) {
+  test(`${decodeError ? 'decode' : 'network'} failure keeps the preview and reports the unavailable original`, async () => {
+    const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+    const loaders = loadersFor(f); f.click();
+    if (decodeError) { loaders[0].image.dispatchEvent(new f.window.Event('load')); loaders[0].reject(); }
+    else loaders[0].image.dispatchEvent(new f.window.Event('error'));
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+    const error = f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!;
+    expect(error.hidden).toBe(false);
+    expect(error.textContent).toBe('Full-resolution image could not be loaded.');
+  });
+}
+
+test('walkthrough spreads two fingers, pans, releases at fit, then pinches again to close', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  expect(pointerY(f, 'one')).not.toBe(pointerY(f, 'two'));
+  expect(f.window.sessionStorage.getItem(demoSeen)).toBe('1');
+  const initial = demoPointer(f).style.transform;
+  advance(f, 700); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
+  advance(f, 700); expect(panOf(f)).toBeGreaterThan(0); expect(scaleOf(f)).toBe(2.3);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+  advance(f, 1400); expect(scaleOf(f)).toBe(1);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  advance(f, 700); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
+  advance(f, 249); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+  advance(f, 1); expect(f.dialog.classList.contains('is-visible')).toBe(false);
+  f.tick(149); expect(f.dialog.open).toBe(true);
+  f.tick(1); expect(f.dialog.open).toBe(false);
+  f.click(); f.frame(); f.frame(); advance(f, 10000);
+  expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  const sameTab = fixture(false, { loaded: true, session: f.window.sessionStorage }); startDemo(sameTab);
+  expect(demoPointer(sameTab).classList.contains('is-visible')).toBe(false);
+  const newTab = fixture(false, { loaded: true }); startDemo(newTab);
+  expect(demoPointer(newTab).classList.contains('is-visible')).toBe(true);
+});
+
+test('coarse walkthrough keeps the right finger through pan while the left finger fades', () => {
+  const f = fixture(false, { loaded: true, coarse: true }); startDemo(f);
+  advance(f, 1300);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  const pan = demoPointer(f, 'two').style.transform;
+  advance(f, 700);
+  expect(demoPointer(f, 'two').style.transform).not.toBe(pan);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  advance(f, 700);
+  expect(demoPointer(f, 'one').classList.contains('is-visible')).toBe(true);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+});
+
+test('first zoom-out keeps the fingers visibly separated around the focal point', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  advance(f, 2050);
+  const startDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
+  advance(f, 750);
+  const endDistance = Math.hypot(pointerX(f, 'two') - pointerX(f, 'one'), pointerY(f, 'two') - pointerY(f, 'one'));
+  expect(startDistance).toBeGreaterThan(200);
+  expect(startDistance - endDistance).toBeGreaterThan(50);
+  expect(endDistance).toBeGreaterThan(90);
+  const phone = fixture(false, { loaded: true, coarse: true, width: 320 }); startDemo(phone);
+  advance(phone, 2050);
+  expect(pointerX(phone, 'two') + 44).toBeLessThanOrEqual(320);
+});
+
+for (const coarse of [false, true]) {
+  test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
+    for (const boundary of [1100, 1250, 1900, 2050, 2800, 3100]) {
+      const f = fixture(false, { loaded: true, coarse }); startDemo(f);
+      advance(f, boundary - 1);
+      const imageBefore = panOf(f);
+      const imageYBefore = panYOf(f);
+      const rightBefore = pointerX(f);
+      const rightYBefore = pointerY(f);
+      const leftBefore = pointerX(f, 'one');
+      const leftYBefore = pointerY(f, 'one');
+      const leftVisible = demoPointer(f).classList.contains('is-visible');
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+      advance(f, 2);
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+      expect(Math.abs(panOf(f) - imageBefore)).toBeLessThan(1);
+      expect(Math.abs(panYOf(f) - imageYBefore)).toBeLessThan(1);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(3);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(3);
+      if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
+        expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(3);
+        expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(3);
+      }
+    }
+  });
+}
+
+test('walkthrough moves to distinct focal points and closes off-center independently of frame rate', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  const fingerMidpoint = () => ({ x: (pointerX(f, 'one') + pointerX(f, 'two')) / 2, y: (pointerY(f, 'one') + pointerY(f, 'two')) / 2 });
+  const opening = fingerMidpoint();
+  advance(f, 700); expect(panOf(f)).toBeLessThan(0);
+  advance(f, 550); const pan = fingerMidpoint();
+  expect(Math.hypot(pan.x - opening.x, pan.y - opening.y)).toBeGreaterThan(20);
+  advance(f, 800); const zoomOut = fingerMidpoint();
+  expect(Math.hypot(zoomOut.x - pan.x, zoomOut.y - pan.y)).toBeGreaterThan(20);
+  advance(f, 1050); const closing = fingerMidpoint();
+  expect(Math.hypot(closing.x - zoomOut.x, closing.y - zoomOut.y)).toBeGreaterThan(20);
+  advance(f, 300); expect(panOf(f)).toBeGreaterThan(0); expect(panYOf(f)).toBeGreaterThan(0);
+  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 3400);
+  const frequent = fixture(false, { loaded: true }); startDemo(frequent);
+  for (let elapsed = 0; elapsed < 3400; elapsed += 20) advance(frequent, 20);
+  expect(sparse.image.style.transform).toBe(frequent.image.style.transform);
+});
+
+const dismissalCases = [
+  { method: 'tap', coarse: false, selection: .1 },
+  { method: 'pan', coarse: false, selection: .5 },
+  { method: 'pinch', coarse: false, selection: .9 },
+  { method: 'swipe', coarse: true, selection: .1 },
+];
+const endingFixture = (choice: typeof dismissalCases[number], angle = .125) => {
+  let calls = 0;
+  const f = fixture(false, { loaded: true, coarse: choice.coarse, imageHeight: 480, random: () => (++calls === 1 && !choice.coarse ? choice.selection : angle) });
+  return { f, calls: () => calls };
+};
+
+for (const choice of dismissalCases) {
+  test(`${choice.method} ending keeps continuous fingers, correct count, fixed randomness and normal close timing`, () => {
+    const { f, calls } = endingFixture(choice); startDemo(f);
+    advance(f, 3099); const before = { x: pointerX(f), y: pointerY(f) };
+    advance(f, 2);
+    expect(Math.hypot(pointerX(f) - before.x, pointerY(f) - before.y)).toBeLessThan(3);
+    advance(f, 99);
+    expect(demoPointer(f).classList.contains('is-visible')).toBe(choice.method === 'pan' || choice.method === 'pinch');
+    expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+    if (choice.method === 'tap') {
+      expect(pointerY(f) + 22).toBeLessThan((600 - 480) / 2);
+      expect(pointerY(f) + 22).toBeGreaterThan(0);
+      expect(scaleOf(f)).toBe(1); expect(panOf(f)).toBe(0);
+      advance(f, 139); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+      advance(f, 1);
+    } else {
+      if (choice.method === 'pinch') expect(scaleOf(f)).toBeLessThan(1);
+      else expect(Math.hypot(panOf(f), panYOf(f))).toBeGreaterThan(0);
+      advance(f, 300); expect(f.image.classList.contains('is-armed')).toBe(true);
+      advance(f, 249); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+      advance(f, 1);
+    }
+    expect(f.dialog.classList.contains('is-visible')).toBe(false);
+    f.tick(149); expect(f.dialog.open).toBe(true);
+    f.tick(1); expect(f.dialog.open).toBe(false);
+    expect(calls()).toBe(choice.coarse ? 1 : 2);
+  });
+
+  test(`${choice.method} ending is independent of animation frame frequency`, () => {
+    const { f: sparse } = endingFixture(choice); startDemo(sparse); advance(sparse, 3200);
+    const { f: frequent } = endingFixture(choice); startDemo(frequent);
+    for (let elapsed = 0; elapsed < 3200; elapsed += 20) advance(frequent, 20);
+    expect(sparse.image.style.transform).toBe(frequent.image.style.transform);
+    expect(demoPointer(sparse, 'two').style.transform).toBe(demoPointer(frequent, 'two').style.transform);
+  });
+
+  for (const input of ['pointer', 'key']) {
+    test(`${input} interrupts ${choice.method} ending without a delayed close`, () => {
+      const { f } = endingFixture(choice); startDemo(f); advance(f, 3200);
+      input === 'pointer' ? f.pointer('pointerdown', 1) : f.key('a');
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(false);
+      advance(f, 10000); f.tick(1000); expect(f.dialog.open).toBe(true);
+    });
+  }
+}
+
+for (const method of ['swipe', 'pan']) {
+  test(`${method} dismissal can move in opposite random directions`, () => {
+    const choice = dismissalCases.find((entry) => entry.method === method)!;
+    const { f: right } = endingFixture(choice, 0); startDemo(right); advance(right, 3400);
+    const { f: left } = endingFixture(choice, .5); startDemo(left); advance(left, 3400);
+    expect(panOf(right)).toBeGreaterThan(0); expect(panOf(left)).toBeLessThan(0);
+    expect(panOf(right)).toBeCloseTo(-panOf(left), 6);
+  });
+}
+
+for (const elapsed of [700, 1600, 2900, 3400]) {
+  for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
+    test(`${input} interrupts walkthrough at ${elapsed}ms without a delayed close`, () => {
+      const f = fixture(false, { loaded: true }); startDemo(f); advance(f, elapsed);
+      const previous = f.image.style.transform;
+      if (input === 'pointer') f.pointer('pointerdown', 1);
+      else if (input === 'wheel') f.wheel(0);
+      else if (input === 'key') f.key('a');
+      else if (input === 'gesture') f.gesture('gesturestart');
+      else f.viewer.querySelector('select')!.dispatchEvent(new f.window.Event('change'));
+      expect(f.dialog.open).toBe(true);
+      expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+      if (elapsed < 3100) expect(f.image.style.transform).toBe(previous);
+      advance(f, 10000); f.tick(1000);
+      expect(f.dialog.open).toBe(true);
+    });
+  }
+}
+
+test('early input before loading or during the wait prevents later playback without claiming seen', () => {
+  for (const loaded of [false, true]) {
+    const f = fixture(false, { loaded }); f.click(); f.frame(); f.frame();
+    f.pointer('pointerdown', 1); f.pointer('pointerup', 1);
+    if (!loaded) Object.defineProperties(f.image, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
+    f.image.dispatchEvent(new f.window.Event('load'));
+    advance(f, 10000); f.tick(150);
+    expect(f.dialog.open).toBe(true);
+    expect(f.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  }
+});
+
+test('repeated image loads schedule only one visible walkthrough; a source swap does not cancel it', () => {
+  const f = fixture(false, { loaded: true }); f.click(); f.frame(); f.frame();
+  for (let i = 0; i < 3; i++) f.image.dispatchEvent(new f.window.Event('load'));
+  expect(f.timers.size).toBe(1); expect(f.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  f.tick(250); f.frame(); expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  Object.defineProperty(f.image, 'complete', { value: false, configurable: true });
+  advance(f, 1000); expect(scaleOf(f)).toBeGreaterThan(1);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  Object.defineProperty(f.image, 'complete', { value: true, configurable: true });
+  f.image.dispatchEvent(new f.window.Event('load'));
+  expect(f.timers.size).toBe(0); expect(f.frames.size).toBe(1);
+});
+
+test('walkthrough pan covers the same distance with sparse or frequent animation frames', () => {
+  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 1600);
+  const frequent = fixture(false, { loaded: true }); startDemo(frequent);
+  for (let elapsed = 0; elapsed < 1600; elapsed += 20) advance(frequent, 20);
+  expect(panOf(sparse)).toBeCloseTo(panOf(frequent), 6);
+  expect(scaleOf(sparse)).toBe(scaleOf(frequent));
+});
+
+test('keyboard and reduced-motion openings skip and do not claim the walkthrough', () => {
+  const keyboard = fixture(false, { loaded: true }); keyboard.key('Enter', keyboard.original);
+  keyboard.frame(); keyboard.frame(); advance(keyboard, 10000);
+  expect(keyboard.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  expect(keyboard.dialog.open).toBe(true);
+  const reduced = fixture(true, { loaded: true }); startDemo(reduced); advance(reduced, 10000);
+  expect(reduced.window.sessionStorage.getItem(demoSeen)).toBeNull(); expect(reduced.dialog.open).toBe(true);
+});
+
+test('resize and disposal cancel demonstration frames and timers', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f); advance(f, 700);
+  f.window.dispatchEvent(new f.window.Event('resize')); advance(f, 10000);
+  expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  f.dispose(); expect(f.dialog.open).toBe(false); expect(f.frames.size).toBe(0); expect(f.timers.size).toBe(0);
+});
+
+test('mobile removes side insets and fit geometry uses image aspect and the safe viewport', () => {
+  const css = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8').split('<style>')[1];
+  expect(css).toContain('padding-inline: 0');
+  expect(css).toContain('width: min(100%, calc(var(--vh-safe, 1svh) * 80 * var(--image-aspect, 1)))');
+  expect(css).toContain('aspect-ratio: var(--image-aspect, auto)');
 });

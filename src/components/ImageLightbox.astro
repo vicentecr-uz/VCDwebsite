@@ -1,6 +1,8 @@
 <dialog class="image-lightbox" data-image-lightbox aria-label="Image viewer">
   <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="Escape + - 0 ArrowUp ArrowDown ArrowLeft ArrowRight">
     <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
+    <span class="image-lightbox__demo-pointer" data-image-lightbox-demo-pointer="one" aria-hidden="true"></span>
+    <span class="image-lightbox__demo-pointer" data-image-lightbox-demo-pointer="two" aria-hidden="true"></span>
     <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
     <label class="image-lightbox__input-mode"> <span class="sr-only">Input mode</span><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label>
   </div>
@@ -8,12 +10,20 @@
 
 <script>
   import { IMAGE_LIGHTBOX_MAX_SCALE, distance, midpoint, panForPinch, type Point } from '../lib/imageLightbox';
+  import { gsap } from 'gsap';
+  import { CustomEase } from 'gsap/CustomEase';
+  gsap.registerPlugin(CustomEase);
+  const gestureEase = CustomEase.create('vcdLightboxGesture', '0.4,0,0.2,1');
+  const repositionEase = gsap.parseEase('power2.out');
 
   const bindImageLightbox = (dialog: HTMLDialogElement) => {
     const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]');
     const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
     const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
     if (!viewer || !image || !error) return () => {};
+    const demoOne = viewer.querySelector<HTMLElement>('[data-image-lightbox-demo-pointer="one"]');
+    const demoTwo = viewer.querySelector<HTMLElement>('[data-image-lightbox-demo-pointer="two"]');
+    if (!demoOne || !demoTwo) return () => {};
     const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
     type View = { x: number; y: number; scale: number; rotation: number };
     type Gesture = 'drag' | 'pan' | 'pinch' | 'rotate' | 'blocked' | null;
@@ -81,6 +91,16 @@
     let pointerRotationTarget: number | null = null;
     let session = 0;
     let observer: MutationObserver | null = null;
+    let cancelOriginalLoad: (() => void) | null = null;
+    let showingPreview = false;
+    let demoFrame = 0;
+    let demoTimer: number | null = null;
+    let demoActive = false;
+    let demoSession = 0;
+    let demoStarted = false;
+    let demoDismissing = false;
+    let demoInteracted = false;
+    const demoStorageKey = 'vcd:image-lightbox-demo-seen';
 
     const threshold = () => clamp(Math.min(viewer.clientWidth, viewer.clientHeight) * .22, 90, 150);
     const centre = (): Point => {
@@ -102,13 +122,11 @@
       : feedback === 'pinch' ? Math.max(0, (1 - view.scale) / .25) : 0;
     const render = () => {
       const amount = progress();
-      armed = amount >= 1 && (gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true || wheelTrackpadActive);
+      armed = amount >= 1 && (demoDismissing || gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true || wheelTrackpadActive);
       image.classList.toggle('is-armed', armed);
       const dismissScale = reducedMotion() ? 1 : 1 - .08 * clamp(amount, 0, 1);
       image.style.transform = `translate(${view.x}px, ${view.y}px) rotate(${view.rotation}deg) scale(${view.scale * dismissScale})`;
       image.style.opacity = String(armed ? .1 : 1 - .3 * clamp(amount, 0, 1));
-      const blur = reducedMotion() ? 0 : 3 * clamp(amount, 0, 1);
-      image.style.filter = blur ? `blur(${blur}px)` : 'none';
     };
     const stopSpring = () => {
       cancelAnimationFrame(springFrame); springFrame = 0;
@@ -164,6 +182,133 @@
       view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; lastPointer = null; nativeUntil = 0; pointerRotationTarget = null;
       render();
     };
+    const clearDemo = () => {
+      if (demoFrame) cancelAnimationFrame(demoFrame);
+      demoFrame = 0;
+      if (demoTimer !== null) window.clearTimeout(demoTimer);
+      demoTimer = null;
+      demoActive = false; demoDismissing = false;
+      demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible');
+    };
+    const interruptDemo = () => {
+      demoInteracted = true;
+      if (!demoActive && !demoFrame && demoTimer === null) return;
+      clearDemo(); feedback = null; render();
+    };
+    const demoReady = () => dialog.open && dialog.classList.contains('is-visible') && closeTimer === null && image.complete && image.naturalWidth > 0;
+    const startDemo = (openingSession: number) => {
+      if (restoreKeyboardFocus || reducedMotion() || !demoReady() || demoStarted || demoActive || demoTimer !== null || demoInteracted || session !== openingSession) return;
+      try { if (sessionStorage.getItem(demoStorageKey)) return; } catch {}
+      demoActive = true; demoSession = openingSession;
+      const touchDemo = matchMedia('(pointer: coarse)').matches;
+      const dismissal = touchDemo ? 'swipe' : (['tap', 'pan', 'pinch'] as const)[Math.floor(Math.random() * 3)];
+      const dismissalAngle = Math.random() * Math.PI * 2;
+      let origin = 0;
+      const setPointer = (node: HTMLElement, x: number, y: number, scale = .88) => {
+        node.style.transform = `translate(${x - 22}px, ${y - 22}px) scale(${scale})`;
+        node.classList.add('is-visible');
+      };
+      const tick = (now: number) => {
+        if (!demoActive || demoSession !== session || !dialog.open || closeTimer !== null) { clearDemo(); return; }
+        const elapsed = now - origin;
+        if (dismissal === 'tap' && elapsed >= 3340) { view = fit(); feedback = null; render(); dismiss(); return; }
+        const point = centre();
+        const rect = viewer.getBoundingClientRect();
+        const x = point.x - rect.left;
+        const y = point.y - rect.top;
+        const pan = { x: Math.min(80, image.offsetWidth * .65, Math.max(0, viewer.clientWidth / 2 - 114)), y: Math.min(40, image.offsetHeight * .65) };
+        const zoomAnchor = { x: Math.min(8, viewer.clientWidth * .02), y: -Math.min(28, image.offsetHeight * .06) };
+        const panAnchor = { x: -Math.min(24, viewer.clientWidth * .04), y: Math.min(28, image.offsetHeight * .05) };
+        const outAnchor = { x: Math.min(20, viewer.clientWidth * .04), y: -Math.min(24, image.offsetHeight * .035) };
+        const closeAnchor = { x: Math.min(36, viewer.clientWidth * .08), y: Math.min(48, image.offsetHeight * .1) };
+        const tapY = Math.max(8, (viewer.clientHeight - image.offsetHeight) / 4);
+        const closingAnchor = { x: closeAnchor.x, y: dismissal === 'tap' ? tapY - y : closeAnchor.y };
+        const singleFinger = dismissal === 'tap' || dismissal === 'swipe';
+        const leftOffset = dismissal === 'pinch' ? { x: -56, y: 26 } : { x: -36, y: 12 };
+        const rightOffset = dismissal === 'pinch' ? { x: 56, y: -16 } : dismissal === 'pan' ? { x: 36, y: -8 } : { x: 0, y: 0 };
+        const zoomBase = { x: zoomAnchor.x * (1 - 2.3), y: zoomAnchor.y * (1 - 2.3) };
+        const panEnd = { x: clamp(zoomBase.x + pan.x, -image.offsetWidth * .65, image.offsetWidth * .65), y: clamp(zoomBase.y + pan.y, -image.offsetHeight * .65, image.offsetHeight * .65) };
+        if (elapsed < 300) {
+          const pressed = 1 - .12 * repositionEase(clamp((elapsed - 120) / 100, 0, 1));
+          setPointer(demoOne, x + zoomAnchor.x - 56, y + zoomAnchor.y + 26, pressed); setPointer(demoTwo, x + zoomAnchor.x + 56, y + zoomAnchor.y - 16, pressed);
+        } else if (elapsed < 1100) {
+          const scale = 1 + gestureEase((elapsed - 300) / 800) * 1.3;
+          setPointer(demoOne, x + zoomAnchor.x - 56 * scale, y + zoomAnchor.y + 26 * scale); setPointer(demoTwo, x + zoomAnchor.x + 56 * scale, y + zoomAnchor.y - 16 * scale);
+          view = { x: zoomAnchor.x * (1 - scale), y: zoomAnchor.y * (1 - scale), scale, rotation: 0 }; clampPan(); render();
+        } else if (elapsed < 1250) {
+          const amount = repositionEase((elapsed - 1100) / 150);
+          setPointer(demoTwo, x + zoomAnchor.x + (panAnchor.x - zoomAnchor.x) * amount + 128.8 - 72.8 * amount, y + zoomAnchor.y + (panAnchor.y - zoomAnchor.y) * amount - 36.8 + 28.8 * amount, 1);
+          if (touchDemo) demoOne.classList.remove('is-visible');
+          else setPointer(demoOne, x + zoomAnchor.x + (panAnchor.x - zoomAnchor.x) * amount - 128.8 + 72.8 * amount, y + zoomAnchor.y + (panAnchor.y - zoomAnchor.y) * amount + 59.8 - 47.8 * amount, 1);
+          view = { x: zoomBase.x, y: zoomBase.y, scale: 2.3, rotation: 0 }; clampPan(); render();
+        } else if (elapsed < 1900) {
+          const amount = gestureEase((elapsed - 1250) / 650);
+          setPointer(demoTwo, x + panAnchor.x + 56 + amount * pan.x, y + panAnchor.y - 8 + amount * pan.y);
+          if (touchDemo) demoOne.classList.remove('is-visible');
+          else setPointer(demoOne, x + panAnchor.x - 56 + amount * pan.x, y + panAnchor.y + 12 + amount * pan.y);
+          view = { x: zoomBase.x + pan.x * amount, y: zoomBase.y + pan.y * amount, scale: 2.3, rotation: 0 };
+          clampPan(); render();
+        } else if (elapsed < 2050) {
+          const amount = gestureEase((elapsed - 1900) / 150);
+          const anchorX = panAnchor.x + (outAnchor.x - panAnchor.x) * amount;
+          const anchorY = panAnchor.y + (outAnchor.y - panAnchor.y) * amount;
+          setPointer(demoTwo, x + anchorX + 56 + (92 - 56) * amount + pan.x * (1 - amount), y + anchorY - 8 + (-101.2 + 8) * amount + pan.y * (1 - amount), 1);
+          if (touchDemo) demoOne.classList.remove('is-visible');
+          else setPointer(demoOne, x + anchorX - 56 + (-96.6 + 56) * amount + pan.x * (1 - amount), y + anchorY + 12 + (82.8 - 12) * amount + pan.y * (1 - amount), 1);
+          view = { x: panEnd.x, y: panEnd.y, scale: 2.3, rotation: 0 }; clampPan(); render();
+        } else if (elapsed < 2800) {
+          const scale = 2.3 - gestureEase((elapsed - 2050) / 750) * 1.3;
+          setPointer(demoOne, x + outAnchor.x - 42 * scale, y + outAnchor.y + 36 * scale);
+          setPointer(demoTwo, x + outAnchor.x + 40 * scale, y + outAnchor.y - 44 * scale);
+          const focal = { x: point.x + outAnchor.x, y: point.y + outAnchor.y };
+          const translated = panForPinch(panEnd, focal, focal, 2.3, scale, point);
+          view = { x: translated.x, y: translated.y, scale, rotation: 0 };
+          clampPan(); render();
+        } else if (elapsed < 3100) {
+          const amount = (dismissal === 'pinch' ? repositionEase : gestureEase)((elapsed - 2800) / 300);
+          if (singleFinger) demoOne.classList.remove('is-visible');
+          else setPointer(demoOne, x + outAnchor.x - 42 + (closingAnchor.x + leftOffset.x - outAnchor.x + 42) * amount, y + outAnchor.y + 36 + (closingAnchor.y + leftOffset.y - outAnchor.y - 36) * amount, 1);
+          setPointer(demoTwo, x + outAnchor.x + 40 + (closingAnchor.x + rightOffset.x - outAnchor.x - 40) * amount, y + outAnchor.y - 44 + (closingAnchor.y + rightOffset.y - outAnchor.y + 44) * amount, 1);
+          view = fit(); render();
+        } else if (elapsed < 3550) {
+          if (dismissal === 'pinch') {
+            const scale = 1 - gestureEase((elapsed - 3100) / 450) * .3;
+            demoDismissing = true; feedback = 'pinch';
+            setPointer(demoOne, x + closeAnchor.x - 56 * scale, y + closeAnchor.y + 26 * scale); setPointer(demoTwo, x + closeAnchor.x + 56 * scale, y + closeAnchor.y - 16 * scale);
+            view = { x: closeAnchor.x * (1 - scale), y: closeAnchor.y * (1 - scale), scale, rotation: 0 }; render();
+          } else if (dismissal === 'tap') {
+            const scale = elapsed < 3220
+              ? 1 - repositionEase(clamp((elapsed - 3100) / 100, 0, 1)) * .12
+              : .88 + repositionEase(clamp((elapsed - 3220) / 100, 0, 1)) * .12;
+            demoOne.classList.remove('is-visible'); setPointer(demoTwo, x + closingAnchor.x, y + closingAnchor.y, scale);
+            view = fit(); feedback = null; render();
+          } else {
+            const progress = gestureEase((elapsed - 3100) / 450);
+            const distance = threshold() * 1.2 * progress;
+            const dx = Math.cos(dismissalAngle) * distance; const dy = Math.sin(dismissalAngle) * distance;
+            demoDismissing = true; feedback = 'drag';
+            if (singleFinger) demoOne.classList.remove('is-visible');
+            else setPointer(demoOne, x + closingAnchor.x + leftOffset.x + dx, y + closingAnchor.y + leftOffset.y + dy);
+            setPointer(demoTwo, x + closingAnchor.x + rightOffset.x + dx, y + closingAnchor.y + rightOffset.y + dy);
+            view = { x: dx, y: dy, scale: 1, rotation: 0 }; render();
+          }
+        } else if (elapsed < 3750) {
+          demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible');
+        } else {
+          dismiss(); return;
+        }
+        demoFrame = requestAnimationFrame(tick);
+      };
+      demoTimer = window.setTimeout(() => {
+        demoTimer = null;
+        if (!demoActive || demoSession !== session || !demoReady()) { clearDemo(); return; }
+        try { if (sessionStorage.getItem(demoStorageKey)) { clearDemo(); return; } } catch {}
+        demoStarted = true;
+        try { sessionStorage.setItem(demoStorageKey, '1'); } catch {}
+        origin = performance.now();
+        demoFrame = requestAnimationFrame(tick);
+      }, 250);
+    };
     const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
       stopSpring();
       if (reducedMotion()) { image.classList.add('is-settling'); view = target; feedback = null; render(); return; }
@@ -193,10 +338,14 @@
       if (closeTimer !== null) window.clearTimeout(closeTimer);
       closeTimer = null;
       observer?.disconnect();
+      clearDemo();
+      cancelOriginalLoad?.();
+      showingPreview = false;
       if (dialog.open) dialog.close();
       image.removeAttribute('src'); image.alt = ''; image.style.backgroundColor = '';
       image.style.removeProperty('transition');
       error.hidden = true;
+      error.textContent = 'Image could not be loaded.';
       reset();
       const target = opener; opener = null;
       if (target?.isConnected) {
@@ -209,6 +358,7 @@
       if (!dialog.open) return;
       const closingSession = ++session;
       cancelAnimationFrame(revealFrame); revealFrame = 0;
+      clearDemo(); cancelOriginalLoad?.();
       stopSpring(); clearWheel(); releasePointers(); nativeGesture = false;
       dialog.classList.remove('is-visible');
       image.style.transition = 'opacity 150ms ease'; image.style.opacity = '0';
@@ -222,20 +372,60 @@
       closeTimer = null;
       const openingSession = ++session;
       cancelAnimationFrame(revealFrame);
+      cancelOriginalLoad?.();
       reset(); moved = false; nativeUntil = 0;
+      clearDemo(); demoStarted = false; demoInteracted = false;
       opener = target;
       restoreKeyboardFocus = keyboard;
       image.style.removeProperty('transition');
       image.style.backgroundColor = getComputedStyle(target).getPropertyValue('--project-image-background').trim() || 'transparent';
-      image.alt = target.alt; image.src = target.dataset.imageOriginal;
-      error.hidden = true;
+      image.alt = target.alt;
+      const source = target.dataset.imageOriginal;
+      const loadedPreview = target.complete && target.naturalWidth > 0 ? (target.currentSrc || target.src) : '';
+      const sameSource = loadedPreview && new URL(loadedPreview, document.baseURI).href === new URL(source, document.baseURI).href;
+      const aspect = target.naturalWidth > 0 && target.naturalHeight > 0 ? target.naturalWidth / target.naturalHeight : 0;
+      if (aspect) image.style.setProperty('--image-aspect', String(aspect));
+      else image.style.removeProperty('--image-aspect');
+      showingPreview = Boolean(loadedPreview && !sameSource);
+      image.src = loadedPreview || source;
+      error.hidden = true; error.textContent = 'Image could not be loaded.';
+      if (loadedPreview && !sameSource) {
+        const loader = document.createElement('img');
+        let cancelled = false;
+        const current = () => !cancelled && session === openingSession && dialog.open && closeTimer === null;
+        const cleanup = () => {
+          cancelled = true;
+          loader.removeEventListener('load', loaded);
+          loader.removeEventListener('error', failed);
+          loader.removeAttribute('src');
+          if (cancelOriginalLoad === cleanup) cancelOriginalLoad = null;
+        };
+        const failed = () => {
+          if (current()) { error.textContent = 'Full-resolution image could not be loaded.'; error.hidden = false; }
+          cleanup();
+        };
+        const loaded = async () => {
+          if (!current()) return;
+          try { if (typeof loader.decode === 'function') await loader.decode(); }
+          catch { failed(); return; }
+          if (!current()) return;
+          if (!loader.naturalWidth || !loader.naturalHeight) { failed(); return; }
+          showingPreview = false; error.hidden = true;
+          image.src = source;
+          cleanup();
+        };
+        cancelOriginalLoad = cleanup;
+        loader.addEventListener('load', loaded, { once: true });
+        loader.addEventListener('error', failed, { once: true });
+        loader.src = source;
+      }
       viewer.removeAttribute('data-keyboard-focus');
       if (!dialog.open) dialog.showModal();
       observer?.disconnect();
       observer = new MutationObserver(() => { if (opener && !opener.isConnected) dismiss(); });
       observer.observe(document.body, { childList: true, subtree: true });
       revealFrame = requestAnimationFrame(() => {
-        revealFrame = requestAnimationFrame(() => { if (session === openingSession && dialog.open) dialog.classList.add('is-visible'); });
+        revealFrame = requestAnimationFrame(() => { if (session === openingSession && dialog.open) { dialog.classList.add('is-visible'); if (!keyboard) startDemo(openingSession); } });
       });
       viewer.focus({ preventScroll: true });
     };
@@ -259,8 +449,14 @@
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
     };
     const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
-    const onError = () => { if (dialog.open) error.hidden = false; };
-    const onLoad = () => { if (dialog.open && closeTimer === null) { if (!feedback) clampPan(); render(); } };
+    const onError = () => { if (dialog.open) { error.hidden = false; if (showingPreview) error.textContent = 'Full-resolution image could not be loaded.'; } };
+    const onLoad = () => {
+      if (!dialog.open || closeTimer !== null) return;
+      if (image.naturalWidth && image.naturalHeight) image.style.setProperty('--image-aspect', String(image.naturalWidth / image.naturalHeight));
+      if (!feedback) clampPan();
+      render();
+      if (!restoreKeyboardFocus) startDemo(session);
+    };
     const zoom = (nextScale: number, point: Point, minimum = 1) => {
       if (nextScale > 1) { allowUnderzoom = false; minimum = 1; }
       const next = clamp(nextScale, minimum, IMAGE_LIGHTBOX_MAX_SCALE);
@@ -270,6 +466,7 @@
       render();
     };
     const onKey = (event: KeyboardEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || event.defaultPrevented || isInteractiveControl(event.target)) return;
       restoreKeyboardFocus = true;
       viewer.setAttribute('data-keyboard-focus', '');
@@ -288,6 +485,7 @@
       return lastPointer ?? centre();
     };
     const onPointerDown = (event: PointerEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
       if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
       stopSpring(); clearWheel(); pointerRotationTarget = null;
@@ -424,6 +622,7 @@
       return event.deltaMode !== 0 || isCoarseWheel(event) ? 'mouse' : 'trackpad';
     };
     const onWheel = (event: WheelEvent) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null || isInteractiveControl(event.target)) return;
       event.preventDefault();
       const pinch = event.ctrlKey || event.metaKey;
@@ -490,6 +689,7 @@
       wheelTimer = window.setTimeout(finishWheel,160);
     };
     const onInputModeChange = () => {
+      interruptDemo();
       inputMode = validInputMode(inputModeSelect?.value ?? 'auto');
       if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
       try { localStorage.setItem(inputModeStorageKey, inputMode); } catch {}
@@ -497,6 +697,7 @@
     };
     type NativeGesture = Event & {scale?: number; rotation?: number; clientX?: number; clientY?: number};
       const onGestureStart = (event: NativeGesture) => {
+      interruptDemo();
       if (!dialog.open || closeTimer !== null) return;
       event.preventDefault();
       if (pointers.size) return;
@@ -524,8 +725,8 @@
       nativeZoomPoint = null;
       finishPinch(false);
     };
-    const onResize = () => { if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
-    const onPageHide = () => dismiss(true);
+    const onResize = () => { interruptDemo(); if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
+    const onPageHide = () => { interruptDemo(); dismiss(true); };
     document.addEventListener('click',onClick);
     document.addEventListener('keydown',onDocumentKey);
     dialog.addEventListener('click',onDialogClick);
@@ -589,12 +790,17 @@
   .image-lightbox__viewer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: calc(var(--vh-safe, 1svh) * 10) 10vw; overflow: hidden; touch-action: none; outline: 0; }
   .image-lightbox__viewer:focus { outline: 0; }
   .image-lightbox__viewer[data-keyboard-focus] { outline: 1px solid color-mix(in srgb, currentColor 35%, transparent); outline-offset: -1rem; }
-  .image-lightbox__image { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 80); object-fit: contain; transform-origin: center; user-select: none; cursor: grab; }
+  .image-lightbox__image { display: block; width: min(100%, calc(var(--vh-safe, 1svh) * 80 * var(--image-aspect, 1))); height: auto; aspect-ratio: var(--image-aspect, auto); max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 80); object-fit: contain; transform-origin: center; user-select: none; cursor: grab; }
   :global(html:not(.is-dev-mode) img[data-image-original]) { cursor: pointer; }
   .image-lightbox__image.is-armed, .image-lightbox__image.is-settling { transition: opacity 150ms ease; }
   .image-lightbox__viewer.is-dragging, .image-lightbox__viewer.is-dragging .image-lightbox__image { cursor: grabbing; }
   .image-lightbox__error { position: absolute; margin: 0; }
   .image-lightbox__input-mode { position: absolute; right: max(1rem, 10vw); bottom: max(1rem, calc(var(--vh-safe, 1svh) * 10)); }
+  .image-lightbox__demo-pointer { position: absolute; left: 0; top: 0; width: 44px; height: 44px; border-radius: 50%; pointer-events: none; opacity: 0; background: color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent), 0 6px 18px rgb(0 0 0 / .16); transform: scale(0); transition: opacity 180ms ease; }
+  .image-lightbox__demo-pointer.is-visible { opacity: 1; }
   @media (hover: none) and (pointer: coarse) { .image-lightbox__input-mode { display: none; } }
-  @media (max-width: 40em) { .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); } }
+  @media (max-width: 40em) {
+    .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); }
+    .image-lightbox__viewer { padding-inline: 0; }
+  }
 </style>
