@@ -73,6 +73,7 @@ import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 import { isVideoSrc } from './src/lib/imageUpload.mjs';
+import { isPlaceholderSrc } from './src/lib/projectImageFrame';
 import { imageDescriptionsDevWriter } from './scripts/dev-image-descriptions.mjs';
 import { devInspectors } from './scripts/dev-inspectors.mjs';
 
@@ -713,6 +714,35 @@ export const applyCropChange = (data, change) => {
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That image path no longer exists.' };
   }
+  const hasAwardBadge = Object.prototype.hasOwnProperty.call(change, 'awardBadge');
+  if (hasAwardBadge) {
+    const sectionIndex = resolvedPath[0] === 'sections' ? resolvedPath[1] : null;
+    const section = resolvedPath[0] === 'sections' && Number.isInteger(sectionIndex)
+      ? data.sections?.[sectionIndex]
+      : null;
+    const directCarouselItem = resolvedPath.length === 4
+      && section?.type === 'imageCarousel'
+      && resolvedPath[2] === 'items'
+      && Number.isInteger(resolvedPath[3]);
+    const nestedCarouselItem = resolvedPath.length === 6
+      && section?.type === 'imageGrid'
+      && resolvedPath[2] === 'items'
+      && Number.isInteger(resolvedPath[3])
+      && section.items?.[resolvedPath[3]]?.type === 'imageCarousel'
+      && resolvedPath[4] === 'items'
+      && Number.isInteger(resolvedPath[5]);
+    if (!directCarouselItem && !nestedCarouselItem) {
+      return { ok: false, error: 'Award badges can only be set on carousel items.' };
+    }
+    if (change.awardBadge !== null && change.awardBadge !== ''
+      && !(typeof change.awardBadge === 'string' && CAROUSEL_AWARD_BADGES.has(change.awardBadge))) {
+      return { ok: false, error: 'Use a supported carousel award badge.' };
+    }
+    if (change.awardBadge && (isVideoSrc(String(target.src ?? target.image ?? ''))
+      || isPlaceholderSrc(String(target.src ?? target.image ?? '')))) {
+      return { ok: false, error: 'Award badges can only be set on image carousel items.' };
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(change, 'mobileInset') && typeof change.mobileInset !== 'boolean') {
     return { ok: false, error: 'Mobile inset must be a boolean.' };
   }
@@ -895,7 +925,7 @@ export const applyCropChange = (data, change) => {
     for (const [viewport, next] of Object.entries(parsedVariants.variants)) {
       if (target.hoverVariants?.[viewport]) syncAspect('hoverVariants', viewport, next.aspect);
     }
-  } else if (!parsedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground && !hasAudio
+  } else if (!parsedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground && !hasAudio && !hasAwardBadge
     && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
@@ -904,6 +934,10 @@ export const applyCropChange = (data, change) => {
   if (hasBackground) {
     if (background === 'transparent') delete target.background;
     else target.background = background;
+  }
+  if (hasAwardBadge) {
+    if (change.awardBadge === null || change.awardBadge === '') delete target.awardBadge;
+    else target.awardBadge = change.awardBadge;
   }
   return { ok: true };
 };
@@ -1007,6 +1041,7 @@ const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
 /** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
 const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
 const CAROUSEL_BREAKPOINTS = new Set(['tablet', 'mobile']);
+const CAROUSEL_AWARD_BADGES = new Set(['red-dot-2026']);
 
 const sanitizeCarouselVisibleIds = (itemIds, requested) => {
   const knownIds = new Set(itemIds);

@@ -555,6 +555,14 @@ function mountImageCarouselSection(
         path: [...sectionPath, 'items', itemIndex],
       });
     }
+    if (item.awardBadge === 'red-dot-2026' && !video && !placeholder) {
+      const badge = document.createElement('img');
+      badge.className = 'project-image-carousel__award-badge';
+      badge.src = '/awards/red-dot-2026.png';
+      badge.alt = 'Red Dot Award: Product Design 2026';
+      badge.draggable = false;
+      frame.append(badge);
+    }
     surface.append(frame);
 
     const captionAdd = document.createElement('button');
