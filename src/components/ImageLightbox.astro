@@ -211,6 +211,7 @@
       const tick = (now: number) => {
         if (!demoActive || demoSession !== session || !dialog.open || closeTimer !== null) { clearDemo(); return; }
         const elapsed = now - origin;
+        if (dismissal === 'tap' && elapsed >= 3340) { view = fit(); feedback = null; render(); dismiss(); return; }
         const point = centre();
         const rect = viewer.getBoundingClientRect();
         const x = point.x - rect.left;
@@ -221,7 +222,10 @@
         const outAnchor = { x: Math.min(20, viewer.clientWidth * .04), y: -Math.min(24, image.offsetHeight * .035) };
         const closeAnchor = { x: Math.min(36, viewer.clientWidth * .08), y: Math.min(48, image.offsetHeight * .1) };
         const tapY = Math.max(8, (viewer.clientHeight - image.offsetHeight) / 4);
-        const tapAnchor = { x: closeAnchor.x, y: tapY - y };
+        const closingAnchor = { x: closeAnchor.x, y: dismissal === 'tap' ? tapY - y : closeAnchor.y };
+        const singleFinger = dismissal === 'tap' || dismissal === 'swipe';
+        const leftOffset = dismissal === 'pinch' ? { x: -56, y: 26 } : { x: -36, y: 12 };
+        const rightOffset = dismissal === 'pinch' ? { x: 56, y: -16 } : dismissal === 'pan' ? { x: 36, y: -8 } : { x: 0, y: 0 };
         const zoomBase = { x: zoomAnchor.x * (1 - 2.3), y: zoomAnchor.y * (1 - 2.3) };
         const panEnd = { x: clamp(zoomBase.x + pan.x, -image.offsetWidth * .65, image.offsetWidth * .65), y: clamp(zoomBase.y + pan.y, -image.offsetHeight * .65, image.offsetHeight * .65) };
         if (elapsed < 300) {
@@ -261,17 +265,10 @@
           view = { x: translated.x, y: translated.y, scale, rotation: 0 };
           clampPan(); render();
         } else if (elapsed < 3100) {
-          const amount = repositionEase((elapsed - 2800) / 300);
-          if (dismissal === 'pinch') {
-            setPointer(demoOne, x + outAnchor.x + (closeAnchor.x - outAnchor.x) * amount - 42 - 14 * amount, y + outAnchor.y + (closeAnchor.y - outAnchor.y) * amount + 36 - 10 * amount, 1);
-            setPointer(demoTwo, x + outAnchor.x + (closeAnchor.x - outAnchor.x) * amount + 40 + 16 * amount, y + outAnchor.y + (closeAnchor.y - outAnchor.y) * amount - 44 + 28 * amount, 1);
-          } else if (dismissal === 'pan') {
-            setPointer(demoOne, x + outAnchor.x + (closeAnchor.x - outAnchor.x) * amount - 42 + 6 * amount, y + outAnchor.y + (closeAnchor.y - outAnchor.y) * amount + 36 - 24 * amount, 1);
-            setPointer(demoTwo, x + outAnchor.x + (closeAnchor.x - outAnchor.x) * amount + 40 - 4 * amount, y + outAnchor.y + (closeAnchor.y - outAnchor.y) * amount - 44 + 36 * amount, 1);
-          } else {
-            demoOne.classList.remove('is-visible');
-            setPointer(demoTwo, x + outAnchor.x + (closeAnchor.x - outAnchor.x) * amount + 40 - 40 * amount, y + outAnchor.y + (closeAnchor.y - outAnchor.y) * amount - 44 + 44 * amount, 1);
-          }
+          const amount = (dismissal === 'pinch' ? repositionEase : gestureEase)((elapsed - 2800) / 300);
+          if (singleFinger) demoOne.classList.remove('is-visible');
+          else setPointer(demoOne, x + outAnchor.x - 42 + (closingAnchor.x + leftOffset.x - outAnchor.x + 42) * amount, y + outAnchor.y + 36 + (closingAnchor.y + leftOffset.y - outAnchor.y - 36) * amount, 1);
+          setPointer(demoTwo, x + outAnchor.x + 40 + (closingAnchor.x + rightOffset.x - outAnchor.x - 40) * amount, y + outAnchor.y - 44 + (closingAnchor.y + rightOffset.y - outAnchor.y + 44) * amount, 1);
           view = fit(); render();
         } else if (elapsed < 3550) {
           if (dismissal === 'pinch') {
@@ -280,22 +277,23 @@
             setPointer(demoOne, x + closeAnchor.x - 56 * scale, y + closeAnchor.y + 26 * scale); setPointer(demoTwo, x + closeAnchor.x + 56 * scale, y + closeAnchor.y - 16 * scale);
             view = { x: closeAnchor.x * (1 - scale), y: closeAnchor.y * (1 - scale), scale, rotation: 0 }; render();
           } else if (dismissal === 'tap') {
-            if (elapsed < 3220) {
-              const scale = 1 - repositionEase((elapsed - 3100) / 120) * .12;
-              demoOne.classList.remove('is-visible'); setPointer(demoTwo, x + closeAnchor.x, y + tapAnchor.y, scale);
-            } else if (elapsed < 3320) {
-              const scale = .88 + repositionEase((elapsed - 3220) / 100) * .12;
-              setPointer(demoTwo, x + closeAnchor.x, y + tapAnchor.y, scale);
-            } else { dismiss(); return; }
+            const scale = elapsed < 3220
+              ? 1 - repositionEase(clamp((elapsed - 3100) / 100, 0, 1)) * .12
+              : .88 + repositionEase(clamp((elapsed - 3220) / 100, 0, 1)) * .12;
+            demoOne.classList.remove('is-visible'); setPointer(demoTwo, x + closingAnchor.x, y + closingAnchor.y, scale);
+            view = fit(); feedback = null; render();
           } else {
             const progress = gestureEase((elapsed - 3100) / 450);
             const distance = threshold() * 1.2 * progress;
             const dx = Math.cos(dismissalAngle) * distance; const dy = Math.sin(dismissalAngle) * distance;
-            demoDismissing = true; feedback = 'drag'; demoOne.classList.remove('is-visible'); setPointer(demoTwo, x + closeAnchor.x + 36 + dx, y + closeAnchor.y - 8 + dy);
+            demoDismissing = true; feedback = 'drag';
+            if (singleFinger) demoOne.classList.remove('is-visible');
+            else setPointer(demoOne, x + closingAnchor.x + leftOffset.x + dx, y + closingAnchor.y + leftOffset.y + dy);
+            setPointer(demoTwo, x + closingAnchor.x + rightOffset.x + dx, y + closingAnchor.y + rightOffset.y + dy);
             view = { x: dx, y: dy, scale: 1, rotation: 0 }; render();
           }
         } else if (elapsed < 3750) {
-          if (dismissal === 'tap' && elapsed < 3340) { demoTwo.classList.remove('is-visible'); } else { demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible'); }
+          demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible');
         } else {
           dismiss(); return;
         }
