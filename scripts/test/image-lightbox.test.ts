@@ -15,7 +15,7 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number; random?: () => number } = {}) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean; width?: number; imageHeight?: number; random?: () => number } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
@@ -42,7 +42,7 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   dialog.showModal = () => dialog.setAttribute('open', '');
   dialog.close = () => dialog.removeAttribute('open');
   Object.defineProperties(viewer, { clientWidth: { value: options.width ?? 800 }, clientHeight: { value: 600 } });
-  Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
+  Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: options.imageHeight ?? 600 } });
   if (options.loaded) {
     Object.defineProperties(original, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 }, currentSrc: { value: options.preview || '/images/study.jpg' } });
     Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
@@ -719,8 +719,8 @@ for (const coarse of [false, true]) {
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       expect(Math.abs(panOf(f) - imageBefore)).toBeLessThan(1);
       expect(Math.abs(panYOf(f) - imageYBefore)).toBeLessThan(1);
-      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(coarse ? 40 : 3);
-      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(coarse ? 10 : 3);
+      expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(3);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(3);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
         expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(3);
         expect(Math.abs(pointerY(f, 'one') - leftYBefore)).toBeLessThan(3);
@@ -746,6 +746,74 @@ test('walkthrough moves to distinct focal points and closes off-center independe
   for (let elapsed = 0; elapsed < 3400; elapsed += 20) advance(frequent, 20);
   expect(sparse.image.style.transform).toBe(frequent.image.style.transform);
 });
+
+const dismissalCases = [
+  { method: 'tap', coarse: false, selection: .1 },
+  { method: 'pan', coarse: false, selection: .5 },
+  { method: 'pinch', coarse: false, selection: .9 },
+  { method: 'swipe', coarse: true, selection: .1 },
+];
+const endingFixture = (choice: typeof dismissalCases[number], angle = .125) => {
+  let calls = 0;
+  const f = fixture(false, { loaded: true, coarse: choice.coarse, imageHeight: 480, random: () => (++calls === 1 && !choice.coarse ? choice.selection : angle) });
+  return { f, calls: () => calls };
+};
+
+for (const choice of dismissalCases) {
+  test(`${choice.method} ending keeps continuous fingers, correct count, fixed randomness and normal close timing`, () => {
+    const { f, calls } = endingFixture(choice); startDemo(f);
+    advance(f, 3099); const before = { x: pointerX(f), y: pointerY(f) };
+    advance(f, 2);
+    expect(Math.hypot(pointerX(f) - before.x, pointerY(f) - before.y)).toBeLessThan(3);
+    advance(f, 99);
+    expect(demoPointer(f).classList.contains('is-visible')).toBe(choice.method === 'pan' || choice.method === 'pinch');
+    expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+    if (choice.method === 'tap') {
+      expect(pointerY(f) + 22).toBeLessThan((600 - 480) / 2);
+      expect(pointerY(f) + 22).toBeGreaterThan(0);
+      expect(scaleOf(f)).toBe(1); expect(panOf(f)).toBe(0);
+      advance(f, 139); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+      advance(f, 1);
+    } else {
+      if (choice.method === 'pinch') expect(scaleOf(f)).toBeLessThan(1);
+      else expect(Math.hypot(panOf(f), panYOf(f))).toBeGreaterThan(0);
+      advance(f, 300); expect(f.image.classList.contains('is-armed')).toBe(true);
+      advance(f, 249); expect(f.dialog.classList.contains('is-visible')).toBe(true);
+      advance(f, 1);
+    }
+    expect(f.dialog.classList.contains('is-visible')).toBe(false);
+    f.tick(149); expect(f.dialog.open).toBe(true);
+    f.tick(1); expect(f.dialog.open).toBe(false);
+    expect(calls()).toBe(choice.coarse ? 1 : 2);
+  });
+
+  test(`${choice.method} ending is independent of animation frame frequency`, () => {
+    const { f: sparse } = endingFixture(choice); startDemo(sparse); advance(sparse, 3200);
+    const { f: frequent } = endingFixture(choice); startDemo(frequent);
+    for (let elapsed = 0; elapsed < 3200; elapsed += 20) advance(frequent, 20);
+    expect(sparse.image.style.transform).toBe(frequent.image.style.transform);
+    expect(demoPointer(sparse, 'two').style.transform).toBe(demoPointer(frequent, 'two').style.transform);
+  });
+
+  for (const input of ['pointer', 'key']) {
+    test(`${input} interrupts ${choice.method} ending without a delayed close`, () => {
+      const { f } = endingFixture(choice); startDemo(f); advance(f, 3200);
+      input === 'pointer' ? f.pointer('pointerdown', 1) : f.key('a');
+      expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(false);
+      advance(f, 10000); f.tick(1000); expect(f.dialog.open).toBe(true);
+    });
+  }
+}
+
+for (const method of ['swipe', 'pan']) {
+  test(`${method} dismissal can move in opposite random directions`, () => {
+    const choice = dismissalCases.find((entry) => entry.method === method)!;
+    const { f: right } = endingFixture(choice, 0); startDemo(right); advance(right, 3400);
+    const { f: left } = endingFixture(choice, .5); startDemo(left); advance(left, 3400);
+    expect(panOf(right)).toBeGreaterThan(0); expect(panOf(left)).toBeLessThan(0);
+    expect(panOf(right)).toBeCloseTo(-panOf(left), 6);
+  });
+}
 
 for (const elapsed of [700, 1600, 2900, 3400]) {
   for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
