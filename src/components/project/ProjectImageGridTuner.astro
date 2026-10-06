@@ -124,6 +124,7 @@ import Button from '../ui/Button.astro';
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { createHistory, pageHistory, registerHistoryScope } from '../../lib/devHistory';
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
@@ -136,6 +137,9 @@ import Button from '../ui/Button.astro';
   type GridLayouts = Partial<Record<ImageViewport, { visible: string[] }>>;
 
   const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
 
   const initProjectImageGridTuner = (tuner: HTMLElement) => {
     if (tuner.dataset.initialized === 'true') return;
@@ -660,13 +664,13 @@ import Button from '../ui/Button.astro';
       image.alt = '';
       image.draggable = false;
       button.append(image);
-      button.addEventListener('dragstart', (event) => {
+      pageScope.listen(button, 'dragstart', (event) => {
         dragItemId = item.id;
         button.classList.add('is-dragging');
         event.dataTransfer?.setData('text/plain', item.id);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
       });
-      button.addEventListener('dragend', () => {
+      pageScope.listen(button, 'dragend', () => {
         dragItemId = null;
         button.classList.remove('is-dragging');
         visibleBoard.classList.remove('is-drop-target');
@@ -679,7 +683,7 @@ import Button from '../ui/Button.astro';
       removeButton.title = 'Remove from page (keep in asset manager)';
       removeButton.setAttribute('aria-label', `Remove ${item.alt || item.id} from page`);
       removeButton.textContent = 'Remove';
-      removeButton.addEventListener('click', (event) => {
+      pageScope.listen(removeButton, 'click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         removeFromPage(item.id);
@@ -695,8 +699,8 @@ import Button from '../ui/Button.astro';
       button.className = 'project-grid-tuner__add';
       button.setAttribute('aria-label', 'Add image to grid');
       button.innerHTML = sizeIcon(plusIcon, 18);
-      button.addEventListener('pointerdown', (event) => event.stopPropagation());
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'pointerdown', (event) => event.stopPropagation());
+      pageScope.listen(button, 'click', () => {
         const target = editTarget;
         const documentKey = target.dataset.devDocument || '';
         let path: Array<string | number> = [];
@@ -747,16 +751,16 @@ import Button from '../ui/Button.astro';
     };
 
     const bindDropZone = (zone: HTMLElement, destination: 'visible' | 'parking') => {
-      zone.addEventListener('dragover', (event) => {
+      pageScope.listen(zone, 'dragover', (event) => {
         if (!dragItemId) return;
         event.preventDefault();
         zone.classList.add('is-drop-target');
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
       });
-      zone.addEventListener('dragleave', (event) => {
+      pageScope.listen(zone, 'dragleave', (event) => {
         if (event.target === zone) zone.classList.remove('is-drop-target');
       });
-      zone.addEventListener('drop', (event) => {
+      pageScope.listen(zone, 'drop', (event) => {
         event.preventDefault();
         zone.classList.remove('is-drop-target');
         const id = dragItemId || event.dataTransfer?.getData('text/plain');
@@ -941,7 +945,7 @@ import Button from '../ui/Button.astro';
       closePanel();
     };
 
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent) => {
       const trigger = event.detail?.trigger as HTMLElement | undefined;
       if (trigger?.dataset.devEditTrigger !== 'grid') return;
       const target = trigger.closest<HTMLElement>('[data-dev-grid-target]');
@@ -959,7 +963,7 @@ import Button from '../ui/Button.astro';
       renderDraft();
     };
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'grid') return;
       revertToSaved();
@@ -971,7 +975,7 @@ import Button from '../ui/Button.astro';
     selectTarget(initialTarget, false);
 
     viewportButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const viewport = button.dataset.gridViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
         selectedViewport = viewport;
@@ -984,13 +988,13 @@ import Button from '../ui/Button.astro';
       });
     });
 
-    columnsSelect.addEventListener('change', () => {
+    pageScope.listen(columnsSelect, 'change', () => {
       draftColumns[selectedViewport] = Number(columnsSelect.value) || 1;
       renderDraft();
       status.textContent = 'Column count changed — unsaved changes.';
     });
 
-    constrainedSelect.addEventListener('change', () => {
+    pageScope.listen(constrainedSelect, 'change', () => {
       draftConstrained = resolveImageGridConstrained({
         ...draftConstrained,
         [selectedViewport]: constrainedSelect.value,
@@ -1004,13 +1008,13 @@ import Button from '../ui/Button.astro';
           : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
     });
 
-    aspectSelect.addEventListener('change', () => {
+    pageScope.listen(aspectSelect, 'change', () => {
       draftAspect = aspectSelect.value;
       renderDraft();
       status.textContent = 'Default aspect changed — unsaved changes.';
     });
 
-    matchHeightInput.addEventListener('change', () => {
+    pageScope.listen(matchHeightInput, 'change', () => {
       draftMatchHeight = matchHeightInput.checked;
       renderDraft();
       status.textContent = draftMatchHeight
@@ -1018,34 +1022,34 @@ import Button from '../ui/Button.astro';
         : 'Match row height off — unsaved changes.';
     });
 
-    clearOverrideButton.addEventListener('click', () => {
+    pageScope.listen(clearOverrideButton, 'click', () => {
       if (selectedViewport === 'desktop') return;
       delete draftLayouts[selectedViewport];
       renderDraft();
       status.textContent = `Cleared ${selectedViewport} override — now inheriting.`;
     });
 
-    saveButton.addEventListener('click', saveDraft);
+    pageScope.listen(saveButton, 'click', saveDraft);
 
-    cancelButton?.addEventListener('click', () => {
+    pageScope.listen(cancelButton, 'click', () => {
       revertToSaved();
       closePanel();
     });
 
-    revertButton.addEventListener('click', () => {
+    pageScope.listen(revertButton, 'click', () => {
       revertToSaved();
       status.textContent = 'Reverted to the last saved grid settings.';
     });
 
-    window.addEventListener('vcd:dev-before-save', () => {
+    pageScope.listen(window, 'vcd:dev-before-save', () => {
       if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(openingSnapshot)) !== JSON.stringify(contentSnapshot(snapshotDraft()))) saveDraft();
     });
-    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
       if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(snapshotDraft())) !== JSON.stringify(contentSnapshot(openingSnapshot))) {
         event.detail.dirty = true;
       }
     }) as EventListener);
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    pageScope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
       if (ids?.length) {
         document.querySelectorAll<HTMLElement>('[data-dev-grid-target]').forEach((target) => {
@@ -1055,14 +1059,23 @@ import Button from '../ui/Button.astro';
       }
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-reverted', (() => {
+    pageScope.listen(window, 'vcd:dev-pending-reverted', (() => {
       diskBaselines.clear();
     }) as EventListener);
+    pageScope.add(() => {
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = null;
+      delete tuner.dataset.initialized;
+    });
   };
 
   document
     .querySelectorAll<HTMLElement>('[data-project-image-grid-tuner]')
     .forEach(initProjectImageGridTuner);
+  return () => pageScope.destroy();
+  });
+
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style is:global>
