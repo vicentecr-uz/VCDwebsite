@@ -214,7 +214,7 @@ test('drag tracks, twists and fades; crossing and reversing the threshold keeps 
   f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,466,400);
   expect(f.image.style.transform).toContain('66px');
   expect(Number(f.image.style.opacity)).toBeCloseTo(.85,2);
-  expect(f.image.style.filter).toContain('blur(');
+  expect(f.image.style.filter).toBe('');
   f.pointer('pointermove',1,550,400);
   expect(Number(f.image.style.opacity)).toBeCloseTo(.1);
   expect(f.dialog.classList.contains('is-visible')).toBe(true);
@@ -256,6 +256,7 @@ test('pinching inward from fit can arm dismissal, reverse, or close only on rele
     f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
     f.pointer('pointermove',1,430,400); f.pointer('pointermove',2,570,400);
     expect(Number(f.image.style.opacity)).toBe(.1);
+    expect(f.image.style.filter).toBe('');
     expect(f.dialog.open).toBe(true);
     if(reverse) {f.pointer('pointermove',1,410,400); f.pointer('pointermove',2,590,400); expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);}
     f.pointer('pointerup',2,reverse?590:570,400); f.pointer('pointerup',1,reverse?410:430,400);
