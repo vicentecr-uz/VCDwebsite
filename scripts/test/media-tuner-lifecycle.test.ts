@@ -5,7 +5,6 @@ import { createHistory, pageHistory, registerHistoryScope } from '../../src/lib/
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 import { devEditPendingId } from '../../src/scripts/devEditTarget';
 import { imageGridConstrainedStyle, resolveImageGridConstrained } from '../../src/lib/responsiveImage';
-import { applyCarouselViewportSettings } from '../../src/lib/projectImageCarousel';
 import {
   IMAGE_VIEWPORTS,
   matchCarouselViewport,
@@ -22,9 +21,7 @@ const componentScript = (path: string) => {
   return new Bun.Transpiler({ loader: 'ts' }).transformSync(script);
 };
 
-const sourcePath = (file: string) => process.env.MEDIA_TUNER_SOURCE_ROOT
-  ? `${process.env.MEDIA_TUNER_SOURCE_ROOT}/${file}`
-  : new URL(`../../src/components/project/${file}`, import.meta.url).pathname;
+const sourcePath = (file: string) => new URL(`../../src/components/project/${file}`, import.meta.url).pathname;
 
 const globalsFor = (window: Window) => ({
   window,
@@ -41,6 +38,7 @@ const globalsFor = (window: Window) => ({
 
 const withWindow = async (run: (window: Window) => Promise<void>) => {
   const window = new Window({ url: 'http://localhost:4322/goodhome' });
+  window.addEventListener('error', event => { throw event.error; });
   const globals = globalsFor(window);
   const previous = new Map(Object.keys(globals).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   Object.entries(globals).forEach(([key, value]) => Object.defineProperty(globalThis, key, { configurable: true, writable: true, value }));
@@ -137,7 +135,7 @@ const runTunerLifecycle = async (kind: 'grid' | 'carousel', path: string) => wit
       current.tuner.querySelector<HTMLButtonElement>(`[data-${kind}-save]`)!.click();
       expect(pending).toHaveLength(page + 1);
       expect(pending.at(-1).payload.document).toBe('projects/goodhome');
-      expect(pending.at(-1).payload.path).toEqual(['sections', page === 0 ? (kind === 'grid' ? 0 : 1) : (kind === 'grid' ? 0 : 1)]);
+      expect(pending.at(-1).payload.path).toEqual(['sections', kind === 'grid' ? 0 : 1]);
       if (kind === 'grid') expect(pending.at(-1).payload.columns.desktop).toBe(3);
       else expect(pending.at(-1).payload.orientation).toBe('vertical');
       staleSaves.forEach((button) => button.click());
