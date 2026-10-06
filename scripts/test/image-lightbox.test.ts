@@ -591,6 +591,7 @@ const demoSeen = 'vcd:image-lightbox-demo-seen';
 const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.querySelector<HTMLElement>(`[data-image-lightbox-demo-pointer="${which}"]`)!;
 const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
 const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
+const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
 const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(400); f.frame(); };
 const advance = (f: ReturnType<typeof fixture>, ms: number) => { f.tick(ms); f.frame(); };
 
@@ -676,6 +677,19 @@ test('coarse walkthrough keeps the right finger through pan while the left finge
   expect(demoPointer(f, 'one').classList.contains('is-visible')).toBe(true);
   expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
 });
+
+for (const coarse of [false, true]) {
+  test(`${coarse ? 'coarse' : 'desktop'} walkthrough keeps right pointer coordinates continuous`, () => {
+    const f = fixture(false, { loaded: true, coarse }); startDemo(f);
+    advance(f, 1350); const beforeRelease = pointerX(f);
+    advance(f, 10); const afterRelease = pointerX(f);
+    expect(Math.abs(afterRelease - beforeRelease)).toBeLessThan(8);
+    advance(f, 185); const panStart = pointerX(f);
+    advance(f, 10); expect(Math.abs(pointerX(f) - panStart)).toBeLessThan(8);
+    advance(f, 950); const zoomOutStart = pointerX(f);
+    advance(f, 10); expect(Math.abs(pointerX(f) - zoomOutStart)).toBeLessThan(8);
+  });
+}
 
 for (const elapsed of [1000, 2500, 4400, 5300]) {
   for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
