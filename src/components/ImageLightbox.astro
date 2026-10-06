@@ -214,50 +214,58 @@
         const x = point.x - rect.left;
         const y = point.y - rect.top;
         const pan = { x: Math.min(80, image.offsetWidth * .65, Math.max(0, viewer.clientWidth / 2 - 114)), y: Math.min(40, image.offsetHeight * .65) };
+        const zoomAnchor = { x: Math.min(8, viewer.clientWidth * .02), y: -Math.min(28, image.offsetHeight * .06) };
+        const panAnchor = { x: -Math.min(24, viewer.clientWidth * .04), y: Math.min(28, image.offsetHeight * .05) };
+        const outAnchor = { x: Math.min(20, viewer.clientWidth * .04), y: -Math.min(24, image.offsetHeight * .035) };
+        const closeAnchor = { x: Math.min(36, viewer.clientWidth * .08), y: Math.min(48, image.offsetHeight * .1) };
+        const zoomBase = { x: zoomAnchor.x * (1 - 2.3), y: zoomAnchor.y * (1 - 2.3) };
+        const panEnd = { x: zoomBase.x + pan.x, y: zoomBase.y + pan.y };
         if (elapsed < 300) {
           const pressed = 1 - .12 * repositionEase(clamp((elapsed - 120) / 100, 0, 1));
-          setPointer(demoOne, x - 56, y + 26, pressed); setPointer(demoTwo, x + 56, y - 16, pressed);
+          setPointer(demoOne, x + zoomAnchor.x - 56, y + zoomAnchor.y + 26, pressed); setPointer(demoTwo, x + zoomAnchor.x + 56, y + zoomAnchor.y - 16, pressed);
         } else if (elapsed < 1100) {
           const scale = 1 + gestureEase((elapsed - 300) / 800) * 1.3;
-          setPointer(demoOne, x - 56 * scale, y + 26 * scale); setPointer(demoTwo, x + 56 * scale, y - 16 * scale);
-          zoom(scale, point);
+          setPointer(demoOne, x + zoomAnchor.x - 56 * scale, y + zoomAnchor.y + 26 * scale); setPointer(demoTwo, x + zoomAnchor.x + 56 * scale, y + zoomAnchor.y - 16 * scale);
+          view = { x: zoomAnchor.x * (1 - scale), y: zoomAnchor.y * (1 - scale), scale, rotation: 0 }; clampPan(); render();
         } else if (elapsed < 1250) {
           const amount = repositionEase((elapsed - 1100) / 150);
-          setPointer(demoTwo, x + 128.8 - 72.8 * amount, y - 36.8 + 28.8 * amount, 1);
+          setPointer(demoTwo, x + zoomAnchor.x + (panAnchor.x - zoomAnchor.x) * amount + 128.8 - 72.8 * amount, y + zoomAnchor.y + (panAnchor.y - zoomAnchor.y) * amount - 36.8 + 28.8 * amount, 1);
           if (touchDemo) demoOne.classList.remove('is-visible');
-          else setPointer(demoOne, x - 128.8 + 72.8 * amount, y + 59.8 - 47.8 * amount, 1);
-          view = { ...fit(), scale: 2.3 }; render();
+          else setPointer(demoOne, x + zoomAnchor.x + (panAnchor.x - zoomAnchor.x) * amount - 128.8 + 72.8 * amount, y + zoomAnchor.y + (panAnchor.y - zoomAnchor.y) * amount + 59.8 - 47.8 * amount, 1);
+          view = { x: zoomBase.x, y: zoomBase.y, scale: 2.3, rotation: 0 }; render();
         } else if (elapsed < 1900) {
           const amount = gestureEase((elapsed - 1250) / 650);
-          setPointer(demoTwo, x + 56 + amount * pan.x, y - 8 + amount * pan.y);
+          setPointer(demoTwo, x + panAnchor.x + 56 + amount * pan.x, y + panAnchor.y - 8 + amount * pan.y);
           if (touchDemo) demoOne.classList.remove('is-visible');
-          else setPointer(demoOne, x - 56 + amount * pan.x, y + 12 + amount * pan.y);
-          view = { x: pan.x * amount, y: pan.y * amount, scale: 2.3, rotation: 0 };
+          else setPointer(demoOne, x + panAnchor.x - 56 + amount * pan.x, y + panAnchor.y + 12 + amount * pan.y);
+          view = { x: zoomBase.x + pan.x * amount, y: zoomBase.y + pan.y * amount, scale: 2.3, rotation: 0 };
           clampPan(); render();
         } else if (elapsed < 2050) {
-          const amount = repositionEase((elapsed - 1900) / 150);
-          setPointer(demoTwo, x + 56 + (92 - 56) * amount + pan.x, y - 8 + (-101.2 + 8) * amount + pan.y, 1);
+          const amount = gestureEase((elapsed - 1900) / 150);
+          const anchorX = panAnchor.x + (outAnchor.x - panAnchor.x) * amount;
+          const anchorY = panAnchor.y + (outAnchor.y - panAnchor.y) * amount;
+          setPointer(demoTwo, x + anchorX + 56 + (92 - 56) * amount + pan.x * (1 - amount), y + anchorY - 8 + (-101.2 + 8) * amount + pan.y * (1 - amount), 1);
           if (touchDemo) demoOne.classList.remove('is-visible');
-          else setPointer(demoOne, x - 56 + (-96.6 + 56) * amount + pan.x, y + 12 + (82.8 - 12) * amount + pan.y, 1);
-          view = { x: pan.x, y: pan.y, scale: 2.3, rotation: 0 }; render();
+          else setPointer(demoOne, x + anchorX - 56 + (-96.6 + 56) * amount + pan.x * (1 - amount), y + anchorY + 12 + (82.8 - 12) * amount + pan.y * (1 - amount), 1);
+          view = { x: panEnd.x, y: panEnd.y, scale: 2.3, rotation: 0 }; render();
         } else if (elapsed < 2800) {
           const scale = 2.3 - gestureEase((elapsed - 2050) / 750) * 1.3;
-          const panX = pan.x * (scale - 1) / 1.3;
-          const panY = pan.y * (scale - 1) / 1.3;
-          setPointer(demoOne, x - 42 * scale + panX, y + 36 * scale + panY);
-          setPointer(demoTwo, x + 40 * scale + panX, y - 44 * scale + panY);
-          view = { x: pan.x * (scale - 1) / 1.3, y: pan.y * (scale - 1) / 1.3, scale, rotation: 0 };
+          setPointer(demoOne, x + outAnchor.x - 42 * scale, y + outAnchor.y + 36 * scale);
+          setPointer(demoTwo, x + outAnchor.x + 40 * scale, y + outAnchor.y - 44 * scale);
+          const focal = { x: point.x + outAnchor.x, y: point.y + outAnchor.y };
+          const translated = panForPinch(panEnd, focal, focal, 2.3, scale, point);
+          view = { x: translated.x, y: translated.y, scale, rotation: 0 };
           clampPan(); render();
         } else if (elapsed < 3100) {
           const amount = repositionEase((elapsed - 2800) / 300);
-          setPointer(demoOne, x - 42 - 14 * amount, y + 36 - 10 * amount, 1);
-          setPointer(demoTwo, x + 40 + 16 * amount, y - 44 + 28 * amount, 1);
+          setPointer(demoOne, x + outAnchor.x - 42 - 14 * amount, y + outAnchor.y + 36 - 10 * amount, 1);
+          setPointer(demoTwo, x + outAnchor.x + 40 + 16 * amount, y + outAnchor.y - 44 + 28 * amount, 1);
           view = fit(); render();
         } else if (elapsed < 3550) {
           const scale = 1 - gestureEase((elapsed - 3100) / 450) * .3;
           demoDismissing = true; feedback = 'pinch';
-          setPointer(demoOne, x - 56 * scale, y + 26 * scale); setPointer(demoTwo, x + 56 * scale, y - 16 * scale);
-          zoom(scale, point, .7);
+          setPointer(demoOne, x + closeAnchor.x - 56 * scale, y + closeAnchor.y + 26 * scale); setPointer(demoTwo, x + closeAnchor.x + 56 * scale, y + closeAnchor.y - 16 * scale);
+          view = { x: closeAnchor.x * (1 - scale), y: closeAnchor.y * (1 - scale), scale, rotation: 0 }; render();
         } else if (elapsed < 3750) {
           demoOne.classList.remove('is-visible'); demoTwo.classList.remove('is-visible');
         } else {
