@@ -592,6 +592,7 @@ const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.q
 const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
 const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
 const pointerX = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/translate\(([-\d.]+)px/)![1]);
+const pointerY = (f: ReturnType<typeof fixture>, which = 'two') => Number(demoPointer(f, which).style.transform.match(/, ([-\d.]+)px/)![1]);
 const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(400); f.frame(); };
 const advance = (f: ReturnType<typeof fixture>, ms: number) => { f.tick(ms); f.frame(); };
 
@@ -647,6 +648,7 @@ for (const decodeError of [false, true]) {
 
 test('walkthrough spreads two fingers, pans, releases at fit, then pinches again to close', () => {
   const f = fixture(false, { loaded: true }); startDemo(f);
+  expect(pointerY(f, 'one')).not.toBe(pointerY(f, 'two'));
   expect(f.window.sessionStorage.getItem(demoSeen)).toBe('1');
   const initial = demoPointer(f).style.transform;
   advance(f, 1400); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
@@ -684,12 +686,14 @@ for (const coarse of [false, true]) {
       const f = fixture(false, { loaded: true, coarse }); startDemo(f);
       advance(f, boundary - 1);
       const rightBefore = pointerX(f);
+      const rightYBefore = pointerY(f);
       const leftBefore = pointerX(f, 'one');
       const leftVisible = demoPointer(f).classList.contains('is-visible');
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       advance(f, 2);
       expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
       expect(Math.abs(pointerX(f) - rightBefore)).toBeLessThan(1);
+      expect(Math.abs(pointerY(f) - rightYBefore)).toBeLessThan(1);
       if (leftVisible && demoPointer(f).classList.contains('is-visible')) {
         expect(Math.abs(pointerX(f, 'one') - leftBefore)).toBeLessThan(1);
       }
