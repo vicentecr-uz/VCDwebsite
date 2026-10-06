@@ -89,6 +89,7 @@ import {
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
   import type { ImageViewport } from '../../lib/responsiveImage';
   import { IMAGE_VIEWPORTS } from '../../lib/responsiveImage';
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
   type CaptionBaseline = {
     captions: ImageCaptions;
@@ -103,6 +104,9 @@ import {
     focus: number;
     direction?: 'forward' | 'backward' | 'none';
   };
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
 
   const initProjectImageCaptionTuner = (tuner: HTMLElement) => {
     if (tuner.dataset.initialized === 'true') return;
@@ -238,9 +242,9 @@ import {
       });
       lastTextSelection = afterSelection ?? null;
     };
-    registerHistoryScope(tuner, localHistory, {
+    pageScope.add(registerHistoryScope(tuner, localHistory, {
       owns: (target) => Boolean(captionSession && target && editTarget && findCaptionHost(editTarget)?.contains(target)),
-    });
+    }));
 
 
     const activePosition = (style: ImageCaptionStyleId): ImageCaptionPositionId =>
@@ -550,7 +554,7 @@ import {
       refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
     };
 
-    window.addEventListener('vcd:dev-media-captions-mount', ((event: CustomEvent<{ root: HTMLElement }>) => {
+    pageScope.listen(window, 'vcd:dev-media-captions-mount', ((event: CustomEvent<{ root: HTMLElement }>) => {
       const root = event.detail?.root;
       if (!root) return;
       const targets = [...root.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
@@ -799,14 +803,14 @@ import {
       enableInlineEditing(target);
 
       if (options?.seedEmpty) {
-        requestAnimationFrame(() => {
+        pageScope.frame(() => {
           focusOnPageCaption(target);
         });
       }
     };
 
     styleButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         if (syncingUi) return;
         const next = button.dataset.captionStyle;
         if (!next) return;
@@ -835,7 +839,7 @@ import {
       });
     });
 
-    positionSelect.addEventListener('change', () => {
+    pageScope.listen(positionSelect, 'change', () => {
       if (syncingUi) return;
       const resolved = resolveImageCaptionPosition(positionSelect.value, draftStyle);
       if (isBelowImageCaptionStyle(draftStyle)) {
@@ -852,7 +856,7 @@ import {
       renderFields();
     });
 
-    revealSelect.addEventListener('change', () => {
+    pageScope.listen(revealSelect, 'change', () => {
       if (syncingUi) return;
       const next = revealSelect.value;
       if (!isImageCaptionReveal(next)) return;
@@ -866,18 +870,18 @@ import {
       renderFields();
     });
 
-    textArea.addEventListener('input', () => {
+    pageScope.listen(textArea, 'input', () => {
       if (syncingUi) return;
       setDraftText(textArea.value, selectedViewport);
     });
-    textArea.addEventListener('beforeinput', (event) => {
+    pageScope.listen(textArea, 'beforeinput', (event) => {
       if (!captionSession || document.activeElement !== textArea) return;
       if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
       pendingSelection = capturePanelSelection(selectedViewport);
     });
 
     viewportButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const next = button.dataset.captionViewport as ImageViewport | undefined;
         if (!next || !IMAGE_VIEWPORTS.includes(next)) return;
         selectedViewport = next;
@@ -885,7 +889,7 @@ import {
       });
     });
 
-    clearButton.addEventListener('click', () => {
+    pageScope.listen(clearButton, 'click', () => {
       draftCaptions = { desktop: '', tablet: '', mobile: '' };
       if (editTarget) {
         applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
@@ -904,17 +908,17 @@ import {
       localHistory.clear();
     };
 
-    cancelButton?.addEventListener('click', () => {
+    pageScope.listen(cancelButton, 'click', () => {
       revertToSaved();
       closePanel();
     });
 
-    revertButton.addEventListener('click', () => {
+    pageScope.listen(revertButton, 'click', () => {
       revertToSaved();
       status.textContent = 'Reverted to last saved caption.';
     });
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'caption') return;
       captionSession = false;
@@ -1049,16 +1053,16 @@ import {
         enableInlineEditing(target);
       }
     };
-    saveButton.addEventListener('click', saveDraft);
-    window.addEventListener('vcd:dev-before-save', () => {
+    pageScope.listen(saveButton, 'click', saveDraft);
+    pageScope.listen(window, 'vcd:dev-before-save', () => {
       if (captionSession && openingCaption && !sameCaption(openingCaption, captureDraft())) saveDraft();
     });
-    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-has-draft', ((event: CustomEvent<{ dirty: boolean }>) => {
       if (captionSession && openingCaption && !sameCaption(openingCaption, captureDraft())) event.detail.dirty = true;
     }) as EventListener);
 
     // Clicking away from the caption editor drops an empty shell → Add caption returns.
-    document.addEventListener('focusin', (event) => {
+    pageScope.listen(document, 'focusin', (event) => {
       if (!editTarget) return;
       if (isCaptionEditorSurface(event.target)) return;
       // Focus moved elsewhere (page chrome, another field) — finalize empty captions.
@@ -1067,7 +1071,7 @@ import {
       }
     });
 
-    document.addEventListener(
+    pageScope.listen(document,
       'pointerdown',
       (event) => {
         if (!editTarget) return;
@@ -1084,7 +1088,7 @@ import {
       true,
     );
 
-    document.addEventListener('input', (event) => {
+    pageScope.listen(document, 'input', (event) => {
       const node = event.target as HTMLElement | null;
       if (!(node instanceof HTMLElement)) return;
       if (!node.matches('[data-caption-bp][contenteditable]')) return;
@@ -1094,7 +1098,7 @@ import {
       const bp = (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport;
       setDraftText(node.textContent ?? '', bp);
     });
-    document.addEventListener('beforeinput', (event) => {
+    pageScope.listen(document, 'beforeinput', (event) => {
       if (!captionSession) return;
       if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-caption-bp][contenteditable]')) return;
       if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
@@ -1105,7 +1109,7 @@ import {
       pendingSelection = capturePageSelection(node, (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport);
     }, true);
 
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'caption' || !trigger) return;
@@ -1118,7 +1122,7 @@ import {
       });
     }) as EventListener);
 
-    document.addEventListener(
+    pageScope.listen(document,
       'pointerdown',
       (event) => {
         if (!document.documentElement.classList.contains('is-dev-mode')) return;
@@ -1145,7 +1149,7 @@ import {
       true,
     );
 
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    pageScope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       for (const id of event.detail?.ids ?? [...diskBaselines.keys()]) diskBaselines.delete(id);
       if (!editTarget || (event.detail?.ids && !event.detail.ids.includes(pendingIdFor(editTarget)))) return;
       diskBaselines.set(pendingIdFor(editTarget), {
@@ -1156,11 +1160,11 @@ import {
       });
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-reverted', (() => {
+    pageScope.listen(window, 'vcd:dev-pending-reverted', (() => {
       diskBaselines.clear();
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (!event.detail?.active) {
         document.querySelectorAll<HTMLElement>('[data-dev-image-target]').forEach((target) => {
           disableInlineEditing(target);
@@ -1169,10 +1173,10 @@ import {
         editTarget = null;
       }
       // Dev chrome visibility / which cell sits under Edit grid can change with mode.
-      requestAnimationFrame(syncAllCaptionChromeButtons);
+      pageScope.frame(() => syncAllCaptionChromeButtons());
     }) as EventListener);
 
-    window.addEventListener('resize', () => {
+    pageScope.listen(window, 'resize', () => {
       if (!document.documentElement.classList.contains('is-dev-mode')) return;
       if (editTarget) enableInlineEditing(editTarget);
       // Grid reflow can move a different cell under the Edit grid corner token.
@@ -1180,7 +1184,7 @@ import {
     });
 
     // Grid layout edits can reorder cells without a window resize — refresh on hover.
-    document.addEventListener(
+    pageScope.listen(document,
       'pointerover',
       (event) => {
         if (!document.documentElement.classList.contains('is-dev-mode')) return;
@@ -1192,12 +1196,21 @@ import {
     );
 
     // Initial pass once layout has settled (Dev Mode may already be on).
-    requestAnimationFrame(syncAllCaptionChromeButtons);
+    pageScope.frame(() => syncAllCaptionChromeButtons());
   };
 
   document
     .querySelectorAll<HTMLElement>('[data-project-image-caption-tuner]')
     .forEach(initProjectImageCaptionTuner);
+  pageScope.add(() => {
+    document.querySelectorAll<HTMLElement>('[data-project-image-caption-tuner]').forEach((tuner) => {
+      delete tuner.dataset.initialized;
+    });
+  });
+  return () => pageScope.destroy();
+  });
+
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style>

@@ -143,6 +143,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     resolveImageGridConstrained,
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
   interface CatalogItem {
     id: string;
@@ -156,6 +157,9 @@ import ToggleRow from '../ui/ToggleRow.astro';
   }
 
   const MAX_VH_STEPS = [90, 80, 70, 60, 50, 40, 30];
+
+  const disposePage = onPageLoad(() => {
+  const pageScope = createPageScope();
 
   const initProjectImageCarouselTuner = (tuner: HTMLElement) => {
     if (tuner.dataset.initialized === 'true') return;
@@ -600,13 +604,13 @@ import ToggleRow from '../ui/ToggleRow.astro';
       image.alt = '';
       image.draggable = false;
       button.append(image);
-      button.addEventListener('dragstart', (event) => {
+      pageScope.listen(button, 'dragstart', (event) => {
         dragItemId = item.id;
         button.classList.add('is-dragging');
         event.dataTransfer?.setData('text/plain', item.id);
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
       });
-      button.addEventListener('dragend', () => {
+      pageScope.listen(button, 'dragend', () => {
         dragItemId = null;
         button.classList.remove('is-dragging');
         visibleBoard.classList.remove('is-drop-target');
@@ -619,7 +623,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       removeButton.title = 'Remove from page (keep in asset manager)';
       removeButton.setAttribute('aria-label', `Remove ${item.alt || item.id} from page`);
       removeButton.textContent = 'Remove';
-      removeButton.addEventListener('click', (event) => {
+      pageScope.listen(removeButton, 'click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         removeFromPage(item.id);
@@ -635,7 +639,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       button.className = 'project-carousel-tuner__add';
       button.setAttribute('aria-label', 'Add image to carousel');
       button.innerHTML = sizeIcon(plusIcon, 18);
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const target = editTarget;
         const documentKey = target.dataset.devDocument || '';
         let path: Array<string | number> = [];
@@ -800,16 +804,16 @@ import ToggleRow from '../ui/ToggleRow.astro';
     };
 
     const bindDropZone = (zone: HTMLElement, destination: 'visible' | 'parking') => {
-      zone.addEventListener('dragover', (event) => {
+      pageScope.listen(zone, 'dragover', (event) => {
         if (!dragItemId) return;
         event.preventDefault();
         zone.classList.add('is-drop-target');
         if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
       });
-      zone.addEventListener('dragleave', (event) => {
+      pageScope.listen(zone, 'dragleave', (event) => {
         if (event.target === zone) zone.classList.remove('is-drop-target');
       });
-      zone.addEventListener('drop', (event) => {
+      pageScope.listen(zone, 'drop', (event) => {
         event.preventDefault();
         zone.classList.remove('is-drop-target');
         const id = dragItemId || event.dataTransfer?.getData('text/plain');
@@ -988,7 +992,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       }
     };
 
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent) => {
       const trigger = event.detail?.trigger as HTMLElement | undefined;
       if (trigger?.dataset.devEditTrigger !== 'carousel') return;
       const target = trigger.closest<HTMLElement>('[data-dev-carousel-target]');
@@ -1016,13 +1020,13 @@ import ToggleRow from '../ui/ToggleRow.astro';
       window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: editTarget } }));
     };
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'carousel') return;
       restoreOnClose();
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-carousel-prepare-append', ((event: CustomEvent) => {
+    pageScope.listen(window, 'vcd:dev-carousel-prepare-append', ((event: CustomEvent) => {
       if (event.detail?.target !== editTarget) return;
       closePanel();
     }) as EventListener);
@@ -1030,7 +1034,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     selectTarget(initialTarget, false);
 
     orientationButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const orientation = button.dataset.carouselOrientation as CarouselOrientation | undefined;
         if (!orientation || orientation === draft.orientation) return;
         draft.orientation = orientation;
@@ -1042,7 +1046,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     });
 
     viewportButtons.forEach((button) => {
-      button.addEventListener('click', () => {
+      pageScope.listen(button, 'click', () => {
         const viewport = button.dataset.carouselViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
         selectedViewport = viewport;
@@ -1052,7 +1056,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       });
     });
 
-    constrainedSelect.addEventListener('change', () => {
+    pageScope.listen(constrainedSelect, 'change', () => {
       draftConstrained = resolveImageGridConstrained({
         ...draftConstrained,
         [selectedViewport]: constrainedSelect.value,
@@ -1066,7 +1070,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
           : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
     });
 
-    heightSelect.addEventListener('change', () => {
+    pageScope.listen(heightSelect, 'change', () => {
       ensureOverride();
       bp().heightMode = heightSelect.value as CarouselHeightMode;
       if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
@@ -1076,7 +1080,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       status.textContent = 'Block height changed — unsaved changes.';
     });
 
-    maxSelect.addEventListener('change', () => {
+    pageScope.listen(maxSelect, 'change', () => {
       ensureOverride();
       bp().maxHeightVh = Number(maxSelect.value) || null;
       if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
@@ -1088,7 +1092,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
         : 'Height cap off — unsaved changes.';
     });
 
-    dotsSelect.addEventListener('change', () => {
+    pageScope.listen(dotsSelect, 'change', () => {
       ensureOverride();
       bp().dotsPlacement = dotsSelect.value as CarouselDotsPlacement;
       if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
@@ -1098,7 +1102,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       status.textContent = 'Position dots moved — unsaved changes.';
     });
 
-    pinnedInput.addEventListener('change', () => {
+    pageScope.listen(pinnedInput, 'change', () => {
       ensureOverride();
       bp().scrollPinned = pinnedInput.checked;
       if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
@@ -1110,33 +1114,33 @@ import ToggleRow from '../ui/ToggleRow.astro';
         : 'Scroll advance off — unsaved changes.';
     });
 
-    clearOverrideButton.addEventListener('click', () => {
+    pageScope.listen(clearOverrideButton, 'click', () => {
       clearOverride();
       renderDraft();
       status.textContent = `Cleared ${selectedViewport} override — unsaved changes.`;
     });
 
-    saveButton.addEventListener('click', saveDraft);
+    pageScope.listen(saveButton, 'click', saveDraft);
 
-    cancelButton?.addEventListener('click', () => {
+    pageScope.listen(cancelButton, 'click', () => {
       restoreOnClose();
       closePanel();
       historyReady = false;
       unregisterHistoryScope?.(); unregisterHistoryScope = null;
     });
 
-    revertButton.addEventListener('click', () => {
+    pageScope.listen(revertButton, 'click', () => {
       revertToSaved();
       status.textContent = 'Reverted to the last saved carousel settings.';
     });
 
-    window.addEventListener('vcd:dev-before-save', () => {
+    pageScope.listen(window, 'vcd:dev-before-save', () => {
       if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(openingSnapshot)) !== JSON.stringify(contentSnapshot(snapshotDraft()))) saveDraft();
     });
-    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
+    pageScope.listen(window, 'vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
       if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(snapshotDraft())) !== JSON.stringify(contentSnapshot(openingSnapshot))) event.detail.dirty = true;
     }) as EventListener);
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    pageScope.listen(window, 'vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
       if (ids?.length) {
         document.querySelectorAll<HTMLElement>('[data-dev-carousel-target]').forEach((target) => {
@@ -1149,15 +1153,24 @@ import ToggleRow from '../ui/ToggleRow.astro';
       }
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-reverted', (() => {
+    pageScope.listen(window, 'vcd:dev-pending-reverted', (() => {
       diskBaselines.clear();
       constrainedBaselines.clear();
     }) as EventListener);
+    pageScope.add(() => {
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = null;
+      delete tuner.dataset.initialized;
+    });
   };
 
   document
     .querySelectorAll<HTMLElement>('[data-project-image-carousel-tuner]')
     .forEach(initProjectImageCarouselTuner);
+  return () => pageScope.destroy();
+  });
+
+  import.meta.hot?.dispose(disposePage);
 </script>
 
 <style is:global>
