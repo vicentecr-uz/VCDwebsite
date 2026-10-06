@@ -45,11 +45,11 @@ const withWindow = async (run: (window: Window) => Promise<void>) => {
   try {
     await run(window);
   } finally {
+    pageHistory.clear();
     previous.forEach((descriptor, key) => descriptor
       ? Object.defineProperty(globalThis, key, descriptor)
       : Reflect.deleteProperty(globalThis, key));
     await window.happyDOM.close();
-    pageHistory.clear();
   }
 };
 
