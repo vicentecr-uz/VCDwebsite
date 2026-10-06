@@ -11,7 +11,7 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage } = {}) {
+function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: string; session?: Storage; coarse?: boolean } = {}) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
@@ -47,7 +47,7 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
     getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, sessionStorage: options.session || window.sessionStorage, performance: { now: () => now },
-    matchMedia: () => ({ matches: reducedMotion }) };
+    matchMedia: (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reducedMotion : query.includes('pointer: coarse') ? Boolean(options.coarse) : false }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
   cleanups.push(dispose);
@@ -650,9 +650,9 @@ test('walkthrough spreads two fingers, pans, releases at fit, then pinches again
   const initial = demoPointer(f).style.transform;
   advance(f, 1400); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
   advance(f, 1200); expect(panOf(f)).toBeGreaterThan(0); expect(scaleOf(f)).toBe(2.3);
-  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(false);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
   advance(f, 1800); expect(scaleOf(f)).toBe(1);
-  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
   advance(f, 1000); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
   advance(f, 500); f.tick(150); expect(f.dialog.open).toBe(false);
   f.click(); f.frame(); f.frame(); advance(f, 10000);
@@ -661,6 +661,20 @@ test('walkthrough spreads two fingers, pans, releases at fit, then pinches again
   expect(demoPointer(sameTab).classList.contains('is-visible')).toBe(false);
   const newTab = fixture(false, { loaded: true }); startDemo(newTab);
   expect(demoPointer(newTab).classList.contains('is-visible')).toBe(true);
+});
+
+test('coarse walkthrough keeps the right finger through pan while the left finger fades', () => {
+  const f = fixture(false, { loaded: true, coarse: true }); startDemo(f);
+  advance(f, 1900);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  const pan = demoPointer(f, 'two').style.transform;
+  advance(f, 1000);
+  expect(demoPointer(f, 'two').style.transform).not.toBe(pan);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  advance(f, 1200);
+  expect(demoPointer(f, 'one').classList.contains('is-visible')).toBe(true);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(true);
 });
 
 for (const elapsed of [1000, 2500, 4400, 5300]) {
