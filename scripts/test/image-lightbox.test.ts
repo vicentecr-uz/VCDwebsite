@@ -41,7 +41,7 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
   Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
   if (options.loaded) {
     Object.defineProperties(original, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 }, currentSrc: { value: options.preview || '/images/study.jpg' } });
-    Object.defineProperties(image, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
+    Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
   }
   viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
@@ -567,50 +567,172 @@ test('Safari zooming out stops at fit until a new gesture begins', () => {
   f.tick(150); expect(f.dialog.open).toBe(false);
 });
 
-test('a loaded page image appears immediately while the original upgrades after decode', async () => {
-  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
-  let loader: HTMLImageElement | undefined;
+function loadersFor(f: ReturnType<typeof fixture>) {
+  const loaders: { image: HTMLImageElement; resolve: () => void; reject: () => void }[] = [];
   const create = f.document.createElement.bind(f.document);
   f.document.createElement = ((name: string) => {
     const node = create(name);
-    if (name === 'img') { loader = node as HTMLImageElement; (loader as HTMLImageElement & { decode: () => Promise<void> }).decode = () => Promise.resolve(); }
+    if (name === 'img') {
+      const image = node as HTMLImageElement;
+      let resolve!: () => void;
+      let reject!: () => void;
+      const decoded = new Promise<void>((yes, no) => { resolve = yes; reject = () => no(new Error('decode failed')); });
+      Object.defineProperties(image, { complete: { value: true, configurable: true }, naturalWidth: { value: 7200 }, naturalHeight: { value: 4800 } });
+      image.decode = () => decoded;
+      loaders.push({ image, resolve, reject });
+    }
     return node;
   }) as typeof f.document.createElement;
+  return loaders;
+}
+
+const demoSeen = 'vcd:image-lightbox-demo-seen';
+const demoPointer = (f: ReturnType<typeof fixture>, which = 'one') => f.viewer.querySelector<HTMLElement>(`[data-image-lightbox-demo-pointer="${which}"]`)!;
+const scaleOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/scale\(([^)]+)\)/)![1]);
+const panOf = (f: ReturnType<typeof fixture>) => Number(f.image.style.transform.match(/translate\(([^p]+)px/)![1]);
+const startDemo = (f: ReturnType<typeof fixture>) => { f.click(); f.frame(); f.frame(); f.tick(400); f.frame(); };
+const advance = (f: ReturnType<typeof fixture>, ms: number) => { f.tick(ms); f.frame(); };
+
+test('cached preview appears immediately; original replaces it only after load and decode', async () => {
+  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+  const loaders = loadersFor(f);
   f.click();
   expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
-  expect(loader).toBeDefined();
-  loader!.dispatchEvent(new f.window.Event('load'));
+  expect(f.image.style.getPropertyValue('--image-aspect')).toBe('1.5');
+  loaders[0].image.dispatchEvent(new f.window.Event('load'));
   await Promise.resolve();
+  expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+  loaders[0].resolve(); await Promise.resolve(); await Promise.resolve();
   expect(f.image.getAttribute('src')).toBe('/images/study.jpg');
+  expect(f.image.style.getPropertyValue('--image-aspect')).toBe('1.5');
 });
 
-test('closing and reopening ignores a stale original upgrade and preserves preview errors', () => {
-  const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
-  let loader: HTMLImageElement | undefined;
-  const create = f.document.createElement.bind(f.document);
-  f.document.createElement = ((name: string) => { const node = create(name); if (name === 'img') loader = node as HTMLImageElement; return node; }) as typeof f.document.createElement;
-  f.click(); expect(f.image.src).toContain('study.preview.webp');
-  f.key('Escape'); f.tick(150); f.click();
-  loader!.dispatchEvent(new f.window.Event('load'));
-  expect(f.image.src).toContain('study.preview.webp');
-  loader!.dispatchEvent(new f.window.Event('error'));
-  expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(false);
+test('already-loaded original URL avoids a redundant loader', () => {
+  const f = fixture(false, { loaded: true, preview: 'http://localhost:4323/images/study.jpg' });
+  const loaders = loadersFor(f); f.click();
+  expect(loaders.length).toBe(0);
 });
 
-test('a keyboard opening skips the walkthrough and reduced motion never claims it', () => {
-  const keyboard = fixture(false, { loaded: true });
-  keyboard.original.dispatchEvent(new keyboard.window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
-  keyboard.frame(); keyboard.frame(); keyboard.tick(1000); keyboard.frame();
-  expect(keyboard.viewer.querySelector('[data-image-lightbox-demo-pointer="one"]')!.classList.contains('is-visible')).toBe(false);
-  const reduced = fixture(true, { loaded: true });
-  reduced.click(); reduced.frame(); reduced.frame(); reduced.tick(1000); reduced.frame();
-  expect(reduced.window.sessionStorage.getItem('vcd:image-lightbox-demo-seen')).toBeNull();
+for (const reject of [false, true]) {
+  test(`stale original ${reject ? 'decode failure' : 'decode completion'} cannot affect a reopened lightbox`, async () => {
+    const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+    const loaders = loadersFor(f);
+    f.click(); loaders[0].image.dispatchEvent(new f.window.Event('load'));
+    f.key('Escape'); f.tick(150); f.original.dataset.imageOriginal = '/images/next.jpg'; f.click();
+    reject ? loaders[0].reject() : loaders[0].resolve();
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+    expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(true);
+    loaders[1].image.dispatchEvent(new f.window.Event('load')); loaders[1].resolve();
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/next.jpg');
+  });
+}
+
+for (const decodeError of [false, true]) {
+  test(`${decodeError ? 'decode' : 'network'} failure keeps the preview and reports the unavailable original`, async () => {
+    const f = fixture(false, { loaded: true, preview: '/images/study.preview.webp' });
+    const loaders = loadersFor(f); f.click();
+    if (decodeError) { loaders[0].image.dispatchEvent(new f.window.Event('load')); loaders[0].reject(); }
+    else loaders[0].image.dispatchEvent(new f.window.Event('error'));
+    await Promise.resolve(); await Promise.resolve();
+    expect(f.image.getAttribute('src')).toBe('/images/study.preview.webp');
+    const error = f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!;
+    expect(error.hidden).toBe(false);
+    expect(error.textContent).toBe('Full-resolution image could not be loaded.');
+  });
+}
+
+test('walkthrough spreads two fingers, pans, releases at fit, then pinches again to close', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f);
+  expect(f.window.sessionStorage.getItem(demoSeen)).toBe('1');
+  const initial = demoPointer(f).style.transform;
+  advance(f, 1400); expect(scaleOf(f)).toBeGreaterThan(2); expect(demoPointer(f).style.transform).not.toBe(initial);
+  advance(f, 1200); expect(panOf(f)).toBeGreaterThan(0); expect(scaleOf(f)).toBe(2.3);
+  expect(demoPointer(f, 'two').classList.contains('is-visible')).toBe(false);
+  advance(f, 1800); expect(scaleOf(f)).toBe(1);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  advance(f, 1000); expect(scaleOf(f)).toBeLessThan(.75); expect(f.image.classList.contains('is-armed')).toBe(true);
+  advance(f, 500); f.tick(150); expect(f.dialog.open).toBe(false);
+  f.click(); f.frame(); f.frame(); advance(f, 10000);
+  expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  const sameTab = fixture(false, { loaded: true, session: f.window.sessionStorage }); startDemo(sameTab);
+  expect(demoPointer(sameTab).classList.contains('is-visible')).toBe(false);
+  const newTab = fixture(false, { loaded: true }); startDemo(newTab);
+  expect(demoPointer(newTab).classList.contains('is-visible')).toBe(true);
 });
 
-test('an early pointer interruption cancels a pending walkthrough without later dismissal', () => {
-  const f = fixture(false, { loaded: true });
-  f.click(); f.frame(); f.frame();
-  f.pointer('pointerdown', 1); f.pointer('pointerup', 1);
-  f.tick(8000); for (let i = 0; i < 20; i++) f.frame();
-  expect(f.dialog.open).toBe(true);
+for (const elapsed of [1000, 2500, 4400, 5300]) {
+  for (const input of ['pointer', 'wheel', 'key', 'gesture', 'select']) {
+    test(`${input} interrupts walkthrough at ${elapsed}ms without a delayed close`, () => {
+      const f = fixture(false, { loaded: true }); startDemo(f); advance(f, elapsed);
+      const previous = f.image.style.transform;
+      if (input === 'pointer') f.pointer('pointerdown', 1);
+      else if (input === 'wheel') f.wheel(0);
+      else if (input === 'key') f.key('a');
+      else if (input === 'gesture') f.gesture('gesturestart');
+      else f.viewer.querySelector('select')!.dispatchEvent(new f.window.Event('change'));
+      expect(f.dialog.open).toBe(true);
+      expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+      if (elapsed < 4750) expect(f.image.style.transform).toBe(previous);
+      advance(f, 10000); f.tick(1000);
+      expect(f.dialog.open).toBe(true);
+    });
+  }
+}
+
+test('early input before loading or during the wait prevents later playback without claiming seen', () => {
+  for (const loaded of [false, true]) {
+    const f = fixture(false, { loaded }); f.click(); f.frame(); f.frame();
+    f.pointer('pointerdown', 1); f.pointer('pointerup', 1);
+    if (!loaded) Object.defineProperties(f.image, { complete: { value: true }, naturalWidth: { value: 1200 }, naturalHeight: { value: 800 } });
+    f.image.dispatchEvent(new f.window.Event('load'));
+    advance(f, 10000); f.tick(150);
+    expect(f.dialog.open).toBe(true);
+    expect(f.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  }
+});
+
+test('repeated image loads schedule only one visible walkthrough; a source swap does not cancel it', () => {
+  const f = fixture(false, { loaded: true }); f.click(); f.frame(); f.frame();
+  for (let i = 0; i < 3; i++) f.image.dispatchEvent(new f.window.Event('load'));
+  expect(f.timers.size).toBe(1); expect(f.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  f.tick(400); f.frame(); expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  Object.defineProperty(f.image, 'complete', { value: false, configurable: true });
+  advance(f, 1000); expect(scaleOf(f)).toBeGreaterThan(1);
+  expect(demoPointer(f).classList.contains('is-visible')).toBe(true);
+  Object.defineProperty(f.image, 'complete', { value: true, configurable: true });
+  f.image.dispatchEvent(new f.window.Event('load'));
+  expect(f.timers.size).toBe(0); expect(f.frames.size).toBe(1);
+});
+
+test('walkthrough pan covers the same distance with sparse or frequent animation frames', () => {
+  const sparse = fixture(false, { loaded: true }); startDemo(sparse); advance(sparse, 2600);
+  const frequent = fixture(false, { loaded: true }); startDemo(frequent);
+  for (let elapsed = 0; elapsed < 2600; elapsed += 20) advance(frequent, 20);
+  expect(panOf(sparse)).toBeCloseTo(panOf(frequent), 6);
+  expect(scaleOf(sparse)).toBe(scaleOf(frequent));
+});
+
+test('keyboard and reduced-motion openings skip and do not claim the walkthrough', () => {
+  const keyboard = fixture(false, { loaded: true }); keyboard.key('Enter', keyboard.original);
+  keyboard.frame(); keyboard.frame(); advance(keyboard, 10000);
+  expect(keyboard.window.sessionStorage.getItem(demoSeen)).toBeNull();
+  expect(keyboard.dialog.open).toBe(true);
+  const reduced = fixture(true, { loaded: true }); startDemo(reduced); advance(reduced, 10000);
+  expect(reduced.window.sessionStorage.getItem(demoSeen)).toBeNull(); expect(reduced.dialog.open).toBe(true);
+});
+
+test('resize and disposal cancel demonstration frames and timers', () => {
+  const f = fixture(false, { loaded: true }); startDemo(f); advance(f, 1000);
+  f.window.dispatchEvent(new f.window.Event('resize')); advance(f, 10000);
+  expect(f.dialog.open).toBe(true); expect(demoPointer(f).classList.contains('is-visible')).toBe(false);
+  f.dispose(); expect(f.dialog.open).toBe(false); expect(f.frames.size).toBe(0); expect(f.timers.size).toBe(0);
+});
+
+test('mobile removes side insets and fit geometry uses image aspect and the safe viewport', () => {
+  const css = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8').split('<style>')[1];
+  expect(css).toContain('padding-inline: 0');
+  expect(css).toContain('width: min(100%, calc(var(--vh-safe, 1svh) * 80 * var(--image-aspect, 1)))');
+  expect(css).toContain('aspect-ratio: var(--image-aspect, auto)');
 });
