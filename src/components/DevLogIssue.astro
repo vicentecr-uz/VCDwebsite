@@ -511,6 +511,17 @@ import TextField from './ui/TextField.astro';
       return lines.join('\n');
     };
 
+    const focusSelectTrigger = (select: HTMLSelectElement) => {
+      const field = select.closest<HTMLElement>('.dev-field');
+      const trigger = field?.querySelector<HTMLElement>('[data-editor-select-trigger]');
+      if (!field || !trigger) return;
+      field.setAttribute('data-log-validation-focus', '');
+      scope.listen(trigger, 'blur', () => {
+        field.removeAttribute('data-log-validation-focus');
+      }, { once: true });
+      trigger.focus();
+    };
+
     const submitIssue = async () => {
       const title = titleInput.value.trim();
       const description = bodyInput.value.trim();
@@ -527,11 +538,11 @@ import TextField from './ui/TextField.astro';
         return;
       }
       if (!label) {
-        labelSelect.focus();
+        focusSelectTrigger(labelSelect);
         return;
       }
       if (!milestone) {
-        milestoneSelect.focus();
+        focusSelectTrigger(milestoneSelect);
         return;
       }
 
@@ -701,6 +712,11 @@ import TextField from './ui/TextField.astro';
 
       if (event.key !== 'Escape') return;
 
+      if (event.target instanceof Element) {
+        if (event.target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
+        if (event.target.closest('[data-editor-select-popup]')) return;
+      }
+
       if (pickMode) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -755,6 +771,10 @@ import TextField from './ui/TextField.astro';
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
+  }
+
+  :global(.dev-log-issue .dev-field[data-log-validation-focus] .dev-field__value:focus-within) {
+    box-shadow: inset 0 0 0 1.5px var(--sys-color-on-srf);
   }
 
   .dev-log-issue__pick-block {

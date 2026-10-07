@@ -106,9 +106,13 @@ export function installHistoryShortcuts(signal: AbortSignal) {
   const activeScopes = () => [...scopes].reverse().filter(({ element }) =>
     element.isConnected && !element.closest('[hidden], [aria-hidden="true"]'),
   );
-  const scopeFor = (target: Element | null) => activeScopes().find(({ element, owns }) =>
-    element.contains(target) || element.closest('[data-dev-overlay]')?.contains(target) || owns?.(target),
-  );
+  const scopeFor = (target: Element | null) => {
+    const owner = target?.closest<HTMLElement>('[data-editor-select-popup]')?.dataset.editorSelectOwner;
+    const scopeTarget = owner ? document.getElementById(owner) ?? target : target;
+    return activeScopes().find(({ element, owns }) =>
+      element.contains(scopeTarget) || element.closest('[data-dev-overlay]')?.contains(scopeTarget) || owns?.(scopeTarget),
+    );
+  };
   let selectedScope: ReturnType<typeof scopeFor>;
   const selectHistory = (event: Event) => {
     lastInteractionTarget = event.target instanceof Element ? event.target : null;
