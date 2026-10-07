@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { Window } from 'happy-dom';
 import { createHistory, installHistoryShortcuts, pageHistory, registerHistoryScope } from '../../src/lib/devHistory';
 
 class FakeTarget {
@@ -281,6 +282,96 @@ describe('editor history', () => {
     expect(text).toBe(0);
     expect(crop).toBe(1);
   }));
+
+  test('a portalled select keeps pointer and focus ownership with its panel trigger', async () => {
+    const browser = new Window();
+    const globals = { window: browser, document: browser.document, Element: browser.Element,
+      Event: browser.Event, CustomEvent: browser.CustomEvent, KeyboardEvent: browser.KeyboardEvent };
+    const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+    Object.entries(globals).forEach(([key, value]) => Object.defineProperty(globalThis, key, { configurable: true, value }));
+    const signal = new AbortController();
+    try {
+      browser.document.documentElement.classList.add('is-dev-mode');
+      const overlay = browser.document.createElement('aside');
+      overlay.dataset.devOverlay = '';
+      const tuner = browser.document.createElement('div');
+      const trigger = browser.document.createElement('button');
+      trigger.id = 'trigger';
+      tuner.append(trigger);
+      overlay.append(tuner);
+      browser.document.body.append(overlay);
+      const popup = browser.document.createElement('div');
+      popup.dataset.editorSelectPopup = '';
+      popup.dataset.editorSelectOwner = trigger.id;
+      const item = browser.document.createElement('div');
+      popup.append(item);
+      browser.document.body.append(popup);
+      const panelHistory = createHistory();
+      let panelValue = 1, pageValue = 1;
+      panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
+      pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
+      registerHistoryScope(tuner, panelHistory, { signal: signal.signal });
+      installHistoryShortcuts(signal.signal);
+      item.dispatchEvent(new browser.Event('pointerdown', { bubbles: true, cancelable: true }));
+      item.dispatchEvent(new browser.Event('focusin', { bubbles: true }));
+      item.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      expect(panelValue).toBe(0);
+      expect(pageValue).toBe(1);
+      item.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      expect(panelValue).toBe(1);
+      expect(pageValue).toBe(1);
+    } finally {
+      signal.abort();
+      pageHistory.clear();
+      previous.forEach((descriptor, key) => descriptor ? Object.defineProperty(globalThis, key, descriptor) : Reflect.deleteProperty(globalThis, key));
+      await browser.happyDOM.close();
+    }
+  });
+
+  for (const closing of ['hidden', 'disconnected', 'missing'] as const) {
+    test(`a portalled select falls back to page history when its panel is ${closing}`, async () => {
+      const browser = new Window();
+      const globals = { window: browser, document: browser.document, Element: browser.Element,
+        Event: browser.Event, CustomEvent: browser.CustomEvent, KeyboardEvent: browser.KeyboardEvent };
+      const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+      Object.entries(globals).forEach(([key, value]) => Object.defineProperty(globalThis, key, { configurable: true, value }));
+      const signal = new AbortController();
+      try {
+        browser.document.documentElement.classList.add('is-dev-mode');
+        const tuner = browser.document.createElement('div');
+        const trigger = browser.document.createElement('button');
+        trigger.id = `${closing}-trigger`;
+        tuner.append(trigger);
+        browser.document.body.append(tuner);
+        const popup = browser.document.createElement('div');
+        popup.dataset.editorSelectPopup = '';
+        if (closing !== 'missing') popup.dataset.editorSelectOwner = trigger.id;
+        const item = browser.document.createElement('div');
+        popup.append(item);
+        browser.document.body.append(popup);
+        if (closing === 'hidden') tuner.hidden = true;
+        else if (closing === 'disconnected') tuner.remove();
+        const panelHistory = createHistory();
+        let panelValue = 1, pageValue = 1;
+        panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => {} });
+        pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => {} });
+        registerHistoryScope(tuner, panelHistory, { signal: signal.signal });
+        installHistoryShortcuts(signal.signal);
+        item.dispatchEvent(new browser.Event('focusin', { bubbles: true }));
+        item.dispatchEvent(new browser.KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+        await Promise.resolve();
+        expect(panelValue).toBe(1);
+        expect(pageValue).toBe(0);
+      } finally {
+        signal.abort();
+        pageHistory.clear();
+        previous.forEach((descriptor, key) => descriptor ? Object.defineProperty(globalThis, key, descriptor) : Reflect.deleteProperty(globalThis, key));
+        await browser.happyDOM.close();
+      }
+    });
+  }
 
   for (const surface of ['header', 'padding', 'frame']) {
     test(`panel ${surface} selects its inner history despite stale text focus`, async () => withShortcuts(async (doc, _win, panel, signal) => {
