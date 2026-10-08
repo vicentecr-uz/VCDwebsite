@@ -602,6 +602,20 @@ test('height variables stay on the clip and track through mode changes', () => {
 
 test('release smoothing is opt in and clears after native scrollend', async () => {
   const previousUrl = window.location.href;
+  const baseline = window.document.createElement('div');
+  baseline.dataset.projectImageCarousel = '';
+  baseline.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  baseline.innerHTML = '<div data-carousel-clip><div data-carousel-track><div data-carousel-slide data-grid-item-id="baseline"><div data-carousel-frame></div></div></div></div>';
+  window.document.body.append(baseline);
+  const baselineTrack = baseline.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const baselineSlide = baseline.querySelector<HTMLElement>('[data-carousel-slide]')!;
+  Object.defineProperties(baselineSlide, { offsetLeft: { get: () => 0 }, offsetTop: { get: () => 0 }, offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 } });
+  baselineSlide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () => ({ height: 100, width: 100 } as DOMRect);
+  bindProjectImageCarousels(baseline);
+  baselineTrack.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  baselineTrack.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(baseline.dataset.carouselReleaseSmoothing).toBeUndefined();
+  baseline.remove();
   window.history.pushState({}, '', 'http://localhost/?carousel-release-smoothing=1');
   const block = window.document.createElement('div');
   block.dataset.projectImageCarousel = '';
@@ -626,6 +640,18 @@ test('release smoothing is opt in and clears after native scrollend', async () =
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
   expect(scrollToCalls).toBe(0);
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  const secondEnd = new window.Event('touchend', { bubbles: true });
+  Object.defineProperty(secondEnd, 'touches', { value: [] });
+  track.dispatchEvent(secondEnd);
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  window.document.dispatchEvent(new window.Event('astro:before-swap'));
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
   block.remove();
   window.history.replaceState({}, '', previousUrl);
 });
