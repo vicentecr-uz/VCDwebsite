@@ -30,6 +30,9 @@ test('cold loads cover with an inline veil before bundled CSS', () => {
   assert.match(critical, /#transition-overlay\s*\{[^}]*opacity:\s*1/);
   assert.match(layout, /<a href="#main-content"[\s\S]*?<div id="transition-overlay">/);
 });
+test('cold loads include an accessible delayed activity indicator in the veil', () => {
+  assert.match(layout, /<div id="transition-overlay">\s*<div role="status" aria-label="Loading page">[\s\S]*?<svg[^>]*aria-hidden="true"/);
+});
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');
@@ -538,6 +541,54 @@ test('persistent cover preserves a partially visible veil opacity', async () => 
   f.tweens.at(-1)!.finish();
   await covering;
   assert.equal(Number(f.overlay.style.opacity), 1);
+});
+
+test('initial readiness keeps the activity indicator active until fade authorization', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, images: [image] });
+  assert.equal(f.overlay.dataset.loading, 'true');
+  await f.paint();
+  assert.equal(f.overlay.dataset.loading, 'true');
+  image.load();
+  image.decoded.resolve();
+  await f.paint();
+  assert.equal(f.overlay.dataset.loading, undefined);
+});
+
+test('persistent cover activates the activity indicator after covering and retains it during readiness', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ images: [image] });
+  const covering = f.persistentHooks.cover();
+  assert.equal(f.overlay.dataset.loading, undefined);
+  f.tweens.at(-1)!.finish();
+  await covering;
+  assert.equal(f.overlay.dataset.loading, 'true');
+  f.persistentHooks.reveal();
+  await flush();
+  assert.equal(f.overlay.dataset.loading, 'true');
+  image.load();
+  image.decoded.resolve();
+  await f.paint();
+  assert.equal(f.overlay.dataset.loading, undefined);
+});
+
+test('cancellation and pagehide clear the activity indicator', async () => {
+  const f = fixture({ images: [new ImageFixture()] });
+  assert.equal(f.overlay.dataset.loading, 'true');
+  f.click();
+  assert.equal(f.overlay.dataset.loading, undefined);
+
+  const restored = fixture({ images: [new ImageFixture()] });
+  assert.equal(restored.overlay.dataset.loading, 'true');
+  restored.window.emit('pagehide', { persisted: true });
+  assert.equal(restored.overlay.dataset.loading, undefined);
+});
+
+test('visible transition diagnostics never activate the activity indicator', async () => {
+  const f = fixture({ visible: true, images: [new ImageFixture()] });
+  assert.equal(f.overlay.dataset.loading, undefined);
+  await f.paint();
+  assert.equal(f.overlay.dataset.loading, undefined);
 });
 
 for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
