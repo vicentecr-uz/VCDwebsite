@@ -309,11 +309,6 @@ function syncCaptions(carousel: Carousel): void {
     const slideIndex = slide ? Number(slide.dataset.carouselIndex) : Number(caption.dataset.carouselIndex);
     if (!Number.isFinite(slideIndex)) return;
 
-    if (slide) {
-      caption.dataset.mobileBleedEligible = slide.dataset.mobileBleedEligible ?? 'false';
-      caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
-    }
-
     const editing = editingId != null && caption.dataset.carouselItemId === editingId;
     const pin = editing && pinEditing;
     const opacity = pin ? 1 : carouselCaptionOpacity(slideIndex, carousel.progress);
@@ -342,12 +337,15 @@ function refreshGeometry(carousel: Carousel): void {
   const captionsBySlide = carousel.slides.map((slide) => (
     carousel.captions.find((node) => node.dataset.carouselItemId === slide.dataset.gridItemId)
   ));
+  const widths = captionsBySlide.map((caption, index) => (
+    caption ? surfaceWidthForSlide(carousel.slides[index]) : 0
+  ));
   captionsBySlide.forEach((caption, index) => {
     if (!caption) return;
     const slide = carousel.slides[index];
     caption.dataset.mobileBleedEligible = slide.dataset.mobileBleedEligible ?? 'false';
     caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
-    const width = surfaceWidthForSlide(carousel.slides[index]);
+    const width = widths[index];
     if (width > 0 && carousel.captionWidths.get(caption) !== width) {
       // Own image width — never retarget to the neighbour mid-fade.
       caption.style.width = `${width}px`;
@@ -355,13 +353,16 @@ function refreshGeometry(carousel: Carousel): void {
       carousel.captionWidths.set(caption, width);
     }
   });
-  captionsBySlide.forEach((caption) => {
+  const trims = captionsBySlide.map((caption) => (
+    caption && !trimSupported ? measureCapTrimPx(caption) : 0
+  ));
+  captionsBySlide.forEach((caption, index) => {
     if (!caption) return;
     if (trimSupported) {
       caption.style.removeProperty('top');
       delete caption.dataset.capTrim;
     } else {
-      const trim = measureCapTrimPx(caption);
+      const trim = trims[index];
       caption.dataset.capTrim = trim.toFixed(2);
       caption.style.top = `${-trim}px`;
     }
@@ -1069,9 +1070,10 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     });
   }) as EventListener);
   window.addEventListener('vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
-    const target = event.detail?.target;
-    registry.forEach((carousel) => {
+      const target = event.detail?.target;
+      registry.forEach((carousel) => {
       if (target && !carousel.block.contains(target)) return;
+      scheduleGeometryRefresh(carousel);
       void refreshCarouselMediaInk(carousel);
     });
   }) as EventListener);
