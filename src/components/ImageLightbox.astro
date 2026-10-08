@@ -73,6 +73,7 @@ const inputModeOptions = [
     const pointers = new Map<number, Point>();
     let nativeGesture = false;
     let nativeUntil = 0;
+    let inputModePopupPointerDown = false;
     let wheelPinch: boolean | null = null;
     type InputMode = 'auto' | 'mouse' | 'trackpad';
     const inputModeStorageKey = 'vcd:image-lightbox-input-mode';
@@ -369,6 +370,7 @@ const inputModeOptions = [
     };
     const dismiss = (immediate = false) => {
       if (!dialog.open) return;
+      inputModePopupPointerDown = false;
       const closingSession = ++session;
       cancelAnimationFrame(revealFrame); revealFrame = 0;
       clearDemo(); cancelOriginalLoad?.();
@@ -387,6 +389,7 @@ const inputModeOptions = [
       cancelAnimationFrame(revealFrame);
       cancelOriginalLoad?.();
       reset(); moved = false; nativeUntil = 0;
+      inputModePopupPointerDown = false;
       clearDemo(); demoStarted = false; demoInteracted = false;
       opener = target;
       restoreKeyboardFocus = keyboard;
@@ -457,11 +460,20 @@ const inputModeOptions = [
       const target = eligibleImage(event);
       if (target && target === event.target && !document.documentElement.classList.contains('is-dev-mode')) { event.preventDefault(); open(target, true); }
     };
+    const onDialogPointerDown = () => {
+      inputModePopupPointerDown = isInputModePopupOpen() || Boolean(viewer.querySelector('.dev-select__listbox.is-closing'));
+    };
+    const onDialogPointerCancel = () => { inputModePopupPointerDown = false; };
     const onDialogClick = (event: MouseEvent) => {
+      if (inputModePopupPointerDown || isInputModePopupOpen()) {
+        inputModePopupPointerDown = false;
+        return;
+      }
       if (isInteractiveControl(event.target)) return;
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
     };
     const onCancel = (event: Event) => {
+      inputModePopupPointerDown = false;
       if (isInputModePopupOpen()) { event.preventDefault(); return; }
       event.preventDefault(); dismiss();
     };
@@ -483,6 +495,7 @@ const inputModeOptions = [
     };
     const onKey = (event: KeyboardEvent) => {
       interruptDemo();
+      inputModePopupPointerDown = false;
       if (!dialog.open || closeTimer !== null || event.defaultPrevented) return;
       if (event.key === 'Escape' && isInputModePopupOpen()) { event.preventDefault(); return; }
       if (isInteractiveControl(event.target)) return;
@@ -504,7 +517,7 @@ const inputModeOptions = [
     };
     const onPointerDown = (event: PointerEvent) => {
       interruptDemo();
-      if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
+      if (inputModePopupPointerDown || !dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
       if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
       stopSpring(); clearWheel(); pointerRotationTarget = null;
       viewer.removeAttribute('data-keyboard-focus');
@@ -587,6 +600,7 @@ const inputModeOptions = [
       if (view.rotation !== rotation) springHome({ ...view, rotation }); else render();
     };
     const onPointerUp = (event: PointerEvent) => {
+      if (event.type !== 'pointerup') inputModePopupPointerDown = false;
       if (!pointers.has(event.pointerId)) return;
       const cancelled = event.type !== 'pointerup';
       if (!cancelled) onPointerMove(event);
@@ -747,6 +761,8 @@ const inputModeOptions = [
     const onPageHide = () => { interruptDemo(); dismiss(true); };
     document.addEventListener('click',onClick);
     document.addEventListener('keydown',onDocumentKey);
+    dialog.addEventListener('pointerdown',onDialogPointerDown,true);
+    dialog.addEventListener('pointercancel',onDialogPointerCancel,true);
     dialog.addEventListener('click',onDialogClick);
     dialog.addEventListener('cancel',onCancel);
     image.addEventListener('error',onError);
@@ -771,6 +787,8 @@ const inputModeOptions = [
       cancelAnimationFrame(revealFrame);
       document.removeEventListener('click',onClick);
       document.removeEventListener('keydown',onDocumentKey);
+      dialog.removeEventListener('pointerdown',onDialogPointerDown,true);
+      dialog.removeEventListener('pointercancel',onDialogPointerCancel,true);
       dialog.removeEventListener('click',onDialogClick);
       dialog.removeEventListener('cancel',onCancel);
       image.removeEventListener('error',onError);
