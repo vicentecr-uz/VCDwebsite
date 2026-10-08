@@ -11,3 +11,7 @@ assert.match(vertical, /overscroll-behavior-x:\s*auto/);
 assert.match(verticalClip, /flex:\s*1 1 0/);
 assert.match(track, /translate:\s*var\(--project-carousel-rubberband-x/);
 assert.doesNotMatch(css.slice(css.indexOf('.project-image-carousel__slide {'), css.indexOf('/* Dynamic horizontal')), /translate:\s*var\(--project-carousel-rubberband/);
+assert.match(css, /@property --project-carousel-track-size\s*\{[\s\S]*?syntax:\s*"\*";[\s\S]*?inherits:\s*false;/);
+assert.match(css, /@property --project-carousel-track-port-size\s*\{[\s\S]*?syntax:\s*"\*";[\s\S]*?inherits:\s*false;/);
+assert.match(css.slice(css.indexOf('.project-image-carousel[data-height-mode=\'dynamic\']'), css.indexOf('/* Vertical:')), /height:\s*var\(--project-carousel-track-size/);
+assert.match(css.slice(css.indexOf('.project-image-carousel[data-height-mode=\'dynamic\']'), css.indexOf('/* Vertical:')), /height:\s*var\(--project-carousel-track-port-size/);

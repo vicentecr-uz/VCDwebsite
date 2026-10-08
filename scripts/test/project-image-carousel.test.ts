@@ -510,7 +510,7 @@ test('scroll interpolation reuses geometry until an explicit refresh', async () 
   track.scrollLeft = 50;
   track.dispatchEvent(new window.Event('scroll'));
   await new Promise(window.requestAnimationFrame.bind(window));
-  expect(block.style.getPropertyValue('--project-carousel-track-size')).toBe('110px');
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('110px');
   expect(block.querySelector<HTMLElement>('[data-carousel-caption-slot]')!.style.height).toBe('30px');
   for (const offset of [25, 75, 100, 50]) {
     track.scrollLeft = offset;
@@ -555,4 +555,42 @@ test('animated block height notifications do not invalidate carousel geometry', 
   expect(reads).toBeGreaterThan(initialReads);
   block.remove();
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver = previousObserver;
+});
+
+test('height variables stay on the clip and track through mode changes', () => {
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-clip><div data-carousel-track>${[0, 1].map((i) =>
+    `<div data-carousel-slide data-grid-item-id="item-${i}"><div data-carousel-frame></div></div>`).join('')}</div></div>`;
+  window.document.body.append(block);
+  const clip = block.querySelector<HTMLElement>('[data-carousel-clip]')!;
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  slides.forEach((slide, index) => {
+    Object.defineProperties(slide, {
+      offsetLeft: { get: () => index * 100 }, offsetTop: { get: () => index * 100 },
+      offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 },
+    });
+    slide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () =>
+      ({ height: 100 + index * 20, width: 100 } as DOMRect);
+  });
+  bindProjectImageCarousels(block);
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('120px');
+  block.dataset.heightMode = 'tallest';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('');
+  block.dataset.orientation = 'vertical';
+  block.dataset.heightMode = 'dynamic';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('');
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('');
+  block.dataset.orientation = 'horizontal';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('120px');
+  block.remove();
 });
