@@ -600,8 +600,7 @@ test('height variables stay on the clip and track through mode changes', () => {
   block.remove();
 });
 
-test('release smoothing is opt in and clears after native scrollend', async () => {
-  const previousUrl = window.location.href;
+test('release smoothing defaults on and clears after native scrollend', async () => {
   const baseline = window.document.createElement('div');
   baseline.dataset.projectImageCarousel = '';
   baseline.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
@@ -614,9 +613,8 @@ test('release smoothing is opt in and clears after native scrollend', async () =
   bindProjectImageCarousels(baseline);
   baselineTrack.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
   baselineTrack.dispatchEvent(new window.Event('touchend', { bubbles: true }));
-  expect(baseline.dataset.carouselReleaseSmoothing).toBeUndefined();
+  expect(baseline.dataset.carouselReleaseSmoothing).toBe('true');
   baseline.remove();
-  window.history.pushState({}, '', 'http://localhost/?carousel-release-smoothing=1');
   const block = window.document.createElement('div');
   block.dataset.projectImageCarousel = '';
   block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
@@ -648,10 +646,16 @@ test('release smoothing is opt in and clears after native scrollend', async () =
   Object.defineProperty(secondEnd, 'touches', { value: [] });
   track.dispatchEvent(secondEnd);
   expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  block.dataset.heightMode = 'tallest';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  block.dataset.heightMode = 'dynamic';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
   window.document.dispatchEvent(new window.Event('astro:before-swap'));
   track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
   track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
   expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
   block.remove();
-  window.history.replaceState({}, '', previousUrl);
 });

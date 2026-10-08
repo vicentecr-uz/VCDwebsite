@@ -54,7 +54,6 @@ interface Carousel {
   tallestFrameHeight: number;
   geometryRefreshFrame: number;
   rebindGeometryObservers?: () => void;
-  releaseSmoothing: boolean;
   releaseSmoothingTimer: number;
 }
 
@@ -965,7 +964,6 @@ function initCarousel(block: HTMLElement): void {
     captionWidths: new WeakMap(),
     tallestFrameHeight: 0,
     geometryRefreshFrame: 0,
-    releaseSmoothing: new URLSearchParams(window.location.search).get('carousel-release-smoothing') === '1',
     releaseSmoothingTimer: 0,
   };
   collectVisible(carousel);
@@ -1020,30 +1018,28 @@ function initCarousel(block: HTMLElement): void {
 
   bindDrag(carousel);
   bindTouchSnap(carousel);
-  if (carousel.releaseSmoothing) {
-    carousel.scope.listen(track, 'touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
-    carousel.scope.listen(track, 'touchend', (event) => {
-      if ((event.touches?.length ?? 0) > 0) return;
-      if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
-        carousel.block.dataset.carouselReleaseSmoothing = 'true';
-      }
-    }, { passive: true });
-    carousel.scope.listen(track, 'touchcancel', () => {
-      if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
-        carousel.block.dataset.carouselReleaseSmoothing = 'true';
-      }
-    }, { passive: true });
-    carousel.scope.listen(track, 'scrollend', () => {
-      if (!carousel.block.dataset.carouselReleaseSmoothing) return;
-      if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
-      // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
-      carousel.releaseSmoothingTimer = carousel.scope.timeout(() => {
-        carousel.releaseSmoothingTimer = 0;
-        clearReleaseSmoothing(carousel);
-      }, 80);
-    }, { passive: true });
-    carousel.scope.add(() => clearReleaseSmoothing(carousel));
-  }
+  carousel.scope.listen(track, 'touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
+  carousel.scope.listen(track, 'touchend', (event) => {
+    if ((event.touches?.length ?? 0) > 0) return;
+    if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+      carousel.block.dataset.carouselReleaseSmoothing = 'true';
+    }
+  }, { passive: true });
+  carousel.scope.listen(track, 'touchcancel', () => {
+    if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+      carousel.block.dataset.carouselReleaseSmoothing = 'true';
+    }
+  }, { passive: true });
+  carousel.scope.listen(track, 'scrollend', () => {
+    if (!carousel.block.dataset.carouselReleaseSmoothing) return;
+    if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
+    // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
+    carousel.releaseSmoothingTimer = carousel.scope.timeout(() => {
+      carousel.releaseSmoothingTimer = 0;
+      clearReleaseSmoothing(carousel);
+    }, 80);
+  }, { passive: true });
+  carousel.scope.add(() => clearReleaseSmoothing(carousel));
 
   let observer: ResizeObserver | undefined;
   let mutations: MutationObserver | undefined;
