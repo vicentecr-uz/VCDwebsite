@@ -35,6 +35,7 @@ interface Carousel {
   scope: ReturnType<typeof createPageScope>;
   block: HTMLElement;
   track: HTMLElement;
+  clip: HTMLElement;
   slides: HTMLElement[];
   dotStrip: HTMLElement | null;
   dotWindow: HTMLElement | null;
@@ -134,14 +135,15 @@ export function carouselCaptionOpacity(slideIndex: number, progress: number, fad
 function renderDots(carousel: Carousel): void {
   const { dots, dotStrip, dotWindow } = carousel;
   const count = dots.length;
-  carousel.block.style.setProperty(
-    '--project-carousel-video-progress',
-    lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4),
-  );
+  const videoProgress = lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4);
+  if (carousel.block.style.getPropertyValue('--project-carousel-video-progress') !== videoProgress) {
+    carousel.block.style.setProperty('--project-carousel-video-progress', videoProgress);
+  }
   const activeIndex = Math.min(Math.max(Math.round(carousel.progress), 0), Math.max(carousel.slides.length - 1, 0));
   carousel.slides.forEach((slide, index) => {
-    if (index === activeIndex) slide.dataset.carouselCurrent = 'true';
-    else delete slide.dataset.carouselCurrent;
+    if (index === activeIndex) {
+      if (slide.dataset.carouselCurrent !== 'true') slide.dataset.carouselCurrent = 'true';
+    } else if (slide.dataset.carouselCurrent) delete slide.dataset.carouselCurrent;
   });
   if (!count || !dotStrip || !dotWindow) return;
 
@@ -149,13 +151,26 @@ function renderDots(carousel: Carousel): void {
 
   dots.forEach((dot, index) => {
     const { activeness, scale } = carouselDotAppearance(index, carousel.progress, centre);
-    dot.style.setProperty('--project-carousel-dot-activeness', activeness.toFixed(3));
-    dot.style.setProperty('--project-carousel-dot-scale', scale.toFixed(3));
-    dot.setAttribute('aria-current', index === activeIndex ? 'true' : 'false');
+    const nextActiveness = activeness.toFixed(3);
+    const nextScale = scale.toFixed(3);
+    if (dot.style.getPropertyValue('--project-carousel-dot-activeness') !== nextActiveness) {
+      dot.style.setProperty('--project-carousel-dot-activeness', nextActiveness);
+    }
+    if (dot.style.getPropertyValue('--project-carousel-dot-scale') !== nextScale) {
+      dot.style.setProperty('--project-carousel-dot-scale', nextScale);
+    }
+    const ariaCurrent = index === activeIndex ? 'true' : 'false';
+    if (dot.getAttribute('aria-current') !== ariaCurrent) dot.setAttribute('aria-current', ariaCurrent);
   });
 
-  dotWindow.style.setProperty('--project-carousel-dot-count', span.toFixed(4));
-  dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
+  const nextCount = span.toFixed(4);
+  const nextOffset = first.toFixed(4);
+  if (dotWindow.style.getPropertyValue('--project-carousel-dot-count') !== nextCount) {
+    dotWindow.style.setProperty('--project-carousel-dot-count', nextCount);
+  }
+  if (dotStrip.style.getPropertyValue('--project-carousel-dot-offset') !== nextOffset) {
+    dotStrip.style.setProperty('--project-carousel-dot-offset', nextOffset);
+  }
 }
 
 const mediaInkGeneration = new WeakMap<Carousel, number>();
@@ -391,10 +406,11 @@ function scheduleGeometryRefresh(carousel: Carousel): void {
  * putting the height on `__media` flex-shrunk the track and broke iOS snap.
  */
 function applyHeight(carousel: Carousel): void {
-  const { block, track, heightMode, axis } = carousel;
+  const { track, clip, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
-    block.style.removeProperty('--project-carousel-track-size');
-    block.style.removeProperty('--project-carousel-track-port-size');
+    clip.style.removeProperty('--project-carousel-track-size');
+    track.style.removeProperty('--project-carousel-track-port-size');
+    track.style.removeProperty('--project-carousel-track-size');
     track.style.removeProperty('height');
     return;
   }
@@ -407,23 +423,23 @@ function applyHeight(carousel: Carousel): void {
   if (!size && !tallest) return;
 
   const nextSize = `${Math.round(size || tallest)}px`;
-  if (block.style.getPropertyValue('--project-carousel-track-size') !== nextSize) {
-    block.style.setProperty('--project-carousel-track-size', nextSize);
+  if (clip.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'horizontal') {
+    clip.style.setProperty('--project-carousel-track-size', nextSize);
+  } else if (track.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'vertical') {
+    track.style.setProperty('--project-carousel-track-size', nextSize);
   }
   if (axis === 'horizontal') {
     // Stable scrollport so mandatory snap can finish without a JS re-scroll.
     const nextPortSize = `${Math.round(tallest || size)}px`;
-    if (block.style.getPropertyValue('--project-carousel-track-port-size') !== nextPortSize) {
-      block.style.setProperty('--project-carousel-track-port-size', nextPortSize);
+    if (track.style.getPropertyValue('--project-carousel-track-port-size') !== nextPortSize) {
+      track.style.setProperty('--project-carousel-track-port-size', nextPortSize);
     }
     track.style.removeProperty('height');
     return;
   }
 
-  block.style.removeProperty('--project-carousel-track-port-size');
-  // Vertical tracks need a bounded height before they can scroll at all.
-  const nextTrackHeight = `${Math.round(size || tallest)}px`;
-  if (track.style.height !== nextTrackHeight) track.style.height = nextTrackHeight;
+  track.style.removeProperty('--project-carousel-track-port-size');
+  track.style.removeProperty('height');
 }
 
 function sync(carousel: Carousel): void {
@@ -884,7 +900,9 @@ function refreshSettings(carousel: Carousel): void {
     ? isolated
     : Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
-  carousel.block.style.removeProperty('--project-carousel-track-port-size');
+  carousel.clip.style.removeProperty('--project-carousel-track-size');
+  carousel.track.style.removeProperty('--project-carousel-track-size');
+  carousel.track.style.removeProperty('--project-carousel-track-port-size');
   carousel.block.dataset.activeIndex = String(carousel.active);
   applyHeight(carousel);
   scrollToIndex(carousel, carousel.active, false);
@@ -918,6 +936,9 @@ function initCarousel(block: HTMLElement): void {
     scope: createPageScope(),
     block,
     track,
+    clip: block.querySelector<HTMLElement>('[data-carousel-clip]')
+      ?? block.querySelector<HTMLElement>('.project-image-carousel__clip')
+      ?? track,
     slides: [],
     dotStrip: block.querySelector<HTMLElement>('[data-carousel-dot-strip]'),
     dotWindow: block.querySelector<HTMLElement>('[data-carousel-dot-window]'),
