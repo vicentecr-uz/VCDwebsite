@@ -329,27 +329,27 @@ test('input mode select keeps native pointer, keyboard and wheel interaction', (
 
 for (const targetName of ['viewer', 'image', 'dialog'] as const) {
   test(`click-away on ${targetName} closes the popup without dismissing the lightbox`, () => {
-  const f = fixture(); f.click();
-  const listbox = f.document.createElement('ul');
-  listbox.className = 'dev-select__listbox is-closing';
-  f.viewer.append(listbox);
-  let popupOpen = true;
-  const nativeMatches = listbox.matches.bind(listbox);
-  listbox.matches = (selector: string) => selector === ':popover-open' ? popupOpen : nativeMatches(selector);
+    const f = fixture(); f.click();
+    const listbox = f.document.createElement('ul');
+    listbox.className = 'dev-select__listbox is-closing';
+    f.viewer.append(listbox);
+    let popupOpen = true;
+    const nativeMatches = listbox.matches.bind(listbox);
+    listbox.matches = (selector: string) => selector === ':popover-open' ? popupOpen : nativeMatches(selector);
 
-  // The shared SelectField capture handler closes the popup while its fade is
-  // still running; the lightbox must remember that state for this click.
-  f.pointer('pointerdown', 1, 500, 400, 0, false, f[targetName]);
-  expect(f.viewer.classList.contains('is-dragging')).toBe(false);
-  popupOpen = false;
-  listbox.classList.remove('is-closing');
-  f.tick(250);
-  f.click(f[targetName]);
-  expect(f.dialog.open).toBe(true);
+    // The shared SelectField capture handler closes the popup while its fade is
+    // still running; the lightbox must remember that state for this click.
+    f.pointer('pointerdown', 1, 500, 400, 0, false, f[targetName]);
+    expect(f.viewer.classList.contains('is-dragging')).toBe(false);
+    popupOpen = false;
+    listbox.classList.remove('is-closing');
+    f.tick(250);
+    f.click(f[targetName]);
+    expect(f.dialog.open).toBe(true);
 
-  // A later click, after the popup sequence has been consumed, dismisses.
-  f.click(f.dialog); f.tick(150);
-  expect(f.dialog.open).toBe(false);
+    // A later click, after the popup sequence has been consumed, dismisses.
+    f.click(f.dialog); f.tick(150);
+    expect(f.dialog.open).toBe(false);
   });
 }
 
