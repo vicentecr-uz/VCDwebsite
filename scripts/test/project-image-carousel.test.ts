@@ -469,3 +469,71 @@ test('current carousel marker follows the active slide for video dot visibility'
   expect(slides[1].dataset.carouselCurrent).toBe('true');
   block.remove();
 });
+
+test('scroll interpolation reuses geometry until an explicit refresh', async () => {
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-track>${[0, 1].map((i) =>
+    `<div data-carousel-slide data-grid-item-id="item-${i}"><div data-carousel-frame></div></div>`).join('')}</div>
+    <div data-carousel-caption-slot>${[0, 1].map((i) =>
+    `<span data-carousel-caption data-carousel-item-id="item-${i}">Caption ${i}</span>`).join('')}</div>`;
+  window.document.body.append(block);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const frames = [...block.querySelectorAll<HTMLElement>('[data-carousel-frame]')];
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  let frameReads = 0;
+  slides.forEach((slide, index) => {
+    Object.defineProperties(slide, {
+      offsetLeft: { get: () => index * 100 }, offsetTop: { get: () => 0 },
+      offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 },
+    });
+  });
+  frames.forEach((frame, index) => {
+    frame.getBoundingClientRect = () => {
+      frameReads += 1;
+      return { height: 100 + index * 20, width: 100 } as DOMRect;
+    };
+  });
+  track.scrollTo = (options: ScrollToOptions) => { track.scrollLeft = options.left ?? 0; };
+  bindProjectImageCarousels(block);
+  const initialReads = frameReads;
+  for (const offset of [25, 75, 100, 50]) {
+    track.scrollLeft = offset;
+    track.dispatchEvent(new window.Event('scroll'));
+    await new Promise(window.requestAnimationFrame.bind(window));
+  }
+  expect(frameReads).toBe(initialReads);
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(frameReads).toBeGreaterThan(initialReads);
+  block.remove();
+});
+
+test('animated block height notifications do not invalidate carousel geometry', async () => {
+  const previousObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+  let notify: ((entries: ResizeObserverEntry[]) => void) | undefined;
+  class MockResizeObserver {
+    constructor(callback: (entries: ResizeObserverEntry[]) => void) { notify = callback; }
+    observe() {}
+    disconnect() {}
+  }
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = MockResizeObserver;
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-track><div data-carousel-slide data-grid-item-id="item-0"><div data-carousel-frame></div></div></div>`;
+  window.document.body.append(block);
+  const frame = block.querySelector<HTMLElement>('[data-carousel-frame]')!;
+  let reads = 0;
+  frame.getBoundingClientRect = () => { reads += 1; return { height: 100, width: 100 } as DOMRect; };
+  bindProjectImageCarousels(block);
+  const initialReads = reads;
+  notify?.([{ target: block } as ResizeObserverEntry]);
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(reads).toBe(initialReads);
+  notify?.([{ target: frame } as ResizeObserverEntry]);
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(reads).toBeGreaterThan(initialReads);
+  block.remove();
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = previousObserver;
+});
