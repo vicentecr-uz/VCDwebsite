@@ -1070,8 +1070,8 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     });
   }) as EventListener);
   window.addEventListener('vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
-      const target = event.detail?.target;
-      registry.forEach((carousel) => {
+    const target = event.detail?.target;
+    registry.forEach((carousel) => {
       if (target && !carousel.block.contains(target)) return;
       scheduleGeometryRefresh(carousel);
       void refreshCarouselMediaInk(carousel);
