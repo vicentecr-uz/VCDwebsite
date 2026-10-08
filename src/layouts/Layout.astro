@@ -125,6 +125,55 @@ const initialThemeColor = resolveToken('sys.color.srf');
         opacity: 1;
         animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
       }
+      #transition-overlay > [role='status'] {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        opacity: 0;
+        visibility: hidden;
+        color: #808080;
+        color: color-mix(in srgb, var(--sys-color-on-srf, #000) 50%, transparent);
+        transition: opacity 120ms ease, visibility 0s linear 120ms;
+      }
+      html[data-theme='dark'] #transition-overlay > [role='status'] {
+        color: #b3b3b3;
+        color: color-mix(in srgb, var(--sys-color-on-srf, #000) 50%, transparent);
+      }
+      #transition-overlay[data-loading='true'] > [role='status'] {
+        animation: transition-loader-enter 120ms ease;
+        animation-delay: 200ms;
+        animation-fill-mode: both;
+      }
+      #transition-overlay > [role='status'] svg {
+        display: block;
+        width: 24px;
+        height: 24px;
+      }
+      #transition-overlay > [role='status'] rect {
+        animation: transition-overlay-spinner 1s linear infinite;
+        opacity: 0.15;
+      }
+      #transition-overlay > [role='status'] rect:nth-child(1) { animation-delay: -0.9167s; }
+      #transition-overlay > [role='status'] rect:nth-child(2) { animation-delay: -0.8333s; }
+      #transition-overlay > [role='status'] rect:nth-child(3) { animation-delay: -0.75s; }
+      #transition-overlay > [role='status'] rect:nth-child(4) { animation-delay: -0.6667s; }
+      #transition-overlay > [role='status'] rect:nth-child(5) { animation-delay: -0.5833s; }
+      #transition-overlay > [role='status'] rect:nth-child(6) { animation-delay: -0.5s; }
+      #transition-overlay > [role='status'] rect:nth-child(7) { animation-delay: -0.4167s; }
+      #transition-overlay > [role='status'] rect:nth-child(8) { animation-delay: -0.3333s; }
+      #transition-overlay > [role='status'] rect:nth-child(9) { animation-delay: -0.25s; }
+      #transition-overlay > [role='status'] rect:nth-child(10) { animation-delay: -0.1667s; }
+      #transition-overlay > [role='status'] rect:nth-child(11) { animation-delay: -0.0833s; }
+      #transition-overlay > [role='status'] rect:nth-child(12) { animation-delay: -1s; }
+      @keyframes transition-overlay-spinner {
+        0%, 100% { opacity: 0.15; }
+        8% { opacity: 1; }
+      }
+      @keyframes transition-loader-enter {
+        from { opacity: 0; visibility: hidden; }
+        to { opacity: 1; visibility: visible; }
+      }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
       html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
       :root { view-transition-name: none; }
@@ -235,7 +284,24 @@ const initialThemeColor = resolveToken('sys.color.srf');
   </head>
   <body data-dev-authoring={showDevTools ? '' : undefined}>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
-    <div id="transition-overlay"></div>
+    <div id="transition-overlay">
+      <div role="status" aria-label="Loading page">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" fill="currentColor">
+          <rect x="11" y="2" width="2" height="5" rx="1" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(30 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(60 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(90 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(120 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(150 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(180 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(210 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(240 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(270 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(300 12 12)" />
+          <rect x="11" y="2" width="2" height="5" rx="1" transform="rotate(330 12 12)" />
+        </svg>
+      </div>
+    </div>
     {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
@@ -280,6 +346,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           image.addEventListener('error', done, { once: true });
         }));
         overlay.dataset.vcdInitialReveal = 'running';
+        overlay.dataset.loading = 'true';
         overlay.style.animation = 'none';
         mark('initial-readiness-start');
         const intro = document.querySelector('[data-home-intro-surface]');
@@ -293,6 +360,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
             if (overlay.dataset.vcdInitialReveal !== 'running') return;
+            delete overlay.dataset.loading;
             mark('initial-fade-start');
             overlay.style.transition = 'opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             overlay.style.opacity = '0';
@@ -574,6 +642,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         overlay.style.animation = 'none';
         overlay.hidden = visibleTransition;
         overlay.style.opacity = visibleTransition ? '0' : '1';
+        if (!visibleTransition) overlay.dataset.loading = 'true';
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
@@ -599,10 +668,12 @@ const initialThemeColor = resolveToken('sys.color.srf');
           emitTransitionMilestone('opaque-paint');
           emitTransitionMilestone('fade-authorized');
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
+          if (visibleTransition) delete overlay.dataset.loading;
           revealAnnounced = true;
           document.dispatchEvent(new Event('header:navigation-reveal'));
           if (incomingAnimation) {
             // Setting startTime cancels pending playback, so reset only after renderer readiness.
+            delete overlay.dataset.loading;
             incomingAnimation.play();
             await incomingAnimation.ready;
             if (current !== generation || suspended) return;
@@ -641,6 +712,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
             readinessCleanup?.();
             readinessCleanup = null;
             readinessAbort = null;
+            delete overlay.dataset.loading;
             if (!revealAnnounced) document.dispatchEvent(new Event('header:navigation-reveal'));
             overlay.style.opacity = '0';
             overlay.hidden = true;
@@ -661,11 +733,18 @@ const initialThemeColor = resolveToken('sys.color.srf');
         cover: () => {
           const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
           invalidate();
+          delete overlay.dataset.loading;
           overlay.style.animation = 'none';
           overlay.hidden = visibleTransition;
           return new Promise<void>((resolve) => {
             if (visibleTransition) { resolve(); return; }
-            activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, { opacity: 1, duration: 0.25, ease: REVEAL_EASE, onComplete: resolve, onInterrupt: resolve });
+            activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, {
+              opacity: 1,
+              duration: 0.25,
+              ease: REVEAL_EASE,
+              onComplete: () => { overlay.dataset.loading = 'true'; resolve(); },
+              onInterrupt: resolve,
+            });
           });
         },
         reveal: () => { bindImagePreviewUpgrade(); void revealPage(); },
@@ -693,6 +772,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           e.preventDefault();
           if (suspended || destinationLocked) return;
           invalidate();
+          delete overlay.dataset.loading;
           const current = generation;
           destinationLocked = true;
           if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
@@ -714,6 +794,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           };
           const finishExit = () => {
             if (current !== generation || !destinationLocked) return;
+            if (!visibleTransition) overlay.dataset.loading = 'true';
             navigate();
           };
           if (visibleTransition) { finishExit(); return; }
@@ -735,6 +816,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
       window.addEventListener('pagehide', () => {
         invalidate();
+        if (overlay) delete overlay.dataset.loading;
         suspended = true;
       });
 
