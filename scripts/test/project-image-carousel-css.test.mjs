@@ -15,3 +15,5 @@ assert.match(css, /@property --project-carousel-track-size\s*\{[\s\S]*?syntax:\s
 assert.match(css, /@property --project-carousel-track-port-size\s*\{[\s\S]*?syntax:\s*"\*";[\s\S]*?inherits:\s*false;/);
 assert.match(css.slice(css.indexOf('.project-image-carousel[data-height-mode=\'dynamic\']'), css.indexOf('/* Vertical:')), /height:\s*var\(--project-carousel-track-size/);
 assert.match(css.slice(css.indexOf('.project-image-carousel[data-height-mode=\'dynamic\']'), css.indexOf('/* Vertical:')), /height:\s*var\(--project-carousel-track-port-size/);
+assert.match(css, /data-carousel-release-smoothing='true'.*?transition:\s*height 50ms linear/s);
+assert.match(css, /\[data-carousel-caption-slot\].*?transition:\s*height 50ms linear/s);

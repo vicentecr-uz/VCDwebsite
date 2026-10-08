@@ -54,6 +54,8 @@ interface Carousel {
   tallestFrameHeight: number;
   geometryRefreshFrame: number;
   rebindGeometryObservers?: () => void;
+  releaseSmoothing: boolean;
+  releaseSmoothingTimer: number;
 }
 
 const scrollPos = (carousel: Carousel) => (
@@ -387,6 +389,14 @@ function refreshGeometry(carousel: Carousel): void {
     const trim = trimSupported ? 0 : Number(caption.dataset.capTrim || 0);
     return Math.max(0, caption.scrollHeight - trim);
   });
+}
+
+function clearReleaseSmoothing(carousel: Carousel): void {
+  if (carousel.releaseSmoothingTimer) {
+    window.clearTimeout(carousel.releaseSmoothingTimer);
+    carousel.releaseSmoothingTimer = 0;
+  }
+  carousel.block.removeAttribute('data-carousel-release-smoothing');
 }
 
 function scheduleGeometryRefresh(carousel: Carousel): void {
@@ -903,6 +913,7 @@ function refreshSettings(carousel: Carousel): void {
   carousel.clip.style.removeProperty('--project-carousel-track-size');
   carousel.track.style.removeProperty('--project-carousel-track-size');
   carousel.track.style.removeProperty('--project-carousel-track-port-size');
+  clearReleaseSmoothing(carousel);
   carousel.block.dataset.activeIndex = String(carousel.active);
   applyHeight(carousel);
   scrollToIndex(carousel, carousel.active, false);
@@ -954,6 +965,8 @@ function initCarousel(block: HTMLElement): void {
     captionWidths: new WeakMap(),
     tallestFrameHeight: 0,
     geometryRefreshFrame: 0,
+    releaseSmoothing: new URLSearchParams(window.location.search).get('carousel-release-smoothing') === '1',
+    releaseSmoothingTimer: 0,
   };
   collectVisible(carousel);
   refreshGeometry(carousel);
@@ -979,6 +992,10 @@ function initCarousel(block: HTMLElement): void {
 
   let frame = 0;
   track.addEventListener('scroll', () => {
+    if (carousel.releaseSmoothingTimer) {
+      window.clearTimeout(carousel.releaseSmoothingTimer);
+      carousel.releaseSmoothingTimer = 0;
+    }
     if (frame) return;
     frame = carousel.scope.frame(() => {
       frame = 0;
@@ -1003,6 +1020,30 @@ function initCarousel(block: HTMLElement): void {
 
   bindDrag(carousel);
   bindTouchSnap(carousel);
+  if (carousel.releaseSmoothing) {
+    track.addEventListener('touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
+    track.addEventListener('touchend', (event) => {
+      if ((event.touches?.length ?? 0) > 0) return;
+      if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+        carousel.block.dataset.carouselReleaseSmoothing = 'true';
+      }
+    }, { passive: true });
+    track.addEventListener('touchcancel', () => {
+      if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+        carousel.block.dataset.carouselReleaseSmoothing = 'true';
+      }
+    }, { passive: true });
+    track.addEventListener('scrollend', () => {
+      if (!carousel.block.dataset.carouselReleaseSmoothing) return;
+      if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
+      // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
+      carousel.releaseSmoothingTimer = carousel.scope.timeout(() => {
+        carousel.releaseSmoothingTimer = 0;
+        clearReleaseSmoothing(carousel);
+      }, 80);
+    }, { passive: true });
+    carousel.scope.add(() => clearReleaseSmoothing(carousel));
+  }
 
   let observer: ResizeObserver | undefined;
   let mutations: MutationObserver | undefined;
@@ -1036,6 +1077,7 @@ function initCarousel(block: HTMLElement): void {
     observeIntrinsicGeometry();
   }
   carousel.scope.listen(window, 'resize', () => {
+    clearReleaseSmoothing(carousel);
     syncViewportSettings(carousel);
     scheduleGeometryRefresh(carousel);
     void refreshCarouselMediaInk(carousel);
