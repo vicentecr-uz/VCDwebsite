@@ -1021,19 +1021,19 @@ function initCarousel(block: HTMLElement): void {
   bindDrag(carousel);
   bindTouchSnap(carousel);
   if (carousel.releaseSmoothing) {
-    track.addEventListener('touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
-    track.addEventListener('touchend', (event) => {
+    carousel.scope.listen(track, 'touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
+    carousel.scope.listen(track, 'touchend', (event) => {
       if ((event.touches?.length ?? 0) > 0) return;
       if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
         carousel.block.dataset.carouselReleaseSmoothing = 'true';
       }
     }, { passive: true });
-    track.addEventListener('touchcancel', () => {
+    carousel.scope.listen(track, 'touchcancel', () => {
       if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
         carousel.block.dataset.carouselReleaseSmoothing = 'true';
       }
     }, { passive: true });
-    track.addEventListener('scrollend', () => {
+    carousel.scope.listen(track, 'scrollend', () => {
       if (!carousel.block.dataset.carouselReleaseSmoothing) return;
       if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
       // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
