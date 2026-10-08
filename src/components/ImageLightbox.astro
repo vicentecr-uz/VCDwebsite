@@ -1,10 +1,20 @@
+---
+import SelectField from './ui/SelectField.astro';
+
+const inputModeOptions = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'mouse', label: 'Mouse' },
+  { value: 'trackpad', label: 'Trackpad' },
+];
+---
+
 <dialog class="image-lightbox" data-image-lightbox aria-label="Image viewer">
   <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="Escape + - 0 ArrowUp ArrowDown ArrowLeft ArrowRight">
     <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
     <span class="image-lightbox__demo-pointer" data-image-lightbox-demo-pointer="one" aria-hidden="true"></span>
     <span class="image-lightbox__demo-pointer" data-image-lightbox-demo-pointer="two" aria-hidden="true"></span>
     <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
-    <label class="image-lightbox__input-mode"> <span class="sr-only">Input mode</span><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label>
+    <SelectField class="image-lightbox__input-mode" label="Input mode" hideLabel data-image-lightbox-input-mode options={inputModeOptions} />
   </div>
 </dialog>
 
@@ -38,7 +48,8 @@
       return Math.abs(delta) <= 20 ? upright + delta * .1 : rotation;
     };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'));
+    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,.dev-select__listbox,[role="option"],[contenteditable="true"],[contenteditable="plaintext-only"]'));
+    const isInputModePopupOpen = () => Boolean(viewer.querySelector('.dev-select__listbox:popover-open'));
     let view = fit();
     let start = fit();
     let velocity = fit();
@@ -448,7 +459,10 @@
       if (isInteractiveControl(event.target)) return;
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
     };
-    const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
+    const onCancel = (event: Event) => {
+      if (isInputModePopupOpen()) { event.preventDefault(); return; }
+      event.preventDefault(); dismiss();
+    };
     const onError = () => { if (dialog.open) { error.hidden = false; if (showingPreview) error.textContent = 'Full-resolution image could not be loaded.'; } };
     const onLoad = () => {
       if (!dialog.open || closeTimer !== null) return;
@@ -467,7 +481,9 @@
     };
     const onKey = (event: KeyboardEvent) => {
       interruptDemo();
-      if (!dialog.open || closeTimer !== null || event.defaultPrevented || isInteractiveControl(event.target)) return;
+      if (!dialog.open || closeTimer !== null || event.defaultPrevented) return;
+      if (event.key === 'Escape' && isInputModePopupOpen()) { event.preventDefault(); return; }
+      if (isInteractiveControl(event.target)) return;
       restoreKeyboardFocus = true;
       viewer.setAttribute('data-keyboard-focus', '');
       if (event.key === 'Escape') { event.preventDefault(); dismiss(); return; }
