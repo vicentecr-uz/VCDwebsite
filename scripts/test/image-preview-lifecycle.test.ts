@@ -8,6 +8,13 @@ const timerDelays = new Map<number, number>();
 const images: TestImage[] = [];
 const observers: TestObserver[] = [];
 let nextId = 0;
+let clock = 0;
+
+class TestTrack extends EventTarget {
+  closest(selector: string) { return selector === '[data-carousel-track]' ? this : null; }
+}
+class TestDocument extends EventTarget {}
+const testDocument = new TestDocument();
 
 class TestImage extends EventTarget {
   dataset: Record<string, string> = {};
@@ -34,6 +41,7 @@ class TestImage extends EventTarget {
   decode: () => Promise<void> = () => Promise.resolve();
   clone?: TestImage;
   cloneDecode?: () => Promise<void>;
+  animations: FakeAnimation[] = [];
   top = 20;
   constructor() { super(); images.push(this); }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
@@ -44,6 +52,19 @@ class TestImage extends EventTarget {
   cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); if (this.cloneDecode) clone.decode = this.cloneDecode; return clone; }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
   remove() { this.isConnected = false; }
+  closest() { return null; }
+  getAnimations() { return this.animations; }
+}
+
+class FakeAnimation {
+  playState: AnimationPlayState = 'running';
+  pending = false;
+  currentTime: number | null = 312;
+  paused = false;
+  effect = { getKeyframes: () => [{ '--preview-reveal-y': '-22%' }, { '--preview-reveal-y': '122%' }] } as unknown as KeyframeEffect;
+  pause() { this.paused = true; this.playState = 'paused'; }
+  play() { this.paused = false; this.playState = 'running'; }
+  cancel() { this.playState = 'idle'; }
 }
 
 class TestObserver {
@@ -57,6 +78,7 @@ class TestObserver {
 }
 
 const overrides = {
+  performance: { now: () => clock },
   Image: TestImage,
   IntersectionObserver: TestObserver,
   location: { href: 'https://demo.test/' },
@@ -74,6 +96,8 @@ const overrides = {
   },
   requestAnimationFrame(callback: FrameRequestCallback) { const id = ++nextId; frames.set(id, callback); return id; },
   cancelAnimationFrame(id: number) { frames.delete(id); },
+  document: testDocument,
+  Element: TestTrack,
 };
 const originals = Object.fromEntries(Object.keys(overrides).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 for (const [key, value] of Object.entries(overrides)) Object.defineProperty(globalThis, key, { configurable: true, value });
@@ -88,6 +112,11 @@ const runTimer = (ms: number) => {
   const entry = [...timers.entries()].find(([id]) => timerDelays.get(id) === ms);
   assert.ok(entry, `expected a pending ${ms}ms timer`);
   entry[1]();
+};
+const dispatchDocumentEvent = (type: string, target: TestTrack, touches: unknown[] = [], changedTouches: unknown[] = []) => {
+  const event = new Event(type);
+  Object.defineProperties(event, { target: { value: target }, touches: { value: touches }, changedTouches: { value: changedTouches } });
+  testDocument.dispatchEvent(event);
 };
 const previewImages = (src: string) => images.filter((image) => image.src === src);
 
@@ -372,6 +401,126 @@ try {
   assert.equal(callbackDestroy.image.dataset.imagePreviewUpgrading, undefined, 'callback destruction clears the failed attempt');
   assert.equal(timers.size, 0, 'onError destruction cannot schedule a retry');
   destroyingRecovery.destroy();
+
+  const runFrames = () => {
+    for (let frame = 0; frame < 2; frame++) {
+      const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(clock));
+    }
+  };
+  const startReveal = async (source: string) => {
+    const { image } = fixture(source);
+    const upgrade = createImagePreviewUpgrade();
+    upgrade.bind({ querySelectorAll: () => [image] } as unknown as ParentNode);
+    images.at(-1)!.onload!();
+    await flush();
+    upgrade.open();
+    previewImages(source).at(-1)!.onload!();
+    await flush();
+    runFrames();
+    const animation = new FakeAnimation();
+    image.clone!.animations = [animation];
+    return { image, animation, upgrade };
+  };
+  const touch = (type: string, track: TestTrack, identifier = 1) =>
+    dispatchDocumentEvent(type, track, [], [{ identifier }]);
+  const track = new TestTrack();
+  const active = await startReveal('/paused-reveal.webp');
+  clock += 100;
+  touch('touchstart', track);
+  assert.equal(active.animation.playState, 'paused');
+  assert.equal([...timerDelays.values()].includes(600), false, 'pause cancels the completion fallback');
+  clock += 2000;
+  assert.equal(active.image.src, '/thumb.webp', 'a long held swipe does not swap the original image');
+  assert.equal(active.animation.currentTime, 312, 'pause preserves the wipe position');
+  touch('touchend', track);
+  dispatchDocumentEvent('scroll', track);
+  assert.equal(active.animation.playState, 'paused', 'release must wait for native scrolling');
+  dispatchDocumentEvent('scrollend', track);
+  touch('touchstart', track);
+  assert.equal([...timerDelays.values()].includes(80), false, 'regrab cancels pending resume');
+  touch('touchcancel', track);
+  runTimer(200);
+  assert.equal(active.animation.playState, 'running', 'touchcancel without scrollend eventually resumes');
+  assert.equal(active.animation.currentTime, 312, 'resume does not restart the wipe');
+  runTimer(500);
+  assert.equal(active.image.src, '/paused-reveal.webp', 'only the remaining fallback time runs after resume');
+  active.upgrade.destroy();
+
+  const multi = await startReveal('/multi-touch.webp');
+  const secondTrack = new TestTrack();
+  touch('touchstart', track, 1);
+  touch('touchstart', secondTrack, 2);
+  touch('touchend', track, 1);
+  dispatchDocumentEvent('scrollend', track);
+  runTimer(80);
+  assert.equal(multi.animation.playState, 'paused', 'settling one carousel cannot release another held touch');
+  touch('touchend', secondTrack, 2);
+  runTimer(200);
+  assert.equal(multi.animation.playState, 'running', 'no-scroll tap releases after the quiet fallback');
+  touch('touchstart', track, 3);
+  touch('touchstart', track, 4);
+  touch('touchend', track, 3);
+  assert.equal([...timerDelays.values()].includes(200), false, 'a second finger keeps its track held');
+  touch('touchend', secondTrack, 4);
+  runTimer(200);
+  assert.equal(multi.animation.playState, 'running', 'touch identifiers release even with a different end target');
+  multi.upgrade.destroy();
+
+  for (const destroy of [false, true]) {
+    const cancelled = await startReveal(`/paused-cancel-${destroy}.webp`);
+    touch('touchstart', track);
+    if (destroy) cancelled.upgrade.destroy();
+    else cancelled.upgrade.cancel(cancelled.image as unknown as HTMLImageElement);
+    assert.equal(cancelled.animation.playState, 'idle', 'cancel discards the owned paused animation');
+    touch('touchend', track);
+    if (!destroy) runTimer(200);
+    assert.equal(cancelled.animation.playState, 'idle', 'resume cannot restart a cancelled animation');
+    assert.equal(cancelled.image.src, '/thumb.webp');
+    cancelled.upgrade.destroy();
+    assert.equal(timers.size, 0);
+  }
+
+  const queued = fixture('/queued-preview.webp');
+  const queuedUpgrade = createImagePreviewUpgrade();
+  queuedUpgrade.bind(queued.root);
+  images.at(-1)!.onload!();
+  await flush();
+  queuedUpgrade.open();
+  touch('touchstart', track);
+  previewImages('/queued-preview.webp').at(-1)!.onload!();
+  await flush();
+  assert.equal(queued.image.clone, undefined, 'in-flight preview decoding cannot start a wipe during a swipe');
+  const laterImage = fixture('/queued-fetch.webp');
+  queuedUpgrade.bind(laterImage.root);
+  images.at(-1)!.onload!();
+  await flush();
+  assert.equal(previewImages('/queued-fetch.webp').length, 0, 'new preview fetches wait during a swipe');
+  touch('touchend', track);
+  dispatchDocumentEvent('scrollend', track);
+  runTimer(80);
+  assert.ok(queued.image.clone, 'decoded preview begins its wipe after settling');
+  assert.equal(previewImages('/queued-fetch.webp').length, 1, 'deferred fetch resumes');
+  queuedUpgrade.destroy();
+
+  const decoding = fixture('/swipe-during-clone-decode.webp');
+  let decoded!: () => void;
+  decoding.image.cloneDecode = () => new Promise(resolve => { decoded = resolve; });
+  const decodingUpgrade = createImagePreviewUpgrade();
+  decodingUpgrade.bind(decoding.root);
+  images.at(-1)!.onload!();
+  await flush();
+  decodingUpgrade.open();
+  previewImages('/swipe-during-clone-decode.webp').at(-1)!.onload!();
+  await flush();
+  touch('touchstart', track);
+  decoded();
+  await flush();
+  runFrames();
+  assert.equal(decoding.image.clone!.classes.has('is-revealing'), false, 'clone decode finishing during a swipe cannot start the mask');
+  touch('touchend', track);
+  runTimer(200);
+  assert.equal(decoding.image.clone!.classes.has('is-revealing'), true, 'deferred clone starts when the swipe settles');
+  decodingUpgrade.destroy();
 
   await flush();
   assert.equal(timers.size, 0);
