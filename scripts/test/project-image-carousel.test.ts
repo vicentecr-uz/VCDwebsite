@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { bindProjectImageCarousels, restoreCarouselActiveItem } from '../../src/lib/projectImageCarousel';
 
-const window = new Window();
+const window = new Window({ url: 'http://localhost/' });
 Object.assign(globalThis, {
   window,
   document: window.document,
@@ -598,4 +598,34 @@ test('height variables stay on the clip and track through mode changes', () => {
   expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
   expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('120px');
   block.remove();
+});
+
+test('release smoothing is opt in and clears after native scrollend', async () => {
+  const previousUrl = window.location.href;
+  window.history.pushState({}, '', 'http://localhost/?carousel-release-smoothing=1');
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-clip><div data-carousel-track><div data-carousel-slide data-grid-item-id="item-0"><div data-carousel-frame></div></div></div></div>`;
+  window.document.body.append(block);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const slide = block.querySelector<HTMLElement>('[data-carousel-slide]')!;
+  Object.defineProperties(slide, { offsetLeft: { get: () => 0 }, offsetTop: { get: () => 0 }, offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 } });
+  slide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () => ({ height: 100, width: 100 } as DOMRect);
+  let scrollToCalls = 0;
+  track.scrollTo = () => { scrollToCalls += 1; };
+  bindProjectImageCarousels(block);
+  const start = new window.Event('touchstart', { bubbles: true });
+  Object.defineProperty(start, 'touches', { value: [{}] });
+  track.dispatchEvent(start);
+  const end = new window.Event('touchend', { bubbles: true });
+  Object.defineProperty(end, 'touches', { value: [] });
+  track.dispatchEvent(end);
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  track.dispatchEvent(new window.Event('scrollend'));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  expect(scrollToCalls).toBe(0);
+  block.remove();
+  window.history.replaceState({}, '', previousUrl);
 });
