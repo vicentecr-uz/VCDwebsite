@@ -165,13 +165,16 @@ test('a fast fetch waiting on the cover is released when a newer navigation kill
     current = { kill: options.onInterrupt, finish: options.onComplete }; return current;
   } };
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(`let activeTween; const invalidate = () => activeTween?.kill(); return { ${cover} };`);
-  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', 'getComputedStyle', script)(gsap, { style: {}, hidden: false }, false, 'power1.out', () => ({ opacity: '0' }));
+  const overlay = { style: {}, hidden: false, dataset: {} as Record<string, string> };
+  const hooks = new Function('gsap', 'overlay', 'visibleTransition', 'REVEAL_EASE', 'getComputedStyle', script)(gsap, overlay, false, 'power1.out', () => ({ opacity: '0' }));
   let firstSettled = false;
   const first = hooks.cover().then(() => { firstSettled = true; });
   await Promise.resolve(); expect(firstSettled).toBe(false);
   const second = hooks.cover();
   await first; expect(firstSettled).toBe(true);
+  expect(overlay.dataset.loading).toBeUndefined();
   current!.finish(); await second;
+  expect(overlay.dataset.loading).toBe('true');
 });
 
 test('annotation editor styles survive the native head swap', () => {
