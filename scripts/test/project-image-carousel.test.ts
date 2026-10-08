@@ -482,7 +482,9 @@ test('scroll interpolation reuses geometry until an explicit refresh', async () 
   const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
   const frames = [...block.querySelectorAll<HTMLElement>('[data-carousel-frame]')];
   const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  const captions = [...block.querySelectorAll<HTMLElement>('[data-carousel-caption]')];
   let frameReads = 0;
+  let captionReads = 0;
   slides.forEach((slide, index) => {
     Object.defineProperties(slide, {
       offsetLeft: { get: () => index * 100 }, offsetTop: { get: () => 0 },
@@ -495,15 +497,32 @@ test('scroll interpolation reuses geometry until an explicit refresh', async () 
       return { height: 100 + index * 20, width: 100 } as DOMRect;
     };
   });
+  captions.forEach((caption, index) => {
+    Object.defineProperty(caption, 'scrollHeight', {
+      configurable: true,
+      get: () => { captionReads += 1; return 20 + index * 20; },
+    });
+  });
   track.scrollTo = (options: ScrollToOptions) => { track.scrollLeft = options.left ?? 0; };
   bindProjectImageCarousels(block);
   const initialReads = frameReads;
+  const initialCaptionReads = captionReads;
+  track.scrollLeft = 50;
+  track.dispatchEvent(new window.Event('scroll'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(block.style.getPropertyValue('--project-carousel-track-size')).toBe('110px');
+  expect(block.querySelector<HTMLElement>('[data-carousel-caption-slot]')!.style.height).toBe('30px');
   for (const offset of [25, 75, 100, 50]) {
     track.scrollLeft = offset;
     track.dispatchEvent(new window.Event('scroll'));
     await new Promise(window.requestAnimationFrame.bind(window));
   }
   expect(frameReads).toBe(initialReads);
+  expect(captionReads).toBe(initialCaptionReads);
+  window.dispatchEvent(new window.Event('resize'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(frameReads).toBeGreaterThan(initialReads);
+  expect(captionReads).toBeGreaterThan(initialCaptionReads);
   window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
   expect(frameReads).toBeGreaterThan(initialReads);
   block.remove();
