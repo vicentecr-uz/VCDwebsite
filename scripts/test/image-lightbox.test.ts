@@ -74,10 +74,10 @@ function fixture(reducedMotion = false, options: { loaded?: boolean; preview?: s
     return event;
   };
   const settleSpring = () => { for (let i=0; i<180; i++) { tick(16); frame(); } };
-  const pointer = (type: string, id: number, x = 400, y = 400, button = 0, altKey = false) => {
+  const pointer = (type: string, id: number, x = 400, y = 400, button = 0, altKey = false, target: EventTarget = viewer) => {
     const event = new window.PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', pointerId: id, clientX: x, clientY: y, button });
     Object.assign(event, { altKey });
-    return viewer.dispatchEvent(event);
+    return target.dispatchEvent(event);
   };
   return { window, document, original, dialog, viewer, image, click, key, wheel, gesture, settleSpring, pointer, frame, tick, frames, timers, captured, dispose };
 }
@@ -325,6 +325,39 @@ test('input mode select keeps native pointer, keyboard and wheel interaction', (
   select.dispatchEvent(wheelEvent);
   expect(wheelEvent.defaultPrevented).toBe(false);
   expect(f.image.style.transform).toContain('scale(1)');
+});
+
+for (const targetName of ['viewer', 'image', 'dialog'] as const) {
+  test(`click-away on ${targetName} closes the popup without dismissing the lightbox`, () => {
+    const f = fixture(); f.click();
+    const listbox = f.document.createElement('ul');
+    listbox.className = 'dev-select__listbox is-closing';
+    f.viewer.append(listbox);
+    let popupOpen = true;
+    const nativeMatches = listbox.matches.bind(listbox);
+    listbox.matches = (selector: string) => selector === ':popover-open' ? popupOpen : nativeMatches(selector);
+
+    // The shared SelectField capture handler closes the popup while its fade is
+    // still running; the lightbox must remember that state for this click.
+    f.pointer('pointerdown', 1, 500, 400, 0, false, f[targetName]);
+    expect(f.viewer.classList.contains('is-dragging')).toBe(false);
+    popupOpen = false;
+    listbox.classList.remove('is-closing');
+    f.tick(250);
+    f.click(f[targetName]);
+    expect(f.dialog.open).toBe(true);
+
+    // A later click, after the popup sequence has been consumed, dismisses.
+    f.click(f.dialog); f.tick(150);
+    expect(f.dialog.open).toBe(false);
+  });
+}
+
+test('backdrop click without an open popup still dismisses the lightbox', () => {
+  const f = fixture(); f.click();
+  f.pointer('pointerdown', 1, 500, 400, 0, false, f.dialog);
+  f.click(f.dialog); f.tick(150);
+  expect(f.dialog.open).toBe(false);
 });
 
 test('trackpad swipe from fit dismisses only after the idle boundary', () => {
