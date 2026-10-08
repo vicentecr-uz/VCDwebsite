@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import { Window } from 'happy-dom';
 import { bindProjectImageCarousels, restoreCarouselActiveItem } from '../../src/lib/projectImageCarousel';
 
-const window = new Window();
+const window = new Window({ url: 'http://localhost/' });
 Object.assign(globalThis, {
   window,
   document: window.document,
@@ -467,5 +467,195 @@ test('current carousel marker follows the active slide for video dot visibility'
     await new Promise(window.requestAnimationFrame.bind(window));
   expect(slides[0].dataset.carouselCurrent).toBeUndefined();
   expect(slides[1].dataset.carouselCurrent).toBe('true');
+  block.remove();
+});
+
+test('scroll interpolation reuses geometry until an explicit refresh', async () => {
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-track>${[0, 1].map((i) =>
+    `<div data-carousel-slide data-grid-item-id="item-${i}"><div data-carousel-frame></div></div>`).join('')}</div>
+    <div data-carousel-caption-slot>${[0, 1].map((i) =>
+    `<span data-carousel-caption data-carousel-item-id="item-${i}">Caption ${i}</span>`).join('')}</div>`;
+  window.document.body.append(block);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const frames = [...block.querySelectorAll<HTMLElement>('[data-carousel-frame]')];
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  const captions = [...block.querySelectorAll<HTMLElement>('[data-carousel-caption]')];
+  let frameReads = 0;
+  let captionReads = 0;
+  slides.forEach((slide, index) => {
+    Object.defineProperties(slide, {
+      offsetLeft: { get: () => index * 100 }, offsetTop: { get: () => 0 },
+      offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 },
+    });
+  });
+  frames.forEach((frame, index) => {
+    frame.getBoundingClientRect = () => {
+      frameReads += 1;
+      return { height: 100 + index * 20, width: 100 } as DOMRect;
+    };
+  });
+  captions.forEach((caption, index) => {
+    Object.defineProperty(caption, 'scrollHeight', {
+      configurable: true,
+      get: () => { captionReads += 1; return 20 + index * 20; },
+    });
+  });
+  track.scrollTo = (options: ScrollToOptions) => { track.scrollLeft = options.left ?? 0; };
+  bindProjectImageCarousels(block);
+  const initialReads = frameReads;
+  const initialCaptionReads = captionReads;
+  track.scrollLeft = 1.25;
+  track.dispatchEvent(new window.Event('scroll'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('100.25px');
+  expect(block.querySelector<HTMLElement>('[data-carousel-caption-slot]')!.style.height).toBe('20.25px');
+  track.scrollLeft = 50;
+  track.dispatchEvent(new window.Event('scroll'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('110px');
+  expect(block.querySelector<HTMLElement>('[data-carousel-caption-slot]')!.style.height).toBe('30px');
+  for (const offset of [25, 75, 100, 50]) {
+    track.scrollLeft = offset;
+    track.dispatchEvent(new window.Event('scroll'));
+    await new Promise(window.requestAnimationFrame.bind(window));
+  }
+  expect(frameReads).toBe(initialReads);
+  expect(captionReads).toBe(initialCaptionReads);
+  window.dispatchEvent(new window.Event('resize'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(frameReads).toBeGreaterThan(initialReads);
+  expect(captionReads).toBeGreaterThan(initialCaptionReads);
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(frameReads).toBeGreaterThan(initialReads);
+  block.remove();
+});
+
+test('animated block height notifications do not invalidate carousel geometry', async () => {
+  const previousObserver = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+  let notify: ((entries: ResizeObserverEntry[]) => void) | undefined;
+  class MockResizeObserver {
+    constructor(callback: (entries: ResizeObserverEntry[]) => void) { notify = callback; }
+    observe() {}
+    disconnect() {}
+  }
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = MockResizeObserver;
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-track><div data-carousel-slide data-grid-item-id="item-0"><div data-carousel-frame></div></div></div>`;
+  window.document.body.append(block);
+  const frame = block.querySelector<HTMLElement>('[data-carousel-frame]')!;
+  let reads = 0;
+  frame.getBoundingClientRect = () => { reads += 1; return { height: 100, width: 100 } as DOMRect; };
+  bindProjectImageCarousels(block);
+  const initialReads = reads;
+  notify?.([{ target: block } as ResizeObserverEntry]);
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(reads).toBe(initialReads);
+  notify?.([{ target: frame } as ResizeObserverEntry]);
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(reads).toBeGreaterThan(initialReads);
+  block.remove();
+  (globalThis as { ResizeObserver?: unknown }).ResizeObserver = previousObserver;
+});
+
+test('height variables stay on the clip and track through mode changes', () => {
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-clip><div data-carousel-track>${[0, 1].map((i) =>
+    `<div data-carousel-slide data-grid-item-id="item-${i}"><div data-carousel-frame></div></div>`).join('')}</div></div>`;
+  window.document.body.append(block);
+  const clip = block.querySelector<HTMLElement>('[data-carousel-clip]')!;
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  slides.forEach((slide, index) => {
+    Object.defineProperties(slide, {
+      offsetLeft: { get: () => index * 100 }, offsetTop: { get: () => index * 100 },
+      offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 },
+    });
+    slide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () =>
+      ({ height: 100 + index * 20, width: 100 } as DOMRect);
+  });
+  bindProjectImageCarousels(block);
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('120px');
+  block.dataset.heightMode = 'tallest';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('');
+  block.dataset.orientation = 'vertical';
+  block.dataset.heightMode = 'dynamic';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('');
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('');
+  block.dataset.orientation = 'horizontal';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(clip.style.getPropertyValue('--project-carousel-track-size')).toBe('100px');
+  expect(track.style.getPropertyValue('--project-carousel-track-port-size')).toBe('120px');
+  block.remove();
+});
+
+test('release smoothing defaults on and clears after native scrollend', async () => {
+  const baseline = window.document.createElement('div');
+  baseline.dataset.projectImageCarousel = '';
+  baseline.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  baseline.innerHTML = '<div data-carousel-clip><div data-carousel-track><div data-carousel-slide data-grid-item-id="baseline"><div data-carousel-frame></div></div></div></div>';
+  window.document.body.append(baseline);
+  const baselineTrack = baseline.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const baselineSlide = baseline.querySelector<HTMLElement>('[data-carousel-slide]')!;
+  Object.defineProperties(baselineSlide, { offsetLeft: { get: () => 0 }, offsetTop: { get: () => 0 }, offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 } });
+  baselineSlide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () => ({ height: 100, width: 100 } as DOMRect);
+  bindProjectImageCarousels(baseline);
+  baselineTrack.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  baselineTrack.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(baseline.dataset.carouselReleaseSmoothing).toBe('true');
+  baseline.remove();
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: 'horizontal' });
+  block.innerHTML = `<div data-carousel-clip><div data-carousel-track><div data-carousel-slide data-grid-item-id="item-0"><div data-carousel-frame></div></div></div></div>`;
+  window.document.body.append(block);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const slide = block.querySelector<HTMLElement>('[data-carousel-slide]')!;
+  Object.defineProperties(slide, { offsetLeft: { get: () => 0 }, offsetTop: { get: () => 0 }, offsetWidth: { get: () => 100 }, offsetHeight: { get: () => 100 } });
+  slide.querySelector<HTMLElement>('[data-carousel-frame]')!.getBoundingClientRect = () => ({ height: 100, width: 100 } as DOMRect);
+  let scrollToCalls = 0;
+  track.scrollTo = () => { scrollToCalls += 1; };
+  bindProjectImageCarousels(block);
+  const start = new window.Event('touchstart', { bubbles: true });
+  Object.defineProperty(start, 'touches', { value: [{}] });
+  track.dispatchEvent(start);
+  const end = new window.Event('touchend', { bubbles: true });
+  Object.defineProperty(end, 'touches', { value: [] });
+  track.dispatchEvent(end);
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  track.dispatchEvent(new window.Event('scrollend'));
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  expect(scrollToCalls).toBe(0);
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  const secondEnd = new window.Event('touchend', { bubbles: true });
+  Object.defineProperty(secondEnd, 'touches', { value: [] });
+  track.dispatchEvent(secondEnd);
+  expect(block.dataset.carouselReleaseSmoothing).toBe('true');
+  block.dataset.heightMode = 'tallest';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
+  block.dataset.heightMode = 'dynamic';
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  window.document.dispatchEvent(new window.Event('astro:before-swap'));
+  track.dispatchEvent(new window.Event('touchstart', { bubbles: true }));
+  track.dispatchEvent(new window.Event('touchend', { bubbles: true }));
+  expect(block.dataset.carouselReleaseSmoothing).toBeUndefined();
   block.remove();
 });

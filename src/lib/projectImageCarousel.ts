@@ -35,6 +35,7 @@ interface Carousel {
   scope: ReturnType<typeof createPageScope>;
   block: HTMLElement;
   track: HTMLElement;
+  clip: HTMLElement;
   slides: HTMLElement[];
   dotStrip: HTMLElement | null;
   dotWindow: HTMLElement | null;
@@ -47,6 +48,13 @@ interface Carousel {
   progress: number;
   /** Last viewport whose breakpoint settings were applied. */
   viewport: ImageViewport;
+  frameHeights: number[];
+  captionHeights: number[];
+  captionWidths: WeakMap<HTMLElement, number>;
+  tallestFrameHeight: number;
+  geometryRefreshFrame: number;
+  rebindGeometryObservers?: () => void;
+  releaseSmoothingTimer: number;
 }
 
 const scrollPos = (carousel: Carousel) => (
@@ -128,14 +136,15 @@ export function carouselCaptionOpacity(slideIndex: number, progress: number, fad
 function renderDots(carousel: Carousel): void {
   const { dots, dotStrip, dotWindow } = carousel;
   const count = dots.length;
-  carousel.block.style.setProperty(
-    '--project-carousel-video-progress',
-    lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4),
-  );
+  const videoProgress = lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4);
+  if (carousel.block.style.getPropertyValue('--project-carousel-video-progress') !== videoProgress) {
+    carousel.block.style.setProperty('--project-carousel-video-progress', videoProgress);
+  }
   const activeIndex = Math.min(Math.max(Math.round(carousel.progress), 0), Math.max(carousel.slides.length - 1, 0));
   carousel.slides.forEach((slide, index) => {
-    if (index === activeIndex) slide.dataset.carouselCurrent = 'true';
-    else delete slide.dataset.carouselCurrent;
+    if (index === activeIndex) {
+      if (slide.dataset.carouselCurrent !== 'true') slide.dataset.carouselCurrent = 'true';
+    } else if (slide.dataset.carouselCurrent) delete slide.dataset.carouselCurrent;
   });
   if (!count || !dotStrip || !dotWindow) return;
 
@@ -143,13 +152,26 @@ function renderDots(carousel: Carousel): void {
 
   dots.forEach((dot, index) => {
     const { activeness, scale } = carouselDotAppearance(index, carousel.progress, centre);
-    dot.style.setProperty('--project-carousel-dot-activeness', activeness.toFixed(3));
-    dot.style.setProperty('--project-carousel-dot-scale', scale.toFixed(3));
-    dot.setAttribute('aria-current', index === activeIndex ? 'true' : 'false');
+    const nextActiveness = activeness.toFixed(3);
+    const nextScale = scale.toFixed(3);
+    if (dot.style.getPropertyValue('--project-carousel-dot-activeness') !== nextActiveness) {
+      dot.style.setProperty('--project-carousel-dot-activeness', nextActiveness);
+    }
+    if (dot.style.getPropertyValue('--project-carousel-dot-scale') !== nextScale) {
+      dot.style.setProperty('--project-carousel-dot-scale', nextScale);
+    }
+    const ariaCurrent = index === activeIndex ? 'true' : 'false';
+    if (dot.getAttribute('aria-current') !== ariaCurrent) dot.setAttribute('aria-current', ariaCurrent);
   });
 
-  dotWindow.style.setProperty('--project-carousel-dot-count', span.toFixed(4));
-  dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
+  const nextCount = span.toFixed(4);
+  const nextOffset = first.toFixed(4);
+  if (dotWindow.style.getPropertyValue('--project-carousel-dot-count') !== nextCount) {
+    dotWindow.style.setProperty('--project-carousel-dot-count', nextCount);
+  }
+  if (dotStrip.style.getPropertyValue('--project-carousel-dot-offset') !== nextOffset) {
+    dotStrip.style.setProperty('--project-carousel-dot-offset', nextOffset);
+  }
 }
 
 const mediaInkGeneration = new WeakMap<Carousel, number>();
@@ -258,17 +280,7 @@ function measureCapTrimPx(el: HTMLElement): number {
 }
 
 function captionHeightForSlide(carousel: Carousel, slideIndex: number): number {
-  const slide = carousel.slides[slideIndex];
-  if (!slide) return 0;
-  const id = slide.dataset.gridItemId || '';
-  const caption = carousel.captions.find((node) => node.dataset.carouselItemId === id);
-  if (!caption) return 0;
-  // text-box-trim already shrinks the box to the cap; the canvas fallback pulls
-  // the glyph up with a negative top, so subtract that trim from reserved height.
-  const trim = canTrimTextBoxToCap()
-    ? 0
-    : Number(caption.dataset.capTrim || 0);
-  return Math.max(0, caption.scrollHeight - trim);
+  return carousel.captionHeights[slideIndex] || 0;
 }
 
 /** Lerp a per-slide value across fractional scroll progress (same basis as dots). */
@@ -308,32 +320,10 @@ function syncCaptions(carousel: Carousel): void {
     : NaN;
   const pinEditing = Number.isFinite(editingSlideIndex)
     && Math.abs(carousel.progress - editingSlideIndex) < 0.5;
-  const trimSupported = canTrimTextBoxToCap();
-
   carousel.captions.forEach((caption) => {
     const slide = slideForCaption(carousel, caption);
     const slideIndex = slide ? Number(slide.dataset.carouselIndex) : Number(caption.dataset.carouselIndex);
     if (!Number.isFinite(slideIndex)) return;
-
-    if (slide) {
-      caption.dataset.mobileBleedEligible = slide.dataset.mobileBleedEligible ?? 'false';
-      caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
-      const width = surfaceWidthForSlide(slide);
-      if (width > 0) {
-        // Own image width — never retarget to the neighbour mid-fade.
-        caption.style.width = `${width}px`;
-        caption.style.maxWidth = `${width}px`;
-      }
-    }
-
-    if (trimSupported) {
-      caption.style.removeProperty('top');
-      delete caption.dataset.capTrim;
-    } else {
-      const trim = measureCapTrimPx(caption);
-      caption.dataset.capTrim = trim.toFixed(2);
-      caption.style.top = `${-trim}px`;
-    }
 
     const editing = editingId != null && caption.dataset.carouselItemId === editingId;
     const pin = editing && pinEditing;
@@ -347,7 +337,75 @@ function syncCaptions(carousel: Carousel): void {
     ? captionHeightForSlide(carousel, editingSlideIndex)
     : lerpByProgress(carousel, (index) => captionHeightForSlide(carousel, index));
   slot.hidden = false;
-  slot.style.height = `${Math.round(targetHeight)}px`;
+  const nextHeight = `${targetHeight}px`;
+  if (slot.style.height !== nextHeight) slot.style.height = nextHeight;
+}
+
+/** Read intrinsic frame/caption geometry once per invalidation, outside scroll frames. */
+function refreshGeometry(carousel: Carousel): void {
+  carousel.frameHeights = carousel.slides.map((slide) => {
+    const frame = slide.querySelector<HTMLElement>('[data-carousel-frame]') ?? slide;
+    return frame.getBoundingClientRect().height;
+  });
+  carousel.tallestFrameHeight = Math.max(0, ...carousel.frameHeights);
+
+  const trimSupported = canTrimTextBoxToCap();
+  const captionsBySlide = carousel.slides.map((slide) => (
+    carousel.captions.find((node) => node.dataset.carouselItemId === slide.dataset.gridItemId)
+  ));
+  const widths = captionsBySlide.map((caption, index) => (
+    caption ? surfaceWidthForSlide(carousel.slides[index]) : 0
+  ));
+  captionsBySlide.forEach((caption, index) => {
+    if (!caption) return;
+    const slide = carousel.slides[index];
+    caption.dataset.mobileBleedEligible = slide.dataset.mobileBleedEligible ?? 'false';
+    caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
+    const width = widths[index];
+    if (width > 0 && carousel.captionWidths.get(caption) !== width) {
+      // Own image width — never retarget to the neighbour mid-fade.
+      caption.style.width = `${width}px`;
+      caption.style.maxWidth = `${width}px`;
+      carousel.captionWidths.set(caption, width);
+    }
+  });
+  const trims = captionsBySlide.map((caption) => (
+    caption && !trimSupported ? measureCapTrimPx(caption) : 0
+  ));
+  captionsBySlide.forEach((caption, index) => {
+    if (!caption) return;
+    if (trimSupported) {
+      caption.style.removeProperty('top');
+      delete caption.dataset.capTrim;
+    } else {
+      const trim = trims[index];
+      caption.dataset.capTrim = trim.toFixed(2);
+      caption.style.top = `${-trim}px`;
+    }
+  });
+  carousel.captionHeights = captionsBySlide.map((caption) => {
+    if (!caption) return 0;
+    const trim = trimSupported ? 0 : Number(caption.dataset.capTrim || 0);
+    return Math.max(0, caption.scrollHeight - trim);
+  });
+}
+
+function clearReleaseSmoothing(carousel: Carousel): void {
+  if (carousel.releaseSmoothingTimer) {
+    window.clearTimeout(carousel.releaseSmoothingTimer);
+    carousel.releaseSmoothingTimer = 0;
+  }
+  carousel.block.removeAttribute('data-carousel-release-smoothing');
+}
+
+function scheduleGeometryRefresh(carousel: Carousel): void {
+  if (carousel.geometryRefreshFrame) return;
+  carousel.geometryRefreshFrame = carousel.scope.frame(() => {
+    carousel.geometryRefreshFrame = 0;
+    refreshGeometry(carousel);
+    syncCaptions(carousel);
+    applyHeight(carousel);
+  });
 }
 
 /**
@@ -357,38 +415,40 @@ function syncCaptions(carousel: Carousel): void {
  * putting the height on `__media` flex-shrunk the track and broke iOS snap.
  */
 function applyHeight(carousel: Carousel): void {
-  const { block, track, heightMode, axis } = carousel;
+  const { track, clip, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
-    block.style.removeProperty('--project-carousel-track-size');
-    block.style.removeProperty('--project-carousel-track-port-size');
+    clip.style.removeProperty('--project-carousel-track-size');
+    track.style.removeProperty('--project-carousel-track-port-size');
+    track.style.removeProperty('--project-carousel-track-size');
     track.style.removeProperty('height');
     return;
   }
 
-  const measure = (slide: HTMLElement | undefined) => {
-    if (!slide) return 0;
-    const frame = slide.querySelector<HTMLElement>('[data-carousel-frame]') ?? slide;
-    return frame.getBoundingClientRect().height;
-  };
-
-  const sizes = carousel.slides.map(measure);
-  const tallest = Math.max(0, ...sizes);
+  const sizes = carousel.frameHeights;
+  const tallest = carousel.tallestFrameHeight;
   const size = heightMode === 'dynamic'
     ? lerpByProgress(carousel, (index) => sizes[index] ?? 0)
     : tallest;
   if (!size && !tallest) return;
 
-  block.style.setProperty('--project-carousel-track-size', `${Math.round(size || tallest)}px`);
+  const nextSize = `${size || tallest}px`;
+  if (clip.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'horizontal') {
+    clip.style.setProperty('--project-carousel-track-size', nextSize);
+  } else if (track.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'vertical') {
+    track.style.setProperty('--project-carousel-track-size', nextSize);
+  }
   if (axis === 'horizontal') {
     // Stable scrollport so mandatory snap can finish without a JS re-scroll.
-    block.style.setProperty('--project-carousel-track-port-size', `${Math.round(tallest || size)}px`);
+    const nextPortSize = `${Math.round(tallest || size)}px`;
+    if (track.style.getPropertyValue('--project-carousel-track-port-size') !== nextPortSize) {
+      track.style.setProperty('--project-carousel-track-port-size', nextPortSize);
+    }
     track.style.removeProperty('height');
     return;
   }
 
-  block.style.removeProperty('--project-carousel-track-port-size');
-  // Vertical tracks need a bounded height before they can scroll at all.
-  track.style.height = `${Math.round(size || tallest)}px`;
+  track.style.removeProperty('--project-carousel-track-port-size');
+  track.style.removeProperty('height');
 }
 
 function sync(carousel: Carousel): void {
@@ -840,6 +900,8 @@ function refreshSettings(carousel: Carousel): void {
   carousel.axis = carousel.block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
   carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
   collectVisible(carousel);
+  carousel.rebindGeometryObservers?.();
+  refreshGeometry(carousel);
   const isolated = document.documentElement.classList.contains('is-dev-mode')
     ? carousel.slides.findIndex((slide) => slide.classList.contains('dev-crop-stage-host'))
     : -1;
@@ -847,7 +909,10 @@ function refreshSettings(carousel: Carousel): void {
     ? isolated
     : Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
-  carousel.block.style.removeProperty('--project-carousel-track-port-size');
+  carousel.clip.style.removeProperty('--project-carousel-track-size');
+  carousel.track.style.removeProperty('--project-carousel-track-size');
+  carousel.track.style.removeProperty('--project-carousel-track-port-size');
+  clearReleaseSmoothing(carousel);
   carousel.block.dataset.activeIndex = String(carousel.active);
   applyHeight(carousel);
   scrollToIndex(carousel, carousel.active, false);
@@ -881,6 +946,9 @@ function initCarousel(block: HTMLElement): void {
     scope: createPageScope(),
     block,
     track,
+    clip: block.querySelector<HTMLElement>('[data-carousel-clip]')
+      ?? block.querySelector<HTMLElement>('.project-image-carousel__clip')
+      ?? track,
     slides: [],
     dotStrip: block.querySelector<HTMLElement>('[data-carousel-dot-strip]'),
     dotWindow: block.querySelector<HTMLElement>('[data-carousel-dot-window]'),
@@ -891,8 +959,15 @@ function initCarousel(block: HTMLElement): void {
     active: 0,
     progress: 0,
     viewport,
+    frameHeights: [],
+    captionHeights: [],
+    captionWidths: new WeakMap(),
+    tallestFrameHeight: 0,
+    geometryRefreshFrame: 0,
+    releaseSmoothingTimer: 0,
   };
   collectVisible(carousel);
+  refreshGeometry(carousel);
   track.style.setProperty('--project-carousel-drag-tension', String(DEFAULT_DRAG_TUNING.tension));
   track.style.setProperty('--project-carousel-drag-threshold', `${DEFAULT_DRAG_TUNING.dragThreshold}px`);
   track.style.setProperty('--project-carousel-spring-back', `${DEFAULT_DRAG_TUNING.springBackMs}ms`);
@@ -909,12 +984,16 @@ function initCarousel(block: HTMLElement): void {
   if (document.fonts?.ready) {
     document.fonts.ready.then(() => {
       if (!registry.has(block)) return;
-      syncCaptions(carousel);
+      scheduleGeometryRefresh(carousel);
     }).catch(() => {});
   }
 
   let frame = 0;
   track.addEventListener('scroll', () => {
+    if (carousel.releaseSmoothingTimer) {
+      window.clearTimeout(carousel.releaseSmoothingTimer);
+      carousel.releaseSmoothingTimer = 0;
+    }
     if (frame) return;
     frame = carousel.scope.frame(() => {
       frame = 0;
@@ -939,29 +1018,83 @@ function initCarousel(block: HTMLElement): void {
 
   bindDrag(carousel);
   bindTouchSnap(carousel);
+  carousel.scope.listen(track, 'touchstart', () => clearReleaseSmoothing(carousel), { passive: true });
+  carousel.scope.listen(track, 'touchend', (event) => {
+    if ((event.touches?.length ?? 0) > 0) return;
+    if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+      carousel.block.dataset.carouselReleaseSmoothing = 'true';
+    }
+  }, { passive: true });
+  carousel.scope.listen(track, 'touchcancel', () => {
+    if (carousel.axis === 'horizontal' && carousel.heightMode === 'dynamic') {
+      carousel.block.dataset.carouselReleaseSmoothing = 'true';
+    }
+  }, { passive: true });
+  carousel.scope.listen(track, 'scrollend', () => {
+    if (!carousel.block.dataset.carouselReleaseSmoothing) return;
+    if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
+    // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
+    carousel.releaseSmoothingTimer = carousel.scope.timeout(() => {
+      carousel.releaseSmoothingTimer = 0;
+      clearReleaseSmoothing(carousel);
+    }, 80);
+  }, { passive: true });
+  carousel.scope.add(() => clearReleaseSmoothing(carousel));
 
+  let observer: ResizeObserver | undefined;
+  let mutations: MutationObserver | undefined;
+  const observeIntrinsicGeometry = () => {
+    if (!observer) return;
+    observer.disconnect();
+    carousel.slides.forEach((slide) => {
+      const frame = slide.querySelector<HTMLElement>('[data-carousel-frame]') ?? slide;
+      const surface = slide.querySelector<HTMLElement>('.project-image-carousel__surface');
+      observer?.observe(frame);
+      if (surface && surface !== frame) observer?.observe(surface);
+    });
+    carousel.captions.forEach((caption) => observer?.observe(caption));
+  };
+  const observeCaptionMutations = () => {
+    if (!mutations) return;
+    mutations.disconnect();
+    carousel.captions.forEach((caption) => {
+      mutations?.observe(caption, { childList: true, characterData: true, subtree: true });
+    });
+  };
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(() => {
+    observer = new ResizeObserver((entries) => {
       syncViewportSettings(carousel);
-      applyHeight(carousel);
+      if (entries.some((entry) => entry.target !== carousel.block && entry.target !== carousel.track)) {
+        scheduleGeometryRefresh(carousel);
+      }
       void refreshCarouselMediaInk(carousel);
     });
-    carousel.scope.add(() => observer.disconnect());
-    observer.observe(track);
-    observer.observe(block);
-    carousel.slides.forEach((slide) => observer.observe(slide));
+    carousel.scope.add(() => observer?.disconnect());
+    observeIntrinsicGeometry();
   }
   carousel.scope.listen(window, 'resize', () => {
+    clearReleaseSmoothing(carousel);
     syncViewportSettings(carousel);
+    scheduleGeometryRefresh(carousel);
     void refreshCarouselMediaInk(carousel);
   }, { passive: true });
   block.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
     image.addEventListener('load', () => {
-      sync(carousel);
+      scheduleGeometryRefresh(carousel);
+      void refreshCarouselMediaInk(carousel);
     });
     if (!image.complete) return;
     void refreshCarouselMediaInk(carousel);
   });
+  if (typeof MutationObserver !== 'undefined') {
+    mutations = new MutationObserver(() => scheduleGeometryRefresh(carousel));
+    observeCaptionMutations();
+    carousel.scope.add(() => mutations?.disconnect());
+  }
+  carousel.rebindGeometryObservers = () => {
+    observeIntrinsicGeometry();
+    observeCaptionMutations();
+  };
 }
 
 let refreshBound = false;
@@ -999,6 +1132,7 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     const target = event.detail?.target;
     registry.forEach((carousel) => {
       if (target && !carousel.block.contains(target)) return;
+      scheduleGeometryRefresh(carousel);
       void refreshCarouselMediaInk(carousel);
     });
   }) as EventListener);
@@ -1008,6 +1142,8 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     registry.forEach((carousel, block) => {
       if (only && block !== only) return;
       collectVisible(carousel);
+      refreshGeometry(carousel);
+      carousel.rebindGeometryObservers?.();
       syncCaptions(carousel);
     });
   }) as EventListener);

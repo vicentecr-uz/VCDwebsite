@@ -40,6 +40,15 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   }>();
   const previewQueue = new Set<HTMLImageElement>();
   let previewQueueScheduled = false;
+  let carouselPauseBound = false;
+  let carouselPaused = false;
+  const activeCarouselTouches = new Map<HTMLElement, Set<number>>();
+  const carouselResumeTimers = new Map<HTMLElement, number>();
+  const pausedAnimations = new Map<Animation, HTMLImageElement>();
+  type RevealCompletion = { target: HTMLImageElement; done: () => void; remaining: number; started: number; timer?: number };
+  const revealCompletions = new Set<RevealCompletion>();
+  const deferredRevealStarts = new Map<HTMLImageElement, () => void>();
+  const deferredRevealCompletions = new Map<HTMLImageElement, () => void>();
 
   let swapObserver: IntersectionObserver | null = null;
 
@@ -53,6 +62,115 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     if (id === undefined) return;
     window.clearTimeout(id);
     timers.delete(id);
+  }
+
+  function pauseRevealCompletions(): void {
+    const now = performance.now();
+    revealCompletions.forEach((record) => {
+      if (record.timer === undefined) return;
+      cancelTimer(record.timer);
+      record.timer = undefined;
+      record.remaining = Math.max(0, record.remaining - (now - record.started));
+    });
+  }
+  function resumeRevealCompletions(): void {
+    revealCompletions.forEach((record) => {
+      if (record.timer !== undefined) return;
+      record.started = performance.now();
+      record.timer = later(() => {
+        revealCompletions.delete(record);
+        record.done();
+      }, record.remaining);
+    });
+  }
+  function scheduleRevealCompletion(target: HTMLImageElement, done: () => void, delay: number): void {
+    const record: RevealCompletion = { target, done, remaining: delay, started: performance.now() };
+    revealCompletions.add(record);
+    record.timer = later(() => {
+      revealCompletions.delete(record);
+      done();
+    }, delay);
+  }
+  function pauseCarouselTransitions(): void {
+    if (carouselPaused) return;
+    carouselPaused = true;
+    pauseRevealCompletions();
+    revealCompletions.forEach(({ target }) => {
+      target.getAnimations?.().forEach((animation) => {
+        const frames = (animation.effect as KeyframeEffect | null)?.getKeyframes() || [];
+        const owned = frames.some((frame) =>
+          Object.keys(frame).some((property) => property === '--preview-reveal-y' || property === 'opacity'),
+        );
+        if (!owned) return;
+        if (animation.playState === 'running' || animation.pending) {
+          animation.pause();
+          pausedAnimations.set(animation, target);
+        }
+      });
+    });
+  }
+  function resumeCarouselTransitions(): void {
+    if (!carouselPaused) return;
+    carouselPaused = false;
+    pausedAnimations.forEach((target, animation) => {
+      if (target.isConnected && animation.playState === 'paused') animation.play();
+    });
+    pausedAnimations.clear();
+    resumeRevealCompletions();
+    for (const [target, complete] of deferredRevealCompletions) {
+      deferredRevealCompletions.delete(target);
+      complete();
+    }
+    for (const [target, start] of deferredRevealStarts) {
+      deferredRevealStarts.delete(target);
+      start();
+    }
+    flushPreviewQueue();
+  }
+  function scheduleCarouselResume(track: HTMLElement, delay: number): void {
+    cancelTimer(carouselResumeTimers.get(track));
+    carouselResumeTimers.set(track, later(() => {
+      carouselResumeTimers.delete(track);
+      if (!activeCarouselTouches.size && !carouselResumeTimers.size) resumeCarouselTransitions();
+    }, delay));
+  }
+  function ensureCarouselPauseListeners(): void {
+    if (carouselPauseBound || typeof document === 'undefined') return;
+    carouselPauseBound = true;
+    const trackFor = (target: EventTarget | null) => target instanceof Element
+      ? target.closest<HTMLElement>('[data-carousel-track]') : null;
+    document.addEventListener('touchstart', (event) => {
+      const track = trackFor(event.target);
+      if (!track) return;
+      const touches = activeCarouselTouches.get(track) ?? new Set<number>();
+      for (const touch of event.changedTouches) touches.add(touch.identifier);
+      activeCarouselTouches.set(track, touches);
+      cancelTimer(carouselResumeTimers.get(track));
+      carouselResumeTimers.delete(track);
+      pauseCarouselTransitions();
+    }, { signal, passive: true, capture: true });
+    const finishTouches = (event: TouchEvent) => {
+      activeCarouselTouches.forEach((touches, track) => {
+        for (const touch of event.changedTouches) touches.delete(touch.identifier);
+        if (!touches.size) {
+          activeCarouselTouches.delete(track);
+          scheduleCarouselResume(track, 200);
+        }
+      });
+    };
+    document.addEventListener('touchend', finishTouches, { signal, passive: true, capture: true });
+    document.addEventListener('touchcancel', finishTouches, { signal, passive: true, capture: true });
+    document.addEventListener('scroll', (event) => {
+      const track = trackFor(event.target);
+      if (!track || event.target !== track) return;
+      pauseCarouselTransitions();
+      scheduleCarouselResume(track, 200);
+    }, { signal, passive: true, capture: true });
+    document.addEventListener('scrollend', (event) => {
+      const track = trackFor(event.target);
+      if (!track || event.target !== track) return;
+      scheduleCarouselResume(track, 80);
+    }, { signal, passive: true, capture: true });
   }
 
   function previewMatchesCurrent(preview: string, img: HTMLImageElement): boolean {
@@ -78,6 +196,25 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     swapObserver?.unobserve(img);
   }
 
+  function cancelRevealCompletion(target: HTMLImageElement): void {
+    revealCompletions.forEach((record) => {
+      if (record.target !== target) return;
+      cancelTimer(record.timer);
+      revealCompletions.delete(record);
+    });
+  }
+
+  function discardReveal(target: HTMLImageElement): void {
+    cancelRevealCompletion(target);
+    deferredRevealStarts.delete(target);
+    deferredRevealCompletions.delete(target);
+    pausedAnimations.forEach((owner, animation) => {
+      if (owner !== target) return;
+      pausedAnimations.delete(animation);
+      animation.cancel();
+    });
+  }
+
   function cancel(img: HTMLImageElement): void {
     cleanupCandidate(img);
     previewLoaded.delete(img);
@@ -85,7 +222,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     cancelTimer(state?.retryTimer);
     previewStates.delete(img);
     const clone = revealClones.get(img);
+    discardReveal(img);
     if (clone) {
+      discardReveal(clone);
       clone.remove();
       clones.delete(clone);
       revealClones.delete(img);
@@ -182,9 +321,16 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         new Promise<void>((resolve) => later(resolve, 2000)),
       ]);
       await afterNextPaint();
-      clone.remove();
-      clones.delete(clone);
-      if (revealClones.get(img) === clone) revealClones.delete(img);
+      const cleanup = () => {
+        if (signal.aborted || revealClones.get(img) !== clone) return;
+        clone.remove();
+        clones.delete(clone);
+        revealClones.delete(img);
+        delete img.dataset.imagePreviewRevealing;
+      };
+      if (carouselPaused) deferredRevealCompletions.set(clone, cleanup);
+      else cleanup();
+      return;
     }
     if (signal.aborted) return;
     delete img.dataset.imagePreviewRevealing;
@@ -232,6 +378,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   function flushPreviewQueue(): void {
     previewQueueScheduled = false;
     if (signal.aborted) return;
+    if (carouselPaused) return;
 
     const ready = [...previewQueue]
       .filter((img) => {
@@ -361,8 +508,13 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   function revealAboutFade(img: HTMLImageElement, preview: string): void {
     let finished = false;
     const done = () => {
-      if (finished) return;
+      if (finished || !current(img, preview)) return;
+      if (carouselPaused) {
+        deferredRevealCompletions.set(img, done);
+        return;
+      }
       finished = true;
+      cancelRevealCompletion(img);
       img.removeEventListener('transitionend', onEnd);
       img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
       void finishUpgrade(img, preview);
@@ -374,14 +526,19 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     };
 
     img.addEventListener('transitionend', onEnd, { signal });
-    later(done, REVEAL_DURATION_MS + 100);
 
     img.classList.add('image-preview-reveal--fade-only');
     freezeInFlowBox(img);
     img.src = preview;
     nextFrame(() => {
       nextFrame(() => {
-        img.classList.add('is-revealing');
+        const startReveal = () => {
+          if (!current(img, preview)) return;
+          img.classList.add('is-revealing');
+          scheduleRevealCompletion(img, done, REVEAL_DURATION_MS + 100);
+        };
+        if (carouselPaused) deferredRevealStarts.set(img, startReveal);
+        else startReveal();
       });
     });
   }
@@ -409,15 +566,22 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     let finished = false;
     const done = () => {
-      if (finished) return;
+      if (finished || !current(img, preview) || revealClones.get(img) !== clone) return;
+      if (carouselPaused) {
+        deferredRevealCompletions.set(clone, done);
+        return;
+      }
       finished = true;
+      cancelRevealCompletion(clone);
       clone.removeEventListener('transitionend', onEnd);
       void finishUpgrade(img, preview, clone);
     };
 
     const onEnd = (event: TransitionEvent) => {
       if (event.target !== clone) return;
-      if (event.propertyName !== 'opacity' && !event.propertyName.includes('mask')) return;
+      if (event.propertyName !== 'opacity'
+        && event.propertyName !== '--preview-reveal-y'
+        && !event.propertyName.includes('mask')) return;
       done();
     };
 
@@ -437,8 +601,13 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       nextFrame(() => {
         nextFrame(() => {
           if (!current(img, preview) || revealClones.get(img) !== clone) return;
-          clone.classList.add('is-revealing');
-          later(() => { if (clone.isConnected) done(); }, REVEAL_DURATION_MS + 100);
+          const startReveal = () => {
+            if (!current(img, preview) || revealClones.get(img) !== clone) return;
+            clone.classList.add('is-revealing');
+            scheduleRevealCompletion(clone, done, REVEAL_DURATION_MS + 100);
+          };
+          if (carouselPaused) deferredRevealStarts.set(clone, startReveal);
+          else startReveal();
         });
       });
     });
@@ -466,6 +635,10 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
   function trySwap(img: HTMLImageElement): void {
     if (!gateOpen) return;
+    if (carouselPaused) {
+      previewQueue.add(img);
+      return;
+    }
 
     const preview = img.getAttribute('data-image-preview');
     if (!preview || previewMatchesCurrent(preview, img)) {
@@ -515,6 +688,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
   function bind(root: ParentNode = document): void {
     if (signal.aborted) return;
+    ensureCarouselPauseListeners();
     root.querySelectorAll<HTMLImageElement>('img[data-image-preview]').forEach((img) => {
       if (img.dataset.imagePreviewBound === 'true') return;
 
@@ -553,6 +727,14 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       timers.forEach((id) => window.clearTimeout(id));
       frames.clear();
       timers.clear();
+      revealCompletions.clear();
+      deferredRevealStarts.clear();
+      deferredRevealCompletions.clear();
+      pausedAnimations.forEach((_target, animation) => animation.cancel());
+      pausedAnimations.clear();
+      activeCarouselTouches.clear();
+      carouselResumeTimers.clear();
+      carouselPaused = false;
       swapObserver?.disconnect();
       swapObserver = null;
       for (const image of preloads) {
