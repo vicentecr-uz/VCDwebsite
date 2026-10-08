@@ -336,7 +336,7 @@ function syncCaptions(carousel: Carousel): void {
     ? captionHeightForSlide(carousel, editingSlideIndex)
     : lerpByProgress(carousel, (index) => captionHeightForSlide(carousel, index));
   slot.hidden = false;
-  const nextHeight = `${Math.round(targetHeight)}px`;
+  const nextHeight = `${targetHeight}px`;
   if (slot.style.height !== nextHeight) slot.style.height = nextHeight;
 }
 
@@ -422,7 +422,7 @@ function applyHeight(carousel: Carousel): void {
     : tallest;
   if (!size && !tallest) return;
 
-  const nextSize = `${Math.round(size || tallest)}px`;
+  const nextSize = `${size || tallest}px`;
   if (clip.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'horizontal') {
     clip.style.setProperty('--project-carousel-track-size', nextSize);
   } else if (track.style.getPropertyValue('--project-carousel-track-size') !== nextSize && axis === 'vertical') {

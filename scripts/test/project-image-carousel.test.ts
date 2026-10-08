@@ -507,6 +507,11 @@ test('scroll interpolation reuses geometry until an explicit refresh', async () 
   bindProjectImageCarousels(block);
   const initialReads = frameReads;
   const initialCaptionReads = captionReads;
+  track.scrollLeft = 1.25;
+  track.dispatchEvent(new window.Event('scroll'));
+  await new Promise(window.requestAnimationFrame.bind(window));
+  expect(track.style.getPropertyValue('--project-carousel-track-size')).toBe('100.25px');
+  expect(block.querySelector<HTMLElement>('[data-carousel-caption-slot]')!.style.height).toBe('20.25px');
   track.scrollLeft = 50;
   track.dispatchEvent(new window.Event('scroll'));
   await new Promise(window.requestAnimationFrame.bind(window));
