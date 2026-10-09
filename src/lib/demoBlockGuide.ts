@@ -55,6 +55,10 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     const box = viewport();
     return { x: Math.min(box.right - 24, Math.max(box.left + 8, point.x)), y: Math.min(box.bottom - 64, Math.max(box.top + 64, point.y)) };
   };
+  const smootherstep = (progress: number) => {
+    const t = Math.min(1, Math.max(0, progress));
+    return t * t * t * (t * (t * 6 - 15) + 10);
+  };
   const animate = (to: Partial<CursorState>, duration: number, token: number) => new Promise<boolean>((resolve) => {
     pendingResolve = resolve;
     const from = { ...cursorState };
@@ -62,7 +66,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     const tick = (now: number) => {
       if (!alive(token)) { pendingResolve = undefined; resolve(false); return; }
       const progress = Math.min(1, (now - started) / duration);
-      const eased = progress * progress * (3 - 2 * progress);
+      const eased = smootherstep(progress);
       for (const key of ['x', 'y', 'scale', 'opacity'] as const) {
         if (to[key] !== undefined) cursorState[key] = from[key] + (to[key]! - from[key]) * eased;
       }
@@ -72,25 +76,37 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     };
     frame = win.requestAnimationFrame(tick);
   });
-  const move = (point: Point, token: number) => new Promise<boolean>((resolve) => {
+  const move = (point: Point, token: number, opacity?: number) => new Promise<boolean>((resolve) => {
     pendingResolve = resolve;
     const from = { ...cursorState };
     const distance = Math.hypot(point.x - from.x, point.y - from.y);
     if (distance < 1) { pendingResolve = undefined; resolve(true); return; }
-    const duration = Math.min(650, Math.max(220, distance * 0.5));
+    const duration = Math.min(1200, Math.max(500, 400 + distance * 0.9));
     const started = win.performance.now();
     const magnitude = Math.min(18, Math.max(4, distance * 0.04));
     const dx = point.x - from.x;
     const dy = point.y - from.y;
     const length = Math.max(1, distance);
-    const control = { x: (from.x + point.x) / 2 - (dy / length) * magnitude, y: (from.y + point.y) / 2 + (dx / length) * magnitude };
+    const overshoot = distance > 80 ? Math.min(12, Math.max(4, distance * 0.025)) : 0;
+    const waypoint = { x: point.x + (dx / length) * overshoot, y: point.y + (dy / length) * overshoot };
+    const overshootControl = { x: (from.x + waypoint.x) / 2 - (dy / length) * magnitude, y: (from.y + waypoint.y) / 2 + (dx / length) * magnitude };
+    const correctionControl = { x: (waypoint.x + point.x) / 2 - (dy / length) * magnitude * 0.35, y: (waypoint.y + point.y) / 2 + (dx / length) * magnitude * 0.35 };
+    const curve = (start: Point, controlPoint: Point, end: Point, progress: number): Point => {
+      const inverse = 1 - progress;
+      return {
+        x: inverse * inverse * start.x + 2 * inverse * progress * controlPoint.x + progress * progress * end.x,
+        y: inverse * inverse * start.y + 2 * inverse * progress * controlPoint.y + progress * progress * end.y,
+      };
+    };
     const tick = (now: number) => {
       if (!alive(token)) { pendingResolve = undefined; resolve(false); return; }
       const progress = Math.min(1, (now - started) / duration);
-      const eased = progress * progress * (3 - 2 * progress);
-      const inverse = 1 - eased;
-      cursorState.x = inverse * inverse * from.x + 2 * inverse * eased * control.x + eased * eased * point.x;
-      cursorState.y = inverse * inverse * from.y + 2 * inverse * eased * control.y + eased * eased * point.y;
+      const position = progress < 0.8
+        ? curve(from, overshootControl, waypoint, smootherstep(progress / 0.8))
+        : curve(waypoint, correctionControl, point, smootherstep((progress - 0.8) / 0.2));
+      cursorState.x = position.x;
+      cursorState.y = position.y;
+      if (opacity !== undefined) cursorState.opacity = from.opacity + (opacity - from.opacity) * smootherstep(progress);
       paint();
       if (progress < 1) frame = win.requestAnimationFrame(tick);
       else { frame = null; pendingResolve = undefined; resolve(true); }
@@ -150,7 +166,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       const startOffset = { x: start.x + 24, y: start.y - 24 };
       cursorState = { ...startOffset, scale: 1, opacity: 0 };
       paint();
-      if (!await animate({ ...center(pill), opacity: 1 }, 420, token)) return;
+      if (!await move(center(pill), token, 1)) return;
       gaps.reveal(imageBlock);
       if (!await wait(250, token)) return;
       const choice = gapChoice();
@@ -171,16 +187,16 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
         if (!alive(token)) return;
         const text = textBlock.getBoundingClientRect();
         const elapsed = now - started;
-        const travel = Math.min(1, elapsed / 1000);
+        const travel = Math.min(1, elapsed / 1500);
         const target = clampToViewport({ x: grab.x, y: text.bottom + 24 });
-        const destination = clampToViewport({ x: grab.x + (target.x - grab.x) * travel, y: grab.y + (target.y - grab.y) * (travel * travel * (3 - 2 * travel)) });
+        const destination = clampToViewport({ x: grab.x + (target.x - grab.x) * travel, y: grab.y + (target.y - grab.y) * smootherstep(travel) });
         const blend = 1 - Math.exp(-Math.max(0, now - previous) / 80);
         current = { x: current.x + (destination.x - current.x) * blend, y: current.y + (destination.y - current.y) * blend };
         const point = current;
         previous = now;
         reorder.guideMove(point.x, point.y);
         cursorState.x = point.x; cursorState.y = point.y; paint();
-        if (elapsed >= 1000 && text.bottom + 12 <= point.y) { frame = null; void finishDrag(token); return; }
+        if (elapsed >= 1500 && text.bottom + 12 <= point.y) { frame = null; void finishDrag(token); return; }
         if (elapsed >= 4000) { stop(); return; }
         frame = win.requestAnimationFrame(drag);
       };
