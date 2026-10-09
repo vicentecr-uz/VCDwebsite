@@ -61,7 +61,7 @@ test('production pages load only the media runtimes their rendered content needs
     expect(code.includes('media-volume-range'), `${label}: video controls`).toBe(features.video);
     expect(code.includes('[data-image-lightbox-viewer]'), `${label}: image lightbox`).toBe(features.lightbox);
     expect(code.includes('.project-grid__chip'), `${label}: gallery contrast`).toBe(features.gallery);
-    expect(code.includes('.project-image-grid__image, .project-media__img, .project-image__img'), `${label}: caption contrast`).toBe(features.captions);
+    expect(code.includes('img.project-image-grid__image, img.project-media__img, img.project-image__img'), `${label}: caption contrast`).toBe(features.captions);
     expect(code.includes('--caption-shadow-extension'), `${label}: caption shadow`).toBe(features.captions);
     expect(code, `${label}: editor-chip code`).not.toContain('.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger');
     checked += 1;

@@ -42,7 +42,7 @@ function coverFor(caption: HTMLElement): HTMLElement | null {
 function imgIn(cover: HTMLElement): HTMLImageElement | null {
   return (
     cover.querySelector<HTMLImageElement>(
-      '.project-image-grid__image, .project-media__img, .project-image__img',
+      'img.project-image-grid__image, img.project-media__img, img.project-image__img',
     ) ?? null
   );
 }

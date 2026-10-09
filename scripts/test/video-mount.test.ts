@@ -16,6 +16,7 @@ for (const type of ['image', 'imageGrid', 'imageCarousel']) {
     expect(video.poster).toBe('/images/clip.webm.poster.webp');
     expect(video.controls).toBe(true);
     expect(video.playsInline).toBe(true);
+    expect(video.preload).toBe('none');
     expect(video.hasAttribute('data-project-inline-video')).toBe(true);
     expect(node.querySelector('img')).toBeNull();
     const editTrigger = node.querySelector('[data-dev-edit-trigger="image"]') as HTMLElement;

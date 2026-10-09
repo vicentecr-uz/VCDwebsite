@@ -105,6 +105,26 @@ const initialThemeColor = resolveToken('sys.color.srf');
   data-adaptive-page-columns={ADAPTIVE_PAGE_COLUMNS_ENABLED ? '' : undefined}
 >
   <head>
+    <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
+    <script>
+      import { bindSafeVh } from '../lib/safeVh';
+      const initializeLayout = () => bindSafeVh();
+      if (!import.meta.env.DEV) {
+        initializeLayout();
+      } else {
+        // DEV styles arrive as module scripts; production links are render-blocking.
+        const styleModules = Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')).filter((script) => {
+          try {
+            const url = new URL(script.src, location.href);
+            return url.pathname.endsWith('.css') || url.searchParams.get('type') === 'style';
+          } catch { return false; }
+        });
+        Promise.all(styleModules.map((script) => new Promise<void>((resolve) => {
+          script.addEventListener('load', () => resolve(), { once: true });
+          script.addEventListener('error', () => resolve(), { once: true });
+        }))).then(initializeLayout);
+      }
+    </script>
     <Analytics />
     {persistentNavigation && <ClientRouter fallback="swap" />}
     <meta charset="UTF-8" />
@@ -123,29 +143,32 @@ const initialThemeColor = resolveToken('sys.color.srf');
         z-index: 100;
         pointer-events: none;
         opacity: 1;
-        animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
       }
       #transition-overlay > [role='status'] {
         position: absolute;
         inset: 0;
         display: grid;
         place-items: center;
-        opacity: 0;
+        opacity: 1;
         visibility: hidden;
         color: #bababa;
-        color: color-mix(in srgb, var(--sys-color-on-srf, #000) 27%, transparent);
+        color: color-mix(in srgb, #000 27%, transparent);
         transition: opacity 150ms ease;
-      }
-      html[data-theme='dark'] #transition-overlay > [role='status'] {
-        color: #5b5b5b;
-        color: color-mix(in srgb, var(--sys-color-on-srf, #fff) 27%, transparent);
       }
       #transition-overlay[data-loading='true'] > [role='status'] {
         visibility: visible;
-        animation: transition-loader-enter 150ms ease;
-        animation-delay: 200ms;
-        animation-fill-mode: both;
       }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g {
+        animation: transition-loader-spoke-enter 150ms ease both;
+      }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(1) { animation-delay: 200ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(2) { animation-delay: 287.5ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(3) { animation-delay: 375ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(4) { animation-delay: 462.5ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(5) { animation-delay: 550ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(6) { animation-delay: 637.5ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(7) { animation-delay: 725ms; }
+      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(8) { animation-delay: 812.5ms; }
       #transition-overlay > [role='status'] svg {
         display: block;
         width: 48px;
@@ -155,24 +178,23 @@ const initialThemeColor = resolveToken('sys.color.srf');
         animation: transition-overlay-spinner 700ms linear infinite;
         opacity: 0.15;
       }
-      #transition-overlay > [role='status'] rect:nth-child(1) { animation-delay: -612.5ms; }
-      #transition-overlay > [role='status'] rect:nth-child(2) { animation-delay: -525ms; }
-      #transition-overlay > [role='status'] rect:nth-child(3) { animation-delay: -437.5ms; }
-      #transition-overlay > [role='status'] rect:nth-child(4) { animation-delay: -350ms; }
-      #transition-overlay > [role='status'] rect:nth-child(5) { animation-delay: -262.5ms; }
-      #transition-overlay > [role='status'] rect:nth-child(6) { animation-delay: -175ms; }
-      #transition-overlay > [role='status'] rect:nth-child(7) { animation-delay: -87.5ms; }
-      #transition-overlay > [role='status'] rect:nth-child(8) { animation-delay: 0ms; }
+      #transition-overlay > [role='status'] g:nth-child(1) rect { animation-delay: -612.5ms; }
+      #transition-overlay > [role='status'] g:nth-child(2) rect { animation-delay: -525ms; }
+      #transition-overlay > [role='status'] g:nth-child(3) rect { animation-delay: -437.5ms; }
+      #transition-overlay > [role='status'] g:nth-child(4) rect { animation-delay: -350ms; }
+      #transition-overlay > [role='status'] g:nth-child(5) rect { animation-delay: -262.5ms; }
+      #transition-overlay > [role='status'] g:nth-child(6) rect { animation-delay: -175ms; }
+      #transition-overlay > [role='status'] g:nth-child(7) rect { animation-delay: -87.5ms; }
+      #transition-overlay > [role='status'] g:nth-child(8) rect { animation-delay: 0ms; }
       @keyframes transition-overlay-spinner {
         0%, 100% { opacity: 0.15; }
         8% { opacity: 1; }
       }
-      @keyframes transition-loader-enter {
+      @keyframes transition-loader-spoke-enter {
         from { opacity: 0; }
         to { opacity: 1; }
       }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
-      html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
       :root { view-transition-name: none; }
       html[data-header-navigation] .site-header-slot { z-index: 110; }
       html[data-header-navigation] [data-home-page] { z-index: auto; }
@@ -180,6 +202,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         to { opacity: 0; visibility: hidden; }
       }
     </style>
+    <noscript set:html={'<style>#transition-overlay { animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards; }</style>'}></noscript>
     {showDevTools && (
       <script is:inline>
         try {
@@ -258,10 +281,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
         </style>
       </>
     )}
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" /></noscript>
+    <link rel="preload" href="/fonts/hanken-grotesk/normal-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/hanken-grotesk/hanken.css" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -281,17 +302,17 @@ const initialThemeColor = resolveToken('sys.color.srf');
   </head>
   <body data-dev-authoring={showDevTools ? '' : undefined}>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
-    <div id="transition-overlay">
+    <div id="transition-overlay" data-loading="true">
       <div role="status" aria-label="Loading page">
         <svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" fill="currentColor">
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" />
-          <rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" />
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" /></g>
+          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" /></g>
         </svg>
       </div>
     </div>
@@ -316,40 +337,93 @@ const initialThemeColor = resolveToken('sys.color.srf');
           } catch {}
         };
         const visible = (image) => {
-          const rect = image.getBoundingClientRect();
           const viewport = document.documentElement;
-          return rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || viewport.clientHeight) && rect.left < (innerWidth || viewport.clientWidth);
+          const frame = image.closest('.project-crop-clip, .project-image-grid__frame');
+          let rect = (frame || image).getBoundingClientRect();
+          const intersect = (left, top, right, bottom) => {
+            const next = {
+              left: Math.max(rect.left, left), top: Math.max(rect.top, top),
+              right: Math.min(rect.right, right), bottom: Math.min(rect.bottom, bottom),
+            };
+            if (next.right <= next.left || next.bottom <= next.top) return false;
+            rect = next;
+            return true;
+          };
+          if (!intersect(0, 0, innerWidth || viewport.clientWidth, innerHeight || viewport.clientHeight)) return false;
+          for (let current = image; current; current = current.parentElement) {
+            const style = getComputedStyle(current);
+            if (style.display === 'none' || style.visibility === 'hidden') return false;
+            const overflowX = style.overflowX || style.overflow;
+            const overflowY = style.overflowY || style.overflow;
+            const ancestorRect = current.getBoundingClientRect();
+            const clipX = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowX);
+            const clipY = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowY);
+            if (clipX || clipY) {
+              if (!intersect(
+                clipX ? ancestorRect.left : rect.left,
+                clipY ? ancestorRect.top : rect.top,
+                clipX ? ancestorRect.right : rect.right,
+                clipY ? ancestorRect.bottom : rect.bottom,
+              )) return false;
+            }
+          }
+          return true;
         };
         const readinessImages = (images) => {
           const intro = document.querySelector('[data-home-intro-surface]');
           if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
           return images.filter((image) => intro.contains(image));
         };
-        const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
-        const imageReady = images.map((image) => new Promise((resolve) => {
-          const finish = () => {
-            const decoded = (typeof image.decode === 'function' && image.naturalWidth > 0)
-              ? Promise.resolve(image.decode()).catch(() => undefined)
-              : Promise.resolve();
-            decoded.then(resolve, resolve);
-          };
-          if (image.complete) { finish(); return; }
-          const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); finish(); };
-          image.addEventListener('load', done, { once: true });
-          image.addEventListener('error', done, { once: true });
-        }));
         overlay.dataset.vcdInitialReveal = 'running';
         overlay.dataset.loading = 'true';
         overlay.style.animation = 'none';
         mark('initial-readiness-start');
-        const intro = document.querySelector('[data-home-intro-surface]');
-        const activeHomeIntro = intro && !intro.hidden && intro.dataset.state !== 'dismissed';
+        let layoutCleanup = () => {};
         const introLayoutReady = new Promise((resolve) => {
-          if (activeHomeIntro || !document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
-          window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
+          if (document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
+          const ready = () => { layoutCleanup(); resolve(); };
+          layoutCleanup = () => window.removeEventListener('vcd:intro-layout-ready', ready);
+          window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
         });
-        const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
-        Promise.race([Promise.all([introLayoutReady, ...imageReady]), timeout]).then(() => {
+        const fontReady = introLayoutReady.then(() => {
+          if (overlay.dataset.vcdInitialReveal !== 'running') return;
+          document.body?.getBoundingClientRect();
+          mark('initial-layout-ready');
+          const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
+            ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
+            : [];
+          return Promise.all(faces.map((face) => Promise.resolve(face.loaded).catch(() => undefined))).then(() => {
+            if (overlay.dataset.vcdInitialReveal !== 'running') return;
+            document.body?.getBoundingClientRect();
+            mark('initial-fonts-ready');
+            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+          });
+        });
+        const imageCleanups = [];
+        const imageReady = introLayoutReady.then(() => {
+          if (overlay.dataset.vcdInitialReveal !== 'running') return;
+          const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
+          images.forEach((image) => { image.loading = 'eager'; });
+          return Promise.all(images.map((image) => new Promise((resolve) => {
+            const finish = () => {
+              let decoded = Promise.resolve();
+              if (typeof image.decode === 'function' && image.naturalWidth > 0) {
+                try { decoded = Promise.resolve(image.decode()).catch(() => undefined); } catch { decoded = Promise.resolve(); }
+              }
+              decoded.then(resolve, resolve);
+            };
+            if (image.complete) { finish(); return; }
+            const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); finish(); };
+            imageCleanups.push(() => { image.removeEventListener('load', done); image.removeEventListener('error', done); });
+            image.addEventListener('load', done, { once: true });
+            image.addEventListener('error', done, { once: true });
+          }))).then(() => {
+            if (overlay.dataset.vcdInitialReveal === 'running') mark('initial-thumbnails-ready');
+          });
+        });
+        Promise.all([imageReady, fontReady]).then(() => {
+          layoutCleanup();
+          imageCleanups.forEach((cleanup) => cleanup());
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
             if (overlay.dataset.vcdInitialReveal !== 'running') return;
@@ -433,12 +507,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
       import gsap from 'gsap';
       import { installPersistentNavigation } from '../scripts/persistentNavigation';
       import { resetImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
-      import { bindSafeVh } from '../lib/safeVh';
       import { bindExternalLinks } from '../lib/externalLinks';
       import { bindImagePreviewUpgrade, openImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
 
-      // Stable 1vh unit for max-height caps (Edge/iOS svh is buggy mid-scroll).
-      bindSafeVh();
       bindExternalLinks();
 
       const overlay = document.getElementById('transition-overlay');
@@ -484,7 +555,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
       const isInViewport = (el: Element) => {
         const vh = window.innerHeight || document.documentElement.clientHeight;
         const vw = window.innerWidth || document.documentElement.clientWidth;
-        let rect = el.getBoundingClientRect();
+        const frame = el.closest('.project-crop-clip, .project-image-grid__frame');
+        let rect = (frame || el).getBoundingClientRect();
         const intersect = (left: number, top: number, right: number, bottom: number) => {
           const next = {
             left: Math.max(rect.left, left), top: Math.max(rect.top, top),
@@ -546,19 +618,17 @@ const initialThemeColor = resolveToken('sys.color.srf');
       };
 
       const waitForReadiness = (signal: AbortSignal) => {
-        let timer: ReturnType<typeof setTimeout> | null = null;
         let settled = false;
-        let releaseReason: 'resources' | 'timeout' | 'aborted' = 'resources';
+        let releaseReason: 'resources' | 'aborted' = 'resources';
         const cleanups: Array<() => void> = [];
         let resolveReady!: () => void;
         const ready = new Promise<void>((resolve) => {
           resolveReady = resolve;
         });
-        const settle = (reason: 'resources' | 'timeout' | 'aborted' = 'resources') => {
+        const settle = (reason: 'resources' | 'aborted' = 'resources') => {
           if (settled) return;
           settled = true;
           releaseReason = reason;
-          if (timer !== null) clearTimeout(timer);
           for (const cleanup of cleanups) cleanup();
           resolveReady();
         };
@@ -567,43 +637,61 @@ const initialThemeColor = resolveToken('sys.color.srf');
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        void Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined);
+        const layoutReady = new Promise<void>((resolve) => {
+          if (document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
+          const ready = () => { window.removeEventListener('vcd:intro-layout-ready', ready); resolve(); };
+          window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
+          cleanups.push(() => window.removeEventListener('vcd:intro-layout-ready', ready));
+        });
         let thumbIndex = 0;
         const readinessImagesFor = (images: HTMLImageElement[]) => {
           const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
           if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
           return images.filter((image) => intro.contains(image));
         };
-        const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
-        for (const img of readinessImages) {
-          const currentThumbIndex = thumbIndex++;
-          waits.push((async () => {
-            if (!img.complete) {
-              await new Promise<void>((resolve) => {
-                let finished = false;
-                const done = () => {
-                  if (finished) return;
-                  finished = true;
-                  img.removeEventListener('load', done);
-                  img.removeEventListener('error', done);
-                  signal.removeEventListener('abort', done);
-                  resolve();
-                };
-                img.addEventListener('load', done, { once: true });
-                img.addEventListener('error', done, { once: true });
-                signal.addEventListener('abort', done, { once: true });
-                cleanups.push(done);
-              });
-            }
+        void layoutReady.then(() => {
+          if (signal.aborted || settled) return;
+          document.body?.getBoundingClientRect();
+          const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
+            ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
+            : [];
+          waits.push(Promise.all(faces.map((face) => Promise.resolve(face.loaded).catch(() => undefined))).then(() => {
             if (signal.aborted || settled) return;
-            if (typeof img.decode === 'function' && img.naturalWidth > 0) {
-              await Promise.resolve(img.decode()).catch(() => undefined);
-            }
-            emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
-          })());
-        }
-        Promise.all(waits).then(() => settle('resources'), () => settle('resources'));
-        timer = setTimeout(() => settle('timeout'), MAX_WAIT_MS);
+            document.body?.getBoundingClientRect();
+            emitTransitionMilestone('fonts-ready');
+            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+          }));
+          const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+          for (const img of readinessImages) {
+            img.loading = 'eager';
+            const currentThumbIndex = thumbIndex++;
+            waits.push((async () => {
+              if (!img.complete) {
+                await new Promise<void>((resolve) => {
+                  let finished = false;
+                  const done = () => {
+                    if (finished) return;
+                    finished = true;
+                    img.removeEventListener('load', done);
+                    img.removeEventListener('error', done);
+                    signal.removeEventListener('abort', done);
+                    resolve();
+                  };
+                  img.addEventListener('load', done, { once: true });
+                  img.addEventListener('error', done, { once: true });
+                  signal.addEventListener('abort', done, { once: true });
+                  cleanups.push(done);
+                });
+              }
+              if (signal.aborted || settled) return;
+              if (typeof img.decode === 'function' && img.naturalWidth > 0) {
+                await Promise.resolve(img.decode()).catch(() => undefined);
+              }
+              emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
+            })());
+          }
+          Promise.all(waits).then(() => settle('resources'), () => settle('resources'));
+        });
         return { ready, cleanup: settle, get releaseReason() { return releaseReason; } };
       };
 
@@ -640,7 +728,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
           const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied', {
-            release: wait.releaseReason === 'timeout' ? 'timeout' : 'resources',
+            release: wait.releaseReason,
           }));
           await readiness;
           if (current !== generation || suspended) return;
