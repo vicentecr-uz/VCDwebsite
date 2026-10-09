@@ -22,6 +22,7 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
     choices: [...toolbar.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]')],
     relocation: undefined as ReturnType<typeof win.setTimeout> | undefined,
     touch: false,
+    pointerInside: false,
   }));
   let saved = states.map(() => initial);
   const cancelIntent = () => {
@@ -51,7 +52,7 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
       state.toolbar.removeAttribute('data-relocating');
     }, 150);
   };
-  const clear = () => { cancelIntent(); latest = undefined; states.forEach((state) => hide(state, true)); };
+  const clear = () => { cancelIntent(); latest = undefined; states.forEach((state) => { state.pointerInside = false; state.touch = false; hide(state, true); }); };
   const update = (x: number, y: number, ready?: HTMLElement) => {
     if (suppressed) return;
     if (escaped) {
@@ -94,13 +95,14 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
   for (const state of states) {
     select(state, initial, false);
     state.pill.addEventListener('pointerenter', (event) => {
+      state.pointerInside = event.pointerType === 'mouse' || event.pointerType === 'pen';
       if (suppressed || first(state) || event.pointerType === 'touch') return;
       cancelIntent(); clearRelocation(state); show(state, true); pinGapToolbar(state.toolbar);
     }, { signal });
-    state.pill.addEventListener('pointerleave', () => { if (!state.touch) hide(state); }, { signal });
+    state.pill.addEventListener('pointerleave', () => { state.pointerInside = false; if (!state.touch) hide(state); }, { signal });
     state.pill.addEventListener('pointerdown', (event) => { state.touch = event.pointerType === 'touch'; }, { signal });
     state.pill.addEventListener('focusin', () => { if (!suppressed) { cancelIntent(); clearRelocation(state); show(state, true); } }, { signal });
-    state.pill.addEventListener('focusout', (event) => { if (!state.pill.contains(event.relatedTarget as Node)) hide(state); }, { signal });
+    state.pill.addEventListener('focusout', (event) => { if (!state.pill.contains(event.relatedTarget as Node) && !state.pointerInside) hide(state); }, { signal });
     state.choices.forEach((choice) => choice.addEventListener('click', (event) => {
       const value = choice.dataset.devSpacingOption as GapToken;
       if (suppressed || !values[value]) return;
