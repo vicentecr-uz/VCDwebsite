@@ -2,8 +2,9 @@ export const CRAFT_DEMOS = [
   { id: 'select-field', title: 'Select field', height: 28 },
   { id: 'progressive-image', title: 'Progressive image loading', height: 31 },
   { id: 'adaptive-ink', title: 'Adaptive ink', height: 42 },
-  { id: 'image-framing', title: 'Image framing', height: 48 },
-  { id: 'block-reorder', title: 'Block reorder', height: 44 },
+  { id: 'image-framing', title: 'Image framing', height: 42 },
+  { id: 'gap-spacing', title: 'Gap spacing', height: 42 },
+  { id: 'block-reorder', title: 'Page composition', height: 46 },
   { id: 'proximity', title: 'Proximity reveal', height: 36 },
 ] as const;
 

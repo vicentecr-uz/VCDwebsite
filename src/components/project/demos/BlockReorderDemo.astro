@@ -1,22 +1,46 @@
 ---
 import Button from '../../ui/Button.astro';
-import DevPanel from '../../ui/DevPanel.astro';
+import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
+import { sizeIcon } from '../../../lib/icons';
+import { projectImageTier } from '../../../lib/images';
+
+const imageSrc = projectImageTier('IMG_2480.jpeg', 'preview');
+const gripIconSvg = sizeIcon(gripIcon, 16);
 ---
 
 <vcd-reorder-demo>
-  <DevPanel title="Block reorder" titleTag="h1" showLights={false} class="reorder-demo">
+  <div class="reorder-demo__canvas">
     <div class="reorder-demo__list" data-reorder-demo-list>
-      {['Research', 'Sketch', 'Prototype', 'Refine'].map((title) => (
-        <article class="reorder-demo__block" data-reorder-demo-block data-title={title}>
-          <button class="reorder-demo__handle" type="button" data-reorder-demo-handle aria-label={`Move ${title}`} aria-pressed="false">
-            <span aria-hidden="true">{title}</span>
-            <span aria-hidden="true" class="reorder-demo__grip">↕</span>
-          </button>
-        </article>
-      ))}
+      <article class="reorder-demo__block reorder-demo__block--intro" data-reorder-demo-block data-title="Inside the object">
+        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move Inside the object" aria-pressed="false">
+          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
+        </Button>
+        <div class="reorder-demo__intro-copy">
+          <p class="reorder-demo__eyebrow">Object study</p>
+          <h2>Inside the object</h2>
+          <p>Every part has a purpose.</p>
+        </div>
+      </article>
+
+      <article class="reorder-demo__block reorder-demo__block--wide-image" data-reorder-demo-block data-title="The whole picture">
+        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move The whole picture" aria-pressed="false">
+          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
+        </Button>
+        <img src={imageSrc} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" draggable="false" />
+      </article>
+
+      <article class="reorder-demo__block reorder-demo__block--grid" data-reorder-demo-block data-title="Small details">
+        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move Small details" aria-pressed="false">
+          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
+        </Button>
+        <div class="reorder-demo__image-grid">
+          <img src={imageSrc} width="4032" height="3024" alt="Close detail of the utility knife parts" draggable="false" />
+          <img src={imageSrc} width="4032" height="3024" alt="Close detail of the cutting mat and utility knife" draggable="false" />
+        </div>
+      </article>
     </div>
     <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
-  </DevPanel>
+  </div>
   <div class="demo-controls">
     <Button label="Reset" type="button" data-reorder-demo-reset />
   </div>
@@ -25,7 +49,15 @@ import DevPanel from '../../ui/DevPanel.astro';
 <style>
   vcd-reorder-demo {
     display: block;
-    width: min(100%, 32em);
+    width: min(100%, 38em);
+    color: var(--sys-color-on-srf);
+  }
+
+  .reorder-demo__canvas {
+    padding: clamp(0.75rem, 3vw, 1.5rem);
+    background: var(--sys-color-srf-container-low);
+    border: 1px solid var(--sys-color-srf-container);
+    border-radius: var(--radius-control-smooth);
   }
 
   .reorder-demo__list {
@@ -37,43 +69,109 @@ import DevPanel from '../../ui/DevPanel.astro';
 
   .reorder-demo__block {
     position: relative;
-    min-height: 4em;
+    min-height: 5.5em;
     overflow-anchor: none;
     color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf-container-low);
-    border: 1px solid var(--sys-color-srf-container);
+    background: var(--sys-color-srf);
+    border: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 14%, transparent);
     border-radius: var(--radius-control-smooth);
   }
 
-  .reorder-demo__handle {
+  .reorder-demo__block--intro {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    min-height: 4em;
-    padding: var(--space-unit);
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    touch-action: none;
-    background: transparent;
-    border: 0;
-    border-radius: inherit;
-    cursor: grab;
+    align-items: end;
+    min-height: 8.25em;
+    padding: 3.75rem 1.25rem 1.25rem;
   }
 
-  .reorder-demo__handle:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: -4px;
+  .reorder-demo__block--wide-image {
+    height: 11.5rem;
+    overflow: hidden;
+  }
+
+  .reorder-demo__block--wide-image > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 58%;
+  }
+
+  .reorder-demo__block--grid {
+    height: 7.5rem;
+    overflow: hidden;
+  }
+
+  .reorder-demo__image-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    height: 100%;
+    gap: 2px;
+  }
+
+  .reorder-demo__image-grid img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .reorder-demo__image-grid img:first-child {
+    object-position: 24% 63%;
+  }
+
+  .reorder-demo__image-grid img:last-child {
+    object-position: 72% 35%;
+  }
+
+  .reorder-demo__intro-copy {
+    max-width: 18em;
+  }
+
+  .reorder-demo__intro-copy h2,
+  .reorder-demo__intro-copy p {
+    margin: 0;
+  }
+
+  .reorder-demo__intro-copy h2 {
+    font-size: clamp(1.25rem, 4vw, 1.75rem);
+    letter-spacing: -0.035em;
+    line-height: 1;
+  }
+
+  .reorder-demo__intro-copy > p:last-child {
+    margin-top: 0.45rem;
+    font-size: 0.9rem;
+    opacity: 0.68;
+  }
+
+  .reorder-demo__eyebrow {
+    margin-bottom: 0.6rem !important;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    line-height: 1;
+    text-transform: uppercase;
+    opacity: 0.58;
+  }
+
+  .reorder-demo__handle {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    z-index: 2;
+    touch-action: none;
+    cursor: grab;
   }
 
   .reorder-demo__handle:active {
     cursor: grabbing;
   }
 
-  .reorder-demo__grip {
-    opacity: 0.55;
-    font-size: 1.25em;
+  @media (max-width: 40em) {
+    .reorder-demo__block--intro {
+      padding-top: 4.25rem;
+    }
   }
 
   .reorder-demo__status {
