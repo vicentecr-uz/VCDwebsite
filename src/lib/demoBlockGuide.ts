@@ -87,25 +87,19 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     const dx = point.x - from.x;
     const dy = point.y - from.y;
     const length = Math.max(1, distance);
+    const control = { x: (from.x + point.x) / 2 - (dy / length) * magnitude, y: (from.y + point.y) / 2 + (dx / length) * magnitude };
     const overshoot = distance > 80 ? Math.min(12, Math.max(4, distance * 0.025)) : 0;
-    const waypoint = { x: point.x + (dx / length) * overshoot, y: point.y + (dy / length) * overshoot };
-    const overshootControl = { x: (from.x + waypoint.x) / 2 - (dy / length) * magnitude, y: (from.y + waypoint.y) / 2 + (dx / length) * magnitude };
-    const correctionControl = { x: (waypoint.x + point.x) / 2 - (dy / length) * magnitude * 0.35, y: (waypoint.y + point.y) / 2 + (dx / length) * magnitude * 0.35 };
-    const curve = (start: Point, controlPoint: Point, end: Point, progress: number): Point => {
-      const inverse = 1 - progress;
-      return {
-        x: inverse * inverse * start.x + 2 * inverse * progress * controlPoint.x + progress * progress * end.x,
-        y: inverse * inverse * start.y + 2 * inverse * progress * controlPoint.y + progress * progress * end.y,
-      };
-    };
     const tick = (now: number) => {
       if (!alive(token)) { pendingResolve = undefined; resolve(false); return; }
       const progress = Math.min(1, (now - started) / duration);
-      const position = progress < 0.8
-        ? curve(from, overshootControl, waypoint, smootherstep(progress / 0.8))
-        : curve(waypoint, correctionControl, point, smootherstep((progress - 0.8) / 0.2));
-      cursorState.x = position.x;
-      cursorState.y = position.y;
+      const pathProgress = overshoot > 0
+        ? progress < 0.8
+          ? (1 + overshoot / distance) * smootherstep(progress / 0.8)
+          : 1 + (overshoot / distance) * (1 - smootherstep((progress - 0.8) / 0.2))
+        : smootherstep(progress);
+      const inverse = 1 - pathProgress;
+      cursorState.x = inverse * inverse * from.x + 2 * inverse * pathProgress * control.x + pathProgress * pathProgress * point.x;
+      cursorState.y = inverse * inverse * from.y + 2 * inverse * pathProgress * control.y + pathProgress * pathProgress * point.y;
       if (opacity !== undefined) cursorState.opacity = from.opacity + (opacity - from.opacity) * smootherstep(progress);
       paint();
       if (progress < 1) frame = win.requestAnimationFrame(tick);

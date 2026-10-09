@@ -1323,6 +1323,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     beginLift: (item, handle, pointerX, pointerY, sourceIndex, options = {}) => {
       if (state.phase !== 'idle') return;
 
+      // A prior settle may have left engine-owned shadow/transition overrides
+      // behind. Retire its async tails before this lift lets the stylesheet
+      // paint the backdrop again.
+      dropRun += 1;
+      const backdropClass = host.classes.liftBackdrop;
+      const backdrop = backdropClass
+        ? item.querySelector<HTMLElement>(`:scope > .${backdropClass}`)
+        : null;
+      backdrop?.style.removeProperty('box-shadow');
+      backdrop?.style.removeProperty('transition');
+
       followPointer = options.followPointer !== false;
       const rect = item.getBoundingClientRect();
       const liftGaps = host.measureLiftGaps?.(item) ?? {
