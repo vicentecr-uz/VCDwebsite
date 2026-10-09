@@ -1010,6 +1010,10 @@ test('inline stalled media remains covered beyond four seconds', async () => {
   const f = fixture({ initialController: true, images: [stalled] });
   await f.paint();
   await f.advance(4001);
+  await f.paint();
+  await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  assert.equal(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'), false);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'running');
   stalled.load();
   stalled.decoded.resolve();
