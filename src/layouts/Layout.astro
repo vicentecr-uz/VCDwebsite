@@ -316,40 +316,80 @@ const initialThemeColor = resolveToken('sys.color.srf');
           } catch {}
         };
         const visible = (image) => {
-          const rect = image.getBoundingClientRect();
           const viewport = document.documentElement;
-          return rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || viewport.clientHeight) && rect.left < (innerWidth || viewport.clientWidth);
+          const frame = image.closest('.project-crop-clip, .project-image-grid__frame');
+          let rect = (frame || image).getBoundingClientRect();
+          const intersect = (left, top, right, bottom) => {
+            const next = {
+              left: Math.max(rect.left, left), top: Math.max(rect.top, top),
+              right: Math.min(rect.right, right), bottom: Math.min(rect.bottom, bottom),
+            };
+            if (next.right <= next.left || next.bottom <= next.top) return false;
+            rect = next;
+            return true;
+          };
+          if (!intersect(0, 0, innerWidth || viewport.clientWidth, innerHeight || viewport.clientHeight)) return false;
+          for (let current = image; current; current = current.parentElement) {
+            const style = getComputedStyle(current);
+            if (style.display === 'none' || style.visibility === 'hidden') return false;
+            const overflowX = style.overflowX || style.overflow;
+            const overflowY = style.overflowY || style.overflow;
+            const ancestorRect = current.getBoundingClientRect();
+            const clipX = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowX);
+            const clipY = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowY);
+            if (clipX || clipY) {
+              if (!intersect(
+                clipX ? ancestorRect.left : rect.left,
+                clipY ? ancestorRect.top : rect.top,
+                clipX ? ancestorRect.right : rect.right,
+                clipY ? ancestorRect.bottom : rect.bottom,
+              )) return false;
+            }
+          }
+          return true;
         };
         const readinessImages = (images) => {
           const intro = document.querySelector('[data-home-intro-surface]');
           if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
           return images.filter((image) => intro.contains(image));
         };
-        const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
-        const imageReady = images.map((image) => new Promise((resolve) => {
-          const finish = () => {
-            const decoded = (typeof image.decode === 'function' && image.naturalWidth > 0)
-              ? Promise.resolve(image.decode()).catch(() => undefined)
-              : Promise.resolve();
-            decoded.then(resolve, resolve);
-          };
-          if (image.complete) { finish(); return; }
-          const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); finish(); };
-          image.addEventListener('load', done, { once: true });
-          image.addEventListener('error', done, { once: true });
-        }));
         overlay.dataset.vcdInitialReveal = 'running';
         overlay.dataset.loading = 'true';
         overlay.style.animation = 'none';
         mark('initial-readiness-start');
         const intro = document.querySelector('[data-home-intro-surface]');
         const activeHomeIntro = intro && !intro.hidden && intro.dataset.state !== 'dismissed';
+        let layoutCleanup = () => {};
         const introLayoutReady = new Promise((resolve) => {
           if (activeHomeIntro || !document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
-          window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
+          const ready = () => { layoutCleanup(); resolve(); };
+          layoutCleanup = () => window.removeEventListener('vcd:intro-layout-ready', ready);
+          window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
+        });
+        const imageCleanups = [];
+        const imageReady = introLayoutReady.then(() => {
+          if (overlay.dataset.vcdInitialReveal !== 'running') return;
+          const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
+          images.forEach((image) => { image.loading = 'eager'; });
+          return Promise.all(images.map((image) => new Promise((resolve) => {
+            const finish = () => {
+              let decoded = Promise.resolve();
+              if (typeof image.decode === 'function' && image.naturalWidth > 0) {
+                try { decoded = Promise.resolve(image.decode()).catch(() => undefined); } catch { decoded = Promise.resolve(); }
+              }
+              decoded.then(resolve, resolve);
+            };
+            if (image.complete) { finish(); return; }
+            const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); finish(); };
+            imageCleanups.push(() => { image.removeEventListener('load', done); image.removeEventListener('error', done); });
+            image.addEventListener('load', done, { once: true });
+            image.addEventListener('error', done, { once: true });
+          })));
         });
         const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
-        Promise.race([Promise.all([introLayoutReady, ...imageReady]), timeout]).then(() => {
+        Promise.race([imageReady, timeout]).then(() => {
+          layoutCleanup();
+          imageCleanups.forEach((cleanup) => cleanup());
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
             if (overlay.dataset.vcdInitialReveal !== 'running') return;
@@ -484,7 +524,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
       const isInViewport = (el: Element) => {
         const vh = window.innerHeight || document.documentElement.clientHeight;
         const vw = window.innerWidth || document.documentElement.clientWidth;
-        let rect = el.getBoundingClientRect();
+        const frame = el.closest('.project-crop-clip, .project-image-grid__frame');
+        let rect = (frame || el).getBoundingClientRect();
         const intersect = (left: number, top: number, right: number, bottom: number) => {
           const next = {
             left: Math.max(rect.left, left), top: Math.max(rect.top, top),
@@ -576,6 +617,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         };
         const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
         for (const img of readinessImages) {
+          img.loading = 'eager';
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
             if (!img.complete) {
