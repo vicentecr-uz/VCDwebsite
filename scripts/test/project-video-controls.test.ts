@@ -50,12 +50,15 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   const scope = createPageScope();
   bindVideoPoster(video, controller, scope);
   const renderedPoster = controller.querySelector('.project-video-player__poster') as HTMLImageElement;
+  const spinner = controller.querySelector('.project-video-player__buffering') as HTMLElement;
+  expect(spinner.hidden).toBe(true);
   renderedPoster.animate = (() => ({ finished: fade, cancel() {} })) as any;
 
   controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
   expect(playCalls).toBe(1);
   expect(pauseCalls).toBe(1);
   expect(renderedPoster.hidden).toBe(false);
+  expect(spinner.hidden).toBe(false);
   readyState = 3; videoWidth = 640;
   video.dispatchEvent(new window.Event('canplay'));
   await settle();
@@ -64,6 +67,7 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   await settle();
   expect(playCalls).toBe(2);
   expect(renderedPoster.hidden).toBe(true);
+  expect(spinner.hidden).toBe(true);
   let propagated = 0;
   controller.addEventListener('mediaplayrequest', () => { propagated++; });
   controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
