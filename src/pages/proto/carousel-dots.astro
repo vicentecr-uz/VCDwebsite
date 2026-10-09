@@ -16,7 +16,7 @@ if (!import.meta.env.DEV) {
       <div class="prototype__stage">
         <iframe
           id="carousel-preview"
-          src="/goodhome-painting-tools?dev-transition=visible"
+          src="/new-classic-utility-knife?dev-transition=visible"
           title="Carousel opacity preview"
         ></iframe>
       </div>
@@ -258,10 +258,89 @@ if (!import.meta.env.DEV) {
   };
 
   const draft = readDraft();
+  const connectedDocuments = new WeakSet<Document>();
+  const scrolledDocuments = new WeakSet<Document>();
+  const styleId = 'carousel-dot-prototype-style';
+  const styleText = `
+    .project-image-carousel__dots {
+      --dot-inactive: var(--dot-dark-inactive, .3);
+      --dot-active: var(--dot-dark-active, .8);
+    }
+    .project-image-carousel__dot-mark {
+      background: var(--ref-palette-grey-100);
+    }
+    .project-image-carousel__dots[data-media-ground='dark'] {
+      --dot-inactive: var(--dot-white-inactive, .4);
+      --dot-active: var(--dot-white-active, .8);
+    }
+    .project-image-carousel__dots[data-media-ground='dark'] .project-image-carousel__dot-mark {
+      background: var(--ref-palette-grey-1000);
+    }
+    html[data-dot-colour='white'] .project-image-carousel__dots {
+      --dot-inactive: var(--dot-white-inactive, .4);
+      --dot-active: var(--dot-white-active, .8);
+    }
+    html[data-dot-colour='white'] .project-image-carousel__dots .project-image-carousel__dot-mark {
+      background: var(--ref-palette-grey-1000);
+    }
+    html[data-dot-colour='dark'] .project-image-carousel__dots {
+      --dot-inactive: var(--dot-dark-inactive, .3);
+      --dot-active: var(--dot-dark-active, .8);
+    }
+    html[data-dot-colour='dark'] .project-image-carousel__dots .project-image-carousel__dot-mark {
+      background: var(--ref-palette-grey-100);
+    }
+    .project-image-carousel__dot-mark {
+      opacity: calc(var(--dot-inactive) + var(--project-carousel-dot-activeness, 0) * (var(--dot-active) - var(--dot-inactive)));
+    }
+  `;
   inputs.forEach((input) => {
     const key = input.dataset.key as keyof DotConfig;
     input.value = String(draft[key]);
   });
+
+  const applyValues = (targetDocument: Document | null) => {
+    const target = targetDocument?.documentElement;
+    if (!target) return;
+    target.style.setProperty('--dot-white-inactive', String(draft.whiteInactive / 100));
+    target.style.setProperty('--dot-white-active', String(draft.whiteActive / 100));
+    target.style.setProperty('--dot-dark-inactive', String(draft.darkInactive / 100));
+    target.style.setProperty('--dot-dark-active', String(draft.darkActive / 100));
+  };
+
+  const applyColour = (targetDocument: Document | null) => {
+    const target = targetDocument?.documentElement;
+    if (!target || !colourSelect) return;
+    if (colourSelect.value === 'auto') target.removeAttribute('data-dot-colour');
+    else target.dataset.dotColour = colourSelect.value;
+  };
+
+  const reconnect = (targetDocument: Document | null) => {
+    if (!targetDocument) return;
+    if (!targetDocument.getElementById(styleId)) {
+      const style = targetDocument.createElement('style');
+      style.id = styleId;
+      style.textContent = styleText;
+      targetDocument.head.append(style);
+    }
+    applyValues(targetDocument);
+    applyColour(targetDocument);
+  };
+
+  const connectDocument = (targetDocument: Document, scroll = false) => {
+    if (!connectedDocuments.has(targetDocument)) {
+      connectedDocuments.add(targetDocument);
+      targetDocument.addEventListener('astro:after-swap', () => reconnect(targetDocument));
+    }
+    reconnect(targetDocument);
+    if (scroll && !scrolledDocuments.has(targetDocument)) {
+      const carousel = targetDocument.querySelector<HTMLElement>('[data-project-image-carousel]');
+      if (carousel) {
+        scrolledDocuments.add(targetDocument);
+        carousel.scrollIntoView({ block: 'start' });
+      }
+    }
+  };
 
   const apply = () => {
     const values = inputs.reduce((result, input) => {
@@ -276,72 +355,19 @@ if (!import.meta.env.DEV) {
     if (config) config.value = JSON.stringify(values);
     try { localStorage.setItem(storageKey, JSON.stringify(values)); } catch { /* Keep the draft live without storage. */ }
 
-    const target = iframe?.contentDocument?.documentElement;
-    if (!target) return;
-    target.style.setProperty('--dot-white-inactive', String(values.whiteInactive / 100));
-    target.style.setProperty('--dot-white-active', String(values.whiteActive / 100));
-    target.style.setProperty('--dot-dark-inactive', String(values.darkInactive / 100));
-    target.style.setProperty('--dot-dark-active', String(values.darkActive / 100));
-  };
-
-  const applyColour = () => {
-    const target = iframe?.contentDocument?.documentElement;
-    if (!target || !colourSelect) return;
-    if (colourSelect.value === 'auto') target.removeAttribute('data-dot-colour');
-    else target.dataset.dotColour = colourSelect.value;
+    reconnect(iframe?.contentDocument ?? null);
   };
 
   inputs.forEach((input) => input.addEventListener('input', apply));
-  const mount = () => {
+  const connectInitialDocument = () => {
     const targetDocument = iframe?.contentDocument;
-    if (!targetDocument) return;
-    if (!targetDocument.getElementById('carousel-dot-prototype-style')) {
-      const style = targetDocument.createElement('style');
-      style.id = 'carousel-dot-prototype-style';
-      style.textContent = `
-      .project-image-carousel__dots {
-        --dot-inactive: var(--dot-dark-inactive, .3);
-        --dot-active: var(--dot-dark-active, .8);
-      }
-      .project-image-carousel__dot-mark {
-        background: var(--ref-palette-grey-100);
-      }
-      .project-image-carousel__dots[data-media-ground='dark'] {
-        --dot-inactive: var(--dot-white-inactive, .4);
-        --dot-active: var(--dot-white-active, .8);
-      }
-      .project-image-carousel__dots[data-media-ground='dark'] .project-image-carousel__dot-mark {
-        background: var(--ref-palette-grey-1000);
-      }
-      html[data-dot-colour='white'] .project-image-carousel__dots {
-        --dot-inactive: var(--dot-white-inactive, .4);
-        --dot-active: var(--dot-white-active, .8);
-      }
-      html[data-dot-colour='white'] .project-image-carousel__dots .project-image-carousel__dot-mark {
-        background: var(--ref-palette-grey-1000);
-      }
-      html[data-dot-colour='dark'] .project-image-carousel__dots {
-        --dot-inactive: var(--dot-dark-inactive, .3);
-        --dot-active: var(--dot-dark-active, .8);
-      }
-      html[data-dot-colour='dark'] .project-image-carousel__dots .project-image-carousel__dot-mark {
-        background: var(--ref-palette-grey-100);
-      }
-      .project-image-carousel__dot-mark {
-        opacity: calc(var(--dot-inactive) + var(--project-carousel-dot-activeness, 0) * (var(--dot-active) - var(--dot-inactive)));
-      }
-      `;
-      targetDocument.head.append(style);
-    }
-    apply();
-    applyColour();
-    targetDocument.querySelector<HTMLElement>('[data-project-image-carousel]')?.scrollIntoView({ block: 'start' });
+    if (targetDocument) connectDocument(targetDocument, true);
   };
 
-  iframe?.addEventListener('load', mount);
-  if (iframe?.contentDocument?.readyState === 'complete' && iframe.contentDocument.querySelector('[data-project-image-carousel]')) mount();
+  iframe?.addEventListener('load', connectInitialDocument);
+  if (iframe?.contentDocument?.readyState === 'complete' && iframe.contentDocument.querySelector('[data-project-image-carousel]')) connectInitialDocument();
 
-  colourSelect?.addEventListener('change', applyColour);
+  colourSelect?.addEventListener('change', () => applyColour(iframe?.contentDocument ?? null));
 
   copyButton?.addEventListener('click', async () => {
     if (!config) return;
