@@ -9,6 +9,8 @@ import Analytics from '../components/Analytics.astro';
 // site-wide import, every real page (dev tools included) rendered those
 // classes with no CSS at all.
 import '../styles/dev-chrome.css';
+import loadingSpinnerStyles from '../styles/loading-spinner.css?raw';
+import spinnerMarkup from '../components/ui/LoadingSpinner.svg?raw';
 import DevModeController from '../components/DevModeController.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
 import DevVideoEditor from '../components/DevVideoEditor.astro';
@@ -158,41 +160,14 @@ const initialThemeColor = resolveToken('sys.color.srf');
       #transition-overlay[data-loading='true'] > [role='status'] {
         visibility: visible;
       }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g {
-        animation: transition-loader-spoke-enter 150ms ease both;
-      }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(1) { animation-delay: 200ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(2) { animation-delay: 287.5ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(3) { animation-delay: 375ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(4) { animation-delay: 462.5ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(5) { animation-delay: 550ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(6) { animation-delay: 637.5ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(7) { animation-delay: 725ms; }
-      #transition-overlay[data-loading='true'] > [role='status'] > svg > g:nth-child(8) { animation-delay: 812.5ms; }
       #transition-overlay > [role='status'] svg {
         display: block;
         width: 48px;
         height: 48px;
       }
-      #transition-overlay > [role='status'] rect {
-        animation: transition-overlay-spinner 700ms linear infinite;
-        opacity: 0.15;
-      }
-      #transition-overlay > [role='status'] g:nth-child(1) rect { animation-delay: -612.5ms; }
-      #transition-overlay > [role='status'] g:nth-child(2) rect { animation-delay: -525ms; }
-      #transition-overlay > [role='status'] g:nth-child(3) rect { animation-delay: -437.5ms; }
-      #transition-overlay > [role='status'] g:nth-child(4) rect { animation-delay: -350ms; }
-      #transition-overlay > [role='status'] g:nth-child(5) rect { animation-delay: -262.5ms; }
-      #transition-overlay > [role='status'] g:nth-child(6) rect { animation-delay: -175ms; }
-      #transition-overlay > [role='status'] g:nth-child(7) rect { animation-delay: -87.5ms; }
-      #transition-overlay > [role='status'] g:nth-child(8) rect { animation-delay: 0ms; }
-      @keyframes transition-overlay-spinner {
-        0%, 100% { opacity: 0.15; }
-        8% { opacity: 1; }
-      }
-      @keyframes transition-loader-spoke-enter {
-        from { opacity: 0; }
-        to { opacity: 1; }
+      #transition-overlay:not([data-loading='true']) .loading-spinner rect {
+        animation: none;
+        opacity: 0;
       }
       html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
       :root { view-transition-name: none; }
@@ -299,21 +274,13 @@ const initialThemeColor = resolveToken('sys.color.srf');
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl.href} />
+    <style is:inline set:html={loadingSpinnerStyles}></style>
   </head>
   <body data-dev-authoring={showDevTools ? '' : undefined}>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
     <div id="transition-overlay" data-loading="true">
       <div role="status" aria-label="Loading page">
-        <svg viewBox="0 0 24 24" width="48" height="48" aria-hidden="true" fill="currentColor">
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" /></g>
-          <g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" /></g>
-        </svg>
+        <Fragment set:html={spinnerMarkup} />
       </div>
     </div>
     {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}

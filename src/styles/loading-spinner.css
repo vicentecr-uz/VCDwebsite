@@ -1,0 +1,45 @@
+svg.loading-spinner {
+  --spinner-cycle: 700ms;
+  --spinner-first-cycle: 1190ms;
+  --spinner-wait: 200ms;
+  --spinner-step: calc(var(--spinner-cycle) / 8);
+  --spinner-first-step: calc(var(--spinner-first-cycle) / 8);
+  --spinner-rise: calc(var(--spinner-cycle) * 0.08);
+  --spinner-first-rise: calc(var(--spinner-first-cycle) * 0.08);
+}
+
+svg.loading-spinner > g:nth-child(1) { --loader-spoke-index: 0; }
+svg.loading-spinner > g:nth-child(2) { --loader-spoke-index: 1; }
+svg.loading-spinner > g:nth-child(3) { --loader-spoke-index: 2; }
+svg.loading-spinner > g:nth-child(4) { --loader-spoke-index: 3; }
+svg.loading-spinner > g:nth-child(5) { --loader-spoke-index: 4; }
+svg.loading-spinner > g:nth-child(6) { --loader-spoke-index: 5; }
+svg.loading-spinner > g:nth-child(7) { --loader-spoke-index: 6; }
+svg.loading-spinner > g:nth-child(8) { --loader-spoke-index: 7; }
+
+svg.loading-spinner > g > rect {
+  --spinner-enter-delay: calc(var(--spinner-wait) + var(--loader-spoke-index) * var(--spinner-first-step));
+  --spinner-pulse-delay: calc(var(--spinner-wait) + var(--spinner-first-cycle) + var(--spinner-first-rise) - var(--spinner-rise) + var(--loader-spoke-index) * var(--spinner-step));
+  --spinner-tail-delay: calc(var(--spinner-enter-delay) + var(--spinner-first-rise));
+  --spinner-tail-duration: calc(var(--spinner-pulse-delay) - var(--spinner-tail-delay));
+  opacity: 0;
+  animation:
+    loading-spinner-enter var(--spinner-first-rise) linear var(--spinner-enter-delay) both,
+    loading-spinner-tail var(--spinner-tail-duration) linear var(--spinner-tail-delay) forwards,
+    loading-spinner-pulse var(--spinner-cycle) linear var(--spinner-pulse-delay) infinite;
+}
+
+@keyframes loading-spinner-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes loading-spinner-tail {
+  from { opacity: 1; }
+  to { opacity: 0.15; }
+}
+
+@keyframes loading-spinner-pulse {
+  0%, 100% { opacity: 0.15; }
+  8% { opacity: 1; }
+}
