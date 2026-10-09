@@ -189,6 +189,14 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   let frame1 = 0;
   let frame2 = 0;
   let resetting = false;
+  const showBuffering = () => {
+    spinner.hidden = false;
+    controller.setAttribute('data-video-buffering', '');
+  };
+  const hideBuffering = () => {
+    spinner.hidden = true;
+    controller.removeAttribute('data-video-buffering');
+  };
 
   const restore = (stopLoading = true) => {
     generation++;
@@ -202,8 +210,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
     frame1 = 0; frame2 = 0;
     poster.hidden = false;
     poster.style.opacity = '1';
-    spinner.hidden = true;
-    controller.removeAttribute('data-video-buffering');
+    hideBuffering();
     video.pause();
     if (stopLoading) {
       video.preload = 'none';
@@ -218,8 +225,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   const finish = (token: number) => {
     if (!pending || token !== generation || !video.isConnected || video.readyState < 3 || video.videoWidth <= 0) return;
     pending = false;
-    spinner.hidden = true;
-    controller.removeAttribute('data-video-buffering');
+    hideBuffering();
     animation = poster.animate(
       [{ opacity: '1' }, { opacity: '0' }],
       { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200, easing: 'ease-out', fill: 'forwards' },
@@ -262,8 +268,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
       generation++;
       const token = generation;
       video.preload = 'auto';
-      spinner.hidden = false;
-      controller.setAttribute('data-video-buffering', '');
+      showBuffering();
       // Synchronous play/pause preserves the user gesture for delayed playback.
       let result: Promise<void> | undefined;
       try { result = video.play(); } catch { restore(); return; }
@@ -280,6 +285,19 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
 
   scope.listen(video, 'canplay', ready);
   scope.listen(video, 'loadeddata', ready);
+  scope.listen(video, 'waiting', () => {
+    if (!gateActive && !video.paused && !video.ended) showBuffering();
+  });
+  scope.listen(video, 'stalled', () => {
+    if (!gateActive && !video.paused && !video.ended) showBuffering();
+  });
+  scope.listen(video, 'playing', hideBuffering);
+  scope.listen(video, 'pause', () => {
+    if (!pending && !animation) hideBuffering();
+  });
+  scope.listen(video, 'ended', () => {
+    if (!pending && !animation) hideBuffering();
+  });
   scope.listen(controller, 'mediaplayrequest', (event) => {
     if (!gateActive) return;
     event.stopImmediatePropagation();
