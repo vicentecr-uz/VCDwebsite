@@ -1,40 +1,47 @@
 ---
 import '../../../styles/project.css';
 import Button from '../../ui/Button.astro';
-import DevPanel from '../../ui/DevPanel.astro';
 import Field from '../../ui/Field.astro';
 import SelectField from '../../ui/SelectField.astro';
+import { projectImageTier } from '../../../lib/images';
 import { normalizeImageVariants, responsiveImageStyle } from '../../../lib/responsiveImage';
-const initialVariants = normalizeImageVariants({ desktop: { aspect: '4:3' }, tablet: { aspect: '4:3' }, mobile: { aspect: '4:3' } }, '4:3', { width: 1200, height: 800 });
-const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height: 800 });
+
+const imageSrc = projectImageTier('IMG_2480.jpeg', 'preview');
+const imageDims = { width: 4032, height: 3024 };
+const initialVariants = normalizeImageVariants({ desktop: { aspect: '4:3', w: 0.8 }, tablet: { aspect: '4:3', w: 0.8 }, mobile: { aspect: '4:3', w: 0.8 } }, '4:3', imageDims);
+const initialStyle = responsiveImageStyle(initialVariants, imageDims);
 ---
 
 <vcd-crop-frame-demo>
-  <DevPanel title="Image framing" titleTag="h1" showLights={false} class="crop-frame-demo">
-    <div class="crop-frame-demo__controls">
-      <SelectField label="Frame" name="frame" value="4:3" options={[{ value: '1:1', label: '1:1' }, { value: '4:3', label: '4:3' }, { value: '16:9', label: '16:9' }]} />
-      <Field label="Zoom"><input type="range" min="100" max="250" step="1" value="100" aria-label="Zoom" data-crop-zoom /></Field>
+  <div class="crop-frame-demo__toolbar dev-surface" role="group" aria-label="Image framing controls">
+    <SelectField label="Frame" name="frame" value="4:3" options={[{ value: '4:3', label: '4:3' }, { value: '1:1', label: '1:1' }, { value: '3:4', label: '3:4' }]} />
+    <Field label="Zoom"><input type="range" min="100" max="250" step="1" value="125" aria-label="Zoom" data-crop-zoom /></Field>
+    <Button label="Reset" type="button" data-crop-reset />
+  </div>
+  <div class="crop-frame-demo__stage">
+    <div class="crop-frame-demo__frame project-cropped project-responsive-image" style={initialStyle} role="img" aria-label="Image framing. Drag to pan, or use arrow keys." tabindex="0" data-crop-frame>
+      <div class="project-crop-clip"><img src={imageSrc} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" draggable="false" data-crop-image /></div>
+      <span class="crop-frame-demo__grid" aria-hidden="true"></span>
     </div>
-    <div class="crop-frame-demo__frame project-cropped project-responsive-image" style={initialStyle} role="img" aria-label="Image framing" data-crop-frame>
-      <div class="project-crop-clip"><img src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" draggable="false" data-crop-image /></div>
-    </div>
-    <div class="crop-frame-demo__ranges">
-      <Field label="X"><input type="range" min="0" max="100" step="1" value="50" aria-label="X position" data-crop-x /></Field>
-      <Field label="Y"><input type="range" min="0" max="100" step="1" value="50" aria-label="Y position" data-crop-y /></Field>
-    </div>
-  </DevPanel>
-  <div class="demo-controls"><Button label="Reset" type="button" data-crop-reset /></div>
+  </div>
 </vcd-crop-frame-demo>
 
 <style>
-  vcd-crop-frame-demo { display: block; width: min(100%, 28em); }
-  .crop-frame-demo__controls, .crop-frame-demo__ranges { display: grid; gap: var(--space-unit); }
-  .crop-frame-demo__frame { width: 100%; overflow: visible; border-radius: var(--radius-control-smooth); outline: none; touch-action: none; cursor: grab; }
-  .crop-frame-demo__frame:active { cursor: grabbing; }
+  vcd-crop-frame-demo { display: block; width: min(100%, 38rem); }
+  .crop-frame-demo__toolbar { display: grid; grid-template-columns: minmax(7rem, 1fr) minmax(8rem, 1.35fr) auto; align-items: end; gap: var(--space-unit); padding: 0.5rem; border-radius: var(--radius-control-smooth); }
+  .crop-frame-demo__stage { display: grid; place-items: center; width: 100%; max-height: 28rem; margin-top: var(--space-unit); }
+  .crop-frame-demo__frame { width: min(100%, 28rem); max-height: 28rem; overflow: visible; border-radius: var(--radius-control-smooth); outline: none; touch-action: none; cursor: grab; }
+  .crop-frame-demo__frame[data-crop-aspect='3:4'] { width: min(100%, 21rem); }
+  .crop-frame-demo__frame:active, .crop-frame-demo__frame.is-dragging { cursor: grabbing; }
+  .crop-frame-demo__frame:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 4px; }
   .crop-frame-demo__frame .project-crop-clip { border-radius: inherit; }
   .crop-frame-demo__frame img { user-select: none; -webkit-user-drag: none; }
-  .crop-frame-demo input[type='range'] { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
-  @media (pointer: coarse) { .crop-frame-demo :global(.dev-btn), .crop-frame-demo :global(.dev-select__trigger), .crop-frame-demo :global(.dev-select__option), .crop-frame-demo input[type='range'] { min-height: 44px; } }
+  .crop-frame-demo__grid { position: absolute; inset: 0; z-index: 1; pointer-events: none; border-radius: inherit; opacity: 0; background: linear-gradient(to right, transparent 33.2%, color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent) 33.2% 33.6%, transparent 33.6% 66.4%, color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent) 66.4% 66.8%, transparent 66.8%), linear-gradient(to bottom, transparent 33.2%, color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent) 33.2% 33.6%, transparent 33.6% 66.4%, color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent) 66.4% 66.8%, transparent 66.8%); transition: opacity 180ms ease-out; }
+  .crop-frame-demo__frame.is-active .crop-frame-demo__grid { opacity: 1; }
+  vcd-crop-frame-demo input[type='range'] { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
+  @media (prefers-reduced-motion: reduce) { .crop-frame-demo__grid { transition-property: opacity; } }
+  @media (max-width: 40em) { .crop-frame-demo__toolbar { grid-template-columns: 1fr 1fr; } .crop-frame-demo__toolbar :global(.dev-btn) { grid-column: 1 / -1; } }
+  @media (pointer: coarse) { vcd-crop-frame-demo :global(.dev-btn), vcd-crop-frame-demo :global(.dev-select__trigger), vcd-crop-frame-demo input[type='range'] { min-height: 44px; } }
 </style>
 
 <script>
@@ -43,7 +50,7 @@ const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height
   class CropFrameDemo extends HTMLElement {
     private controller?: AbortController;
     private frame = '4:3';
-    private zoom = 100;
+    private zoom = 125;
     private cx = 0.5;
     private cy = 0.5;
     private pointerId?: number;
@@ -53,80 +60,74 @@ const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height
       this.controller?.abort();
       const controller = new AbortController(); this.controller = controller; const { signal } = controller;
       const host = this.querySelector<HTMLElement>('[data-crop-frame]');
-      const image = this.querySelector<HTMLImageElement>('[data-crop-image]');
       const select = this.querySelector<HTMLSelectElement>('select.dev-select__native');
       const zoom = this.querySelector<HTMLInputElement>('[data-crop-zoom]');
-      const x = this.querySelector<HTMLInputElement>('[data-crop-x]');
-      const y = this.querySelector<HTMLInputElement>('[data-crop-y]');
       const reset = this.querySelector<HTMLButtonElement>('[data-crop-reset]');
-      if (!host || !image || !select || !zoom || !x || !y || !reset) return;
+      if (!host || !select || !zoom || !reset) return;
       this.activeHost = host;
-      // One local frame adapter; the full crop tuner and its history stay elsewhere.
       const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+      const sourceAspect = 4032 / 3024;
+      const frameAspect = () => this.frame === '1:1' ? 1 : this.frame === '3:4' ? 3 / 4 : 4 / 3;
+      const bounds = () => {
+        const w = Math.min(1, coverWidthFraction(this.frame, sourceAspect) / (this.zoom / 100));
+        return { w, h: Math.min(1, (w * sourceAspect) / frameAspect()) };
+      };
       const render = () => {
-        const srcAspect = 1200 / 800;
-        const baseW = coverWidthFraction(this.frame, srcAspect);
-        const w = Math.min(1, baseW / (this.zoom / 100));
-        const frameAspect = this.frame === '1:1' ? 1 : this.frame === '16:9' ? 16 / 9 : 4 / 3;
-        const h = Math.min(1, (w * srcAspect) / frameAspect);
+        const { w, h } = bounds();
         this.cx = clamp(this.cx, w / 2, 1 - w / 2);
         this.cy = clamp(this.cy, h / 2, 1 - h / 2);
-        const variants = normalizeImageVariants({ desktop: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, tablet: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, mobile: { aspect: this.frame, cx: this.cx, cy: this.cy, w } }, this.frame, { width: 1200, height: 800 });
-        host.style.cssText = responsiveImageStyle(variants, { width: 1200, height: 800 });
-        host.setAttribute('aria-label', `Image framing ${this.frame}`);
-        x.value = String(Math.round(this.cx * 100));
-        y.value = String(Math.round(this.cy * 100));
+        const variants = normalizeImageVariants({ desktop: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, tablet: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, mobile: { aspect: this.frame, cx: this.cx, cy: this.cy, w } }, this.frame, { width: 4032, height: 3024 });
+        host.style.cssText = responsiveImageStyle(variants, { width: 4032, height: 3024 });
+        host.dataset.cropAspect = this.frame;
+        host.setAttribute('aria-label', `Image framing ${this.frame}. Drag to pan, or use arrow keys.`);
         zoom.value = String(this.zoom);
         zoom.setAttribute('aria-valuetext', `${this.zoom}%`);
       };
-      select.addEventListener('change', () => { this.frame = select.value; render(); }, { signal });
+      const release = (event?: PointerEvent) => {
+        if (event && event.pointerId !== this.pointerId) return;
+        const pointerId = this.pointerId;
+        this.pointerId = undefined;
+        host.classList.remove('is-dragging');
+        if (!host.matches(':focus')) host.classList.remove('is-active');
+        if (pointerId !== undefined && host.hasPointerCapture(pointerId)) host.releasePointerCapture(pointerId);
+      };
+      let pointerX = 0;
+      let pointerY = 0;
+      select.addEventListener('change', () => { release(); this.frame = select.value; render(); }, { signal });
       zoom.addEventListener('input', () => { this.zoom = Number(zoom.value); render(); }, { signal });
-      x.addEventListener('input', () => { this.cx = Number(x.value) / 100; render(); }, { signal });
-      y.addEventListener('input', () => { this.cy = Number(y.value) / 100; render(); }, { signal });
-      let pointerX = 0; let pointerY = 0;
+      host.addEventListener('focus', () => host.classList.add('is-active'), { signal });
+      host.addEventListener('blur', () => { if (this.pointerId === undefined) host.classList.remove('is-active'); }, { signal });
       host.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 || this.pointerId !== undefined) return;
-        event.preventDefault();
-        this.pointerId = event.pointerId;
-        pointerX = event.clientX;
-        pointerY = event.clientY;
-        host.setPointerCapture(event.pointerId);
+        event.preventDefault(); host.focus(); host.classList.add('is-active', 'is-dragging');
+        this.pointerId = event.pointerId; host.setPointerCapture(event.pointerId);
+        pointerX = event.clientX; pointerY = event.clientY;
       }, { signal });
       host.addEventListener('pointermove', (event) => {
-        if (event.pointerId !== this.pointerId || !host.hasPointerCapture(event.pointerId)) return;
-        const rect = host.getBoundingClientRect();
-        const w = coverWidthFraction(this.frame, 1.5) / (this.zoom / 100);
-        this.cx -= (event.clientX - pointerX) / rect.width * w;
-        this.cy -= (event.clientY - pointerY) / rect.width * w * 1.5;
-        pointerX = event.clientX;
-        pointerY = event.clientY;
-        render();
-      }, { signal });
-      const release = (event: PointerEvent) => {
         if (event.pointerId !== this.pointerId) return;
-        if (host.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
-        this.pointerId = undefined;
-      };
+        const rect = host.getBoundingClientRect(); const { w, h } = bounds();
+        this.cx -= (event.clientX - pointerX) / rect.width * w;
+        this.cy -= (event.clientY - pointerY) / rect.height * h;
+        pointerX = event.clientX; pointerY = event.clientY; render();
+      }, { signal });
       host.addEventListener('pointerup', release, { signal });
       host.addEventListener('pointercancel', release, { signal });
-      reset.addEventListener('click', () => {
-        this.frame = '4:3';
-        this.zoom = 100;
-        this.cx = 0.5;
-        this.cy = 0.5;
-        select.value = this.frame;
-        if (this.pointerId !== undefined && host.hasPointerCapture(this.pointerId)) host.releasePointerCapture(this.pointerId);
-        this.pointerId = undefined;
-        render();
+      host.addEventListener('lostpointercapture', () => release(), { signal });
+      host.addEventListener('keydown', (event) => {
+        const step = event.shiftKey ? 0.05 : 0.02;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); this.cx += event.key === 'ArrowLeft' ? -step : step; render(); }
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') { event.preventDefault(); this.cy += event.key === 'ArrowUp' ? -step : step; render(); }
       }, { signal });
+      reset.addEventListener('click', () => { release(); host.classList.remove('is-active'); this.frame = '4:3'; this.zoom = 125; this.cx = 0.5; this.cy = 0.5; select.value = this.frame; select.dispatchEvent(new Event('change', { bubbles: true })); render(); }, { signal });
       render();
     }
+
     disconnectedCallback() {
-      this.controller?.abort();
-      this.controller = undefined;
-      if (this.pointerId !== undefined && this.activeHost?.hasPointerCapture(this.pointerId)) this.activeHost.releasePointerCapture(this.pointerId);
+      this.controller?.abort(); this.controller = undefined;
+      const pointerId = this.pointerId;
       this.pointerId = undefined;
-      this.activeHost = undefined;
+      if (pointerId !== undefined && this.activeHost?.hasPointerCapture(pointerId)) this.activeHost.releasePointerCapture(pointerId);
+      this.activeHost?.classList.remove('is-dragging', 'is-active'); this.activeHost = undefined;
     }
   }
   if (!customElements.get('vcd-crop-frame-demo')) customElements.define('vcd-crop-frame-demo', CropFrameDemo);

@@ -7,7 +7,7 @@ import { CRAFT_DEMOS, craftDemo } from '../../src/lib/craftDemos.ts';
 
 await init;
 const root = path.resolve(import.meta.dirname, '../..');
-const dist = path.join(root, 'dist');
+const dist = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, 'dist');
 const allNodes = (node) => [node, ...(node.childNodes ?? []).flatMap(allNodes)];
 const attr = (node, name) => node?.attrs?.find((item) => item.name === name)?.value;
 const text = (node) => node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(text).join('');
@@ -21,7 +21,9 @@ const scriptGraph = async (source, seen = new Set()) => {
     if (seen.has(file)) continue;
     seen.add(file);
     const child = await readFile(file, 'utf8');
-    assert.doesNotMatch(child, /\/api\/|localStorage|sessionStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
+    assert.doesNotMatch(child, /\/api\/|localStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
+    // The existing magnifier keeps session presets; the other demos remain storage-free.
+    if (!path.basename(file).startsWith('ProgressiveImageDemo.')) assert.doesNotMatch(child, /sessionStorage/, file);
     await scriptGraph(child, seen);
   }
   return seen;
@@ -31,14 +33,15 @@ for (const demo of CRAFT_DEMOS) {
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
   const isProgressiveImage = demo.id === 'progressive-image';
-  if (isProgressiveImage) {
+  const isCanvas = ['progressive-image', 'image-framing', 'gap-spacing', 'block-reorder'].includes(demo.id);
+  if (isCanvas) {
     assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 0, `${demo.id}: no visible demo title`);
   } else {
     assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
   }
   const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes('dev-panel'));
   let panelNodes = [];
-  if (isProgressiveImage) {
+  if (isCanvas) {
     assert.equal(panels.length, 0, `${demo.id}: no DevPanel`);
   } else {
     assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
@@ -50,19 +53,16 @@ for (const demo of CRAFT_DEMOS) {
     assert.equal(headerElements[0].tagName, 'h1');
     assert.equal(text(headerElements[0]).trim(), demo.title);
   }
-  const reset = isProgressiveImage
-    ? nodes.find((node) => node.tagName === 'button' && attr(node, 'aria-label') === 'Reset')
-    : nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
-  assert.ok(reset, `${demo.id}: Reset`);
+  const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
+  if (!isProgressiveImage) assert.ok(reset, `${demo.id}: Reset`);
   if (isProgressiveImage) {
     const controls = nodes.find((node) => attr(node, 'role') === 'group' && attr(node, 'aria-label') === 'Image loading');
     assert.ok(controls, `${demo.id}: image loading controls`);
-    assert.ok(allNodes(controls).some((node) => node.tagName === 'button' && text(node).trim() === 'Load'), `${demo.id}: Load`);
-    assert.ok(allNodes(controls).includes(reset), `${demo.id}: Reset sits in image loading controls`);
+    assert.ok(allNodes(controls).some((node) => node.tagName === 'button' && attr(node, 'aria-label') === 'Load'), `${demo.id}: reversible Load control`);
   }
   assert.equal(panelNodes.includes(reset), false, `${demo.id}: Reset sits outside the panel`);
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
-  assert.ok(instance && allNodes(instance).includes(reset), `${demo.id}: Reset stays within its demo lifecycle`);
+  assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
   assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
@@ -116,4 +116,4 @@ for (const slug of ['devpanel', 'low-res-image-loader']) {
     assert.ok(craftDemo(section.demo), `${slug}: known demo`);
   }
 }
-console.log(`craft-demo-build: passed (${CRAFT_DEMOS.length} routes, native defaults, accessible labels, module isolation, no authoring APIs/storage)`);
+console.log(`craft-demo-build: passed (${CRAFT_DEMOS.length} routes, native defaults, accessible labels, module isolation, no authoring APIs)`);
