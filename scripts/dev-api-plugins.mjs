@@ -6,6 +6,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
+import sharp from 'sharp';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc, readMediaDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
@@ -778,7 +779,6 @@ export function mediaDevServer() {
               res.end('Bad request');
               return;
             }
-            const { default: sharp } = await import('sharp');
             let pipeline = sharp(filePath).rotate().resize({ width, withoutEnlargement: true });
             if (ext === '.png' || ext === '.webp' || ext === '.avif') {
               pipeline = pipeline.webp({ quality: 80 });

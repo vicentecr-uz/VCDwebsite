@@ -121,7 +121,7 @@ export function createDemoGapSpacing(root: HTMLElement) {
   }, { signal, passive: true });
   root.addEventListener('pointerleave', clear, { signal });
   root.addEventListener('keydown', (event) => { if (event.key === 'Escape') { clear(); escaped = true; } }, { signal });
-  win.addEventListener('scroll', () => { cancelIntent(); latest = undefined; }, { signal });
+  win.addEventListener('scroll', () => { cancelIntent(); latest = undefined; }, { signal, capture: true });
   win.addEventListener('resize', clear, { signal });
   return {
     reset() { clear(); states.forEach((state) => select(state, 'group')); escaped = false; },

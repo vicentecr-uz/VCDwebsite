@@ -1,24 +1,73 @@
 import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from './responsiveImage';
 import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
 
+export interface DemoImageCropState {
+  source: { src: string; width: number; height: number; alt: string };
+  crop: { aspect: string; cx: number; cy: number; w: number };
+  locked: boolean;
+}
+
 interface CropDemoOptions {
   host: HTMLElement;
   controls?: HTMLElement;
   sourceAspect?: number;
   initialAspect?: string;
+  initialState?: DemoImageCropState;
   active?: boolean;
 }
 
-export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', active = true }: CropDemoOptions) {
+const isValidAspect = (value: unknown): value is string => {
+  if (value === 'original') return true;
+  if (typeof value !== 'string' || !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?$/.test(value)) return false;
+  const [width, height] = value.split(':').map(Number);
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+};
+
+const isValidState = (value: unknown): value is DemoImageCropState => {
+  if (!value || typeof value !== 'object') return false;
+  const state = value as DemoImageCropState;
+  const source = state.source;
+  const crop = state.crop;
+  return Boolean(source && typeof source.src === 'string' && source.src)
+    && typeof source.alt === 'string'
+    && Number.isFinite(source.width) && source.width > 0
+    && Number.isFinite(source.height) && source.height > 0
+    && Boolean(crop && isValidAspect(crop.aspect))
+    && Number.isFinite(crop.cx) && Number.isFinite(crop.cy)
+    && Number.isFinite(crop.w) && crop.w > 0
+    && typeof state.locked === 'boolean';
+};
+
+const cloneState = (state: DemoImageCropState): DemoImageCropState => ({
+  source: { ...state.source },
+  crop: { ...state.crop },
+  locked: state.locked,
+});
+
+export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true }: CropDemoOptions) {
   const document = host.ownerDocument;
   const win = document.defaultView!;
   const lifecycle = new AbortController();
   const { signal } = lifecycle;
   const image = host.querySelector<HTMLImageElement>('.project-crop-clip img, img')!;
-  let sourceAspect = initialSourceAspect;
-  const original = { src: image.dataset.imagePreview || image.src, alt: image.alt, width: sourceAspect, height: 1 };
-  const { stage, ghost, ghostImg } = createImageCropStage({ src: image.dataset.imagePreview || image.src, document });
-  image.src = image.dataset.imagePreview || image.src;
+  const original = { src: image.dataset.imagePreview || image.src, alt: image.alt, width: initialSourceAspect, height: 1 };
+  const requestedInitialState = isValidState(initialState) ? cloneState(initialState) : undefined;
+  let source = requestedInitialState?.source ? { ...requestedInitialState.source } : { ...original };
+  let dimensions = { width: source.width, height: source.height };
+  let sourceAspect = source.width / source.height;
+  let aspect = requestedInitialState?.crop.aspect ?? initialAspect;
+  let w = requestedInitialState?.crop.w ?? coverWidthFraction(aspect, sourceAspect) / 1.25;
+  let cx = requestedInitialState?.crop.cx ?? 0.5;
+  let cy = requestedInitialState?.crop.cy ?? 0.5;
+  let locked = requestedInitialState?.locked ?? true;
+  const initialBaseline = requestedInitialState ?? {
+    source: { ...original },
+    crop: { aspect: initialAspect, cx: 0.5, cy: 0.5, w: coverWidthFraction(initialAspect, initialSourceAspect) / 1.25 },
+    locked: true,
+  };
+  const { stage, ghost, ghostImg } = createImageCropStage({ src: source.src, document });
+  image.src = source.src;
+  image.alt = source.alt;
   image.removeAttribute('role');
   image.removeAttribute('tabindex');
   image.removeAttribute('aria-label');
@@ -30,14 +79,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   const preview = controls?.querySelector<HTMLElement>('[data-crop-preview]');
   const select = controls?.querySelector<HTMLSelectElement>('select.dev-select__native');
   const constraint = controls?.querySelector<HTMLButtonElement>('[data-crop-constraint]');
-  let dimensions = { width: original.width, height: original.height };
-  let source = { ...original };
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-  let aspect = initialAspect;
-  let w = coverWidthFraction(aspect, sourceAspect) / 1.25;
-  let cx = 0.5;
-  let cy = 0.5;
-  let locked = true;
   let syncingSelect = false;
   const applySource = () => {
     image.src = source.src; image.alt = source.alt; ghostImg.src = source.src;
@@ -229,13 +271,37 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   controls?.querySelector('[data-crop-center-y]')?.addEventListener('click', () => { cy = 0.5; render(); }, { signal });
   controls?.querySelector('[data-crop-fit]')?.addEventListener('click', () => { locked = false; cx = cy = 0.5; w = Math.max(1, aspectValue() / sourceAspect); render(); }, { signal });
   constraint?.addEventListener('click', () => { locked = !locked; render(); }, { signal });
-  const resetCrop = () => { releases.forEach((release) => release()); aspect = initialAspect; w = coverWidthFraction(aspect, sourceAspect) / 1.25; cx = cy = 0.5; locked = true; render(); syncSelect(); };
+  const resetCrop = () => {
+    releases.forEach((release) => release());
+    aspect = initialAspect;
+    w = coverWidthFraction(aspect, sourceAspect) / 1.25;
+    cx = cy = 0.5;
+    locked = true;
+    render(); syncSelect();
+  };
   const setSource = (next: { src: string; width: number; height: number; alt?: string }) => {
     if (!next || typeof next.src !== 'string' || !next.src || !Number.isFinite(next.width) || !Number.isFinite(next.height) || next.width <= 0 || next.height <= 0) return false;
     source = { src: next.src, width: next.width, height: next.height, alt: next.alt ?? source.alt }; dimensions = { width: next.width, height: next.height }; sourceAspect = next.width / next.height; applySource();
     resetCrop(); return true;
   };
-  const reset = () => { source = { ...original }; dimensions = { width: original.width, height: original.height }; sourceAspect = original.width / original.height; applySource(); resetCrop(); };
+  const getState = (): DemoImageCropState => cloneState({ source: { ...source }, crop: { aspect, cx, cy, w }, locked });
+  const restore = (next: DemoImageCropState) => {
+    if (!isValidState(next)) return false;
+    releases.forEach((release) => release());
+    source = { ...next.source };
+    dimensions = { width: source.width, height: source.height };
+    sourceAspect = source.width / source.height;
+    aspect = next.crop.aspect;
+    cx = next.crop.cx;
+    cy = next.crop.cy;
+    w = next.crop.w;
+    locked = next.locked;
+    applySource();
+    render();
+    syncSelect();
+    return true;
+  };
+  const reset = () => restore(initialBaseline);
   controls?.querySelector('[data-crop-reset]')?.addEventListener('click', reset, { signal });
   const setActive = (next: boolean) => {
     active = next;
@@ -246,8 +312,9 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     stage.tabIndex = active ? 0 : -1;
     stage.setAttribute('aria-hidden', String(!active));
   };
+  applySource();
   render(); syncSelect(); setActive(active);
-  return { reset, setSource, setActive, destroy() {
+  return { reset, setSource, getState, restore, setActive, destroy() {
     releases.forEach((release) => release());
     lifecycle.abort();
     stage.remove(); ghost.remove();

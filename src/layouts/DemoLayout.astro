@@ -1,8 +1,8 @@
 ---
 import '../styles/global.css';
 
-interface Props { title: string; captureAssets?: boolean; scrolling?: boolean }
-const { title, captureAssets = false, scrolling = false } = Astro.props;
+interface Props { title: string; captureAssets?: boolean; scrolling?: boolean; authoring?: boolean }
+const { title, captureAssets = false, scrolling = false, authoring = false } = Astro.props;
 const connections = captureAssets
   ? "'self' https://fonts.googleapis.com https://fonts.gstatic.com"
   : "'none'";
@@ -12,7 +12,7 @@ const policy = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
-  `connect-src ${import.meta.env.DEV ? `${captureAssets ? connections : ''} ws:` : connections}`,
+  `connect-src ${import.meta.env.DEV ? `${captureAssets ? connections : authoring ? "'self'" : ''} ws:` : connections}`,
   "form-action 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -33,15 +33,23 @@ const policy = [
     <title>{title}</title>
   </head>
   <body>
-    <main class:list={['demo-page', scrolling && 'demo-page--scrolling']}><slot /></main>
+    <main class:list={['demo-page', scrolling && 'demo-page--scrolling']} data-page-viewport={scrolling ? true : undefined}><slot /></main>
   </body>
 </html>
 
 <style>
   html, body {
+    --section-lift-background: var(--comp-demo-frame-container);
     height: 100%;
     min-height: 100%;
     background: var(--comp-demo-frame-container);
+  }
+
+  html:has(.demo-page--scrolling),
+  body:has(.demo-page--scrolling) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .demo-page {
@@ -59,8 +67,12 @@ const policy = [
 
   .demo-page--scrolling {
     display: block;
+    height: 100%;
+    min-height: 0;
     padding-block: calc(var(--space-unit) * 5);
+    overflow-y: auto;
     overflow-anchor: none;
+    mask-image: linear-gradient(to bottom, transparent, black 2rem, black calc(100% - 2rem), transparent);
   }
 
   .demo-page.demo-page--scrolling :global(.demo-controls) {

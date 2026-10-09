@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../src/components/project/demos/CropFrameDemo.astro', import.meta.url), 'utf8')
   .split('<script>')[1].split('</script>')[0]
+  .replaceAll('import.meta.env.DEV', 'false')
   .replace(/^\s*import .*?;\s*$/gm, '');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 

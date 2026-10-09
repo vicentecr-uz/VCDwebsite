@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createDemoImageCrop } from '../../src/lib/demoImageCrop';
+import type { DemoImageCropState } from '../../src/lib/demoImageCrop';
+import { coverWidthFraction } from '../../src/lib/responsiveImage';
 
 const frame = (win: Window) => new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
 
-function setup({ sourceAspect = 16 / 9, initialAspect = 'original', active = true } = {}) {
+function setup({ sourceAspect = 16 / 9, initialAspect = 'original', initialState, active = true }: { sourceAspect?: number; initialAspect?: string; initialState?: DemoImageCropState; active?: boolean } = {}) {
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
   document.body.innerHTML = `<div data-crop-demo>
@@ -37,7 +39,7 @@ function setup({ sourceAspect = 16 / 9, initialAspect = 'original', active = tru
     target.dispatchEvent(event);
     return event;
   };
-  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, active });
+  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, initialState, active });
   setRects();
   return {
     win, document, root, host, controls, stage, preview, captures, pointer, api,
@@ -163,6 +165,22 @@ test('setSource synchronizes source imagery and reset restores the original', ()
   h.api.destroy();
 });
 
+test('setSource starts a fresh centered crop for the replacement aspect', () => {
+  const h = setup({ initialAspect: '4:3', initialState: {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved' },
+    crop: { aspect: '3:2', cx: 0.2, cy: 0.8, w: 0.35 },
+    locked: false,
+  } });
+  expect(h.api.setSource({ src: '/portrait.jpg', width: 100, height: 1000, alt: 'Portrait' })).toBe(true);
+  const state = h.api.getState();
+  expect(state.crop.aspect).toBe('4:3');
+  expect(state.crop.cx).toBe(0.5);
+  expect(state.crop.cy).toBe(0.5);
+  expect(state.locked).toBe(true);
+  expect(state.crop.w).toBeCloseTo(coverWidthFraction('4:3', 0.1) / 1.25);
+  h.api.destroy();
+});
+
 test('replacement dimensions drive Original and Fit before reset restores source metadata', () => {
   const h = setup({ initialAspect: '4:3' });
   expect(h.api.setSource({ src: '/portrait.jpg', width: 400, height: 800, alt: 'Portrait' })).toBe(true);
@@ -176,5 +194,39 @@ test('replacement dimensions drive Original and Fit before reset restores source
   h.api.reset();
   expect(h.host.querySelector('.project-crop-clip img')?.alt).toBe('Source');
   expect(h.select.value).toBe('4:3');
+  h.api.destroy();
+});
+
+test('initial state becomes the reset baseline and round trips through a deep copy', () => {
+  const initialState: DemoImageCropState = {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
+    crop: { aspect: '3:2', cx: 0.62, cy: 0.38, w: 0.72 },
+    locked: false,
+  };
+  const h = setup({ initialState });
+  const snapshot = h.api.getState();
+  expect(snapshot).toEqual(initialState);
+  snapshot.source.src = '/mutated.jpg';
+  snapshot.crop.cx = 0.1;
+  expect(h.api.getState()).toEqual(initialState);
+  expect(h.api.restore({ ...initialState, crop: { ...initialState.crop, cx: 0.3 } })).toBe(true);
+  expect(h.api.getState().crop.cx).toBe(0.3);
+  h.api.reset();
+  expect(h.api.getState()).toEqual(initialState);
+  expect(h.host.querySelector('.project-crop-clip img')?.src).toContain('/saved.jpg');
+  h.api.destroy();
+});
+
+test('invalid restore preserves the current state without releasing or rendering', () => {
+  const h = setup();
+  const before = h.api.getState();
+  const invalid = [
+    { ...before, source: { ...before.source, width: 0 } },
+    { ...before, crop: { ...before.crop, aspect: '0:3' } },
+    { ...before, crop: { ...before.crop, w: 0 } },
+    { ...before, locked: 'yes' },
+  ] as unknown as DemoImageCropState[];
+  invalid.forEach((state) => expect(h.api.restore(state)).toBe(false));
+  expect(h.api.getState()).toEqual(before);
   h.api.destroy();
 });
