@@ -10,7 +10,7 @@ export function createInlineVideo(src: string, alt = ''): HTMLVideoElement {
   video.setAttribute('aria-label', alt || 'Video');
   video.controls = true;
   video.playsInline = true;
-  video.preload = 'metadata';
+  video.preload = 'none';
   video.setAttribute('data-project-inline-video', '');
   return video;
 }
