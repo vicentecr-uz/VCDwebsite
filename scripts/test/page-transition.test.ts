@@ -1225,45 +1225,6 @@ test('ordinary pageshow does not restart entry', async () => {
   assert.equal(f.tweens.length, 0);
 });
 
-test('uncanceled beforeunload covers a previously revealed page', async () => {
-  const f = fixture();
-  await f.paint();
-  await f.finishReveal();
-  assert.equal(f.overlay.hidden, true);
-  f.window.emit('beforeunload', { defaultPrevented: false });
-  await flush();
-  assert.equal(f.overlay.hidden, false);
-  assert.equal(f.overlay.style.opacity, '1');
-  assert.equal(f.overlay.dataset.loading, 'true');
-});
-
-test('canceled beforeunload leaves revealed state intact, including later cancellation', async () => {
-  const f = fixture();
-  await f.paint();
-  await f.finishReveal();
-  f.window.addEventListener('beforeunload', (event) => { event.defaultPrevented = true; });
-  f.window.emit('beforeunload', { defaultPrevented: false });
-  await flush();
-  assert.equal(f.overlay.hidden, true);
-  assert.equal(f.overlay.dataset.loading, undefined);
-});
-
-test('canceled beforeunload preserves active readiness', async () => {
-  const image = new ImageFixture();
-  const f = fixture({ images: [image] });
-  await f.paint();
-  const loadListeners = image.count('load');
-  assert.equal(loadListeners, 1);
-  f.window.emit('beforeunload', { defaultPrevented: true });
-  await flush();
-  assert.equal(image.count('load'), loadListeners);
-  image.load();
-  image.decoded.resolve();
-  await flush();
-  await f.paint();
-  assert.equal(f.animations.length, 1);
-});
-
 for (const properties of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { defaultPrevented: true }]) {
   test(`native click semantics: ${JSON.stringify(properties)}`, () => {
     const f = fixture();

@@ -901,21 +901,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         suspended = true;
       });
 
-      window.addEventListener('beforeunload', (event) => {
-        // Let later prompt handlers cancel this handoff before covering the outgoing page.
-        Promise.resolve().then(() => {
-          if (event.defaultPrevented || !overlay || visibleTransition) return;
-          invalidate();
-          suspended = true;
-          clearHeaderNavigationState();
-          overlay.style.animation = 'none';
-          overlay.style.removeProperty('transition');
-          overlay.hidden = false;
-          overlay.style.opacity = '1';
-          overlay.dataset.loading = 'true';
-        });
-      });
-
       window.addEventListener('pageshow', (e) => {
         if (!e.persisted) return;
         suspended = false;
