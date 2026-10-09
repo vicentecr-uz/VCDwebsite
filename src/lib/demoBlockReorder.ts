@@ -9,6 +9,13 @@ export interface DemoBlockReorderOptions {
 export interface DemoBlockReorderHandle {
   reset(): void;
   destroy(): void;
+  getOrder(): HTMLElement[];
+  restore(order: HTMLElement[]): void;
+  guideLift(item: HTMLElement, x: number, y: number): boolean;
+  guideMove(x: number, y: number): void;
+  guideDrop(): Promise<void>;
+  cancel(): void;
+  guideTarget(index: number): void;
 }
 
 export function createDemoBlockReorder(
@@ -22,10 +29,11 @@ export function createDemoBlockReorder(
   const status = root.querySelector<HTMLElement>('.reorder-demo__status');
   if (!list || !resetButton || !status) {
     lifecycle.abort();
-    return { reset: () => {}, destroy: () => {} };
+    return { reset: () => {}, destroy: () => {}, getOrder: () => [], restore: () => {}, guideLift: () => false, guideMove: () => {}, guideDrop: async () => {}, cancel: () => {}, guideTarget: () => {} };
   }
 
   const originalNodes = [...list.childNodes];
+  const initialBlocks = new Set([...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')]);
   list.querySelectorAll('img').forEach((image) => {
     image.removeAttribute('role');
     image.removeAttribute('tabindex');
@@ -138,7 +146,7 @@ export function createDemoBlockReorder(
     setPressed(false);
     status.textContent = '';
   };
-  const finishDrop = async () => {
+  const finishDrop = async (focus = true) => {
     const activeController = controller;
     const activeGeneration = generation;
     const handle = dragHandle;
@@ -172,7 +180,7 @@ export function createDemoBlockReorder(
     dragHandle = null;
     liftNodes = null;
     setPressed(false);
-    if (activeGeneration === generation && !signal.aborted) handle?.focus();
+    if (focus && activeGeneration === generation && !signal.aborted) handle?.focus();
   };
   const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
     if (controller?.isActive() || dragItem) return false;
@@ -202,6 +210,7 @@ export function createDemoBlockReorder(
       if (event.button !== 0) return;
       event.preventDefault();
       if (!pickUp(item, handle, event.clientX, event.clientY)) return;
+      handle.blur();
       pointerId = event.pointerId;
       handle.setPointerCapture(event.pointerId);
     }, { signal });
@@ -212,7 +221,7 @@ export function createDemoBlockReorder(
     handle.addEventListener('pointerup', (event) => {
       if (event.pointerId !== pointerId || dragItem !== item) return;
       releaseCapture();
-      void finishDrop();
+      void finishDrop(false);
     }, { signal });
     handle.addEventListener('pointercancel', (event) => {
       if (event.pointerId !== pointerId) return;
@@ -274,5 +283,23 @@ export function createDemoBlockReorder(
     onSettle?.();
   };
 
-  return { reset, destroy };
+  const sameItems = (order: HTMLElement[]) => {
+    const seen = new Set(order);
+    return order.length === initialBlocks.size && seen.size === initialBlocks.size && order.every((item) => initialBlocks.has(item));
+  };
+  const guideLift = (item: HTMLElement, x: number, y: number) => {
+    const handle = item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]');
+    return Boolean(handle && pickUp(item, handle, x, y));
+  };
+  return {
+    reset,
+    destroy,
+    getOrder: () => allItems(),
+    restore(order: HTMLElement[]) { if (!sameItems(order)) return; reset(order); },
+    guideLift,
+    guideMove(x: number, y: number) { if (dragItem && controller?.isActive()) controller.setPointer(x, y); },
+    guideDrop: () => finishDrop(false),
+    cancel() { reset(liftNodes ?? [...list.childNodes]); },
+    guideTarget(index: number) { if (controller?.isActive()) controller.setTargetIndex(index); },
+  };
 }

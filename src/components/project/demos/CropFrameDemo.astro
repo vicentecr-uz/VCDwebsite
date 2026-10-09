@@ -1,5 +1,7 @@
 ---
 import '../../../styles/project.css';
+import '../../../styles/loading-spinner.css';
+import loadingSpinner from '../../ui/LoadingSpinner.svg?raw';
 import DevOverlayFrame from '../../ui/DevOverlayFrame.astro';
 import ImageCropControls from '../ImageCropControls.astro';
 import ImageReplaceControls from '../ImageReplaceControls.astro';
@@ -41,7 +43,13 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
           <PanelActions>
             <Button emphasis="ghost" label="Reset" data-demo-author-reset />
             <Button emphasis="ghost" label="Revert changes" data-demo-author-revert />
-            <Button emphasis="filled" label="Save changes" data-demo-author-save />
+            <Button emphasis="filled" label="Save changes" data-demo-author-save data-save-state="idle" aria-label="Save changes">
+              <span class="crop-demo-save" aria-hidden="true">
+                <span data-save-label="idle">Save changes</span>
+                <span data-save-label="saving" set:html={loadingSpinner} />
+                <span data-save-label="saved">Saved</span>
+              </span>
+            </Button>
           </PanelActions>
           <p data-image-replacement-status role="status" hidden></p>
         </div>
@@ -51,13 +59,14 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
       <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
     </div>
   </div>
-  <DevOverlayFrame title="Asset manager" layout="landscape" showMinimize={false} defaultHidden data-demo-asset-picker role="dialog" aria-label="Asset manager">
+  <DevOverlayFrame title="Asset manager" layout="landscape" defaultHidden data-demo-asset-picker role="dialog" aria-label="Asset manager">
     <AssetManagerContent showFilters={false} />
   </DevOverlayFrame>
   <script is:inline type="application/json" data-published-demo-assets set:html={JSON.stringify(catalog).replace(/</g, '\\u003c')} />
 </vcd-crop-frame-demo>
 
 <style>
+  :global(html:has(vcd-crop-frame-demo)), :global(body:has(vcd-crop-frame-demo)) { overflow: hidden; }
   vcd-crop-frame-demo { display: block; width: min(100%, 58rem); align-self: start; }
   .crop-frame-demo__layout { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); align-items: start; gap: calc(var(--space-unit) * 2); }
   .crop-frame-demo__panel { width: min(100%, 20rem); z-index: 1; }
@@ -69,20 +78,18 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
   .crop-frame-demo__canvas :global(.project-image) { margin: 0; }
   .crop-frame-demo__canvas :global(.project-image.dev-crop-stage-host) { overflow: visible; }
   .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible:not(.is-dragging):not(.is-resizing)) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
-  :global(.dev-overlay[data-demo-asset-picker]) {
-    top: var(--space-unit);
-    bottom: auto;
-    left: var(--space-unit);
-    right: var(--space-unit);
-    margin-inline: auto;
-    width: min(var(--dev-panel-width-landscape), calc(100% - var(--space-unit) * 2));
-    min-width: 0;
-    height: min(36em, calc(100% - var(--space-unit) * 2));
-    max-height: calc(100% - var(--space-unit) * 2);
-    z-index: 3;
+  .crop-demo-save { display: grid; place-items: center; }
+  .crop-demo-save > span { grid-area: 1 / 1; opacity: 0; filter: blur(3px); transition: opacity 160ms ease, filter 160ms ease; }
+  :global([data-save-state="idle"]) .crop-demo-save > [data-save-label="idle"],
+  :global([data-save-state="saving"]) .crop-demo-save > [data-save-label="saving"],
+  :global([data-save-state="saved"]) .crop-demo-save > [data-save-label="saved"] { opacity: 1; filter: blur(0); }
+  .crop-demo-save :global(svg) { display: block; width: 16px; height: 16px; }
+  :global([data-save-state]:not([data-save-state="saving"])) .crop-demo-save :global(rect) { animation: none; }
+  [data-image-replacement-status] { margin: 0; font: var(--dev-text-status); }
+  @media (prefers-reduced-motion: reduce) {
+    .crop-demo-save > span { filter: none; }
+    .crop-demo-save :global(rect) { animation: none; opacity: 1; }
   }
-  :global([data-demo-asset-picker] .dev-overlay__head) { cursor: default; }
-  :global([data-demo-asset-picker] .dev-overlay__resize) { display: none; }
   @media (max-width: 40em) { .crop-frame-demo__layout { grid-template-columns: 1fr; } .crop-frame-demo__canvas { order: -1; } .crop-frame-demo__panel { width: min(100%, 22rem); margin-inline: auto; } }
 </style>
 

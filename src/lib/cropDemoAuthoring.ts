@@ -3,6 +3,7 @@ import { isAcceptedImageFile, isVideoSrc } from './imageUpload.mjs';
 import { projectImage } from './images';
 import type { DemoImageCropState } from './demoImageCrop';
 import type { DemoImageReplacementAsset } from './demoImageReplacement';
+import { createDemoSaveFeedback } from './demoSaveFeedback';
 
 type CropAdapter = {
   getState(): DemoImageCropState;
@@ -23,6 +24,7 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
   const { signal } = lifecycle;
   const status = root.querySelector<HTMLElement>('[data-image-replacement-status]');
   const saveButton = root.querySelector<HTMLButtonElement>('[data-demo-author-save]');
+  const saveFeedback = createDemoSaveFeedback(saveButton);
   let generation = 0;
   let sourceName = options.src;
   let savedState = crop.getState();
@@ -61,6 +63,7 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
   };
   const onFile = async (file?: File) => {
     if (!file || signal.aborted) return;
+    saveFeedback.reset();
     const token = ++generation;
     if (!isAcceptedImageFile(file)) {
       message('Choose an image file.', token);
@@ -80,11 +83,13 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
       if (!filename) throw new Error('Could not upload the image.');
       await replace(filename, undefined, token);
     } catch (error) {
+      if (current(token)) saveFeedback.reset();
       message(error instanceof Error ? error.message : 'Could not replace the image.', token);
     }
   };
   const chooseAsset = async () => {
     const token = ++generation;
+    saveFeedback.reset();
     try {
       const choice = await options.chooseAsset();
       if (!current(token) || !choice) {
@@ -94,6 +99,7 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
       message('Loading image…', token);
       await replace(choice.src, choice.url, token);
     } catch (error) {
+      if (current(token)) saveFeedback.reset();
       message(error instanceof Error ? error.message : 'Could not replace the image.', token);
     }
   };
@@ -104,12 +110,14 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
   }, { signal });
   const reset = () => {
     generation += 1;
+    saveFeedback.reset();
     crop.setSource(crop.getState().source);
     message('');
   };
   root.querySelector('[data-demo-author-reset]')?.addEventListener('click', reset, { signal });
   root.querySelector('[data-demo-author-revert]')?.addEventListener('click', () => {
     generation += 1;
+    saveFeedback.reset();
     crop.restore(savedState);
     sourceName = savedName;
     message('');
@@ -120,7 +128,8 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
     const state = crop.getState();
     const name = sourceName;
     saveButton.disabled = true;
-    message('Saving…', token);
+    saveFeedback.begin();
+    message('');
     try {
       const response = await win.fetch('/api/image-crop', {
         method: 'POST', signal, headers: { 'content-type': 'application/json' },
@@ -132,14 +141,15 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
       if (signal.aborted) return;
       savedState = state;
       savedName = name;
-      message('Saved', token);
+      if (current(token)) saveFeedback.succeed();
       const parent = win.parent as Window & typeof globalThis;
       parent.dispatchEvent(new parent.CustomEvent('vcd:dev-content-written'));
     } catch (error) {
+      saveFeedback.reset();
       message(error instanceof Error ? error.message : 'Could not save the image.', token);
     } finally {
       if (!signal.aborted) saveButton.disabled = false;
     }
   }, { signal });
-  return { reset, destroy: () => lifecycle.abort() };
+  return { reset, destroy: () => { saveFeedback.destroy(); lifecycle.abort(); } };
 }

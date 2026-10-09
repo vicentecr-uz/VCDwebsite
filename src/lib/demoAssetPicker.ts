@@ -1,7 +1,17 @@
+import { createDevPanelDrag } from './devPanelDrag';
+import { createDevPanelCollapse } from './devPanelCollapse';
+
 export type DemoAsset = { src: string; filename: string; url: string; thumb: string };
 export type DemoAssetProject = { slug: string; title: string; images: DemoAsset[] };
 
 export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetProject[], opener: HTMLElement) {
+  const sourceWindow = panel.ownerDocument.defaultView!;
+  const sourceParent = panel.parentNode!;
+  const sourceNext = panel.nextSibling;
+  // Same-origin project demos share the page viewport; standalone previews keep their own.
+  if (sourceWindow.frameElement?.closest('.project-interactive-demo')) {
+    sourceWindow.parent.document.body.append(panel);
+  }
   const doc = panel.ownerDocument;
   const win = doc.defaultView!;
   const lifecycle = new win.AbortController();
@@ -15,6 +25,8 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
   let selected: DemoAsset | undefined;
   let resolvePick: ((asset: DemoAsset | undefined) => void) | undefined;
   let hideTimer = 0;
+  const stopDragging = createDevPanelDrag(panel);
+  const collapse = createDevPanelCollapse(panel);
 
   const syncSelection = () => {
     select.disabled = !selected;
@@ -93,12 +105,26 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
   panel.querySelector('[data-asset-footer]')?.removeAttribute('hidden');
   panel.querySelector('[data-asset-cancel]')?.addEventListener('click', () => close(), { signal });
   panel.querySelector('[data-hide-toggle]')?.addEventListener('click', () => close(), { signal });
+  panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => collapse.set(!panel.classList.contains('is-minimized')), { signal });
   select.addEventListener('click', () => { if (selected) close(selected); }, { signal });
   doc.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape' || !resolvePick) return;
     event.preventDefault();
     close();
   }, { signal });
+  const destroy = () => {
+    if (signal.aborted) return;
+    close(undefined, false);
+    lifecycle.abort();
+    win.clearTimeout(hideTimer);
+    stopDragging();
+    collapse.destroy();
+    panel.hidden = true;
+    projectsEl.replaceChildren();
+    grid.replaceChildren();
+    if (panel.parentNode !== sourceParent) sourceParent.insertBefore(panel, sourceNext?.parentNode === sourceParent ? sourceNext : null);
+  };
+  sourceWindow.addEventListener('pagehide', destroy, { signal });
   renderGrid();
   return {
     open: () => new Promise<DemoAsset | undefined>((resolve) => {
@@ -110,17 +136,11 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
       win.clearTimeout(hideTimer);
       panel.hidden = false;
       panel.inert = false;
+      if (panel.classList.contains('is-minimized')) collapse.set(false, false);
       panel.getBoundingClientRect();
       panel.classList.add('is-dev-overlay-open');
       (projectsEl.querySelector<HTMLElement>('.is-active') ?? panel.querySelector<HTMLElement>('[data-hide-toggle]'))?.focus({ preventScroll: true });
     }),
-    destroy() {
-      close(undefined, false);
-      lifecycle.abort();
-      win.clearTimeout(hideTimer);
-      panel.hidden = true;
-      projectsEl.replaceChildren();
-      grid.replaceChildren();
-    },
+    destroy,
   };
 }

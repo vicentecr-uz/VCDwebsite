@@ -26,7 +26,7 @@ const asset = (src: string): DemoImageReplacementAsset => ({ src, filename: src.
 
 test('asset choice displays preview but saves original filename; reset and save preserve targets', async () => {
   const h = setup(); h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('folder/foo bar.jpg')); await tick(); h.images[0].complete(); await tick(); expect(h.images[0].src).toBe('/images/folder/foo bar.jpg.preview.webp');
-  h.button('demo-author-reset').click(); h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'folder/foo bar.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } }); expect(h.status()).toBe('Saved'); expect(h.written).toBe(1); h.handle.destroy();
+  h.button('demo-author-reset').click(); h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'folder/foo bar.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } }); expect(h.status()).toBe(''); expect(h.written).toBe(1); h.handle.destroy();
 });
 
 test('revert restores the last saved image and crop, while failed save preserves it', async () => {
@@ -49,6 +49,28 @@ test('revert during file read prevents upload and destroy aborts in-flight uploa
   const h = setup(); const reads: Array<() => void> = []; h.win.FileReader = class { result = 'data:image/png;base64,aQ=='; onload?: () => void; readAsDataURL() { reads.push(() => this.onload?.()); } } as unknown as typeof h.win.FileReader;
   h.pickFile(); h.button('demo-author-revert').click(); reads[0](); await tick(); expect(h.requests).toHaveLength(0);
   const pending = deferred<Response>(); h.respond(() => pending.promise); h.pickFile(); reads[1](); await tick(); h.handle.destroy(); expect(h.requests[0].signal?.aborted).toBe(true); pending.resolve(response({ filenames: ['late.png'] })); await tick(); expect(h.images).toHaveLength(0);
+});
+
+test('a successful save clears an earlier save error and stale responses cannot restore feedback after reset', async () => {
+  const h = setup();
+  h.respond(async () => response({ error: 'Could not write crop.' }, 400));
+  h.button('demo-author-save').click();
+  await tick();
+  expect(h.status()).toBe('Could not write crop.');
+  h.respond(async () => response());
+  h.button('demo-author-save').click();
+  expect(h.status()).toBe('');
+  await tick();
+  expect(h.status()).toBe('');
+  const pending = deferred<Response>();
+  h.respond(() => pending.promise);
+  h.button('demo-author-save').click();
+  h.button('demo-author-reset').click();
+  pending.resolve(response());
+  await tick();
+  expect(h.status()).toBe('');
+  expect(h.button('demo-author-save').dataset.saveState).toBe('idle');
+  h.handle.destroy();
 });
 
 test('save commits the requested snapshot even if another image is selected during the write', async () => {

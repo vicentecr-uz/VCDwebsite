@@ -1,4 +1,6 @@
 ---
+import '../../styles/devOverlayFrame.css';
+import '../../styles/assetManager.css';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
@@ -20,6 +22,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
+    {['image-framing', 'gap-spacing'].includes(demo.id) && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <div class="project-interactive-demo__content">
       {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
         src={`/preview/${demo.id}`}
@@ -45,7 +48,21 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     border-radius: inherit;
   }
 
+  .project-interactive-demo__mobile-notice { display: none; }
+
   @media (max-width: 40em) {
+    .project-interactive-demo__mobile-notice {
+      display: block;
+      position: absolute;
+      top: var(--space-unit);
+      inset-inline: var(--space-unit);
+      z-index: 1;
+      margin: 0;
+      text-align: center;
+      font: var(--dev-text-status);
+      color: var(--sys-color-on-srf-variant);
+      pointer-events: none;
+    }
     .project-interactive-demo {
       /* Negative margins expand a block's auto width into the page gutter.
          `100% + 2 * gutter` overshoots when the inherited gutter does not
