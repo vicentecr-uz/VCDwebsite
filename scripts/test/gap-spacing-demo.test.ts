@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
+import { spacingButtonsHtml } from '../../src/lib/gapSpacingControl';
 
 const source = readFileSync(new URL('../../src/components/project/demos/GapSpacingDemo.astro', import.meta.url))
   .toString().split('<script>')[1].split('</script>')[0];
@@ -11,8 +12,7 @@ function setup() {
   const { document } = win;
   document.body.innerHTML = `<vcd-gap-spacing-demo>
     <div data-gap-viewport><div data-gap-space></div><div data-gap-toolbar><div data-gap-control>
-      <button data-gap-choice="related" aria-pressed="false">S</button><button data-gap-choice="group" aria-pressed="true">M</button>
-      <button data-gap-choice="section" aria-pressed="false">L</button><button data-gap-choice="major" aria-pressed="false">XL</button>
+      ${spacingButtonsHtml(false, false)}
     </div></div></div><button data-gap-reset>Reset</button>
   </vcd-gap-spacing-demo>`;
   const viewport = document.querySelector('[data-gap-viewport]') as HTMLElement;
@@ -45,7 +45,7 @@ const event = (win: Window, type: string, values: Record<string, unknown> = {}) 
 
 test('freezes the toolbar while changing the gap, then releases it through relocation', () => {
   const h = setup();
-  const choice = h.document.querySelector('[data-gap-choice="section"]') as HTMLButtonElement;
+  const choice = h.document.querySelector('[data-dev-spacing-option="section"]') as HTMLButtonElement;
   expect(h.toolbar.style.top).toBe('132px');
   h.toolbar.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'mouse' }));
   choice.click();
@@ -61,16 +61,16 @@ test('freezes the toolbar while changing the gap, then releases it through reloc
   h.host.remove();
 });
 
-test('reset cancels pending relocation and restores M and scroll position', () => {
+test('reset cancels pending relocation and restores 4em and scroll position', () => {
   const h = setup();
   const viewport = h.viewport;
   viewport.scrollTop = 120;
   h.toolbar.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'mouse' }));
-  (h.document.querySelector('[data-gap-choice="major"]') as HTMLButtonElement).click();
+  (h.document.querySelector('[data-dev-spacing-option="major"]') as HTMLButtonElement).click();
   h.toolbar.dispatchEvent(event(h.win, 'pointerleave'));
   (h.document.querySelector('[data-gap-reset]') as HTMLButtonElement).click();
   expect(viewport.scrollTop).toBe(0);
-  expect(h.document.querySelector('[data-gap-choice="group"]')!.getAttribute('aria-pressed')).toBe('true');
+  expect(h.document.querySelector('[data-dev-spacing-option="group"]')!.getAttribute('aria-pressed')).toBe('true');
   expect(h.toolbar.style.top).toBe('132px');
   h.flushTimers();
   expect(h.toolbar.style.top).toBe('132px');
@@ -80,7 +80,7 @@ test('reset cancels pending relocation and restores M and scroll position', () =
 
 test('touch choices reanchor immediately and wheel prevention stays on the toolbar', () => {
   const h = setup();
-  const choice = h.document.querySelector('[data-gap-choice="major"]') as HTMLButtonElement;
+  const choice = h.document.querySelector('[data-dev-spacing-option="major"]') as HTMLButtonElement;
   h.toolbar.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'touch' }));
   h.toolbar.dispatchEvent(event(h.win, 'pointerdown', { pointerType: 'touch' }));
   choice.click();
@@ -96,7 +96,7 @@ test('touch choices reanchor immediately and wheel prevention stays on the toolb
 
 test('disconnect clears pending timers and aborts choice listeners', () => {
   const h = setup();
-  const choice = h.document.querySelector('[data-gap-choice="section"]') as HTMLButtonElement;
+  const choice = h.document.querySelector('[data-dev-spacing-option="section"]') as HTMLButtonElement;
   h.toolbar.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'mouse' }));
   h.toolbar.dispatchEvent(event(h.win, 'pointerleave'));
   expect(h.timers.size).toBeGreaterThan(0);

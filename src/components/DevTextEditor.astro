@@ -10,6 +10,7 @@ import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
 import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
+import '../styles/gapSpacingControl.css';
 import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
 import ProjectAward from './project/ProjectAward.astro';
@@ -168,6 +169,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import { spacingButtonsHtml } from '../lib/gapSpacingControl';
 
   const disposePage = onPageLoad(() => {
   const pageScope = createPageScope();
@@ -211,22 +213,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
-  type SpacingOption = { value: SpacingValue; label: string; title: string };
-
-  const SPACING_OPTIONS: SpacingOption[] = [
-    { value: 'related', label: 'unit', title: 'Related · --space-unit' },
-    { value: 'group', label: '4em', title: 'Group · 4em' },
-    { value: 'section', label: '8em', title: 'Section · 8em' },
-    { value: 'major', label: '12em', title: 'Major · 12em' },
-  ];
-
-  /** Page boundary gap controls offer 0. */
-  const NONE_OPTION: SpacingOption = {
-    value: 'none',
-    label: '0',
-    title: 'None · 0',
-  };
-
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
     left.desktop === right.desktop && left.tablet === right.tablet && left.mobile === right.mobile
@@ -242,27 +228,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (viewport === 'mobile') return 'tablet';
     return null;
   };
-
-  const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
-    pageTop || pageBottom ? [NONE_OPTION, ...SPACING_OPTIONS] : SPACING_OPTIONS;
-
-  const spacingButtonsHtml = (pageTop: boolean, pageBottom: boolean) =>
-    spacingOptionsFor(pageTop, pageBottom)
-      .map(
-        (option) => `
-          <button
-            type="button"
-            class="dev-spacing-control__btn"
-            data-dev-spacing-option="${option.value}"
-            title="${option.title}"
-            aria-label="${option.title}"
-          >
-            <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
-            <span class="dev-spacing-control__label">${option.label}</span>
-          </button>
-        `,
-      )
-      .join('');
 
   const isSpacingStackParent = (el: HTMLElement | null): el is HTMLElement =>
     Boolean(
@@ -7236,22 +7201,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: auto;
   }
 
-  /* Unified pill (630:5633, Spacing Toolbar Base) — Add + the spacing chips
-     as one surface, matching Figma. Previously two separate floating
-     elements at Anto's request; reversed 2026-08-25. */
-  .dev-gap-toolbar__pill {
-    --dev-gap-pill-padding: 6px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-    width: max-content;
-    max-width: calc(100vw - 24px);
-    min-width: 0;
-    padding: var(--dev-gap-pill-padding);
-    border-radius: calc(var(--dev-radius-control) + var(--dev-gap-pill-padding));
-  }
-
   .dev-gap-toolbar__pill > .dev-hairline--vertical,
   .dev-text-format__buttons > .dev-hairline--vertical {
     margin-inline: 2px;
@@ -7405,14 +7354,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     outline-offset: -2px;
   }
 
-  /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
-     chips inside it. */
-  .dev-gap-toolbar__spacing {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
   .dev-spacing-control__reset-separator:has(+ .dev-spacing-control__reset[hidden]) {
     display: none;
   }
@@ -7446,70 +7387,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     .dev-spacing-control__reset.is-dev-spacing-reset-revealing {
       animation-name: dev-spacing-reset-fade;
     }
-  }
-
-  /* Ghost Button Base at 72px. */
-  .dev-spacing-control__btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 72px;
-    min-height: var(--dev-control-height);
-    box-sizing: border-box;
-    padding: 8px;
-    border: 0;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-button-ghost-container);
-    color: var(--comp-button-label);
-    font: var(--dev-text-label);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .dev-spacing-control__btn:hover {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  /* Ghost hover — Figma Spacing Toolbar Base uses Ghost/Hover for the
-     selected-looking chip, not Soft. */
-  .dev-spacing-control__btn.is-active {
-    background: var(--comp-button-ghost-container-hover);
-    color: var(--comp-button-label);
-  }
-
-  /* Affordance the static master doesn't draw — its chips are label-only. */
-  .dev-spacing-control__mark {
-    display: block;
-    width: 1.1em;
-    border-radius: 999px;
-    background: currentColor;
-    flex-shrink: 0;
-  }
-
-  .dev-spacing-control__mark--related {
-    height: 0.12em;
-  }
-
-  .dev-spacing-control__mark--group {
-    height: 0.2em;
-  }
-
-  .dev-spacing-control__mark--section {
-    height: 0.28em;
-  }
-
-  .dev-spacing-control__mark--major {
-    height: 0.45em;
-  }
-
-  .dev-spacing-control__mark--none {
-    height: 0;
-    width: 1.1em;
-    border: 1px solid currentColor;
-    background: transparent;
-    box-sizing: border-box;
-    border-radius: 1px;
   }
 
   /*

@@ -1,34 +1,23 @@
 ---
 import Button from '../../ui/Button.astro';
-import SegmentedControl from '../../ui/SegmentedControl.astro';
+import ProjectImage from '../ProjectImage.astro';
+import ProjectSectionTitle from '../ProjectSectionTitle.astro';
+import '../../../styles/project.css';
+import '../../../styles/gapSpacingControl.css';
+import { spacingButtonsHtml } from '../../../lib/gapSpacingControl';
 ---
 
 <vcd-gap-spacing-demo>
   <div class="gap-spacing-demo__viewport" data-gap-viewport tabindex="0" role="region" aria-label="Sample page">
     <div class="gap-spacing-demo__sample">
-      <article class="gap-spacing-demo__block">
-        <p class="gap-spacing-demo__eyebrow">Object study / 01</p>
-        <h2>Inside the object</h2>
-        <p>A utility knife, one part at a time.</p>
-      </article>
+      <ProjectSectionTitle title="Inside the object" spacing="none" />
       <div class="gap-spacing-demo__gap" data-gap-space aria-hidden="true"></div>
-      <article class="gap-spacing-demo__block gap-spacing-demo__block--lower">
-        <p class="gap-spacing-demo__eyebrow">Object study / 02</p>
-        <h2>The smaller parts</h2>
-        <p>A closer look at how it fits together.</p>
-      </article>
+      <ProjectImage src="IMG_2480.jpeg" srcWidth={4032} srcHeight={3024} alt="The parts of a utility knife on a cutting mat" variants={{ desktop: { aspect: "2:1", w: 1 } }} mobileInset spacing="none" />
     </div>
     <div class="gap-spacing-demo__toolbar" data-gap-toolbar data-visible>
-      <SegmentedControl label="Gap size" data-gap-control>
-        {[
-          ['S', 'related'],
-          ['M', 'group'],
-          ['L', 'section'],
-          ['XL', 'major'],
-        ].map(([label, token]) => (
-          <Button emphasis="ghost" width="fill" label={label} selected={token === 'group'} data-gap-choice={token} />
-        ))}
-      </SegmentedControl>
+      <div class="dev-gap-toolbar__pill dev-surface" role="group" aria-label="Gap size">
+        <div class="dev-gap-toolbar__spacing" data-gap-control set:html={spacingButtonsHtml(false, false)}></div>
+      </div>
     </div>
   </div>
   <div class="demo-controls"><Button label="Reset" type="button" data-gap-reset /></div>
@@ -38,7 +27,7 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
   vcd-gap-spacing-demo { display: block; width: min(100%, 38rem); }
   .gap-spacing-demo__viewport {
     position: relative;
-    height: 30rem;
+    height: 24rem;
     min-height: 20rem;
     overflow: auto;
     overflow-anchor: none;
@@ -49,23 +38,6 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
     scrollbar-color: var(--sys-color-srf-container-high) transparent;
   }
   .gap-spacing-demo__sample { padding: calc(var(--space-unit) * 2); }
-  .gap-spacing-demo__block {
-    padding: calc(var(--space-unit) * 1.5);
-    color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf-container);
-    border-radius: var(--radius-control-smooth);
-  }
-  .gap-spacing-demo__block--lower { background: var(--sys-color-srf-container-high); }
-  .gap-spacing-demo__eyebrow {
-    margin: 0 0 calc(var(--space-unit) * .75);
-    color: var(--sys-color-on-srf-variant);
-    font-size: .7rem;
-    font-weight: 700;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-  }
-  .gap-spacing-demo__block h2 { margin: 0; font-size: clamp(1.25rem, 4vw, 2rem); line-height: 1.05; letter-spacing: -.035em; }
-  .gap-spacing-demo__block p:last-child { max-width: 25em; margin: var(--space-unit) 0 0; color: var(--sys-color-on-srf-variant); line-height: 1.45; }
   .gap-spacing-demo__gap { height: var(--gap-spacing-value, var(--space-group)); }
   .gap-spacing-demo__toolbar {
     position: absolute;
@@ -75,20 +47,17 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
     opacity: 0;
     pointer-events: none;
     transform: translate(-50%, -50%);
-    transition: opacity 90ms ease;
+    transition: opacity 150ms ease;
   }
   .gap-spacing-demo__toolbar[data-visible] { opacity: 1; pointer-events: auto; }
   .gap-spacing-demo__toolbar[data-relocating] { opacity: 0; pointer-events: none; }
-  .gap-spacing-demo__toolbar :global(.dev-segmented) { padding: .2rem; background: var(--sys-color-srf-container); border-radius: 999px; box-shadow: 0 .35rem 1rem rgb(0 0 0 / 12%); }
-  .gap-spacing-demo__toolbar :global(.dev-btn) { min-width: 2.5rem; min-height: 2rem; padding-inline: .65rem; border-radius: 999px; }
-  .gap-spacing-demo__toolbar :global(.dev-btn.is-selected) { color: var(--sys-color-on-srf); background: var(--sys-color-srf-container-high); }
   .gap-spacing-demo__viewport:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
   .gap-spacing-demo__viewport:focus-within .gap-spacing-demo__toolbar,
   .gap-spacing-demo__toolbar[data-visible] { opacity: 1; pointer-events: auto; }
   .gap-spacing-demo__viewport:focus-within .gap-spacing-demo__toolbar[data-relocating] { opacity: 0; pointer-events: none; }
   @media (pointer: coarse) {
     .gap-spacing-demo__toolbar { opacity: 1; pointer-events: auto; }
-    .gap-spacing-demo__toolbar :global(.dev-btn) { min-height: 44px; min-width: 44px; }
+    .gap-spacing-demo__toolbar :global(.dev-spacing-control__btn) { min-height: 44px; min-width: 44px; }
   }
 </style>
 
@@ -114,9 +83,19 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
       const viewport = this.querySelector<HTMLElement>('[data-gap-viewport]');
       const gap = this.querySelector<HTMLElement>('[data-gap-space]');
       const toolbar = this.querySelector<HTMLElement>('[data-gap-toolbar]');
-      const choices = [...this.querySelectorAll<HTMLButtonElement>('[data-gap-choice]')];
+      const choices = [...this.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]')];
       const reset = this.querySelector<HTMLButtonElement>('[data-gap-reset]');
       if (!viewport || !gap || !toolbar || !reset || choices.length === 0) return;
+      this.querySelectorAll('img').forEach((image) => {
+        image.removeAttribute('role');
+        image.removeAttribute('tabindex');
+        image.removeAttribute('aria-label');
+      });
+      choices.forEach((choice) => {
+        const selected = choice.dataset.devSpacingOption === 'group';
+        choice.classList.toggle('is-active', selected);
+        choice.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
 
       const cancelRelocation = () => {
         this.generation += 1;
@@ -149,15 +128,15 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
           toolbar.removeAttribute('data-relocating');
           toolbar.setAttribute('data-visible', '');
           this.relocation = undefined;
-        }, 90);
+        }, 150);
       };
       const choose = (choice: HTMLButtonElement) => {
-        const next = choice.dataset.gapChoice as GapToken | undefined;
+        const next = choice.dataset.devSpacingOption as GapToken | undefined;
         if (!next || !values[next]) return;
         cancelRelocation();
         gap.style.setProperty('--gap-spacing-value', values[next]);
         choices.forEach((item) => {
-          item.classList.toggle('is-selected', item === choice);
+          item.classList.toggle('is-active', item === choice);
           item.setAttribute('aria-pressed', item === choice ? 'true' : 'false');
         });
         if (!this.pinned) midpoint();
@@ -192,8 +171,8 @@ import SegmentedControl from '../../ui/SegmentedControl.astro';
         this.pinned = false;
         gap.style.setProperty('--gap-spacing-value', values.group);
         choices.forEach((choice) => {
-          const selected = choice.dataset.gapChoice === 'group';
-          choice.classList.toggle('is-selected', selected);
+          const selected = choice.dataset.devSpacingOption === 'group';
+          choice.classList.toggle('is-active', selected);
           choice.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
         viewport.scrollTop = 0;
