@@ -35,14 +35,16 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   video.poster = '/poster.webp';
   let playCalls = 0;
   let pauseCalls = 0;
+  let playing = false;
   let readyState = 2;
   let videoWidth = 0;
   Object.defineProperties(video, {
     readyState: { configurable: true, get: () => readyState },
     videoWidth: { configurable: true, get: () => videoWidth },
   });
-  video.play = () => { playCalls++; return Promise.resolve(); };
-  video.pause = () => { pauseCalls++; };
+  Object.defineProperty(video, 'paused', { configurable: true, get: () => !playing });
+  video.play = () => { playCalls++; playing = true; return Promise.resolve(); };
+  video.pause = () => { pauseCalls++; playing = false; };
   let finishFade!: () => void;
   const fade = new Promise<void>((resolve) => { finishFade = resolve; });
   controller.append(video);
@@ -74,6 +76,13 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   controller.addEventListener('mediaplayrequest', () => { propagated++; });
   controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
   expect(propagated).toBe(1);
+  video.dispatchEvent(new window.Event('waiting'));
+  expect(spinner.hidden).toBe(false);
+  video.dispatchEvent(new window.Event('playing'));
+  expect(spinner.hidden).toBe(true);
+  video.pause();
+  video.dispatchEvent(new window.Event('pause'));
+  expect(spinner.hidden).toBe(true);
   scope.destroy();
   expect(controller.querySelector('.project-video-player__poster')).toBeNull();
 });
