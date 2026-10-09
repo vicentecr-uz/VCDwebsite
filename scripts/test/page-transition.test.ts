@@ -1334,6 +1334,8 @@ for (const initialController of [false, true]) {
     await f.paint();
     await f.paint();
     assert.equal(Number(f.overlay.style.opacity), 1);
+    assert.equal(f.animations.length, 0);
+    assert.equal(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'), false);
     fonts.resolve();
     await flush();
     await f.paint();
