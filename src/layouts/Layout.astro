@@ -275,8 +275,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
     )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" /></noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -379,6 +378,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
           layoutCleanup = () => window.removeEventListener('vcd:intro-layout-ready', ready);
           window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
         });
+        const fontReady = introLayoutReady.then(() => Promise.resolve(document.fonts?.ready).catch(() => undefined));
         const imageCleanups = [];
         const imageReady = introLayoutReady.then(() => {
           if (overlay.dataset.vcdInitialReveal !== 'running') return;
@@ -399,7 +399,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
             image.addEventListener('error', done, { once: true });
           })));
         });
-        imageReady.then(() => {
+        Promise.all([imageReady, fontReady]).then(() => {
           layoutCleanup();
           imageCleanups.forEach((cleanup) => cleanup());
           mark('initial-readiness-satisfied');
@@ -615,7 +615,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        void Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined);
         const layoutReady = new Promise<void>((resolve) => {
           if (document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
           const ready = () => { window.removeEventListener('vcd:intro-layout-ready', ready); resolve(); };
@@ -630,6 +629,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         };
         void layoutReady.then(() => {
           if (signal.aborted || settled) return;
+          waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
           const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
           for (const img of readinessImages) {
             img.loading = 'eager';

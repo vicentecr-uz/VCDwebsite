@@ -19,6 +19,8 @@ test('layout readiness has an independent early initializer', () => {
   assert.match(headInitializer, /addEventListener\('error'/);
   assert.doesNotMatch(headInitializer, /gsap|persistentNavigation|imagePreviewUpgrade|pageLifecycle/);
   assert.doesNotMatch(script ?? '', /bindSafeVh/);
+  assert.match(layout, /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/);
+  assert.doesNotMatch(layout, /media="print"|<noscript><link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/);
 });
 
 test('production visible diagnostic is limited to loopback hosts and the veil', () => {
@@ -823,7 +825,7 @@ test('inline readiness ignores hidden and clipped thumbnails while eagerly loadi
 
 test('active Home intro reveals after two paints without layout or underlying image readiness', async () => {
   const image = new ImageFixture();
-  const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image], fonts: new Promise(() => {}) });
+  const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image] });
   await f.paint();
   f.window.emit('vcd:intro-layout-ready');
   await f.paint();
@@ -929,6 +931,8 @@ test('visible decoded thumbnails gate reveal; fonts and offscreen images do not'
   assert.equal(visible.decodeCalls, 1);
   await flush();
   assert.equal(f.tweens.length, 0);
+  fonts.resolve();
+  await flush();
   visible.decoded.resolve();
   await flush();
   await f.paint();
@@ -1281,7 +1285,7 @@ test('a decode implementation throwing synchronously still releases readiness', 
 });
 
 test('navigation cancels the second opaque-paint frame', async () => {
-  const f = fixture({ fonts: deferred().promise });
+  const f = fixture();
   await f.frame();
   assert.equal(f.frames.size, 1);
   f.click();
@@ -1327,6 +1331,11 @@ for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} reveal does not hide text for a stalled font`, async () => {
     const fonts = deferred();
     const f = fixture({ initialController, fonts: fonts.promise });
+    await f.paint();
+    await f.paint();
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    fonts.resolve();
+    await flush();
     await f.paint();
     await f.paint();
     if (initialController) {
