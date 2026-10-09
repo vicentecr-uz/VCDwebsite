@@ -6,6 +6,7 @@ import playIcon from 'lucide-static/icons/play.svg?raw';
 import pauseIcon from 'lucide-static/icons/pause.svg?raw';
 import volumeIcon from 'lucide-static/icons/volume-2.svg?raw';
 import muteIcon from 'lucide-static/icons/volume-x.svg?raw';
+import spinnerMarkup from '../components/ui/LoadingSpinner.svg?raw';
 import { sizeIcon } from './icons';
 import { resolveVideoAudio, type ResolvedVideoAudio } from './videoAudio';
 
@@ -39,16 +40,6 @@ export function syncProjectVideoAudio(video: HTMLVideoElement): void {
 
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
-
-const videoSpinnerMarkup = '<svg viewBox="0 0 24 24" width="33.6" height="33.6" aria-hidden="true" fill="currentColor">'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" /></g>'
-  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" /></g></svg>';
 
 function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange, scope: ReturnType<typeof createPageScope>): () => void {
   let previousVolume = 0.5;
@@ -178,7 +169,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   spinner.setAttribute('aria-label', 'Loading video');
   spinner.setAttribute('noautohide', '');
   spinner.hidden = true;
-  spinner.innerHTML = videoSpinnerMarkup;
+  spinner.innerHTML = spinnerMarkup;
   controller.insertBefore(spinner, video);
 
   let generation = 0;

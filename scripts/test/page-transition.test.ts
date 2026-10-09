@@ -5,6 +5,7 @@ import { test } from 'bun:test';
 import gsap from 'gsap';
 
 const layout = readFileSync(process.env.LAYOUT_TEST_SOURCE ?? new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+const spinnerMarkup = readFileSync(new URL('../../src/components/ui/LoadingSpinner.svg', import.meta.url), 'utf8');
 test('scrub transition UI and source instrumentation are removed', () => {
   assert.doesNotMatch(layout, /DevTransitionTimeline|dev-transition[^\n]*scrub|data-transition-(?:image-index|thumb-src|preview-src)|Scrub transition/);
   assert.match(layout, /transitionMode === 'visible'/);
@@ -44,7 +45,8 @@ test('cold loads cover with an inline veil before bundled CSS', () => {
   assert.match(layout, /<a href="#main-content"[\s\S]*?<div id="transition-overlay" data-loading="true">/);
 });
 test('cold loads include an accessible delayed activity indicator in the veil', () => {
-  assert.match(layout, /<div id="transition-overlay" data-loading="true">\s*<div role="status" aria-label="Loading page">[\s\S]*?<svg[^>]*aria-hidden="true"/);
+  assert.match(layout, /<div id="transition-overlay" data-loading="true">\s*<div role="status" aria-label="Loading page">\s*<Fragment set:html=\{spinnerMarkup\} \/>/);
+  assert.match(spinnerMarkup, /^<svg[^>]*class="loading-spinner"[^>]*aria-hidden="true"/);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
