@@ -5,6 +5,7 @@ export type DemoAsset = { src: string; filename: string; url: string; thumb: str
 export type DemoAssetProject = { slug: string; title: string; images: DemoAsset[] };
 
 export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetProject[], opener: HTMLElement) {
+  panel.tabIndex = -1;
   const sourceWindow = panel.ownerDocument.defaultView!;
   const sourceParent = panel.parentNode!;
   const sourceNext = panel.nextSibling;
@@ -139,7 +140,7 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
       if (panel.classList.contains('is-minimized')) collapse.set(false, false);
       panel.getBoundingClientRect();
       panel.classList.add('is-dev-overlay-open');
-      (projectsEl.querySelector<HTMLElement>('.is-active') ?? panel.querySelector<HTMLElement>('[data-hide-toggle]'))?.focus({ preventScroll: true });
+      panel.focus({ preventScroll: true });
     }),
     destroy,
   };

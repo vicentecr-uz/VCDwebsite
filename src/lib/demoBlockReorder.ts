@@ -84,16 +84,14 @@ export function createDemoBlockReorder(
       },
       measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => {
         if (!scroll) return { top: '0px', bottom: '0px', marginTop: '0px' };
-        const remaining = items();
-        const destinationNext = remaining[insertIndex];
         const movedAway = insertIndex !== sourceIndex;
-        const destinationGap = destinationNext
-          ? getComputedStyle(destinationNext).marginTop || '0px'
-          : 'var(--space-related)';
+        const retainedGap = dragItem
+          ? getComputedStyle(dragItem).getPropertyValue('--demo-block-gap').trim()
+          : '';
         return {
           top: '0px',
           bottom: '0px',
-          marginTop: !movedAway ? liftGaps.top : insertIndex === 0 ? '0px' : destinationGap,
+          marginTop: !movedAway ? liftGaps.top : insertIndex === 0 ? '0px' : retainedGap || liftGaps.top,
         };
       },
       ...(scroll ? {} : { scrollTuning: { maxScrollSpeed: 0 } }),

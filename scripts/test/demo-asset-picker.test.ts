@@ -32,7 +32,11 @@ test('selection resolves the image with accessible state and returns focus to th
   const h = setup();
   const picked = h.api.open();
   expect(h.panel.hidden).toBe(false);
-  expect(h.win.document.activeElement?.textContent).toBe('Tools');
+  expect(h.win.document.activeElement).toBe(h.panel);
+  const projectButton = h.panel.querySelector<HTMLButtonElement>('[data-asset-project="tools"]')!;
+  expect(projectButton.tabIndex).toBe(0);
+  projectButton.focus();
+  expect(h.win.document.activeElement).toBe(projectButton);
   expect(h.panel.querySelector('[data-asset-status]')?.textContent).toBe('1 image');
   expect(h.panel.querySelector('img')?.getAttribute('src')).toBe('/images/tool.thumb.webp');
   h.click('[data-asset-src]');
@@ -57,9 +61,11 @@ test('switching project clears selection; cancel and Escape settle without repla
   expect(h.panel.querySelector('img')?.getAttribute('src')).toBe('/images/chair.thumb.webp');
   h.click('[data-asset-cancel]');
   expect(await first).toBeUndefined();
+  expect(h.win.document.activeElement).toBe(h.opener);
   const second = h.api.open();
   h.win.document.dispatchEvent(new h.win.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
   expect(await second).toBeUndefined();
+  expect(h.win.document.activeElement).toBe(h.opener);
   h.api.destroy();
 });
 
@@ -82,6 +88,7 @@ test('project iframe picker belongs to the page viewport and returns on teardown
   expect(h.panel.ownerDocument).toBe(h.parent.document);
   expect(h.panel.parentNode).toBe(h.parent.document.body);
   const pending = h.api.open();
+  expect(h.parent.document.activeElement).toBe(h.panel);
   h.click('[data-minimize-toggle]');
   expect(h.panel.classList.contains('is-minimized')).toBe(true);
   expect(h.panel.querySelector<HTMLElement>('[data-overlay-body]')!.inert).toBe(true);

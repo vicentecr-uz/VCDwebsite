@@ -67,6 +67,46 @@
   box-sizing: border-box;
 }
 
+/* Dirty spacing highlights the margin-top gap above the block. */
+.is-dev-mode :is([data-dev-spacing-document], [data-demo-spacing]).is-dev-spacing-dirty {
+  position: relative;
+}
+
+.is-dev-mode :is([data-dev-spacing-document], [data-demo-spacing]).is-dev-spacing-dirty::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  width: min(var(--page-max-width), calc(100vw - 2 * var(--space-unit)));
+  bottom: 100%;
+  height: var(--space-group);
+  box-sizing: border-box;
+  border: var(--dev-edit-dash);
+  pointer-events: none;
+  z-index: 35;
+}
+
+.is-dev-mode
+  :is([data-dev-spacing-document], [data-demo-spacing]).is-dev-spacing-dirty:is(
+    .project-block--centered,
+    .project-image-grid,
+    .project-image-carousel
+  )::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--related::before { height: var(--space-related); }
+.is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::before { height: var(--space-group); }
+.is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--section::before { height: var(--space-section); }
+.is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::before { height: var(--space-major); }
+.is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--none::before,
+.is-dev-mode .project-stack--flush + [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--flush::before { content: none; }
+.is-dev-mode .project-stack--precede-related + [data-dev-spacing-document].is-dev-spacing-dirty:not(.project-stack--related):not(.project-stack--group):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none)::before { height: var(--space-related); }
+.is-dev-mode [data-demo-spacing].is-dev-spacing-dirty::before { width: 100%; height: var(--demo-block-gap, var(--space-group)); }
+.is-dev-mode [data-demo-spacing]:first-child.is-dev-spacing-dirty::before,
+html.is-section-reorder-dragging.is-dev-mode :is([data-dev-spacing-document], [data-demo-spacing]).is-section-lifted-session.is-dev-spacing-dirty::before { content: none; }
+.is-dev-mode [data-demo-spacing].is-section-lifted-session.is-dev-spacing-dirty::before { content: none; }
+
 @media (pointer: coarse) {
   vcd-gap-spacing-demo .dev-spacing-control__btn { min-width: 44px; min-height: 44px; }
 }

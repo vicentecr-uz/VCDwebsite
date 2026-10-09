@@ -60,3 +60,54 @@ test('scrolling demo measures flat-list margins through lift and target changes'
   expect(root.querySelector('[data-reorder-demo-list]')?.firstElementChild).toBe(blocks[0]);
   reorder.destroy();
 });
+
+test('scrolling demo keeps the lifted block gap in the final slot through drop', async () => {
+  const win = new Window({ url: 'http://localhost/' });
+  const { document } = win;
+  Object.assign(globalThis, {
+    window: win,
+    document,
+    HTMLElement: win.HTMLElement,
+    getComputedStyle: win.getComputedStyle.bind(win),
+    requestAnimationFrame: win.requestAnimationFrame.bind(win),
+    cancelAnimationFrame: win.cancelAnimationFrame.bind(win),
+  });
+  document.body.innerHTML = `<div>
+    <div data-reorder-demo-list>
+      <article data-reorder-demo-block data-title="One" style="margin-top: 64px; --demo-block-gap: 64px"><button data-reorder-demo-handle></button></article>
+      <article data-reorder-demo-block data-title="Two" style="margin-top: 64px; --demo-block-gap: 64px"><button data-reorder-demo-handle></button></article>
+      <article data-reorder-demo-block data-title="Three" style="margin-top: 64px; --demo-block-gap: 64px"><button data-reorder-demo-handle></button></article>
+    </div>
+    <div class="reorder-demo__status"></div>
+    <button data-reorder-demo-reset>Reset</button>
+  </div>`;
+  const root = document.body.firstElementChild as HTMLElement;
+  const blocks = [...root.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
+  blocks.forEach((block, index) => {
+    block.getBoundingClientRect = () => ({ top: index * 128, left: 0, right: 320, bottom: index * 128 + 64, width: 320, height: 64 } as DOMRect);
+  });
+  const handles = blocks.map((block) => block.querySelector('button') as HTMLButtonElement);
+  handles.forEach((handle) => {
+    handle.setPointerCapture = () => {};
+    handle.hasPointerCapture = () => false;
+    handle.releasePointerCapture = () => {};
+  });
+  const reorder = createDemoBlockReorder(root, { scroll: true });
+
+  expect(reorder.guideLift(blocks[1], 0, 0)).toBe(true);
+  await flush();
+  const indicator = root.querySelector<HTMLElement>('.dev-section-drop-indicator');
+  expect(indicator).not.toBeNull();
+
+  reorder.guideTarget(0);
+  await flush();
+  expect(indicator?.style.marginTop).toBe('0px');
+
+  reorder.guideTarget(2);
+  await flush();
+  expect(indicator?.style.marginTop).toBe('64px');
+  await reorder.guideDrop();
+  expect(indicator?.style.marginTop).toBe('64px');
+  expect(reorder.getOrder()).toEqual([blocks[0], blocks[2], blocks[1]]);
+  reorder.destroy();
+});

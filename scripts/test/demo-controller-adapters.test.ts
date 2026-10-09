@@ -23,6 +23,25 @@ test('gap adapter restores tokens, reveals a block, and reports changes', () => 
   handle.destroy();
 });
 
+test('gap adapter tracks dirty spacing against saved block identities', () => {
+  const win = new Window();
+  const root = win.document.createElement('div');
+  root.innerHTML = '<article data-reorder-demo-block><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><button data-dev-spacing-option="group"></button><button data-dev-spacing-option="section"></button></div></div></article><article data-reorder-demo-block><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><button data-dev-spacing-option="group"></button><button data-dev-spacing-option="section"></button></div></div></article>';
+  const handle = createDemoGapSpacing(root);
+  const blocks = [...root.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
+  handle.setSavedState(['group', 'section']);
+  expect(blocks.map((block) => block.classList.contains('is-dev-spacing-dirty'))).toEqual([false, true]);
+  handle.select(blocks[0], 'section');
+  expect(blocks.map((block) => block.classList.contains('is-dev-spacing-dirty'))).toEqual([true, true]);
+  handle.restore(['group', 'section']);
+  expect(blocks.map((block) => block.classList.contains('is-dev-spacing-dirty'))).toEqual([false, false]);
+  handle.setSavedState(handle.getState());
+  expect(blocks.some((block) => block.classList.contains('is-dev-spacing-dirty'))).toBe(false);
+  handle.select(blocks[1], 'group');
+  handle.destroy();
+  expect(blocks.some((block) => block.classList.contains('is-dev-spacing-dirty'))).toBe(false);
+});
+
 test('reorder adapter exposes order and rejects foreign restore nodes', () => {
   const win = new Window();
   const root = win.document.createElement('div');
