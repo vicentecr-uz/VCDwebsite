@@ -378,7 +378,18 @@ const initialThemeColor = resolveToken('sys.color.srf');
           layoutCleanup = () => window.removeEventListener('vcd:intro-layout-ready', ready);
           window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
         });
-        const fontReady = introLayoutReady.then(() => Promise.resolve(document.fonts?.ready).catch(() => undefined));
+        const fontReady = introLayoutReady.then(() => {
+          const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
+            ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
+            : [];
+          return Promise.all(faces.map((face) => Promise.resolve(face.loaded).catch(() => undefined))).then(() => {
+            if (overlay.dataset.vcdInitialReveal !== 'running') return;
+            document.body?.getBoundingClientRect();
+            mark('initial-layout-ready');
+            mark('initial-fonts-ready');
+            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+          });
+        });
         const imageCleanups = [];
         const imageReady = introLayoutReady.then(() => {
           if (overlay.dataset.vcdInitialReveal !== 'running') return;
@@ -397,7 +408,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
             imageCleanups.push(() => { image.removeEventListener('load', done); image.removeEventListener('error', done); });
             image.addEventListener('load', done, { once: true });
             image.addEventListener('error', done, { once: true });
-          })));
+          }))).then(() => {
+            if (overlay.dataset.vcdInitialReveal === 'running') mark('initial-thumbnails-ready');
+          });
         });
         Promise.all([imageReady, fontReady]).then(() => {
           layoutCleanup();
@@ -617,7 +630,12 @@ const initialThemeColor = resolveToken('sys.color.srf');
         const waits: Promise<unknown>[] = [];
         const layoutReady = new Promise<void>((resolve) => {
           if (document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
-          const ready = () => { window.removeEventListener('vcd:intro-layout-ready', ready); resolve(); };
+          const ready = () => {
+            window.removeEventListener('vcd:intro-layout-ready', ready);
+            document.body?.getBoundingClientRect();
+            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+            resolve();
+          };
           window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
           cleanups.push(() => window.removeEventListener('vcd:intro-layout-ready', ready));
         });
@@ -629,7 +647,15 @@ const initialThemeColor = resolveToken('sys.color.srf');
         };
         void layoutReady.then(() => {
           if (signal.aborted || settled) return;
-          waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
+          const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
+            ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
+            : [];
+          waits.push(Promise.all(faces.map((face) => Promise.resolve(face.loaded).catch(() => undefined))).then(() => {
+            if (signal.aborted || settled) return;
+            document.body?.getBoundingClientRect();
+            emitTransitionMilestone('fonts-ready');
+            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+          }));
           const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
           for (const img of readinessImages) {
             img.loading = 'eager';
