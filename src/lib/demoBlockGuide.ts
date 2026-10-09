@@ -20,6 +20,8 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   const lifecycle = new win.AbortController();
   const { signal } = lifecycle;
   const reducedMotion = win.matchMedia('(prefers-reduced-motion: reduce)');
+  const restingScale = 1.15;
+  const pressedScale = 0.7;
   let generation = 0;
   let frame: number | null = null;
   let timer: ReturnType<typeof win.setTimeout> | undefined;
@@ -28,7 +30,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   let destroyed = false;
   let autoStarted = false;
   let pendingResolve: ((value: boolean) => void) | undefined;
-  let cursorState: CursorState = { x: 0, y: 0, scale: 1, opacity: 0 };
+  let cursorState: CursorState = { x: 0, y: 0, scale: restingScale, opacity: 0 };
 
   cursor.setAttribute('aria-hidden', 'true');
 
@@ -109,10 +111,10 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   });
   const tap = async (point: Point, action: () => void, token: number, dwell: number) => {
     if (!await move(point, token) || !await wait(dwell, token)) return false;
-    if (!await animate({ scale: 0.94 }, 90, token)) return false;
+    if (!await animate({ scale: pressedScale }, 90, token)) return false;
     action();
     if (!await wait(120, token)) return false;
-    return animate({ scale: 1 }, 120, token);
+    return animate({ scale: restingScale }, 120, token);
   };
   const gapPill = () => imageBlock.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
   const gapChoice = () => imageBlock.querySelector<HTMLButtonElement>('[data-dev-spacing-option="group"]')
@@ -148,7 +150,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       const pill = gapPill();
       if (!pill) return;
       const start = center(pill);
-      cursorState = { ...start, scale: 1, opacity: 0 };
+      cursorState = { ...start, scale: restingScale, opacity: 0 };
       paint();
       if (reducedMotion.matches) {
         if (!await animate({ opacity: 1 }, 280, token)) return;
@@ -158,7 +160,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       }
       if (!await wait(600, token)) return;
       const startOffset = { x: start.x + 24, y: start.y - 24 };
-      cursorState = { ...startOffset, scale: 1, opacity: 0 };
+      cursorState = { ...startOffset, scale: restingScale, opacity: 0 };
       paint();
       if (!await move(center(pill), token, 1)) return;
       gaps.reveal(imageBlock);
@@ -171,7 +173,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       const handle = imageBlock.querySelector<HTMLElement>('[data-reorder-demo-handle], .dev-section-drag-handle');
       if (!handle || !await move(center(handle), token)) return;
       const grab = center(handle);
-      if (!await animate({ scale: 0.94 }, 90, token)) return;
+      if (!await animate({ scale: pressedScale }, 90, token)) return;
       if (!reorder.guideLift(imageBlock, grab.x, grab.y)) return;
       lifting = true;
       const started = win.performance.now();
@@ -201,10 +203,12 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
 
   const finishDrag = async (token: number) => {
     if (!alive(token)) return;
-    await reorder.guideDrop();
+    const [released] = await Promise.all([
+      animate({ scale: restingScale }, 120, token),
+      reorder.guideDrop(),
+    ]);
+    if (!alive(token) || !released) return;
     lifting = false;
-    if (!alive(token)) return;
-    if (!await animate({ scale: 1 }, 120, token)) return;
     imageBlock.classList.remove('is-dev-section-controls-visible');
     if (!await wait(300, token)) return;
     if (!await tap(center(revertButton), () => revertButton.click(), token, 160)) return;
