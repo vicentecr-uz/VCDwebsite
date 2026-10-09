@@ -9,7 +9,7 @@ function setup({ sourceAspect = 16 / 9, initialAspect = 'original', active = tru
   const { document } = win;
   document.body.innerHTML = `<div data-crop-demo>
     <div class="dev-controls">
-      <div data-crop-preview><img src="/preview.jpg" alt="Preview"></div>
+      <div data-crop-preview><img src="/preview.jpg" alt="Preview" data-crop-image></div>
       <select class="dev-select__native">
         <option value="original">Original</option><option value="4:3">4:3</option><option value="1:1">1:1</option><option value="3:4">3:4</option>
       </select>
@@ -148,4 +148,33 @@ test('destroy removes crop stage, ghost, and listeners', () => {
   expect(h.host.querySelector('.dev-crop-stage')).toBeNull();
   expect(h.host.querySelector('.dev-crop-ghost')).toBeNull();
   expect(h.host.classList.contains('dev-crop-stage-host')).toBe(false);
+});
+
+test('setSource synchronizes source imagery and reset restores the original', () => {
+  const h = setup();
+  expect(h.api.setSource({ src: '/replacement.jpg', width: 1000, height: 500, alt: 'Replacement' })).toBe(true);
+  expect(h.host.querySelector('img')?.src).toContain('/replacement.jpg');
+  expect(h.preview.querySelector('img')?.getAttribute('src')).toContain('/replacement.jpg');
+  expect(h.stage().previousElementSibling?.querySelector('img')?.getAttribute('src')).toContain('/replacement.jpg');
+  expect(h.api.setSource({ src: '', width: 0, height: 500 })).toBe(false);
+  h.api.reset();
+  expect(h.host.querySelector('.project-crop-clip img')?.src).toContain('/source.jpg');
+  expect(h.preview.querySelector('img')?.getAttribute('src')).toContain('/source.jpg');
+  h.api.destroy();
+});
+
+test('replacement dimensions drive Original and Fit before reset restores source metadata', () => {
+  const h = setup({ initialAspect: '4:3' });
+  expect(h.api.setSource({ src: '/portrait.jpg', width: 400, height: 800, alt: 'Portrait' })).toBe(true);
+  h.select.value = 'original';
+  h.select.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+  expect(h.preview.style.aspectRatio).toBe('0.5 / 1');
+  h.select.value = '4:3';
+  h.select.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+  h.fit.click();
+  expect(Number(h.host.style.getPropertyValue('--project-content-w-desktop'))).toBeCloseTo(8 / 3);
+  h.api.reset();
+  expect(h.host.querySelector('.project-crop-clip img')?.alt).toBe('Source');
+  expect(h.select.value).toBe('4:3');
+  h.api.destroy();
 });

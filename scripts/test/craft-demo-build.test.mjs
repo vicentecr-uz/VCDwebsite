@@ -41,7 +41,8 @@ for (const demo of CRAFT_DEMOS) {
   } else {
     assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
   }
-  const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes('dev-panel'));
+  const panelClass = demo.id === 'image-framing' ? 'dev-overlay' : 'dev-panel';
+  const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes(panelClass));
   let panelNodes = [];
   if (isCanvas && demo.id !== 'image-framing') {
     assert.equal(panels.length, 0, `${demo.id}: no DevPanel`);
@@ -49,11 +50,18 @@ for (const demo of CRAFT_DEMOS) {
     assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
     assert.ok(attr(panels[0], 'class').split(/\s+/).includes('dev-surface'), `${demo.id}: the shared base surface`);
     panelNodes = allNodes(panels[0]);
-    const header = panelNodes.find((node) => node.tagName === 'header');
+    const header = panelNodes.find((node) => demo.id === 'image-framing' ? attr(node, 'class')?.split(/\s+/).includes('dev-overlay__head') : node.tagName === 'header');
     const headerElements = header?.childNodes.filter((node) => node.tagName);
-    assert.equal(headerElements?.length, 1, `${demo.id}: title-only header`);
+    assert.equal(headerElements?.length, demo.id === 'image-framing' ? 2 : 1, `${demo.id}: shared header`);
     assert.equal(headerElements[0].tagName, demo.id === 'image-framing' ? 'p' : 'h1');
     assert.equal(text(headerElements[0]).trim(), demo.id === 'image-framing' ? 'Image' : demo.title);
+  }
+  if (demo.id === 'image-framing') {
+    assert.ok(panelNodes.some((node) => attr(node, 'data-minimize-toggle') !== undefined), 'image panel: real minimize control');
+    assert.ok(panelNodes.some((node) => attr(node, 'data-hide-toggle') !== undefined), 'image panel: real close control');
+    assert.ok(panelNodes.some((node) => attr(node, 'data-crop-replace-file') !== undefined), 'image panel: local file replacement');
+    assert.equal(panelNodes.some((node) => attr(node, 'data-crop-replace-assets') !== undefined), false, 'image panel: no authoring library access');
+    assert.equal(panelNodes.some((node) => attr(node, 'data-dev-overlay') !== undefined), false, 'image panel: isolated presentation only');
   }
   const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
   if (!isProgressiveImage) assert.ok(reset, `${demo.id}: Reset`);

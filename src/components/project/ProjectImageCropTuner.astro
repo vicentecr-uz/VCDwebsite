@@ -5,14 +5,11 @@ import SelectField from '../ui/EditorSelectField.astro';
 import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
-import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
-import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import circleAlertIcon from 'lucide-static/icons/circle-alert.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 import ImageCropControls from './ImageCropControls.astro';
+import ImageReplaceControls from './ImageReplaceControls.astro';
 
-const monitorSvg = sizeIcon(monitorIcon, 16);
-const globeSvg = sizeIcon(globeIcon, 16);
 const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 ---
 
@@ -136,28 +133,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
          Figma dropped this line; keep the node, do not paint it. -->
     <p class="tapico-crop-tuner__readout" data-crop-readout hidden>shows 100% of width · centre 0.500, 0.500</p>
 
-    <div class="dev-field">
-      <span class="dev-field__label">Replace image</span>
-      <div
-        class="dev-drop"
-        data-crop-replace-drop
-        tabindex="0"
-        role="button"
-        aria-label="Replace image"
-      >
-        <div class="dev-drop__well">
-          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
-            <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
-            File system
-          </button>
-          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
-            <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
-            Asset manager
-          </button>
-          <input type="file" accept="image/*,.heic,.heif" hidden data-crop-replace-file />
-        </div>
-      </div>
-    </div>
+    <ImageReplaceControls />
 
     <button type="button" class="dev-btn dev-btn--ghost" data-crop-make-carousel hidden>Make carousel</button>
 
@@ -176,6 +152,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </DevOverlay>
 
 <script>
+  import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
   import { devEditPendingId, withDevEditTarget } from '../../scripts/devEditTarget';
   import {
     imageGridConstrainedStyle,
@@ -265,11 +242,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const settingResetButtons = [...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-reset-setting]')];
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
-    const replaceDrop = tuner.querySelector<HTMLElement>('[data-crop-replace-drop]');
-    const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
     const replaceAssetsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-assets]');
     const makeCarouselButton = tuner.querySelector<HTMLButtonElement>('[data-crop-make-carousel]');
-    const replaceFileInput = tuner.querySelector<HTMLInputElement>('[data-crop-replace-file]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
@@ -297,10 +271,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       !revertButton ||
       !resetButton ||
       !useGridDefaultButton ||
-      !replaceDrop ||
-      !replaceChooseButton ||
       !replaceAssetsButton ||
-      !replaceFileInput ||
       !initialTarget ||
       !initialImage
     ) return;
@@ -3334,47 +3305,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       })();
     };
 
-    const replaceControlFrom = (event: Event) =>
-      event.target instanceof Element && Boolean(event.target.closest('button, input'));
-
-    // Click focuses the well for paste. Ghost buttons own Finder / library;
-    // double-click (and Enter/Space on the well) still open the file picker.
-    pageScope.listen(replaceDrop, 'click', (event) => {
-      if (replaceControlFrom(event)) return;
-      replaceDrop.focus();
-    });
-    pageScope.listen(replaceDrop, 'dblclick', (event) => {
-      if (replaceControlFrom(event)) return;
-      replaceFileInput.click();
-    });
-    pageScope.listen(replaceDrop, 'keydown', (event) => {
-      if (replaceControlFrom(event)) return;
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        replaceFileInput.click();
-      }
-    });
-    pageScope.listen(replaceDrop, 'paste', (event) => {
-      const items = event.clipboardData?.items;
-      if (!items) return;
-      const file = [...items]
-        .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
-        .find(isAcceptedImageFile);
-      if (!file) return;
-      event.preventDefault();
-      replaceWithFile(file);
-    });
-
-    pageScope.listen(replaceChooseButton, 'click', (event) => {
-      event.stopPropagation();
-      replaceFileInput.click();
-    });
-
-    pageScope.listen(replaceFileInput, 'change', () => {
-      const file = replaceFileInput.files?.[0];
-      replaceFileInput.value = '';
-      replaceWithFile(file);
-    });
+    bindImageReplaceControls(tuner, { onFile: replaceWithFile, signal: pageScope.signal });
 
     pageScope.listen(replaceAssetsButton, 'click', (event) => {
       event.stopPropagation();
@@ -3403,29 +3334,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
         }
       })();
-    });
-
-    // Stop page-level image-drop from inserting a section when the well is the target.
-    pageScope.listen(replaceDrop, 'dragenter', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      replaceDrop.classList.add('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'dragover', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      replaceDrop.classList.add('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'dragleave', (event) => {
-      event.stopPropagation();
-      replaceDrop.classList.remove('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'drop', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      replaceDrop.classList.remove('is-dragover');
-      replaceWithFile(event.dataTransfer?.files?.[0]);
     });
 
     pageScope.listen(saveButton, 'click', saveDraft);
