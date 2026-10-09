@@ -4,31 +4,51 @@ import DevOverlayFrame from '../../ui/DevOverlayFrame.astro';
 import ImageCropControls from '../ImageCropControls.astro';
 import ImageReplaceControls from '../ImageReplaceControls.astro';
 import Button from '../../ui/Button.astro';
+import PanelActions from '../../ui/PanelActions.astro';
 import ProjectImage from '../ProjectImage.astro';
-import { normalizeImageVariants } from '../../../lib/responsiveImage';
+import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
 import { projectImageTier } from '../../../lib/images';
-const sampleSrc = 'Good Home Tools Range Landscape 5.jpg';
+interface Props {
+  sample?: unknown;
+  authoring?: { documentKey: string; path: Array<string | number>; sectionId: string };
+}
+const { sample: suppliedSample, authoring } = Astro.props;
+const fallbackPose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
+const fallback = { src: 'Good Home Tools Range Landscape 5.jpg', srcWidth: 7244, srcHeight: 5433, variants: { desktop: fallbackPose } };
+const candidate = suppliedSample as typeof fallback | undefined;
+const sample = candidate && typeof candidate.src === 'string' && candidate.src && Number.isFinite(candidate.srcWidth) && candidate.srcWidth > 0 && Number.isFinite(candidate.srcHeight) && candidate.srcHeight > 0 ? candidate : fallback;
+const sampleSrc = sample.src;
 const imageSrc = projectImageTier(sampleSrc, 'preview');
-const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
-const variants = normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, '4:3', { width: 7244, height: 5433 });
+const imageAlt = sampleSrc === fallback.src ? 'GoodHome brushes, rollers and painting tools' : sampleSrc.split('/').pop()!;
+const variants = normalizeImageVariants(sample.variants as ImageVariants, '4:3', { width: sample.srcWidth, height: sample.srcHeight });
+const pose = variants.desktop;
+const cropHeight = pose.w * (sample.srcWidth / sample.srcHeight) / (aspectRatioNumber(pose.aspect) ?? sample.srcWidth / sample.srcHeight);
+const locked = pose.cx >= pose.w / 2 && pose.cx <= 1 - pose.w / 2 && pose.cy >= cropHeight / 2 && pose.cy <= 1 - cropHeight / 2;
+const initialState = { source: { src: imageSrc, width: sample.srcWidth, height: sample.srcHeight, alt: imageAlt }, crop: pose, locked };
+const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: sampleSrc } : undefined;
 ---
 
-<vcd-crop-frame-demo data-crop-demo>
+<vcd-crop-frame-demo data-crop-demo data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
       <DevOverlayFrame title="Image" embedded data-crop-panel>
         <div class="tapico-crop-tuner">
-          <ImageCropControls imageSrc={imageSrc} aspect="4:3" />
-          <ImageReplaceControls showAssetManager={false} dropLabel="Drag and drop here" />
+          <ImageCropControls imageSrc={imageSrc} aspect={variants.desktop.aspect} />
+          <ImageReplaceControls showAssetManager={Boolean(authoringConfig)} dropLabel="Drag and drop here" />
+          {authoringConfig && <PanelActions>
+            <Button emphasis="ghost" label="Reset" data-demo-author-reset />
+            <Button emphasis="ghost" label="Revert changes" data-demo-author-revert />
+            <Button emphasis="filled" label="Save changes" data-demo-author-save />
+          </PanelActions>}
           <p data-image-replacement-status role="status" hidden></p>
         </div>
       </DevOverlayFrame>
     </div>
     <div class="crop-frame-demo__canvas">
-      <ProjectImage kind="lead" src={sampleSrc} srcWidth={7244} srcHeight={5433} variants={variants} spacing="none" loading="eager" alt="GoodHome brushes, rollers and painting tools" />
+      <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
     </div>
   </div>
-  <div class="demo-controls"><Button label="Reset" data-crop-reset /></div>
+  {!authoringConfig && <div class="demo-controls"><Button label="Reset" data-crop-reset /></div>}
 </vcd-crop-frame-demo>
 
 <style>
@@ -59,8 +79,19 @@ const variants = normalizeImageVariants({ desktop: pose, tablet: pose, mobile: p
       if (!host || !panel) return;
       const lifecycle = new AbortController();
       const { signal } = lifecycle;
-      const crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3' });
-      const replacement = createDemoImageReplacement(panel, crop);
+      const initialState = this.dataset.initialState ? JSON.parse(this.dataset.initialState) : undefined;
+      const crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
+      let replacement = { reset: () => crop.reset(), destroy() {} };
+      if (import.meta.env.DEV && this.dataset.authoring) {
+        // Temporary local authoring; remove after the sample image is approved.
+        void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
+          if (!signal.aborted) replacement = createCropDemoAuthoring(panel, crop, JSON.parse(this.dataset.authoring!));
+        }).catch(() => {
+          if (signal.aborted) return;
+          const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
+          if (status) { status.textContent = 'Could not load image controls. Reload the page to try again.'; status.hidden = false; }
+        });
+      } else replacement = createDemoImageReplacement(panel, crop);
       const collapse = createDevPanelCollapse(panel);
       let restoreTimer = 0;
       const show = () => {

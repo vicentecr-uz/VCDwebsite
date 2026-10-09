@@ -137,11 +137,11 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
-  document.body.innerHTML = `<vcd-gap-spacing-demo><div class="project-image"><img src="/source.jpg"></div><div data-reorder-demo-list>
+  document.body.innerHTML = `<main data-page-viewport><vcd-gap-spacing-demo><div class="project-image"><img src="/source.jpg"></div><div data-reorder-demo-list>
     <article data-reorder-demo-block><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
     <article data-reorder-demo-block><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
     <article data-reorder-demo-block><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
-  </div><button data-gap-reset data-reorder-demo-reset>Reset</button></vcd-gap-spacing-demo>`;
+  </div><button data-gap-reset data-reorder-demo-reset>Reset</button></vcd-gap-spacing-demo></main>`;
   let cropActive = false;
   let gapSuppressed = false;
   let lift: (() => void) | undefined;
@@ -155,7 +155,9 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   };
   new Function('env', `with (env) { ${compiled} }`)(env);
   const demo = document.querySelector('vcd-gap-spacing-demo') as HTMLElement;
-  win.scrollTo = () => { resetScroll = true; };
+  const viewport = document.querySelector<HTMLElement>('[data-page-viewport]')!;
+  viewport.scrollTo = () => { resetScroll = true; };
+  win.scrollTo = () => { throw new Error('reset should use the demo viewport'); };
   const trigger = demo.querySelector('.dev-image-edit-trigger') as HTMLButtonElement;
   trigger.click();
   expect(cropActive).toBe(true);

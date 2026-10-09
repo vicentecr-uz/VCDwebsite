@@ -1,6 +1,13 @@
 ---
 import DemoLayout from '../../layouts/DemoLayout.astro';
 import Demo from '../../components/project/demos/CropFrameDemo.astro';
+import { loadProjectBySlug } from '../../lib/projects';
+const project = loadProjectBySlug('image-framing');
+const sectionIndex = project?.sections.findIndex((section) => section.id === 'demo-image-framing') ?? -1;
+const sample = sectionIndex >= 0 ? project?.sections[sectionIndex].sample : undefined;
+const authoring = import.meta.env.DEV && sample ? {
+  documentKey: 'image-framing', path: ['sections', sectionIndex, 'sample'], sectionId: 'demo-image-framing',
+} : undefined;
 ---
 
-<DemoLayout title="Image framing"><Demo /></DemoLayout>
+<DemoLayout title="Image framing" authoring={Boolean(authoring)}><Demo sample={sample} authoring={authoring} /></DemoLayout>

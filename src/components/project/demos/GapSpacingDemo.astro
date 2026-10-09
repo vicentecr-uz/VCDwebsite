@@ -111,7 +111,9 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
       this.ownerDocument.addEventListener('keydown', (event) => { if (event.key === 'Escape') setCropActive(false); }, { signal });
       this.querySelector('[data-gap-reset]')?.addEventListener('click', () => {
         crop.reset(); gaps.reset(); setCropActive(false);
-        this.ownerDocument.defaultView?.scrollTo({ top: 0, behavior: 'instant' });
+        const viewport = this.closest<HTMLElement>('[data-page-viewport]');
+        if (viewport) viewport.scrollTo({ top: 0, behavior: 'instant' });
+        else this.ownerDocument.defaultView?.scrollTo({ top: 0, behavior: 'instant' });
       }, { signal });
       this.dispose = () => {
         life.abort(); reorder.destroy(); gaps.destroy(); crop.destroy(); trigger.remove();
