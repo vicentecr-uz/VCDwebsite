@@ -823,7 +823,7 @@ test('inline readiness ignores hidden and clipped thumbnails while eagerly loadi
   assert.equal(clipped.count('load') + clipped.count('error'), 0);
 });
 
-test('active Home intro reveals after two paints without layout or underlying image readiness', async () => {
+test('active Home intro reveals after layout and two paints without underlying image readiness', async () => {
   const image = new ImageFixture();
   const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image] });
   await f.paint();
@@ -917,7 +917,7 @@ test('visible readiness marker remains dev-only in Layout output', () => {
   assert.match(layout, /dev-transition[^\n]*visible/);
 });
 
-test('visible decoded thumbnails gate reveal; fonts and offscreen images do not', async () => {
+test('fonts and visible decoded thumbnails gate reveal; offscreen images do not', async () => {
   const fonts = deferred();
   const visible = new ImageFixture();
   const offscreen = new ImageFixture(false);
@@ -1328,7 +1328,7 @@ test('the no-JavaScript CSS safety reveal remains available after five seconds',
 });
 
 for (const initialController of [false, true]) {
-  test(`${initialController ? 'inline' : 'deferred'} reveal does not hide text for a stalled font`, async () => {
+  test(`${initialController ? 'inline' : 'deferred'} reveal stays covered until fonts are ready`, async () => {
     const fonts = deferred();
     const f = fixture({ initialController, fonts: fonts.promise });
     await f.paint();
@@ -1348,9 +1348,23 @@ for (const initialController of [false, true]) {
       assert.equal(Number(f.overlay.style.opacity), 0);
     }
     const reveals = f.upgrades;
-    fonts.resolve();
     await f.paint();
     assert.equal(f.upgrades, reveals);
+  });
+  test(`${initialController ? 'inline' : 'deferred'} font failure releases the veil`, async () => {
+    const fonts = deferred();
+    const f = fixture({ initialController, fonts: fonts.promise });
+    await f.paint();
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    fonts.reject(new Error('font unavailable'));
+    await f.paint();
+    if (initialController) {
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      await f.finishReveal();
+      assert.equal(Number(f.overlay.style.opacity), 0);
+    }
   });
 }
 
