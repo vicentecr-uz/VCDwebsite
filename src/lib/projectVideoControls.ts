@@ -40,6 +40,16 @@ export function syncProjectVideoAudio(video: HTMLVideoElement): void {
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
 
+const videoSpinnerMarkup = '<svg viewBox="0 0 24 24" width="33.6" height="33.6" aria-hidden="true" fill="currentColor">'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" /></g></svg>';
+
 function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange, scope: ReturnType<typeof createPageScope>): () => void {
   let previousVolume = 0.5;
   let drag: { pointerId: number; value: number | null; listeners: AbortController } | undefined;
@@ -162,6 +172,15 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   poster.setAttribute('noautohide', '');
   poster.style.pointerEvents = 'none';
   controller.insertBefore(poster, video);
+  const spinner = document.createElement('div');
+  spinner.className = 'project-video-player__buffering';
+  spinner.setAttribute('role', 'status');
+  spinner.setAttribute('aria-label', 'Loading video');
+  spinner.setAttribute('aria-hidden', 'true');
+  spinner.setAttribute('noautohide', '');
+  spinner.hidden = true;
+  spinner.innerHTML = videoSpinnerMarkup;
+  controller.insertBefore(spinner, video);
 
   let generation = 0;
   let pending = false;
@@ -184,6 +203,8 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
     frame1 = 0; frame2 = 0;
     poster.hidden = false;
     poster.style.opacity = '1';
+    spinner.hidden = true;
+    controller.removeAttribute('data-video-buffering');
     video.pause();
     if (stopLoading) {
       video.preload = 'none';
@@ -198,6 +219,8 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   const finish = (token: number) => {
     if (!pending || token !== generation || !video.isConnected || video.readyState < 3 || video.videoWidth <= 0) return;
     pending = false;
+    spinner.hidden = true;
+    controller.removeAttribute('data-video-buffering');
     animation = poster.animate(
       [{ opacity: '1' }, { opacity: '0' }],
       { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200, easing: 'ease-out', fill: 'forwards' },
@@ -240,6 +263,8 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
       generation++;
       const token = generation;
       video.preload = 'auto';
+      spinner.hidden = false;
+      controller.setAttribute('data-video-buffering', '');
       // Synchronous play/pause preserves the user gesture for delayed playback.
       let result: Promise<void> | undefined;
       try { result = video.play(); } catch { restore(); return; }
@@ -282,6 +307,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   scope.add(() => {
     restore(false);
     poster.remove();
+    spinner.remove();
   });
   return start;
 }
