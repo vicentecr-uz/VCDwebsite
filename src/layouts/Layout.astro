@@ -402,7 +402,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         const imageCleanups = [];
         const imageReady = introLayoutReady.then(() => {
           if (overlay.dataset.vcdInitialReveal !== 'running') return;
-          const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
+          const images = readinessImages(Array.from(document.querySelectorAll('img')).filter(visible));
           images.forEach((image) => { image.loading = 'eager'; });
           return Promise.all(images.map((image) => new Promise((resolve) => {
             const finish = () => {
@@ -661,7 +661,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
             emitTransitionMilestone('fonts-ready');
             window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           }));
-          const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+          const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
           for (const img of readinessImages) {
             img.loading = 'eager';
             const currentThumbIndex = thumbIndex++;

@@ -225,8 +225,10 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; font
       : (options.noOverlay ? null : overlay),
     querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {}
       : selector === '[data-home-intro-surface]' ? homeIntro : null,
-    querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
-      ? (options.images ?? []).filter((image) => image.preview)
+    querySelectorAll: (selector: string) => selector === 'img'
+      ? options.images ?? []
+      : selector === 'img[data-image-preview]'
+        ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
   });
   const destinations: string[] = [];
@@ -991,38 +993,72 @@ test('fonts and visible decoded thumbnails gate reveal; offscreen images do not'
   assert.equal(visible.loading, 'eager');
 });
 
-test('only visible progressive thumbnails participate in readiness geometry', async () => {
-  const active = new ImageFixture();
-  const rawAvatar = new ImageFixture();
-  rawAvatar.preview = false;
-  const offscreenLoop = new ImageFixture();
-  offscreenLoop.parentElement = new ContainerFixture({ top: 900, left: 0, bottom: 1000, right: 1200 }, { overflow: 'hidden' });
-  const clippedAdjacent = new ImageFixture();
-  clippedAdjacent.rect = { top: 0, left: 1190, bottom: 100, right: 1290 };
-  clippedAdjacent.parentElement = new ContainerFixture({ top: 0, left: 0, bottom: 100, right: 1100 }, { overflowX: 'hidden' });
-  const hiddenHover = new ImageFixture();
-  hiddenHover.style.visibility = 'hidden';
-  const f = fixture({ images: [active, rawAvatar, offscreenLoop, clippedAdjacent, hiddenHover] });
-  await f.paint();
-  assert.equal(Number(f.overlay.style.opacity), 1);
-  assert.equal(f.overlay.style.transition ?? '', '');
-  assert.equal(active.count('load'), 1);
-  assert.equal(rawAvatar.count('load') + rawAvatar.count('error'), 0);
-  assert.equal(offscreenLoop.count('load') + offscreenLoop.count('error'), 0);
-  assert.equal(clippedAdjacent.count('load') + clippedAdjacent.count('error'), 0);
-  assert.equal(hiddenHover.count('load') + hiddenHover.count('error'), 0);
-  active.load();
-  await flush();
-  assert.equal(active.decodeCalls, 1);
-  active.decoded.resolve();
-  await flush();
-  await f.paint();
-  assert.equal(f.tweens.length, 0);
-  assert.equal(f.animations.length, 1);
-  assert.equal(Number(f.overlay.style.opacity), 1);
-  await f.finishReveal();
-  assert.equal(Number(f.overlay.style.opacity), 0);
-});
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} readiness waits for visible regular images to load, decode, and paint`, async () => {
+    const visible = new ImageFixture();
+    visible.preview = false;
+    const hidden = new ImageFixture();
+    hidden.preview = false;
+    hidden.style.visibility = 'hidden';
+    const offscreen = new ImageFixture(false);
+    offscreen.preview = false;
+    const clipped = new ImageFixture();
+    clipped.preview = false;
+    clipped.rect = { top: 0, left: 1190, bottom: 100, right: 1290 };
+    clipped.parentElement = new ContainerFixture({ top: 0, left: 0, bottom: 100, right: 1100 }, { overflowX: 'hidden' });
+    const f = fixture({ initialController, images: [visible, hidden, offscreen, clipped] });
+    await f.paint();
+    assert.equal(visible.loading, 'eager');
+    assert.equal(visible.count('load'), 1);
+    assert.equal(hidden.count('load') + hidden.count('error'), 0);
+    assert.equal(offscreen.count('load') + offscreen.count('error'), 0);
+    assert.equal(clipped.count('load') + clipped.count('error'), 0);
+    visible.load();
+    await flush();
+    assert.equal(visible.decodeCalls, 1);
+    if (initialController) assert.equal(Number(f.overlay.style.opacity), 1);
+    assert.equal(f.animations.length, 0);
+    visible.decoded.resolve();
+    await flush();
+    if (initialController) {
+      await f.frame();
+      assert.equal(Number(f.overlay.style.opacity), 1);
+      await f.frame();
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.animations.length, 1);
+      assert.equal(f.animations[0].playState, 'paused');
+      await f.frame();
+      assert.equal(f.animations[0].playState, 'paused');
+      await f.frame();
+      assert.equal(f.animations[0].playState, 'running');
+      await f.paint();
+      await f.finishReveal();
+      assert.equal(f.overlay.hidden, true);
+    }
+  });
+
+  test(`${initialController ? 'inline' : 'deferred'} readiness releases on a regular image error`, async () => {
+    const broken = new ImageFixture();
+    broken.preview = false;
+    const f = fixture({ initialController, images: [broken] });
+    await f.paint();
+    assert.equal(broken.loading, 'eager');
+    broken.fail();
+    await flush();
+    if (initialController) {
+      await f.paint();
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.animations.length, 1);
+      await f.paint();
+      await f.finishReveal();
+      assert.equal(f.overlay.hidden, true);
+    }
+  });
+}
 
 for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} readiness uses the owning crop frame for unloaded thumbnails`, async () => {
