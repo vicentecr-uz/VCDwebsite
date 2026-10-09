@@ -1,9 +1,11 @@
 import { pinGapToolbar, unpinGapToolbar, GAP_ENTRY_RADIUS, GAP_RETENTION_RADIUS, GAP_INTENT_DELAY, GAP_FAST_POINTER } from './gapSpacingControl';
 
-type GapToken = 'related' | 'group' | 'section' | 'major';
+export type GapToken = 'related' | 'group' | 'section' | 'major';
 const values: Record<GapToken, string> = { related: 'var(--space-related)', group: 'var(--space-group)', section: 'var(--space-section)', major: 'var(--space-major)' };
 
-export function createDemoGapSpacing(root: HTMLElement) {
+export interface DemoGapSpacingOptions { initial?: GapToken; onChange?: () => void }
+
+export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingOptions = {}) {
   const win = root.ownerDocument.defaultView!;
   const lifecycle = new AbortController();
   const { signal } = lifecycle;
@@ -12,6 +14,7 @@ export function createDemoGapSpacing(root: HTMLElement) {
   let latest: { x: number; y: number; time: number } | undefined;
   let intent: ReturnType<typeof win.setTimeout> | undefined;
   let candidate: HTMLElement | undefined;
+  const initial = options.initial ?? 'group';
   const states = [...root.querySelectorAll<HTMLElement>('[data-gap-toolbar]')].map((toolbar) => ({
     toolbar,
     block: toolbar.closest<HTMLElement>('[data-reorder-demo-block]')!,
@@ -77,16 +80,17 @@ export function createDemoGapSpacing(root: HTMLElement) {
       if (latest) update(latest.x, latest.y, ready);
     }, GAP_INTENT_DELAY);
   };
-  const select = (state: typeof states[number], value: GapToken) => {
+  const select = (state: typeof states[number], value: GapToken, notify = true) => {
     state.block.style.setProperty('--demo-block-gap', values[value]);
     state.choices.forEach((choice) => {
       const active = choice.dataset.devSpacingOption === value;
       choice.classList.toggle('is-active', active);
       choice.setAttribute('aria-pressed', String(active));
     });
+    if (notify) options.onChange?.();
   };
   for (const state of states) {
-    select(state, 'group');
+    select(state, initial, false);
     state.pill.addEventListener('pointerenter', (event) => {
       if (suppressed || first(state) || event.pointerType === 'touch') return;
       cancelIntent(); clearRelocation(state); show(state, true); pinGapToolbar(state.toolbar);
@@ -124,7 +128,12 @@ export function createDemoGapSpacing(root: HTMLElement) {
   win.addEventListener('scroll', () => { cancelIntent(); latest = undefined; }, { signal, capture: true });
   win.addEventListener('resize', clear, { signal });
   return {
-    reset() { clear(); states.forEach((state) => select(state, 'group')); escaped = false; },
+    getState(): GapToken[] { return states.map((state) => state.choices.find((choice) => choice.classList.contains('is-active'))?.dataset.devSpacingOption as GapToken ?? initial); },
+    restore(valuesToRestore: GapToken[]) { if (valuesToRestore.length !== states.length || valuesToRestore.some((value) => !values[value])) return; clear(); states.forEach((state, index) => select(state, valuesToRestore[index])); escaped = false; },
+    reveal(block: HTMLElement) { const state = states.find((candidate) => candidate.block === block); if (!state) return; cancelIntent(); clearRelocation(state); show(state, true); pinGapToolbar(state.toolbar); },
+    select(block: HTMLElement, value: GapToken) { const state = states.find((candidate) => candidate.block === block); if (state && values[value]) select(state, value); },
+    hide() { clear(); },
+    reset() { clear(); states.forEach((state) => select(state, initial)); escaped = false; },
     setSuppressed(value: boolean) { suppressed = value; root.toggleAttribute('data-gap-suppressed', value); if (value) clear(); },
     destroy() { clear(); lifecycle.abort(); },
   };

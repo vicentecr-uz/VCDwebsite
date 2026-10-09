@@ -14,6 +14,7 @@ import '../styles/gapSpacingControl.css';
 import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
 import ProjectAward from './project/ProjectAward.astro';
+import SaveBar from './ui/SaveBar.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
@@ -30,8 +31,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
 
 <div class="dev-text-action-stack">
-  <div class="dev-text-actions dev-surface" data-dev-text-actions hidden>
-    <div class="dev-text-actions__surface">
+  <SaveBar data-dev-text-actions hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
       <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
       <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
@@ -39,15 +39,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       <button type="button" data-dev-text-save>Save</button>
       <button type="button" data-dev-text-commit-styles hidden>Publish styles</button>
       <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
-    </div>
-  </div>
+  </SaveBar>
 
-  <div class="dev-text-actions dev-surface" data-dev-branch-update-actions hidden>
-    <div class="dev-text-actions__surface">
+  <SaveBar data-dev-branch-update-actions hidden>
       <span class="dev-text-actions__status" data-dev-branch-update-status aria-live="polite">Update available</span>
       <button type="button" class="dev-text-actions__save" data-dev-branch-update>Update</button>
-    </div>
-  </div>
+  </SaveBar>
 
 </div>
 
@@ -6606,175 +6603,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     background: color-mix(in srgb, currentColor 10%, var(--sys-color-srf-container-low));
   }
 
-  .dev-text-action-stack {
-    position: fixed;
-    right: max(1em, env(safe-area-inset-right));
-    bottom: max(1em, env(safe-area-inset-bottom));
-    z-index: 90;
-    display: flex;
-    flex-direction: column-reverse;
-    align-items: flex-end;
-    gap: calc(var(--space-unit) / 2);
-    max-width: calc(100vw - 2em);
-    pointer-events: none;
-  }
-
-  .dev-text-actions {
-    max-width: 100%;
-    pointer-events: auto;
-    border-radius: 12px;
-    padding: 0;
-    transition: opacity 0.28s ease;
-  }
-
-  [data-dev-branch-update-actions] .dev-text-actions__status {
-    white-space: normal;
-  }
-
-  .dev-text-actions__surface {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    overflow: hidden;
-    border-radius: 12px; /* literal in Figma; no radius token covers 12px */
-  }
-
-  .dev-text-actions[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions__status {
-    padding-inline: 7px;
-    color: var(--sys-color-on-srf-variant);
-    font: 400 12px/normal var(--font-sans);
-    white-space: nowrap;
-  }
-
-  .dev-text-actions__branch {
-    max-width: 12em;
-    overflow: hidden;
-    border-left: 1px solid var(--sys-color-outline-variant);
-    padding-inline: 13px 7px;
-    color: var(--sys-color-on-srf-variant);
-    font: 400 12px/normal var(--font-sans);
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  /* Idle: no Status text to separate from, so the rule clears. */
-  .dev-text-actions__surface:has(.dev-text-actions__status:empty) .dev-text-actions__branch {
-    border-left: 0;
-    padding-inline-start: 7px;
-  }
-
-  .dev-text-actions__branch[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions__branch.is-dev-branch-off-target {
-    color: var(--sys-color-on-srf);
-  }
-
-  /* The one colour in dev chrome. Everything else here is monochrome, so amber
-     on a single icon is enough to read as a warning without a palette token. */
-  .dev-text-actions__warn {
-    display: inline-flex;
-    align-items: center;
-    padding-left: 8px;
-    color: #b26a00;
-    line-height: 1;
-    cursor: help;
-  }
-
-  .dev-text-actions__warn svg {
-    display: block;
-  }
-
-  .dev-text-actions__warn[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions button {
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-width: var(--dev-control-min-width);
-    min-height: var(--dev-control-height);
-    border: 0;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-button-ghost-container);
-    padding: 8px;
-    color: var(--comp-button-label);
-    font: var(--dev-text-label);
-    cursor: pointer;
-  }
-
-  .dev-text-actions button:hover {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  .dev-text-actions button:active {
-    background: var(--comp-button-ghost-container-pressed);
-  }
-
-  .dev-text-actions button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .dev-text-actions button.is-dev-actions-busy:disabled {
-    cursor: wait;
-    opacity: 0.55;
-    pointer-events: none;
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles] {
-    background: var(--comp-button-soft-container);
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles]:hover {
-    background: var(--comp-button-soft-container-hover);
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles]:active {
-    background: var(--comp-button-soft-container-pressed);
-  }
-
-  .dev-text-actions .dev-text-actions__save {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
-  }
-
-  .dev-text-actions .dev-text-actions__save:hover:not(:disabled),
-  .dev-text-actions .dev-text-actions__save:active:not(:disabled) {
-    background: var(--comp-button-filled-container-hover);
-  }
-
-  /* Publish only disables while a publish is in flight. */
-  .dev-text-actions .dev-text-actions__save:disabled {
-    cursor: default;
-  }
-
-  .dev-text-actions .dev-text-actions__save.is-dev-actions-busy:disabled {
-    cursor: wait;
-  }
-
-  /* Rendering code changed on this branch: Publish steps down to Soft, not
-     filled and not ringed — a plain surface, still clickable, still asks for
-     confirmation. */
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
-    background: var(--comp-button-soft-container);
-    color: var(--comp-button-label);
-  }
-
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled),
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:active:not(:disabled) {
-    background: var(--comp-button-soft-container-hover);
-  }
 
   /* ── Selection formatting popup ───────────────────────── */
   .dev-text-format {

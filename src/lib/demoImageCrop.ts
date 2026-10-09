@@ -14,6 +14,7 @@ interface CropDemoOptions {
   initialAspect?: string;
   initialState?: DemoImageCropState;
   active?: boolean;
+  onChange?: () => void;
 }
 
 const isValidAspect = (value: unknown): value is string => {
@@ -44,7 +45,7 @@ const cloneState = (state: DemoImageCropState): DemoImageCropState => ({
   locked: state.locked,
 });
 
-export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true }: CropDemoOptions) {
+export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true, onChange }: CropDemoOptions) {
   const document = host.ownerDocument;
   const win = document.defaultView!;
   const lifecycle = new AbortController();
@@ -120,6 +121,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     if (label) label.textContent = locked ? 'Crop locked' : 'Crop unlocked';
     const lockPath = constraint?.querySelector('path');
     lockPath?.setAttribute('d', locked ? 'M7 11V7a5 5 0 0 1 10 0v4' : 'M7 11V7a5 5 0 0 1 9.9-1');
+    onChange?.();
   };
   const syncSelect = () => {
     if (!select) return;

@@ -1,6 +1,7 @@
 import { bindImageReplaceControls } from './imageReplaceControls';
 import { isAcceptedImageFile } from './imageUpload.mjs';
 import type { DemoImageCropState } from './demoImageCrop';
+import { createDemoSaveFeedback } from './demoSaveFeedback';
 
 export interface DemoImageReplacementAsset { src: string; filename: string; url: string; thumb: string; }
 export interface DemoImageReplacementCrop {
@@ -16,6 +17,7 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
   const lifecycle = new win.AbortController();
   const { signal } = lifecycle;
   const status = root.querySelector<HTMLElement>('[data-image-replacement-status]');
+  const saveFeedback = createDemoSaveFeedback(root.querySelector<HTMLButtonElement>('[data-demo-author-save]'));
   const urlApi = win.URL;
   let generation = 0;
   let currentUrl: string | undefined;
@@ -45,6 +47,7 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
   };
   const replaceFile = (file: File | undefined) => {
     if (!file || destroyed) return;
+    saveFeedback.reset();
     const token = ++generation;
     if (!isAcceptedImageFile(file)) { release(pendingUrl); pendingUrl = undefined; message('Choose an image file.'); return; }
     release(pendingUrl);
@@ -53,18 +56,19 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
     message('Loading image…');
     void apply({ src: url, filename: file.name, url, thumb: url }, token, url).catch(() => {
       if (!current(token) || pendingUrl !== url) return;
-      pendingUrl = undefined; release(url); message('Could not load image.');
+      pendingUrl = undefined; release(url); if (current(token)) saveFeedback.reset(); message('Could not load image.');
     });
   };
   const replaceAsset = async () => {
     if (destroyed) return;
     const token = ++generation;
+    saveFeedback.reset();
     release(pendingUrl); pendingUrl = undefined;
     try {
       const asset = await chooseAsset();
       if (!current(token) || !asset) { if (current(token)) message(''); return; }
       message('Loading image…'); await apply(asset, token);
-    } catch { if (current(token)) message('Could not load image.'); }
+    } catch { if (current(token)) { saveFeedback.reset(); message('Could not load image.'); } }
   };
   bindImageReplaceControls(root, { onFile: replaceFile, signal });
   const reset = () => {
@@ -73,6 +77,7 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
     pendingUrl = undefined;
     const state = crop.getState();
     crop.setSource(state.source);
+    saveFeedback.reset();
     message('');
   };
   const revert = () => {
@@ -84,6 +89,7 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
       currentUrl = savedUrl;
       if (previous && previous !== savedUrl) release(previous);
     }
+    saveFeedback.reset();
     message('');
   };
   root.querySelector('[data-crop-replace-assets]')?.addEventListener('click', (event) => { event.stopPropagation(); void replaceAsset(); }, { signal });
@@ -91,16 +97,19 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
   root.querySelector('[data-demo-author-revert]')?.addEventListener('click', revert, { signal });
   root.querySelector('[data-demo-author-save]')?.addEventListener('click', () => {
     if (destroyed) return;
+    saveFeedback.begin();
+    message('');
     savedState = crop.getState();
     const previous = savedUrl; savedUrl = currentUrl;
     if (previous && previous !== savedUrl) release(previous);
-    message('Saved for this demo');
+    saveFeedback.succeed();
   }, { signal });
   const destroy = () => {
     if (destroyed) return;
     destroyed = true;
     generation += 1;
     lifecycle.abort();
+    saveFeedback.destroy();
     const urls = new Set([pendingUrl, currentUrl, savedUrl]);
     urls.forEach((url) => release(url));
     pendingUrl = currentUrl = savedUrl = undefined;
