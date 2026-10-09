@@ -1,0 +1,356 @@
+---
+if (!import.meta.env.DEV) {
+  return Astro.redirect('/404');
+}
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Carousel dot opacity</title>
+  </head>
+  <body>
+    <main class="prototype">
+      <div class="prototype__stage">
+        <iframe
+          id="carousel-preview"
+          src="/goodhome-painting-tools?dev-transition=visible"
+          title="Carousel opacity preview"
+        ></iframe>
+      </div>
+
+      <section class="prototype__controls" aria-labelledby="prototype-title">
+        <h1 id="prototype-title">Carousel dot opacity</h1>
+        <label class="prototype__colour" for="dot-colour">Dot colour
+          <select id="dot-colour">
+            <option value="auto">Auto</option>
+            <option value="white">White</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+        <div class="prototype__sliders">
+          <label class="prototype__field" for="white-inactive">
+            <span>White inactive <output id="white-inactive-output" for="white-inactive">40%</output></span>
+            <input id="white-inactive" data-key="whiteInactive" type="range" min="0" max="100" step="1" value="40" />
+          </label>
+          <label class="prototype__field" for="white-active">
+            <span>White active <output id="white-active-output" for="white-active">80%</output></span>
+            <input id="white-active" data-key="whiteActive" type="range" min="0" max="100" step="1" value="80" />
+          </label>
+          <label class="prototype__field" for="dark-inactive">
+            <span>Dark inactive <output id="dark-inactive-output" for="dark-inactive">30%</output></span>
+            <input id="dark-inactive" data-key="darkInactive" type="range" min="0" max="100" step="1" value="30" />
+          </label>
+          <label class="prototype__field" for="dark-active">
+            <span>Dark active <output id="dark-active-output" for="dark-active">80%</output></span>
+            <input id="dark-active" data-key="darkActive" type="range" min="0" max="100" step="1" value="80" />
+          </label>
+        </div>
+
+        <div class="prototype__config">
+          <label for="config-values">Config</label>
+          <textarea id="config-values" rows="2" readonly></textarea>
+          <button id="copy-values" type="button">Copy values</button>
+          <span id="copy-status" role="status" aria-live="polite"></span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+
+<style>
+  :global(*) {
+    box-sizing: border-box;
+  }
+
+  :global(html),
+  :global(body) {
+    height: 100%;
+    margin: 0;
+    background: #d8d8d3;
+    color: #161616;
+    font: 0.875rem/1.35 system-ui, sans-serif;
+  }
+
+  .prototype {
+    position: relative;
+    height: 100%;
+  }
+
+  .prototype__stage {
+    height: 100%;
+  }
+
+  iframe {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+  }
+
+  .prototype__controls {
+    position: fixed;
+    z-index: 2;
+    inset-block-start: 1rem;
+    inset-inline-end: 1rem;
+    width: min(19rem, calc(100vw - 2rem));
+    padding: 0.875rem;
+    border: 1px solid rgb(22 22 22 / 20%);
+    border-radius: 0.75rem;
+    background: rgb(238 238 234 / 92%);
+    box-shadow: 0 0.5rem 2rem rgb(0 0 0 / 15%);
+    backdrop-filter: blur(1rem);
+  }
+
+  h1,
+  .prototype__config label {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+  }
+
+  .prototype__sliders {
+    display: grid;
+    gap: 0.35rem;
+    margin-block-start: 0.75rem;
+  }
+
+  .prototype__field {
+    display: grid;
+    gap: 0.1rem;
+  }
+
+  .prototype__field > span {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  output {
+    font-variant-numeric: tabular-nums;
+  }
+
+  input[type='range'] {
+    width: 100%;
+    min-height: 2.75rem;
+    margin: 0;
+    accent-color: #161616;
+    font-size: 16px;
+    touch-action: manipulation;
+  }
+
+  .prototype__colour {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-block-start: 0.65rem;
+  }
+
+  select {
+    min-height: 2.75rem;
+    padding-inline: 0.45rem;
+    border: 1px solid rgb(22 22 22 / 22%);
+    border-radius: 0.35rem;
+    background: rgb(255 255 255 / 70%);
+    color: inherit;
+    font: inherit;
+    touch-action: manipulation;
+  }
+
+  .prototype__config {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem 0.5rem;
+    margin-block-start: 0.75rem;
+  }
+
+  textarea {
+    grid-column: 1 / -1;
+    width: 100%;
+    resize: vertical;
+    padding: 0.45rem;
+    border: 1px solid rgb(22 22 22 / 22%);
+    border-radius: 0.35rem;
+    background: rgb(255 255 255 / 70%);
+    color: inherit;
+    font: 16px/1.35 ui-monospace, monospace;
+    touch-action: manipulation;
+  }
+
+  button {
+    min-height: 2.75rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid rgb(22 22 22 / 35%);
+    border-radius: 0.35rem;
+    background: #161616;
+    color: #fff;
+    font: 16px/1.35 system-ui, sans-serif;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+
+  #copy-status {
+    align-self: center;
+    min-height: 1.2em;
+    color: rgb(22 22 22 / 70%);
+    font-size: 0.75rem;
+  }
+
+  @media (max-width: 700px) {
+    .prototype {
+      display: grid;
+      grid-template-rows: minmax(16rem, 1fr) auto;
+      min-height: 100%;
+    }
+
+    .prototype__stage {
+      min-height: 0;
+      height: 100%;
+    }
+
+    .prototype__stage iframe {
+      min-height: 0;
+    }
+
+    .prototype__controls {
+      position: static;
+      width: auto;
+      border-inline: 0;
+      border-block-end: 0;
+      border-radius: 0;
+      box-shadow: 0 -0.5rem 2rem rgb(0 0 0 / 12%);
+    }
+
+    .prototype__sliders {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.25rem 0.75rem;
+    }
+  }
+</style>
+
+<script>
+  const iframe = document.querySelector<HTMLIFrameElement>('#carousel-preview');
+  const inputs = [...document.querySelectorAll<HTMLInputElement>('[data-key]')];
+  const config = document.querySelector<HTMLTextAreaElement>('#config-values');
+  const copyButton = document.querySelector<HTMLButtonElement>('#copy-values');
+  const copyStatus = document.querySelector<HTMLElement>('#copy-status');
+  const colourSelect = document.querySelector<HTMLSelectElement>('#dot-colour');
+  const storageKey = 'vcd-proto-carousel-dot-opacity';
+  const defaults = { whiteInactive: 40, whiteActive: 80, darkInactive: 30, darkActive: 80 };
+
+  type DotConfig = typeof defaults;
+  const validValue = (value: unknown): value is number => typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100;
+  const readDraft = (): DotConfig => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(storageKey) || 'null') as Partial<DotConfig> | null;
+      if (parsed && Object.values(defaults).every((_, index) => validValue(parsed[Object.keys(defaults)[index] as keyof DotConfig]))) {
+        return { ...defaults, ...parsed };
+      }
+    } catch {
+      // Storage can be unavailable in private browsing.
+    }
+    return { ...defaults };
+  };
+
+  const draft = readDraft();
+  inputs.forEach((input) => {
+    const key = input.dataset.key as keyof DotConfig;
+    input.value = String(draft[key]);
+  });
+
+  const apply = () => {
+    const values = inputs.reduce((result, input) => {
+      result[input.dataset.key as keyof DotConfig] = Number(input.value);
+      return result;
+    }, { ...defaults });
+    Object.assign(draft, values);
+    inputs.forEach((input) => {
+      const output = document.querySelector<HTMLOutputElement>(`output[for="${input.id}"]`);
+      if (output) output.value = `${input.value}%`;
+    });
+    if (config) config.value = JSON.stringify(values);
+    try { localStorage.setItem(storageKey, JSON.stringify(values)); } catch { /* Keep the draft live without storage. */ }
+
+    const target = iframe?.contentDocument?.documentElement;
+    if (!target) return;
+    target.style.setProperty('--dot-white-inactive', String(values.whiteInactive / 100));
+    target.style.setProperty('--dot-white-active', String(values.whiteActive / 100));
+    target.style.setProperty('--dot-dark-inactive', String(values.darkInactive / 100));
+    target.style.setProperty('--dot-dark-active', String(values.darkActive / 100));
+  };
+
+  const applyColour = () => {
+    const target = iframe?.contentDocument?.documentElement;
+    if (!target || !colourSelect) return;
+    if (colourSelect.value === 'auto') target.removeAttribute('data-dot-colour');
+    else target.dataset.dotColour = colourSelect.value;
+  };
+
+  inputs.forEach((input) => input.addEventListener('input', apply));
+  const mount = () => {
+    const targetDocument = iframe?.contentDocument;
+    if (!targetDocument) return;
+    if (!targetDocument.getElementById('carousel-dot-prototype-style')) {
+      const style = targetDocument.createElement('style');
+      style.id = 'carousel-dot-prototype-style';
+      style.textContent = `
+      .project-image-carousel__dots {
+        --dot-inactive: var(--dot-dark-inactive, .3);
+        --dot-active: var(--dot-dark-active, .8);
+      }
+      .project-image-carousel__dots[data-media-ground='dark'] {
+        --dot-inactive: var(--dot-white-inactive, .4);
+        --dot-active: var(--dot-white-active, .8);
+      }
+      html[data-dot-colour='white'] .project-image-carousel__dots {
+        --dot-inactive: var(--dot-white-inactive, .4);
+        --dot-active: var(--dot-white-active, .8);
+      }
+      html[data-dot-colour='white'] .project-image-carousel__dot-mark {
+        background: var(--sys-color-on-dark-media);
+      }
+      html[data-dot-colour='dark'] .project-image-carousel__dots {
+        --dot-inactive: var(--dot-dark-inactive, .3);
+        --dot-active: var(--dot-dark-active, .8);
+      }
+      html[data-dot-colour='dark'] .project-image-carousel__dot-mark {
+        background: var(--sys-color-on-light-media);
+      }
+      .project-image-carousel__dot-mark {
+        opacity: calc(var(--dot-inactive) + var(--project-carousel-dot-activeness, 0) * (var(--dot-active) - var(--dot-inactive)));
+      }
+      `;
+      targetDocument.head.append(style);
+    }
+    apply();
+    applyColour();
+    targetDocument.querySelector<HTMLElement>('[data-project-image-carousel]')?.scrollIntoView({ block: 'start' });
+  };
+
+  iframe?.addEventListener('load', mount);
+  if (iframe?.contentDocument?.readyState === 'complete' && iframe.contentDocument.querySelector('[data-project-image-carousel]')) mount();
+
+  colourSelect?.addEventListener('change', applyColour);
+
+  copyButton?.addEventListener('click', async () => {
+    if (!config) return;
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(config.value);
+      copied = true;
+    } catch {
+      config.focus();
+      config.select();
+      copied = document.execCommand('copy');
+    }
+    if (copyStatus) copyStatus.textContent = copied ? 'Copied' : 'Copy failed';
+    if (copied) window.setTimeout(() => { if (copyStatus) copyStatus.textContent = ''; }, 1200);
+  });
+
+  apply();
+</script>
