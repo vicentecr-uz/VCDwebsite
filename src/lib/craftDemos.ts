@@ -4,7 +4,7 @@ export const CRAFT_DEMOS = [
   { id: 'adaptive-ink', title: 'Adaptive ink', height: 42 },
   { id: 'image-framing', title: 'Image framing', height: 42, narrowHeight: 54 },
   { id: 'gap-spacing', title: 'Draggable block system', height: 42 },
-  { id: 'block-reorder', title: 'Page composition', height: 46 },
+  { id: 'block-reorder', title: 'Block reorder', height: 46 },
   { id: 'proximity', title: 'Proximity reveal', height: 36 },
 ] as const;
 
