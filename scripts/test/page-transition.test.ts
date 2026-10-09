@@ -136,7 +136,7 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
@@ -194,7 +194,11 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
     documentElement: {
-      clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {},
+      clientHeight: 800, clientWidth: 1200,
+      dataset: {
+        ...(options.visible ? { devTransition: 'visible' } : {}),
+        ...(options.layoutPending || options.intro ? {} : { introLayoutReady: 'true' }),
+      },
       removeAttribute(name: string) { if (name === 'data-header-navigation') delete (this.dataset as any).headerNavigation; },
     },
     getElementById: (id: string) => id === 'transition-readiness-marker'
@@ -694,6 +698,28 @@ test('initial page stays covered until intro spacing is ready', async () => {
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
 });
 
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} first load waits for layout on a page without an intro block`, async () => {
+    const image = new ImageFixture();
+    image.rect = { top: 0, left: 0, bottom: 0, right: 100 };
+    const f = fixture({ initialController, layoutPending: true, images: [image] });
+    await f.paint();
+    assert.equal(image.count('load') + image.count('error'), 0);
+    image.rect = { top: 0, left: 0, bottom: 100, right: 100 };
+    f.window.emit('vcd:intro-layout-ready');
+    await flush();
+    assert.equal(image.loading, 'eager');
+    assert.equal(image.count('load'), 1);
+    image.load();
+    image.decoded.resolve();
+    await flush();
+    await f.paint();
+    await f.paint();
+    if (initialController) await f.advance(250);
+    assert.equal(f.overlay.hidden, initialController ? true : false);
+  });
+}
+
 test('inline readiness selects thumbnails after intro layout settles', async () => {
   const image = new ImageFixture(false);
   const f = fixture({ initialController: true, intro: true, images: [image] });
@@ -746,6 +772,7 @@ test('active Home intro reveals after two paints without layout or underlying im
   const image = new ImageFixture();
   const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image], fonts: new Promise(() => {}) });
   await f.paint();
+  f.window.emit('vcd:intro-layout-ready');
   await f.paint();
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'running');
   await f.advance(250);
@@ -762,12 +789,16 @@ test('browser trace marks are emitted without the DEV readiness marker', async (
   assert.equal(f.window.count('vcd:transition-milestone'), 0);
 });
 
-test('readiness trace detail distinguishes resource completion from timeout release', async () => {
-  const f = fixture({ images: [new ImageFixture()] });
+test('readiness trace detail reports resource completion after a delayed image', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ images: [image] });
   await f.paint();
-  await f.advance(4000);
+  image.load();
+  image.decoded.resolve();
+  await flush();
+  await f.paint();
   const readinessMark = f.marks.find((mark) => mark.name === 'vcd:readiness-satisfied');
-  assert.equal(readinessMark?.options?.detail?.release, 'timeout');
+  assert.equal(readinessMark?.options?.detail?.release, 'resources');
 });
 
 test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {
@@ -790,12 +821,14 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   assert.equal(f.upgrades, 1);
 });
 
-test('visible mode media fallback marks readiness after four seconds', async () => {
-  const f = fixture({ visible: true, images: [new ImageFixture()] });
+test('visible mode remains gated beyond four seconds until media is ready', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ visible: true, images: [image] });
   await f.paint();
-  await f.advance(3999);
+  await f.advance(4001);
   assert.equal(f.readinessMarker.hidden, true);
-  await f.advance(1);
+  image.load();
+  image.decoded.resolve();
   await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
@@ -949,24 +982,42 @@ for (const initialController of [false, true]) {
   });
 }
 
-test('four-second fallback releases stalled fonts/media and removes losing listeners', async () => {
+test('stalled media remains covered beyond four seconds and releases after readiness', async () => {
   const stalled = new ImageFixture();
-  const f = fixture({ fonts: deferred().promise, images: [stalled] });
+  const f = fixture({ images: [stalled] });
   await f.paint();
-  await f.advance(3999);
+  await f.advance(4001);
   assert.equal(f.tweens.length, 0);
-  await f.advance(1);
   await f.paint();
   assert.equal(f.tweens.length, 0);
-  assert.equal(stalled.count('load') + stalled.count('error'), 0);
-  assert.equal(f.animations.length, 1);
+  assert.equal(stalled.count('load'), 1);
+  assert.equal(f.animations.length, 0);
   assert.equal(Number(f.overlay.style.opacity), 1);
-  assert.equal(f.timers.size, 0);
+  stalled.load();
+  stalled.decoded.resolve();
+  await flush();
+  await f.paint();
+  assert.equal(f.animations.length, 1);
   await f.advance(250);
   assert.equal(f.overlay.hidden, false);
   await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.timers.size, 0);
+});
+
+test('inline stalled media remains covered beyond four seconds', async () => {
+  const stalled = new ImageFixture();
+  const f = fixture({ initialController: true, images: [stalled] });
+  await f.paint();
+  await f.advance(4001);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'running');
+  stalled.load();
+  stalled.decoded.resolve();
+  await flush();
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
 });
 
 test('broken images, rejected decodes and rejected fonts fail open', async () => {
