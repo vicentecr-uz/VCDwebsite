@@ -175,6 +175,8 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   const restore = (stopLoading = true) => {
     generation++;
     pending = false;
+    primed = false;
+    gateActive = true;
     animation?.cancel();
     animation = null;
     if (frame1) cancelAnimationFrame(frame1);
@@ -238,6 +240,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
       generation++;
       const token = generation;
       video.preload = 'auto';
+      // Synchronous play/pause preserves the user gesture for delayed playback.
       let result: Promise<void> | undefined;
       try { result = video.play(); } catch { restore(); return; }
       video.pause();
@@ -273,8 +276,8 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   });
   scope.listen(video, 'error', () => {
     if (!gateActive) return;
-    primed = false;
-    restore();
+    video.preload = 'none';
+    restore(false);
   });
   scope.add(() => {
     restore(false);
