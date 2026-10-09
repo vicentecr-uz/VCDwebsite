@@ -40,6 +40,16 @@ export function syncProjectVideoAudio(video: HTMLVideoElement): void {
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
 
+const videoSpinnerMarkup = '<svg viewBox="0 0 24 24" width="33.6" height="33.6" aria-hidden="true" fill="currentColor">'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(45 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(90 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(135 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(180 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(225 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(270 12 12)" /></g>'
+  + '<g><rect x="10.75" y="0" width="2.5" height="5.4696" rx="1.25" transform="rotate(315 12 12)" /></g></svg>';
+
 function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange, scope: ReturnType<typeof createPageScope>): () => void {
   let previousVolume = 0.5;
   let drag: { pointerId: number; value: number | null; listeners: AbortController } | undefined;
@@ -151,6 +161,175 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, s
   if (!video.paused) observer.observe(controller);
 }
 
+function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope: ReturnType<typeof createPageScope>): (() => void) | null {
+  if (!video.poster) return null;
+
+  const poster = document.createElement('img');
+  poster.className = 'project-video-player__poster';
+  poster.src = video.poster;
+  poster.alt = '';
+  poster.setAttribute('aria-hidden', 'true');
+  poster.setAttribute('noautohide', '');
+  poster.style.pointerEvents = 'none';
+  controller.insertBefore(poster, video);
+  const spinner = document.createElement('div');
+  spinner.className = 'project-video-player__buffering';
+  spinner.setAttribute('role', 'status');
+  spinner.setAttribute('aria-label', 'Loading video');
+  spinner.setAttribute('noautohide', '');
+  spinner.hidden = true;
+  spinner.innerHTML = videoSpinnerMarkup;
+  controller.insertBefore(spinner, video);
+
+  let generation = 0;
+  let pending = false;
+  let primed = false;
+  let gateActive = true;
+  let animation: Animation | null = null;
+  let frame1 = 0;
+  let frame2 = 0;
+  let resetting = false;
+  const showBuffering = () => {
+    spinner.hidden = false;
+    controller.setAttribute('data-video-buffering', '');
+  };
+  const hideBuffering = () => {
+    spinner.hidden = true;
+    controller.removeAttribute('data-video-buffering');
+  };
+
+  const restore = (stopLoading = true) => {
+    generation++;
+    pending = false;
+    primed = false;
+    gateActive = true;
+    animation?.cancel();
+    animation = null;
+    if (frame1) cancelAnimationFrame(frame1);
+    if (frame2) cancelAnimationFrame(frame2);
+    frame1 = 0; frame2 = 0;
+    poster.hidden = false;
+    poster.style.opacity = '1';
+    hideBuffering();
+    video.pause();
+    if (stopLoading) {
+      video.preload = 'none';
+      if (!resetting) {
+        resetting = true;
+        try { video.load(); } catch { /* media may be detached during teardown */ }
+        resetting = false;
+      }
+    }
+  };
+
+  const finish = (token: number) => {
+    if (!pending || token !== generation || !video.isConnected || video.readyState < 3 || video.videoWidth <= 0) return;
+    pending = false;
+    hideBuffering();
+    animation = poster.animate(
+      [{ opacity: '1' }, { opacity: '0' }],
+      { duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 200, easing: 'ease-out', fill: 'forwards' },
+    );
+    void animation.finished.then(() => {
+      if (token !== generation) return;
+      poster.hidden = true;
+      const fade = animation;
+      animation = null;
+      fade?.cancel();
+      const result = video.play();
+      void Promise.resolve(result).then(() => {
+        if (token !== generation) return;
+        gateActive = false;
+        primed = false;
+      }).catch(() => {
+        if (token !== generation) return;
+        gateActive = true;
+        restore();
+      });
+    }).catch(() => {
+      if (token === generation) restore();
+    });
+  };
+
+  const ready = () => {
+    if (!pending || frame1 || frame2 || video.readyState < 3 || video.videoWidth <= 0) return;
+    const token = generation;
+    frame1 = scope.frame(() => {
+      frame1 = 0;
+      frame2 = scope.frame(() => { frame2 = 0; finish(token); });
+    });
+  };
+
+  const start = () => {
+    if (!gateActive) return;
+    if (!pending && !primed) {
+      pending = true;
+      primed = true;
+      generation++;
+      const token = generation;
+      video.preload = 'auto';
+      showBuffering();
+      // Synchronous play/pause preserves the user gesture for delayed playback.
+      let result: Promise<void> | undefined;
+      try { result = video.play(); } catch { restore(); return; }
+      video.pause();
+      void Promise.resolve(result).catch((error: unknown) => {
+        if (token === generation && (error as DOMException)?.name !== 'AbortError') restore();
+      });
+      ready();
+      return;
+    }
+    restore();
+    primed = false;
+  };
+
+  scope.listen(video, 'canplay', ready);
+  scope.listen(video, 'loadeddata', ready);
+  scope.listen(video, 'waiting', () => {
+    if (!gateActive && !video.paused && !video.ended) showBuffering();
+  });
+  scope.listen(video, 'stalled', () => {
+    if (!gateActive && !video.paused && !video.ended && video.readyState < 3) showBuffering();
+  });
+  scope.listen(video, 'playing', hideBuffering);
+  scope.listen(video, 'pause', () => {
+    if (!pending && !animation) hideBuffering();
+  });
+  scope.listen(video, 'ended', () => {
+    if (!pending && !animation) hideBuffering();
+  });
+  scope.listen(controller, 'mediaplayrequest', (event) => {
+    if (!gateActive) return;
+    event.stopImmediatePropagation();
+    start();
+  }, true);
+  scope.listen(controller, 'mediapauserequest', (event) => {
+    if (!pending && !animation) return;
+    event.stopImmediatePropagation();
+    restore();
+    primed = false;
+  }, true);
+  scope.listen(video, 'emptied', () => {
+    if (resetting) return;
+    poster.src = video.poster;
+    gateActive = true;
+    primed = false;
+    restore(false);
+  });
+  scope.listen(video, 'error', () => {
+    hideBuffering();
+    if (!gateActive) return;
+    video.preload = 'none';
+    restore(false);
+  });
+  scope.add(() => {
+    restore(false);
+    poster.remove();
+    spinner.remove();
+  });
+  return start;
+}
+
 export function enhanceProjectVideo(video: HTMLVideoElement): void {
   if (!video.matches('video[data-project-inline-video]') || !video.parentElement) return;
   let controller = video.closest<HTMLElement>('media-controller');
@@ -172,6 +351,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   controller.setAttribute('keyboardforwardseekoffset', '5');
   controller.setAttribute('keyboardbackwardseekoffset', '5');
   video.slot = 'media';
+  const startPosterPlayback = bindVideoPoster(video, controller, scope);
 
   const play = document.createElement('media-play-button');
   play.className = 'project-video-player__play';
@@ -239,7 +419,8 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
     syncMutedVolume();
     syncBuffered();
     if (video.dataset.autoplay === 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      video.play().catch(() => {});
+      if (startPosterPlayback) startPosterPlayback();
+      else video.play().catch(() => {});
     }
   });
 }
