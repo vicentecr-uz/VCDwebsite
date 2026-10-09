@@ -40,10 +40,10 @@ test('cold loads cover with an inline veil before bundled CSS', () => {
   const critical = layout.match(/<style is:inline>\s*\/\* Cover the first paint[\s\S]*?<\/style>/)?.[0] ?? '';
   assert.match(critical, /#transition-overlay\s*\{[^}]*position:\s*fixed/);
   assert.match(critical, /#transition-overlay\s*\{[^}]*opacity:\s*1/);
-  assert.match(layout, /<a href="#main-content"[\s\S]*?<div id="transition-overlay">/);
+  assert.match(layout, /<a href="#main-content"[\s\S]*?<div id="transition-overlay" data-loading="true">/);
 });
 test('cold loads include an accessible delayed activity indicator in the veil', () => {
-  assert.match(layout, /<div id="transition-overlay">\s*<div role="status" aria-label="Loading page">[\s\S]*?<svg[^>]*aria-hidden="true"/);
+  assert.match(layout, /<div id="transition-overlay" data-loading="true">\s*<div role="status" aria-label="Loading page">[\s\S]*?<svg[^>]*aria-hidden="true"/);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
@@ -1366,8 +1366,12 @@ test('synchronous navigation failure restores content and unlocks the next attem
 
 test('the no-JavaScript CSS safety reveal remains available after five seconds', () => {
   const css = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
-  assert.match(css, /#transition-overlay\s*\{[^}]*opacity: 1;[^}]*animation: transition-overlay-reveal[^;]* 5s forwards;/);
-  assert.match(css, /@keyframes transition-overlay-reveal\s*\{\s*to\s*\{\s*opacity: 0;/);
+  const critical = layout.match(/<style is:inline>\s*\/\* Cover the first paint[\s\S]*?<\/style>/)?.[0] ?? '';
+  const noscript = layout.match(/<noscript set:html=\{'([^']+)'\}><\/noscript>/)?.[1] ?? '';
+  assert.doesNotMatch(critical, /#transition-overlay\s*\{[^}]*animation:/);
+  assert.doesNotMatch(css, /#transition-overlay\s*\{[^}]*animation:/);
+  assert.match(noscript, /animation: transition-overlay-reveal[^;]* 5s forwards/);
+  assert.match(critical, /@keyframes transition-overlay-reveal\s*\{\s*to\s*\{\s*opacity: 0;/);
 });
 
 for (const initialController of [false, true]) {

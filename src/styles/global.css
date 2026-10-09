@@ -615,9 +615,8 @@ a {
 }
 
 /* ── Page transition overlay ────────────────────────────── */
-/* Safety-net reveal only — Layout.astro cancels this and fades out once
-   viewport-visible images are ready. Long delay so a failed JS load still
-   eventually shows the page instead of trapping on white. */
+/* The JavaScript controller owns the normal reveal. A no-JavaScript safety
+   animation is emitted next to the critical inline stylesheet in Layout.astro. */
 #transition-overlay {
   position: fixed;
   inset: 0;
@@ -625,12 +624,4 @@ a {
   z-index: 100;
   pointer-events: none;
   opacity: 1;
-  animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
-}
-
-@keyframes transition-overlay-reveal {
-  to {
-    opacity: 0;
-    visibility: hidden;
-  }
 }
