@@ -95,9 +95,11 @@ const deferred = () => {
 class ImageFixture extends Target {
   complete = false;
   naturalWidth = 0;
+  loading = '';
   decodeCalls = 0;
   decoded = deferred();
   parentElement: ContainerFixture | null = null;
+  frame: ContainerFixture | null = null;
   preview = true;
   style: Record<string, string> = {};
   rect: { top: number; left: number; bottom: number; right: number };
@@ -110,6 +112,7 @@ class ImageFixture extends Target {
   getBoundingClientRect() {
     return this.rect;
   }
+  closest() { return this.frame; }
   decode() { this.decodeCalls++; return this.decoded.promise; }
   load() { this.complete = true; this.naturalWidth = 300; this.emit('load'); }
   fail() { this.complete = true; this.naturalWidth = 0; this.emit('error'); }
@@ -691,6 +694,54 @@ test('initial page stays covered until intro spacing is ready', async () => {
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
 });
 
+test('inline readiness selects thumbnails after intro layout settles', async () => {
+  const image = new ImageFixture(false);
+  const f = fixture({ initialController: true, intro: true, images: [image] });
+  await f.paint();
+  assert.equal(image.count('load') + image.count('error'), 0);
+  image.rect = { top: 0, left: 0, bottom: 100, right: 100 };
+  f.window.emit('vcd:intro-layout-ready');
+  await flush();
+  assert.equal(image.loading, 'eager');
+  assert.equal(image.count('load'), 1);
+  image.load();
+  image.decoded.resolve();
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+});
+
+test('inline readiness drops thumbnails that move out of view before layout settles', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, intro: true, images: [image] });
+  await f.paint();
+  image.rect = { top: 900, left: 0, bottom: 1000, right: 100 };
+  f.window.emit('vcd:intro-layout-ready');
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(image.count('load') + image.count('error'), 0);
+});
+
+test('inline readiness ignores hidden and clipped thumbnails while eagerly loading visible ones', async () => {
+  const visible = new ImageFixture();
+  const hidden = new ImageFixture();
+  hidden.style.visibility = 'hidden';
+  const clipped = new ImageFixture();
+  clipped.rect = { top: 0, left: 1190, bottom: 100, right: 1290 };
+  clipped.parentElement = new ContainerFixture({ top: 0, left: 0, bottom: 100, right: 1100 }, { overflowX: 'hidden' });
+  const f = fixture({ initialController: true, intro: true, images: [visible, hidden, clipped] });
+  await f.paint();
+  f.window.emit('vcd:intro-layout-ready');
+  await flush();
+  assert.equal(visible.loading, 'eager');
+  assert.equal(visible.count('load'), 1);
+  assert.equal(hidden.count('load') + hidden.count('error'), 0);
+  assert.equal(clipped.count('load') + clipped.count('error'), 0);
+});
+
 test('active Home intro reveals after two paints without layout or underlying image readiness', async () => {
   const image = new ImageFixture();
   const f = fixture({ initialController: true, intro: true, homeIntro: { state: 'active' }, images: [image], fonts: new Promise(() => {}) });
@@ -803,6 +854,7 @@ test('visible decoded thumbnails gate reveal; fonts and offscreen images do not'
   assert.equal(offscreen.count('load'), 0);
   assert.equal(offscreen.decodeCalls, 0);
   assert.equal(visible.count('load') + visible.count('error'), 0);
+  assert.equal(visible.loading, 'eager');
 });
 
 test('only visible progressive thumbnails participate in readiness geometry', async () => {
@@ -837,6 +889,26 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   await f.finishReveal();
   assert.equal(Number(f.overlay.style.opacity), 0);
 });
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} readiness uses the owning crop frame for unloaded thumbnails`, async () => {
+    const visible = new ImageFixture();
+    visible.rect = { top: 0, left: 0, bottom: 0, right: 100 };
+    visible.frame = new ContainerFixture({ top: 0, left: 0, bottom: 160, right: 100 });
+    visible.parentElement = visible.frame;
+    const offscreen = new ImageFixture();
+    offscreen.rect = { top: 0, left: 0, bottom: 0, right: 100 };
+    offscreen.frame = new ContainerFixture({ top: 900, left: 0, bottom: 1060, right: 100 });
+    offscreen.parentElement = offscreen.frame;
+    const f = fixture({ initialController, images: [visible, offscreen] });
+    await f.paint();
+    assert.equal(visible.loading, 'eager');
+    assert.equal(visible.count('load'), 1);
+    assert.equal(offscreen.count('load') + offscreen.count('error'), 0);
+    visible.load();
+    assert.equal(visible.loading, 'eager');
+  });
+}
 
 for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} readiness ignores visible media behind an active home intro`, async () => {
