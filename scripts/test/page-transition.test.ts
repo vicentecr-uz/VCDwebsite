@@ -14,6 +14,9 @@ test('layout readiness has an independent early initializer', () => {
   const headInitializer = layout.match(/<head>\s*<!--[\s\S]*?-->\s*<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
   assert.match(headInitializer, /import \{ bindSafeVh \} from ['"]\.\.\/lib\/safeVh['"]/);
   assert.match(headInitializer, /bindSafeVh\(\);/);
+  assert.match(headInitializer, /pathname\.endsWith\('\.css'\)/);
+  assert.match(headInitializer, /searchParams\.get\('type'\) === 'style'/);
+  assert.match(headInitializer, /addEventListener\('error'/);
   assert.doesNotMatch(headInitializer, /gsap|persistentNavigation|imagePreviewUpgrade|pageLifecycle/);
   assert.doesNotMatch(script ?? '', /bindSafeVh/);
 });
