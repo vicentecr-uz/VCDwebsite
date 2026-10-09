@@ -63,6 +63,8 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   video.dispatchEvent(new window.Event('canplay'));
   await settle();
   expect(playCalls).toBe(1);
+  expect(spinner.hidden).toBe(true);
+  expect(spinner.parentElement?.hasAttribute('data-video-buffering')).toBe(false);
   finishFade();
   await settle();
   expect(playCalls).toBe(2);
@@ -102,6 +104,8 @@ test('poster stays opaque while current data is insufficient', async () => {
   readyState = 3; videoWidth = 640;
   controller.dispatchEvent(new window.Event('mediapauserequest', { bubbles: true }));
   expect(poster.hidden).toBe(false);
+  expect((controller.querySelector('.project-video-player__buffering') as HTMLElement).hidden).toBe(true);
+  expect(controller.hasAttribute('data-video-buffering')).toBe(false);
   scope.destroy();
 });
 
@@ -276,6 +280,8 @@ test('video errors restore the poster without calling load', () => {
   video.dispatchEvent(new window.Event('error'));
   expect(loads).toBe(0);
   expect((controller.querySelector('.project-video-player__poster') as HTMLImageElement).hidden).toBe(false);
+  expect((controller.querySelector('.project-video-player__buffering') as HTMLElement).hidden).toBe(true);
+  expect(controller.hasAttribute('data-video-buffering')).toBe(false);
   scope.destroy();
 });
 

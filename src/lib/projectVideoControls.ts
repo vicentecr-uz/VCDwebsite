@@ -176,7 +176,6 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
   spinner.className = 'project-video-player__buffering';
   spinner.setAttribute('role', 'status');
   spinner.setAttribute('aria-label', 'Loading video');
-  spinner.setAttribute('aria-hidden', 'true');
   spinner.setAttribute('noautohide', '');
   spinner.hidden = true;
   spinner.innerHTML = videoSpinnerMarkup;
