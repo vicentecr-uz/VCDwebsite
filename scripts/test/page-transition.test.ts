@@ -114,7 +114,7 @@ class ImageFixture extends Target {
   parentElement: ContainerFixture | null = null;
   frame: ContainerFixture | null = null;
   preview = true;
-  style: Record<string, string> = {};
+  style: Record<string, string> = { overflow: 'clip' };
   rect: { top: number; left: number; bottom: number; right: number };
   constructor(public visible = true) {
     super();
@@ -1064,7 +1064,7 @@ for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} readiness uses the owning crop frame for unloaded thumbnails`, async () => {
     const visible = new ImageFixture();
     visible.rect = { top: 0, left: 0, bottom: 0, right: 100 };
-    visible.frame = new ContainerFixture({ top: 0, left: 0, bottom: 160, right: 100 });
+    visible.frame = new ContainerFixture({ top: 0, left: 0, bottom: 160, right: 100 }, { overflow: 'hidden' });
     visible.parentElement = visible.frame;
     const offscreen = new ImageFixture();
     offscreen.rect = { top: 0, left: 0, bottom: 0, right: 100 };
@@ -1077,6 +1077,25 @@ for (const initialController of [false, true]) {
     assert.equal(offscreen.count('load') + offscreen.count('error'), 0);
     visible.load();
     assert.equal(visible.loading, 'eager');
+    await flush();
+    assert.equal(visible.decodeCalls, 1);
+    assert.equal(f.animations.length, 0);
+    visible.decoded.resolve();
+    await flush();
+    if (initialController) {
+      await f.frame();
+      assert.equal(Number(f.overlay.style.opacity), 1);
+      await f.frame();
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.animations.length, 1);
+      assert.equal(f.animations[0].playState, 'paused');
+      await f.frame();
+      assert.equal(f.animations[0].playState, 'paused');
+      await f.frame();
+      assert.equal(f.animations[0].playState, 'running');
+    }
   });
 }
 
