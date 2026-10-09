@@ -19,8 +19,9 @@ test('layout readiness has an independent early initializer', () => {
   assert.match(headInitializer, /addEventListener\('error'/);
   assert.doesNotMatch(headInitializer, /gsap|persistentNavigation|imagePreviewUpgrade|pageLifecycle/);
   assert.doesNotMatch(script ?? '', /bindSafeVh/);
-  assert.match(layout, /<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/);
-  assert.doesNotMatch(layout, /media="print"|<noscript><link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com/);
+  assert.match(layout, /<link rel="stylesheet" href="\/fonts\/hanken-grotesk\/hanken\.css"/);
+  assert.match(layout, /<link rel="preload" href="\/fonts\/hanken-grotesk\/normal-latin\.woff2"/);
+  assert.doesNotMatch(layout, /fonts\.googleapis\.com|fonts\.gstatic\.com|media="print"/);
 });
 
 test('production visible diagnostic is limited to loopback hosts and the veil', () => {
