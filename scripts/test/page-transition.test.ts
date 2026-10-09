@@ -204,7 +204,13 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
-    images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
+    images: options.images ?? [],
+    fonts: {
+      ready: options.fonts ?? Promise.resolve(),
+      *[Symbol.iterator]() {
+        if (options.fonts) yield { status: 'loaded', loaded: options.fonts };
+      },
+    },
     documentElement: {
       clientHeight: 800, clientWidth: 1200,
       dataset: {
