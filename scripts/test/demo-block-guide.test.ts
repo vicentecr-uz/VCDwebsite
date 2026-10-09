@@ -54,13 +54,25 @@ function setup(reduced = false) {
   return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance };
 }
 
+async function advanceUntil(h: Harness, predicate: () => boolean, maxMs = 10000, onAdvance?: () => void) {
+  for (let elapsed = 0; elapsed < maxMs && !predicate(); elapsed += 20) {
+    await h.advance(20);
+    onAdvance?.();
+  }
+  expect(predicate()).toBe(true);
+}
+
+async function reachLift(h: Harness) {
+  h.guide.play();
+  await h.flush();
+  await advanceUntil(h, () => h.actions.includes('lift'));
+}
+
 async function reachDrop(h: Harness) {
-  h.guide.play(); await h.flush();
-  await h.advance(600); await h.advance(420); await h.advance(250); await h.advance(320); await h.advance(100); await h.advance(120); await h.advance(120); await h.advance(350); await h.advance(400); await h.advance(120);
-  await h.advance(200);
-  for (let i = 0; i < 20 && !h.actions.includes('drop'); i += 1) await h.advance(200);
-  await h.advance(500); await h.flush(); await h.advance(120); await h.advance(400); await h.advance(160); await h.advance(90); await h.advance(120); await h.advance(120); await h.advance(500); await h.advance(250);
-  for (let i = 0; i < 10; i += 1) await h.advance(200);
+  await reachLift(h);
+  await advanceUntil(h, () => h.actions.includes('drop'));
+  await advanceUntil(h, () => h.actions.includes('revert'));
+  await advanceUntil(h, () => h.cursor.style.opacity === '0');
 }
 
 function trustedPointerMove(win: Window) {
@@ -83,7 +95,29 @@ test('plays the guide sequence with grouped spacing, smooth drag, drop, and actu
 
 test('cancelling during the initial wait or drag stops queued actions', async () => {
   const waiting = setup(); waiting.guide.play(); await waiting.flush(); await waiting.advance(300); waiting.guide.stop(); await waiting.advance(5000); expect(waiting.actions.filter((action) => action === 'reveal')).toEqual([]); waiting.guide.destroy();
-  const moving = setup(); moving.guide.play(); await moving.flush(); await moving.advance(600); await moving.advance(420); await moving.advance(250); await moving.advance(320); await moving.advance(100); await moving.advance(120); await moving.advance(120); await moving.advance(350); await moving.advance(400); await moving.advance(120); await moving.advance(200); const moves = moving.actions.filter((action) => action.startsWith('move:')).length; moving.guide.stop(); await moving.advance(5000); expect(moving.actions.filter((action) => action.startsWith('move:')).length).toBe(moves); expect(moving.actions).not.toContain('drop'); moving.guide.destroy();
+  const moving = setup(); await reachLift(moving); const moves = moving.actions.filter((action) => action.startsWith('move:')).length; moving.guide.stop(); await moving.advance(5000); expect(moving.actions.filter((action) => action.startsWith('move:')).length).toBe(moves); expect(moving.actions).not.toContain('drop'); moving.guide.destroy();
+});
+
+test('long approaches slow into a bounded overshoot and land exactly before acting', async () => {
+  const h = setup();
+  const positions: Array<{ x: number; y: number }> = [];
+  const readPosition = () => {
+    const match = h.cursor.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/);
+    if (match) positions.push({ x: Number(match[1]), y: Number(match[2]) });
+  };
+  h.guide.play(); await h.flush();
+  await advanceUntil(h, () => h.actions.includes('drop'), 10000, readPosition);
+  const beforeRevert = positions.length;
+  await advanceUntil(h, () => h.actions.includes('revert'), 10000, readPosition);
+  const approach = positions.slice(beforeRevert);
+  expect(approach.length).toBeGreaterThan(10);
+  const steps = approach.slice(1).map((point, index) => point.x - approach[index].x);
+  expect(Math.max(...steps.slice(0, 4))).toBeLessThan(Math.max(...steps));
+  expect(Math.max(...approach.map(({ x }) => x))).toBeGreaterThan(702);
+  const final = approach[approach.length - 1];
+  expect(final.x).toBe(700);
+  expect(final.y).toBe(670);
+  h.guide.destroy();
 });
 
 test('observer auto-starts once, leaving cancels, and destroy keeps Astro markup', async () => {
