@@ -280,6 +280,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
+  import { createImageCropStage, cropResizeHeight } from '../../lib/imageCropStage';
 
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
@@ -2180,8 +2181,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let closingStage: NonNullable<typeof pageStage> | null = null;
     let closingStageTimer = 0;
 
-    const PAGE_RESIZE_DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
-
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
       // Gallery covers nest the clip under `.project-grid__stack` (hover + meta).
@@ -2781,24 +2780,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!editingSession || !viewportGateOk()) return;
       const target = editTarget;
 
-      const ghost = document.createElement('div');
-      ghost.className = 'dev-crop-ghost';
-      ghost.setAttribute('aria-hidden', 'true');
-      const ghostImg = document.createElement('img');
-      ghostImg.alt = '';
-      ghostImg.draggable = false;
-      ghostImg.style.backgroundColor = draftBackground;
-      ghostImg.src = editedImage.src || editedImage.currentSrc;
-      ghost.append(ghostImg);
-
-      const stage = document.createElement('div');
-      stage.className = 'dev-crop-stage';
-      PAGE_RESIZE_DIRS.forEach((dir) => {
-        const handle = document.createElement('span');
-        handle.className = `dev-crop-stage__handle dev-crop-stage__handle--${dir}`;
-        handle.dataset.pageResize = dir;
-        handle.setAttribute('aria-hidden', 'true');
-        stage.append(handle);
+      const { ghost, ghostImg, stage } = createImageCropStage({
+        src: editedImage.src || editedImage.currentSrc,
+        background: draftBackground,
       });
 
       // Lock clip/track height while siblings are still measurable — isolation
@@ -3038,27 +3022,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!resizeDir) return;
       pushUndoIfNeeded(resizeUndoCaptured);
       const width = resizeStartWidth || preview.clientWidth || 1;
-      let height = resizeStartHeight;
-      const deltaX = clientX - startX;
-      const deltaY = clientY - startY;
-      const edges = new Set(resizeDir.split(''));
-      const affectsN = edges.has('n');
-      const affectsS = edges.has('s');
-      const affectsE = edges.has('e');
-      const affectsW = edges.has('w');
-      const vertical = affectsN || affectsS;
-      const horizontalOnly = (affectsE || affectsW) && !vertical;
-
-      if (affectsN) height = resizeStartHeight - deltaY;
-      if (affectsS) height = resizeStartHeight + deltaY;
-      if (horizontalOnly) {
-        // Outward horizontal drag → wider ratio → shorter frame (width is layout-fixed).
-        const impliedWidth = affectsE
-          ? resizeStartWidth + deltaX
-          : resizeStartWidth - deltaX;
-        height = resizeStartHeight * (resizeStartWidth / Math.max(1, impliedWidth));
-      }
-
       const rootFs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
       // 12em floor is an on-page length. Scale it when resizing the smaller panel
       // preview so both surfaces share the same shortest aspect (5:1 at full width).
@@ -3074,7 +3037,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         minHeightOnPage * (width / pageWidth),
       );
       const maxHeight = width / RATIO_MIN;
-      height = clamp(height, minHeight, maxHeight);
+      const height = cropResizeHeight(resizeDir, width, resizeStartHeight, clientX - startX, clientY - startY, minHeight, maxHeight);
       beginCropEdit('both');
       const zoom = zoomOf(draft);
       draft.aspect = ratioFromSize(width, height);

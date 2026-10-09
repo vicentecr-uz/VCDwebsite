@@ -11,6 +11,8 @@ const dist = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, '
 const allNodes = (node) => [node, ...(node.childNodes ?? []).flatMap(allNodes)];
 const attr = (node, name) => node?.attrs?.find((item) => item.name === name)?.value;
 const text = (node) => node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(text).join('');
+// Public page blocks also listen for these layout refreshes when used by the editor.
+const withoutRendererEvents = (source) => source.replace(/vcd:dev-(?:section-inserted|section-structure-changed|frame-changed)/g, '');
 const scriptGraph = async (source, seen = new Set()) => {
   const [imports] = parseImports(source);
   for (const item of imports) {
@@ -21,7 +23,7 @@ const scriptGraph = async (source, seen = new Set()) => {
     if (seen.has(file)) continue;
     seen.add(file);
     const child = await readFile(file, 'utf8');
-    assert.doesNotMatch(child, /\/api\/|localStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
+    assert.doesNotMatch(withoutRendererEvents(child), /\/api\/|localStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
     // The existing magnifier keeps session presets; the other demos remain storage-free.
     if (!path.basename(file).startsWith('ProgressiveImageDemo.')) assert.doesNotMatch(child, /sessionStorage/, file);
     await scriptGraph(child, seen);
@@ -75,7 +77,7 @@ for (const demo of CRAFT_DEMOS) {
   }
   assert.match(attr(policy, 'content'), /form-action 'none'/);
   assert.equal(nodes.some((node) => attr(node, 'contenteditable') !== undefined), false);
-  assert.doesNotMatch(html, /data-dev-document|data-dev-edit|data-project-image-crop-tuner|dev-mode-toggle/);
+  assert.doesNotMatch(html.replaceAll('data-dev-editor-select', ''), /data-dev-document|data-dev-edit|data-project-image-crop-tuner|dev-mode-toggle/);
   const body = nodes.find((node) => node.tagName === 'body');
   const visibleText = allNodes(body).filter((node) => node.nodeName === '#text' && !['script', 'style'].includes(node.parentNode?.tagName)).map(text).join(' ');
   assert.doesNotMatch(visibleText, /import .* from|---/, `${demo.id}: Astro frontmatter cannot leak into the page`);
@@ -85,7 +87,7 @@ for (const demo of CRAFT_DEMOS) {
   for (const script of nodes.filter((node) => node.tagName === 'script' && attr(node, 'type') === 'module')) {
     const src = attr(script, 'src');
     const source = src ? `import ${JSON.stringify(src)};` : text(script);
-    assert.doesNotMatch(source, /\/api\/|localStorage|sessionStorage|vcd:dev-/);
+    assert.doesNotMatch(withoutRendererEvents(source), /\/api\/|localStorage|sessionStorage|vcd:dev-/);
     await scriptGraph(source);
   }
   if (demo.id === 'select-field') {

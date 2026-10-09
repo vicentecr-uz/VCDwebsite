@@ -1,42 +1,45 @@
 ---
 import Button from '../../ui/Button.astro';
-import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
-import { sizeIcon } from '../../../lib/icons';
-import { projectImageTier } from '../../../lib/images';
+import { sectionReorderHandleMarkup } from '../../../lib/sectionReorderChrome';
+import '../../../styles/sectionReorderChrome.css';
+import '../../../styles/project.css';
+import ProjectBodyText from '../ProjectBodyText.astro';
+import ProjectImage from '../ProjectImage.astro';
+import ProjectImageGrid from '../ProjectImageGrid.astro';
+import ProjectSectionTitle from '../ProjectSectionTitle.astro';
 
-const imageSrc = projectImageTier('IMG_2480.jpeg', 'preview');
-const gripIconSvg = sizeIcon(gripIcon, 16);
 ---
 
-<vcd-reorder-demo>
+<vcd-reorder-demo class="is-dev-mode">
   <div class="reorder-demo__canvas">
     <div class="reorder-demo__list" data-reorder-demo-list>
-      <article class="reorder-demo__block reorder-demo__block--intro" data-reorder-demo-block data-title="Inside the object">
-        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move Inside the object" aria-pressed="false">
-          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
-        </Button>
+      <article class="reorder-demo__block reorder-demo__block--intro" data-reorder-demo-block data-dev-section-reorderable data-title="Inside the object">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder Inside the object', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
         <div class="reorder-demo__intro-copy">
-          <p class="reorder-demo__eyebrow">Object study</p>
-          <h2>Inside the object</h2>
-          <p>Every part has a purpose.</p>
+          <ProjectSectionTitle title="Inside the object" spacing="none" />
+          <ProjectBodyText paragraphs={['Every part has a purpose.']} spacing="none" />
         </div>
       </article>
 
-      <article class="reorder-demo__block reorder-demo__block--wide-image" data-reorder-demo-block data-title="The whole picture">
-        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move The whole picture" aria-pressed="false">
-          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
-        </Button>
-        <img src={imageSrc} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" draggable="false" />
+      <article class="reorder-demo__block reorder-demo__block--wide-image" data-reorder-demo-block data-dev-section-reorderable data-title="The whole picture">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder The whole picture', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <ProjectImage src="IMG_2480.jpeg" srcWidth={4032} srcHeight={3024} alt="Disassembled utility knife arranged on a gridded cutting mat" variants={{ desktop: { aspect: "3:1", cx: 0.5, cy: 0.58, w: 1 } }} mobileInset spacing="none" />
       </article>
 
-      <article class="reorder-demo__block reorder-demo__block--grid" data-reorder-demo-block data-title="Small details">
-        <Button class="reorder-demo__handle" emphasis="soft" label="Move" type="button" data-reorder-demo-handle aria-label="Move Small details" aria-pressed="false">
-          <span slot="icon" aria-hidden="true" set:html={gripIconSvg} />
-        </Button>
-        <div class="reorder-demo__image-grid">
-          <img src={imageSrc} width="4032" height="3024" alt="Close detail of the utility knife parts" draggable="false" />
-          <img src={imageSrc} width="4032" height="3024" alt="Close detail of the cutting mat and utility knife" draggable="false" />
-        </div>
+      <article class="reorder-demo__block reorder-demo__block--grid" data-reorder-demo-block data-dev-section-reorderable data-title="Small details">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder Small details', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <ProjectImageGrid
+          columns={2}
+          defaultAspectRatio="2:1"
+          spacing="none"
+          items={[
+            { src: 'IMG_2480.jpeg', alt: 'Close detail of the utility knife parts', variants: { desktop: { aspect: '2:1', cx: 0.3, cy: 0.63, w: 0.6 } }, mobileInset: true },
+            { src: 'IMG_2480.jpeg', alt: 'Close detail of the cutting mat and utility knife', variants: { desktop: { aspect: '2:1', cx: 0.7, cy: 0.35, w: 0.6 } }, mobileInset: true },
+          ]}
+        />
       </article>
     </div>
     <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
@@ -54,7 +57,7 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
   }
 
   .reorder-demo__canvas {
-    padding: clamp(0.75rem, 3vw, 1.5rem);
+    padding: var(--space-unit) calc(var(--space-unit) * 3);
     background: var(--sys-color-srf-container-low);
     border: 1px solid var(--sys-color-srf-container);
     border-radius: var(--radius-control-smooth);
@@ -72,106 +75,22 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
     min-height: 5.5em;
     overflow-anchor: none;
     color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf);
-    border: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 14%, transparent);
-    border-radius: var(--radius-control-smooth);
   }
 
-  .reorder-demo__block--intro {
-    display: flex;
-    align-items: end;
-    min-height: 8.25em;
-    padding: 3.75rem 1.25rem 1.25rem;
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle) {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(calc(-100% - 0.55em), -50%);
   }
 
-  .reorder-demo__block--wide-image {
-    height: 11.5rem;
-    overflow: hidden;
-  }
-
-  .reorder-demo__block--wide-image > img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center 58%;
-  }
-
-  .reorder-demo__block--grid {
-    height: 7.5rem;
-    overflow: hidden;
-  }
-
-  .reorder-demo__image-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    height: 100%;
-    gap: 2px;
-  }
-
-  .reorder-demo__image-grid img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .reorder-demo__image-grid img:first-child {
-    object-position: 24% 63%;
-  }
-
-  .reorder-demo__image-grid img:last-child {
-    object-position: 72% 35%;
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:hover),
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:focus-visible),
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:active) {
+    transform: translate(calc(-100% - 0.55em), -50%) scale(1.08);
   }
 
   .reorder-demo__intro-copy {
-    max-width: 18em;
-  }
-
-  .reorder-demo__intro-copy h2,
-  .reorder-demo__intro-copy p {
-    margin: 0;
-  }
-
-  .reorder-demo__intro-copy h2 {
-    font-size: clamp(1.25rem, 4vw, 1.75rem);
-    letter-spacing: -0.035em;
-    line-height: 1;
-  }
-
-  .reorder-demo__intro-copy > p:last-child {
-    margin-top: 0.45rem;
-    font-size: 0.9rem;
-    opacity: 0.68;
-  }
-
-  .reorder-demo__eyebrow {
-    margin-bottom: 0.6rem !important;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    line-height: 1;
-    text-transform: uppercase;
-    opacity: 0.58;
-  }
-
-  .reorder-demo__handle {
-    position: absolute;
-    top: 0.65rem;
-    right: 0.65rem;
-    z-index: 2;
-    touch-action: none;
-    cursor: grab;
-  }
-
-  .reorder-demo__handle:active {
-    cursor: grabbing;
-  }
-
-  @media (max-width: 40em) {
-    .reorder-demo__block--intro {
-      padding-top: 4.25rem;
-    }
+    max-width: 100%;
   }
 
   .reorder-demo__status {
@@ -182,53 +101,6 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
     clip: rect(0 0 0 0);
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-
-  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted) {
-    position: fixed;
-    z-index: 100;
-    margin: 0;
-  }
-
-  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
-    transform: scale(1.02);
-    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 18%);
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator) {
-    display: grid;
-    grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
-    margin: 0;
-    padding: 0;
-    overflow-anchor: none;
-    pointer-events: none;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator-body) {
-    grid-row: 2;
-    height: var(--gap-height, 0px);
-    box-sizing: border-box;
-    border: 1px solid var(--sys-color-srf-container);
-    background: var(--sys-color-srf-container-low);
-    border-radius: var(--radius-control-smooth);
-    opacity: 0;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator-body.vcd-reorder-demo__fade-ghost) {
-    position: fixed;
-    z-index: 99;
-    margin: 0;
-    pointer-events: none;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__flip) {
-    will-change: transform;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
-      transform: none;
-    }
   }
 
 </style>
@@ -260,6 +132,12 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
       const status = this.querySelector<HTMLElement>('.reorder-demo__status');
       if (!list || !resetButton || !status) return;
       this.originalNodes = [...list.childNodes];
+      list.querySelectorAll('img').forEach((image) => {
+        image.removeAttribute('role');
+        image.removeAttribute('tabindex');
+        image.removeAttribute('aria-label');
+        image.draggable = false;
+      });
 
       const items = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')]
         .filter((item) => item !== this.dragItem);
@@ -275,11 +153,12 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
         getDropZone: () => list,
         getDragItem: () => this.dragItem,
         classes: {
-          indicator: 'vcd-reorder-demo__indicator',
-          indicatorBody: 'vcd-reorder-demo__indicator-body',
-          flipMoving: 'vcd-reorder-demo__flip',
-          lifted: 'vcd-reorder-demo__lifted',
-          fadeGhost: 'vcd-reorder-demo__fade-ghost',
+          indicator: 'dev-section-drop-indicator',
+          indicatorBody: 'dev-section-drop-indicator__body',
+          flipMoving: 'is-section-flip-moving',
+          lifted: 'is-section-lifted',
+          liftBackdrop: 'dev-section-lift-backdrop',
+          fadeGhost: 'is-drop-indicator-fade-ghost',
         },
         measureLiftGaps: () => ({ top: '0px', bottom: '0px' }),
         measureInsertGaps: () => ({ top: '0px', bottom: '0px', marginTop: '0px' }),
@@ -305,8 +184,12 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
         this.syncResolve = undefined;
       };
       const setPressed = (pressed: boolean) => {
-        allItems().forEach((item) => item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]')
-          ?.setAttribute('aria-pressed', String(pressed && item === this.dragItem)));
+        allItems().forEach((item) => {
+          const active = pressed && item === this.dragItem;
+          item.classList.toggle('is-section-lifted-session', active);
+          item.querySelector('.dev-section-lift-backdrop')?.classList.toggle('is-visible', active);
+          item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]')?.setAttribute('aria-pressed', String(active));
+        });
       };
       const restoreNodes = (nodes: ChildNode[]) => {
         for (const node of nodes) list.append(node);
@@ -457,6 +340,8 @@ const gripIconSvg = sizeIcon(gripIcon, 16);
       if (handle && pointerId !== null && handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
       this.lifecycle?.abort();
       this.controller?.destroy();
+      this.querySelectorAll('.is-section-lifted-session').forEach((item) => item.classList.remove('is-section-lifted-session'));
+      this.querySelectorAll('.dev-section-lift-backdrop').forEach((backdrop) => backdrop.classList.remove('is-visible'));
       this.controller = undefined;
       this.dragItem = null;
       this.dragHandle = null;
