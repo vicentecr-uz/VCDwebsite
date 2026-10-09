@@ -148,9 +148,10 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; fontSetReady?: Promise<void>; fontFaces?: Array<{ status: string; loaded: Promise<void> }>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
+  let bodyReads = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
   const animations: any[] = [];
@@ -206,11 +207,10 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   const document = Object.assign(new Target(), {
     images: options.images ?? [],
     fonts: {
-      ready: options.fonts ?? Promise.resolve(),
-      *[Symbol.iterator]() {
-        if (options.fonts) yield { status: 'loaded', loaded: options.fonts };
-      },
+      ready: options.fontSetReady ?? options.fonts ?? Promise.resolve(),
+      [Symbol.iterator]: () => (options.fontFaces ?? (options.fonts ? [{ status: 'loaded', loaded: options.fonts }] : []))[Symbol.iterator](),
     },
+    body: { getBoundingClientRect() { bodyReads++; return { top: 0, left: 0, bottom: 800, right: 1200 }; } },
     documentElement: {
       clientHeight: 800, clientWidth: 1200,
       dataset: {
@@ -302,7 +302,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   return {
     overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks,
     get persistentHooks() { return persistentHooks; },
-    get upgrades() { return upgrades; }, get bound() { return bound; },
+    get upgrades() { return upgrades; }, get bound() { return bound; }, get bodyReads() { return bodyReads; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
         button: 0, defaultPrevented: false, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false,
@@ -375,6 +375,43 @@ test('initial reveal waits for styles and thumbnails without waiting for editing
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
   assert.equal(f.persistentHooks, undefined);
 });
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} reveal waits for requested faces without waiting for FontFaceSet.ready`, async () => {
+    const requested = deferred();
+    let unusedReads = 0;
+    const unused = { status: 'unloaded', get loaded() { unusedReads++; return new Promise<void>(() => {}); } } as any;
+    const f = fixture({
+      initialController,
+      fontSetReady: new Promise<void>(() => {}),
+      fontFaces: [{ status: 'loading', loaded: requested.promise }, unused],
+    });
+    let syncs = 0;
+    f.window.addEventListener('vcd:intro-layout-sync', () => {
+      assert.equal(f.animations.length, 0);
+      assert.equal(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'), false);
+      syncs++;
+    });
+    await f.paint();
+    assert.equal(unusedReads, 0);
+    assert.equal(f.animations.length, 0);
+    assert.equal(f.tweens.length, 0);
+    assert.equal(syncs, 0);
+    requested.resolve();
+    await flush();
+    await f.paint();
+    assert.equal(unusedReads, 0);
+    if (initialController) {
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.animations.length, 1);
+      await f.finishReveal();
+    }
+    assert.equal(syncs, 1);
+    assert.ok(f.bodyReads > 0);
+  });
+}
 
 test('cached content uses the native incoming fade and approved GSAP outgoing cover', async () => {
   const f = fixture();

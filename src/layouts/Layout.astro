@@ -379,13 +379,15 @@ const initialThemeColor = resolveToken('sys.color.srf');
           window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
         });
         const fontReady = introLayoutReady.then(() => {
+          if (overlay.dataset.vcdInitialReveal !== 'running') return;
+          document.body?.getBoundingClientRect();
+          mark('initial-layout-ready');
           const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
             ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
             : [];
           return Promise.all(faces.map((face) => Promise.resolve(face.loaded).catch(() => undefined))).then(() => {
             if (overlay.dataset.vcdInitialReveal !== 'running') return;
             document.body?.getBoundingClientRect();
-            mark('initial-layout-ready');
             mark('initial-fonts-ready');
             window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           });
@@ -630,12 +632,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         const waits: Promise<unknown>[] = [];
         const layoutReady = new Promise<void>((resolve) => {
           if (document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
-          const ready = () => {
-            window.removeEventListener('vcd:intro-layout-ready', ready);
-            document.body?.getBoundingClientRect();
-            window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-            resolve();
-          };
+          const ready = () => { window.removeEventListener('vcd:intro-layout-ready', ready); resolve(); };
           window.addEventListener('vcd:intro-layout-ready', ready, { once: true });
           cleanups.push(() => window.removeEventListener('vcd:intro-layout-ready', ready));
         });
@@ -647,6 +644,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
         };
         void layoutReady.then(() => {
           if (signal.aborted || settled) return;
+          document.body?.getBoundingClientRect();
           const faces = typeof document.fonts?.[Symbol.iterator] === 'function'
             ? Array.from(document.fonts).filter((face) => face.status !== 'unloaded')
             : [];
