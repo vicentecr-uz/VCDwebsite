@@ -23,11 +23,11 @@ if (!import.meta.env.DEV) {
 
       <section class="prototype__controls" aria-labelledby="prototype-title">
         <h1 id="prototype-title">Carousel dot opacity</h1>
-        <label class="prototype__colour" for="dot-colour">Dot colour
+        <label class="prototype__colour" for="dot-colour">Dot fill
           <select id="dot-colour">
             <option value="auto">Auto</option>
-            <option value="white">White</option>
-            <option value="dark">Dark</option>
+            <option value="white">White dots</option>
+            <option value="dark">Dark dots</option>
           </select>
         </label>
         <div class="prototype__sliders">
@@ -303,23 +303,29 @@ if (!import.meta.env.DEV) {
         --dot-inactive: var(--dot-dark-inactive, .3);
         --dot-active: var(--dot-dark-active, .8);
       }
+      .project-image-carousel__dot-mark {
+        background: var(--ref-palette-grey-100);
+      }
       .project-image-carousel__dots[data-media-ground='dark'] {
         --dot-inactive: var(--dot-white-inactive, .4);
         --dot-active: var(--dot-white-active, .8);
+      }
+      .project-image-carousel__dots[data-media-ground='dark'] .project-image-carousel__dot-mark {
+        background: var(--ref-palette-grey-1000);
       }
       html[data-dot-colour='white'] .project-image-carousel__dots {
         --dot-inactive: var(--dot-white-inactive, .4);
         --dot-active: var(--dot-white-active, .8);
       }
-      html[data-dot-colour='white'] .project-image-carousel__dot-mark {
-        background: var(--sys-color-on-dark-media);
+      html[data-dot-colour='white'] .project-image-carousel__dots .project-image-carousel__dot-mark {
+        background: var(--ref-palette-grey-1000);
       }
       html[data-dot-colour='dark'] .project-image-carousel__dots {
         --dot-inactive: var(--dot-dark-inactive, .3);
         --dot-active: var(--dot-dark-active, .8);
       }
-      html[data-dot-colour='dark'] .project-image-carousel__dot-mark {
-        background: var(--sys-color-on-light-media);
+      html[data-dot-colour='dark'] .project-image-carousel__dots .project-image-carousel__dot-mark {
+        background: var(--ref-palette-grey-100);
       }
       .project-image-carousel__dot-mark {
         opacity: calc(var(--dot-inactive) + var(--project-carousel-dot-activeness, 0) * (var(--dot-active) - var(--dot-inactive)));
