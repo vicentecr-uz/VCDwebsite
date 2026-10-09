@@ -45,15 +45,12 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   video.pause = () => { pauseCalls++; };
   let finishFade!: () => void;
   const fade = new Promise<void>((resolve) => { finishFade = resolve; });
-  const poster = window.document.createElement('img');
-  poster.animate = (() => ({ finished: fade, cancel() {} })) as any;
   controller.append(video);
   window.document.body.append(controller);
   const scope = createPageScope();
-  // The helper creates the real poster; patch its animation seam after insertion.
-  const start = bindVideoPoster(video, controller, scope)!;
+  bindVideoPoster(video, controller, scope);
   const renderedPoster = controller.querySelector('.project-video-player__poster') as HTMLImageElement;
-  renderedPoster.animate = poster.animate;
+  renderedPoster.animate = (() => ({ finished: fade, cancel() {} })) as any;
 
   controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
   expect(playCalls).toBe(1);
@@ -67,6 +64,10 @@ test('poster gate primes paused playback, fades after decoded frames, then start
   await settle();
   expect(playCalls).toBe(2);
   expect(renderedPoster.hidden).toBe(true);
+  let propagated = 0;
+  controller.addEventListener('mediaplayrequest', () => { propagated++; });
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  expect(propagated).toBe(1);
   scope.destroy();
   expect(controller.querySelector('.project-video-player__poster')).toBeNull();
 });
@@ -175,6 +176,103 @@ test('reduced motion removes the poster fade duration', async () => {
   } finally {
     Object.defineProperty(window, 'matchMedia', { configurable: true, value: previousMatchMedia });
   }
+});
+
+test('genuine priming rejection restores the gate for an immediate retry', async () => {
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  video.poster = '/poster.webp';
+  let playCalls = 0;
+  Object.defineProperties(video, {
+    readyState: { configurable: true, get: () => 2 },
+    videoWidth: { configurable: true, get: () => 0 },
+  });
+  video.play = () => {
+    playCalls++;
+    return playCalls === 1 ? Promise.reject(new Error('blocked')) : Promise.resolve();
+  };
+  video.pause = () => {};
+  controller.append(video); window.document.body.append(controller);
+  const scope = createPageScope();
+  bindVideoPoster(video, controller, scope);
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  await settle();
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  expect(playCalls).toBe(2);
+  scope.destroy();
+});
+
+test('expected AbortError from priming keeps the delayed handoff alive', async () => {
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  video.poster = '/poster.webp';
+  let readyState = 2;
+  let videoWidth = 0;
+  let playCalls = 0;
+  Object.defineProperties(video, {
+    readyState: { configurable: true, get: () => readyState },
+    videoWidth: { configurable: true, get: () => videoWidth },
+  });
+  video.play = () => { playCalls++; return Promise.reject(new DOMException('interrupted', 'AbortError')); };
+  video.pause = () => {};
+  controller.append(video); window.document.body.append(controller);
+  const scope = createPageScope();
+  bindVideoPoster(video, controller, scope);
+  const poster = controller.querySelector('.project-video-player__poster') as HTMLImageElement;
+  let animations = 0;
+  poster.animate = (() => { animations++; return { finished: Promise.resolve(), cancel() {} }; }) as any;
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  await settle();
+  readyState = 3; videoWidth = 640;
+  video.dispatchEvent(new window.Event('canplay'));
+  await settle();
+  expect(playCalls).toBe(2);
+  expect(animations).toBe(1);
+  scope.destroy();
+});
+
+test('final playback rejection restores the poster for retry', async () => {
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  video.poster = '/poster.webp';
+  let playCalls = 0;
+  Object.defineProperties(video, {
+    readyState: { configurable: true, get: () => 3 },
+    videoWidth: { configurable: true, get: () => 640 },
+  });
+  video.play = () => {
+    playCalls++;
+    return playCalls === 2 ? Promise.reject(new Error('blocked')) : Promise.resolve();
+  };
+  video.pause = () => {};
+  controller.append(video); window.document.body.append(controller);
+  const scope = createPageScope();
+  bindVideoPoster(video, controller, scope);
+  const poster = controller.querySelector('.project-video-player__poster') as HTMLImageElement;
+  poster.animate = (() => ({ finished: Promise.resolve(), cancel() {} })) as any;
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  await settle();
+  expect(playCalls).toBe(2);
+  expect(poster.hidden).toBe(false);
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  expect(playCalls).toBe(3);
+  scope.destroy();
+});
+
+test('video errors restore the poster without calling load', () => {
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  video.poster = '/poster.webp';
+  let loads = 0;
+  video.load = () => { loads++; };
+  controller.append(video); window.document.body.append(controller);
+  const scope = createPageScope();
+  bindVideoPoster(video, controller, scope);
+  controller.dispatchEvent(new window.Event('mediaplayrequest', { bubbles: true }));
+  video.dispatchEvent(new window.Event('error'));
+  expect(loads).toBe(0);
+  expect((controller.querySelector('.project-video-player__poster') as HTMLImageElement).hidden).toBe(false);
+  scope.destroy();
 });
 
 test('inactivity hiding is touch-only, while keyboard popup access stays global', () => {
