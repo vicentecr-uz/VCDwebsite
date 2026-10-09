@@ -10,6 +10,13 @@ test('scrub transition UI and source instrumentation are removed', () => {
   assert.match(layout, /transitionMode === 'visible'/);
   assert.doesNotMatch(layout, /transitionMode === 'scrub'/);
 });
+test('layout readiness has an independent early initializer', () => {
+  const headInitializer = layout.match(/<head>\s*<!--[\s\S]*?-->\s*<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  assert.match(headInitializer, /import \{ bindSafeVh \} from ['"]\.\.\/lib\/safeVh['"]/);
+  assert.match(headInitializer, /bindSafeVh\(\);/);
+  assert.doesNotMatch(headInitializer, /gsap|persistentNavigation|imagePreviewUpgrade|pageLifecycle/);
+  assert.doesNotMatch(script ?? '', /bindSafeVh/);
+});
 
 test('production visible diagnostic is limited to loopback hosts and the veil', () => {
   const productionParser = layout.match(/\{!showDevTools && \(\s*<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '';

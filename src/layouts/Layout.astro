@@ -105,6 +105,11 @@ const initialThemeColor = resolveToken('sys.color.srf');
   data-adaptive-page-columns={ADAPTIVE_PAGE_COLUMNS_ENABLED ? '' : undefined}
 >
   <head>
+    <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
+    <script>
+      import { bindSafeVh } from '../lib/safeVh';
+      bindSafeVh();
+    </script>
     <Analytics />
     {persistentNavigation && <ClientRouter fallback="swap" />}
     <meta charset="UTF-8" />
@@ -465,12 +470,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
       import gsap from 'gsap';
       import { installPersistentNavigation } from '../scripts/persistentNavigation';
       import { resetImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
-      import { bindSafeVh } from '../lib/safeVh';
       import { bindExternalLinks } from '../lib/externalLinks';
       import { bindImagePreviewUpgrade, openImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
 
-      // Stable 1vh unit for max-height caps (Edge/iOS svh is buggy mid-scroll).
-      bindSafeVh();
       bindExternalLinks();
 
       const overlay = document.getElementById('transition-overlay');
