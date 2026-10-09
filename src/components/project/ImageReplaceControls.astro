@@ -1,0 +1,28 @@
+---
+import '../../styles/dev-chrome.css';
+import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+
+interface Props { showAssetManager?: boolean; dropLabel?: string; }
+const { showAssetManager = true, dropLabel } = Astro.props;
+const monitorSvg = sizeIcon(monitorIcon, 16);
+const globeSvg = sizeIcon(globeIcon, 16);
+---
+<div class="dev-field">
+  <span class="dev-field__label">Replace image</span>
+  <div class="dev-drop" data-crop-replace-drop tabindex="0" role="button" aria-label="Replace image">
+    <div class="dev-drop__well">
+      {dropLabel && <p class="dev-drop__label">{dropLabel}</p>}
+      <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
+        <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
+        File system
+      </button>
+      {showAssetManager && <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
+        <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
+        Asset manager
+      </button>}
+      <input type="file" accept="image/*,.heic,.heif" hidden data-crop-replace-file />
+    </div>
+  </div>
+</div>

@@ -1,55 +1,95 @@
 ---
 import '../../../styles/project.css';
-import DevPanel from '../../ui/DevPanel.astro';
+import DevOverlayFrame from '../../ui/DevOverlayFrame.astro';
 import ImageCropControls from '../ImageCropControls.astro';
+import ImageReplaceControls from '../ImageReplaceControls.astro';
 import Button from '../../ui/Button.astro';
 import ProjectImage from '../ProjectImage.astro';
 import { normalizeImageVariants } from '../../../lib/responsiveImage';
 import { projectImageTier } from '../../../lib/images';
-const imageSrc = projectImageTier('IMG_2480.jpeg', 'preview');
+const sampleSrc = 'Good Home Tools Range Landscape 5.jpg';
+const imageSrc = projectImageTier(sampleSrc, 'preview');
 const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
-const variants = normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, '4:3', { width: 4032, height: 3024 });
+const variants = normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, '4:3', { width: 7244, height: 5433 });
 ---
 
 <vcd-crop-frame-demo data-crop-demo>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
-      <DevPanel title="Image" showLights={false}>
+      <DevOverlayFrame title="Image" embedded data-crop-panel>
         <div class="tapico-crop-tuner">
           <ImageCropControls imageSrc={imageSrc} aspect="4:3" />
+          <ImageReplaceControls showAssetManager={false} dropLabel="Drag and drop here" />
+          <p data-image-replacement-status role="status" hidden></p>
         </div>
-      </DevPanel>
+      </DevOverlayFrame>
     </div>
     <div class="crop-frame-demo__canvas">
-      <ProjectImage kind="lead" src="IMG_2480.jpeg" srcWidth={4032} srcHeight={3024} variants={variants} spacing="none" loading="eager" alt="Disassembled utility knife on a cutting mat" />
+      <ProjectImage kind="lead" src={sampleSrc} srcWidth={7244} srcHeight={5433} variants={variants} spacing="none" loading="eager" alt="GoodHome brushes, rollers and painting tools" />
     </div>
   </div>
   <div class="demo-controls"><Button label="Reset" data-crop-reset /></div>
 </vcd-crop-frame-demo>
 
 <style>
-  vcd-crop-frame-demo { display: block; width: min(100%, 58rem); }
+  vcd-crop-frame-demo { display: block; width: min(100%, 58rem); align-self: start; }
   .crop-frame-demo__layout { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); align-items: start; gap: calc(var(--space-unit) * 2); }
-  .crop-frame-demo__panel { width: min(100%, 20rem); }
-  .crop-frame-demo__canvas { width: min(100%, 28rem, calc(22rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; padding: var(--space-unit); }
+  .crop-frame-demo__panel { width: min(100%, 20rem); z-index: 1; }
+  .crop-frame-demo__panel :global(.dev-overlay) { width: 100%; max-height: none; }
+  .crop-frame-demo__panel :global(.dev-overlay__head) { cursor: default; }
+  .crop-frame-demo__panel :global(.dev-overlay__resize) { display: none; }
+  .crop-frame-demo__canvas { width: min(100%, 28rem, calc(22rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; padding: var(--space-unit); z-index: 0; }
   .crop-frame-demo__panel :global(.tapico-crop-tuner__preview) { width: min(100%, calc(14rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; }
   .crop-frame-demo__canvas :global(.project-image) { margin: 0; }
   .crop-frame-demo__canvas :global(.project-image.dev-crop-stage-host) { overflow: visible; }
-  .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
+  .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible:not(.is-dragging):not(.is-resizing)) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
   @media (max-width: 40em) { .crop-frame-demo__layout { grid-template-columns: 1fr; } .crop-frame-demo__canvas { order: -1; } .crop-frame-demo__panel { width: min(100%, 22rem); margin-inline: auto; } }
 </style>
 
 <script>
   import { createDemoImageCrop } from '../../../lib/demoImageCrop';
+  import { createDemoImageReplacement } from '../../../lib/demoImageReplacement';
+  import { createDevPanelCollapse } from '../../../lib/devPanelCollapse';
   class CropFrameDemo extends HTMLElement {
-    private dispose?: { destroy(): void; reset(): void };
+    private dispose?: () => void;
     connectedCallback() {
-      this.dispose?.destroy();
+      this.dispose?.();
       const host = this.querySelector<HTMLElement>('.project-image');
-      const panel = this;
-      if (host) this.dispose = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3' });
+      const panel = this.querySelector<HTMLElement>('[data-crop-panel]');
+      if (!host || !panel) return;
+      const lifecycle = new AbortController();
+      const { signal } = lifecycle;
+      const crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3' });
+      const replacement = createDemoImageReplacement(panel, crop);
+      const collapse = createDevPanelCollapse(panel);
+      let restoreTimer = 0;
+      const show = () => {
+        window.clearTimeout(restoreTimer);
+        restoreTimer = 0;
+        if (panel.classList.contains('is-minimized')) collapse.set(false, false);
+        panel.inert = false;
+        panel.classList.add('is-dev-overlay-open');
+        crop.setActive(true);
+      };
+      const hide = () => {
+        window.clearTimeout(restoreTimer);
+        panel.inert = true;
+        panel.classList.remove('is-dev-overlay-open');
+        crop.setActive(false);
+        restoreTimer = window.setTimeout(show, 2000);
+      };
+      panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => collapse.set(!panel.classList.contains('is-minimized')), { signal });
+      panel.querySelector('[data-hide-toggle]')?.addEventListener('click', hide, { signal });
+      this.querySelector('[data-crop-reset]')?.addEventListener('click', () => { replacement.reset(); collapse.set(false); show(); }, { signal });
+      this.dispose = () => {
+        lifecycle.abort();
+        window.clearTimeout(restoreTimer);
+        collapse.destroy();
+        replacement.destroy();
+        crop.destroy();
+      };
     }
-    disconnectedCallback() { this.dispose?.destroy(); this.dispose = undefined; }
+    disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
   }
   if (!customElements.get('vcd-crop-frame-demo')) customElements.define('vcd-crop-frame-demo', CropFrameDemo);
 </script>
