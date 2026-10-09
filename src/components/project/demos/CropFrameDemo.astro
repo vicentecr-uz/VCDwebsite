@@ -5,14 +5,17 @@ import ImageCropControls from '../ImageCropControls.astro';
 import ImageReplaceControls from '../ImageReplaceControls.astro';
 import Button from '../../ui/Button.astro';
 import PanelActions from '../../ui/PanelActions.astro';
+import AssetManagerContent from '../../ui/AssetManagerContent.astro';
 import ProjectImage from '../ProjectImage.astro';
 import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
 import { projectImageTier } from '../../../lib/images';
+import type { DemoAssetProject } from '../../../lib/demoAssetPicker';
 interface Props {
   sample?: unknown;
+  catalog?: DemoAssetProject[];
   authoring?: { documentKey: string; path: Array<string | number>; sectionId: string };
 }
-const { sample: suppliedSample, authoring } = Astro.props;
+const { sample: suppliedSample, catalog = [], authoring } = Astro.props;
 const fallbackPose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
 const fallback = { src: 'Good Home Tools Range Landscape 5.jpg', srcWidth: 7244, srcHeight: 5433, variants: { desktop: fallbackPose } };
 const candidate = suppliedSample as typeof fallback | undefined;
@@ -34,12 +37,12 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
       <DevOverlayFrame title="Image" embedded data-crop-panel>
         <div class="tapico-crop-tuner">
           <ImageCropControls imageSrc={imageSrc} aspect={variants.desktop.aspect} />
-          <ImageReplaceControls showAssetManager={Boolean(authoringConfig)} dropLabel="Drag and drop here" />
-          {authoringConfig && <PanelActions>
+          <ImageReplaceControls dropLabel="Drag and drop here" />
+          <PanelActions>
             <Button emphasis="ghost" label="Reset" data-demo-author-reset />
             <Button emphasis="ghost" label="Revert changes" data-demo-author-revert />
             <Button emphasis="filled" label="Save changes" data-demo-author-save />
-          </PanelActions>}
+          </PanelActions>
           <p data-image-replacement-status role="status" hidden></p>
         </div>
       </DevOverlayFrame>
@@ -48,7 +51,10 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
       <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
     </div>
   </div>
-  {!authoringConfig && <div class="demo-controls"><Button label="Reset" data-crop-reset /></div>}
+  <DevOverlayFrame title="Asset manager" layout="landscape" showMinimize={false} defaultHidden data-demo-asset-picker role="dialog" aria-label="Asset manager">
+    <AssetManagerContent showFilters={false} />
+  </DevOverlayFrame>
+  <script is:inline type="application/json" data-published-demo-assets set:html={JSON.stringify(catalog).replace(/</g, '\\u003c')} />
 </vcd-crop-frame-demo>
 
 <style>
@@ -63,6 +69,20 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
   .crop-frame-demo__canvas :global(.project-image) { margin: 0; }
   .crop-frame-demo__canvas :global(.project-image.dev-crop-stage-host) { overflow: visible; }
   .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible:not(.is-dragging):not(.is-resizing)) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
+  :global(.dev-overlay[data-demo-asset-picker]) {
+    top: var(--space-unit);
+    bottom: auto;
+    left: var(--space-unit);
+    right: var(--space-unit);
+    margin-inline: auto;
+    width: min(var(--dev-panel-width-landscape), calc(100% - var(--space-unit) * 2));
+    min-width: 0;
+    height: min(36em, calc(100% - var(--space-unit) * 2));
+    max-height: calc(100% - var(--space-unit) * 2);
+    z-index: 3;
+  }
+  :global([data-demo-asset-picker] .dev-overlay__head) { cursor: default; }
+  :global([data-demo-asset-picker] .dev-overlay__resize) { display: none; }
   @media (max-width: 40em) { .crop-frame-demo__layout { grid-template-columns: 1fr; } .crop-frame-demo__canvas { order: -1; } .crop-frame-demo__panel { width: min(100%, 22rem); margin-inline: auto; } }
 </style>
 
@@ -70,28 +90,32 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
   import { createDemoImageCrop } from '../../../lib/demoImageCrop';
   import { createDemoImageReplacement } from '../../../lib/demoImageReplacement';
   import { createDevPanelCollapse } from '../../../lib/devPanelCollapse';
+  import { createDemoAssetPicker } from '../../../lib/demoAssetPicker';
   class CropFrameDemo extends HTMLElement {
     private dispose?: () => void;
     connectedCallback() {
       this.dispose?.();
       const host = this.querySelector<HTMLElement>('.project-image');
       const panel = this.querySelector<HTMLElement>('[data-crop-panel]');
-      if (!host || !panel) return;
+      const assetPanel = this.querySelector<HTMLElement>('[data-demo-asset-picker]');
+      const assetOpener = panel?.querySelector<HTMLElement>('[data-crop-replace-assets]');
+      if (!host || !panel || !assetPanel || !assetOpener) return;
       const lifecycle = new AbortController();
       const { signal } = lifecycle;
       const initialState = this.dataset.initialState ? JSON.parse(this.dataset.initialState) : undefined;
       const crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
+      const catalog = JSON.parse(this.querySelector('[data-published-demo-assets]')?.textContent || '[]');
+      const picker = createDemoAssetPicker(assetPanel, catalog, assetOpener);
       let replacement = { reset: () => crop.reset(), destroy() {} };
       if (import.meta.env.DEV && this.dataset.authoring) {
-        // Temporary local authoring; remove after the sample image is approved.
         void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
-          if (!signal.aborted) replacement = createCropDemoAuthoring(panel, crop, JSON.parse(this.dataset.authoring!));
+          if (!signal.aborted) replacement = createCropDemoAuthoring(panel, crop, { ...JSON.parse(this.dataset.authoring!), chooseAsset: picker.open });
         }).catch(() => {
           if (signal.aborted) return;
           const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
           if (status) { status.textContent = 'Could not load image controls. Reload the page to try again.'; status.hidden = false; }
         });
-      } else replacement = createDemoImageReplacement(panel, crop);
+      } else replacement = createDemoImageReplacement(panel, crop, { chooseAsset: picker.open });
       const collapse = createDevPanelCollapse(panel);
       let restoreTimer = 0;
       const show = () => {
@@ -111,12 +135,13 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
       };
       panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => collapse.set(!panel.classList.contains('is-minimized')), { signal });
       panel.querySelector('[data-hide-toggle]')?.addEventListener('click', hide, { signal });
-      this.querySelector('[data-crop-reset]')?.addEventListener('click', () => { replacement.reset(); collapse.set(false); show(); }, { signal });
+      this.querySelector('[data-demo-author-reset]')?.addEventListener('click', () => { collapse.set(false); show(); }, { signal });
       this.dispose = () => {
         lifecycle.abort();
         window.clearTimeout(restoreTimer);
         collapse.destroy();
         replacement.destroy();
+        picker.destroy();
         crop.destroy();
       };
     }

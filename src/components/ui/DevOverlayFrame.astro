@@ -344,8 +344,12 @@ const hideSvg = trafficLightIcon(xIcon);
   /* Collapsed to header-only: the body is display:none so the panel's own
      flex gap already closes, but the header's bottom padding is its own and
      stays regardless — drop it so minimized really is just the thin bar. */
-  .dev-overlay.is-minimized .dev-overlay__head {
+  .dev-overlay.is-minimized:not(.is-dev-overlay-morphing) .dev-overlay__head {
     padding-bottom: 0;
+  }
+
+  .dev-overlay__head {
+    flex-shrink: 0;
   }
 
   .dev-overlay__title {
@@ -507,6 +511,10 @@ const hideSvg = trafficLightIcon(xIcon);
     /* Reserve the scrollbar's own lane so it tracks beside content instead of
        drawing over it once the body actually scrolls. */
     scrollbar-gutter: stable;
+  }
+
+  .dev-overlay.is-dev-overlay-morphing > .dev-overlay__body {
+    flex: 0 0 var(--dev-overlay-morph-body-height);
   }
 
   /* Portrait hug: hide the scrollbar gutter until the body actually scrolls,

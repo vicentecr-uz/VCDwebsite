@@ -12,6 +12,11 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
   let animating = false;
   let destroyed = false;
 
+  const clearMorph = () => {
+    panel.classList.remove('is-dev-overlay-morphing');
+    panel.style.removeProperty('--dev-overlay-morph-body-height');
+  };
+
   const cancel = () => {
     generation += 1;
     animations.forEach((animation) => animation.cancel());
@@ -25,7 +30,9 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     if (animate && minimized === wasMinimized && !interrupted) return;
     const fromHeight = panel.getBoundingClientRect().height;
     const fromOpacity = wasMinimized && !interrupted ? 0 : Number(win.getComputedStyle(body).opacity);
+    let morphBodyHeight = minimized ? body.getBoundingClientRect().height : 0;
     cancel();
+    clearMorph();
     const current = generation;
     if (animate) options.beforeChange?.();
 
@@ -39,7 +46,6 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       panel.style.height = panel.dataset.restoredHeight;
       delete panel.dataset.restoredHeight;
     }
-    panel.classList.remove('is-dev-overlay-morphing');
     panel.classList.toggle('is-minimized', minimized);
     body.hidden = minimized;
     body.inert = minimized;
@@ -50,10 +56,14 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     button?.classList.toggle('dev-overlay__light--expand', minimized);
 
     const toHeight = panel.getBoundingClientRect().height;
+    if (!minimized) morphBodyHeight = body.getBoundingClientRect().height;
+    if (Number.isFinite(morphBodyHeight) && morphBodyHeight >= 0) {
+      panel.style.setProperty('--dev-overlay-morph-body-height', `${morphBodyHeight}px`);
+    }
     const finish = () => {
       if (destroyed || current !== generation) return;
       body.hidden = minimized;
-      panel.classList.remove('is-dev-overlay-morphing');
+      clearMorph();
       animations.forEach((animation) => animation.cancel());
       animations = [];
       animating = false;
@@ -88,7 +98,7 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       destroyed = true;
       cancel();
       animating = false;
-      panel.classList.remove('is-dev-overlay-morphing');
+      clearMorph();
       body.hidden = panel.classList.contains('is-minimized');
     },
   };

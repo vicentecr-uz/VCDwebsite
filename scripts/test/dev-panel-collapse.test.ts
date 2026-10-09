@@ -11,6 +11,7 @@ function setup(reduced = false) {
   body.style.opacity = '1';
   const button = panel.querySelector('button') as HTMLButtonElement;
   Object.defineProperty(panel, 'getBoundingClientRect', { configurable: true, value: () => ({ height: panel.classList.contains('is-minimized') ? 40 : 120, width: 200, top: 0, left: 0, right: 200, bottom: 120 }) });
+  Object.defineProperty(body, 'getBoundingClientRect', { configurable: true, value: () => ({ height: 80, width: 180, top: 32, left: 10, right: 190, bottom: 112 }) });
   const pending: Array<{ resolve(): void; cancel(): void; keyframes: Keyframe[] }> = [];
   const animate = function (this: HTMLElement, keyframes: Keyframe[]) {
     let resolve!: () => void;
@@ -45,11 +46,16 @@ test('animated expand restores explicit height and reports completion', async ()
   const h = setup();
   h.panel.style.height = '120px';
   h.api.set(true);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('80px');
+  expect(h.panel.classList.contains('is-dev-overlay-morphing')).toBe(true);
   h.pending.forEach((animation) => animation.resolve());
   await Promise.resolve(); await Promise.resolve();
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('');
   h.api.set(false);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('80px');
   h.pending.slice(2).forEach((animation) => animation.resolve());
   await Promise.resolve(); await Promise.resolve();
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('');
   expect(h.panel.style.height).toBe('120px');
   expect(h.callbacks).toEqual(['before', 'after', 'before', 'after']);
 });
@@ -57,12 +63,15 @@ test('animated expand restores explicit height and reports completion', async ()
 test('reversing ignores stale completion and destroy cancels pending work', async () => {
   const h = setup();
   h.api.set(true);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('80px');
   h.api.set(false);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('80px');
   h.pending[0].resolve();
   await Promise.resolve();
   expect(h.api.animating).toBe(true);
   h.api.destroy();
   expect(h.api.animating).toBe(false);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('');
   h.pending.slice(2).forEach((animation) => animation.resolve());
   await Promise.resolve();
   expect(h.panel.classList.contains('is-dev-overlay-morphing')).toBe(false);
@@ -72,6 +81,7 @@ test('reversing ignores stale completion and destroy cancels pending work', asyn
 test('reduced motion keeps endpoint height fixed while preserving fade timing', () => {
   const h = setup(true);
   h.api.set(true);
+  expect(h.panel.style.getPropertyValue('--dev-overlay-morph-body-height')).toBe('80px');
   expect(h.pending[0].keyframes[0].height).toBe(h.pending[0].keyframes[1].height);
   expect(h.pending[1].keyframes[0].opacity).not.toBe(h.pending[1].keyframes[1].opacity);
   h.pending.forEach((animation) => animation.resolve());

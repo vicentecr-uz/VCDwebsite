@@ -2,12 +2,20 @@
 import DemoLayout from '../../layouts/DemoLayout.astro';
 import Demo from '../../components/project/demos/CropFrameDemo.astro';
 import { loadProjectBySlug } from '../../lib/projects';
+import { readPublishedDemoAssets } from '../../../scripts/public-demo-assets.mjs';
+import path from 'node:path';
 const project = loadProjectBySlug('image-framing');
 const sectionIndex = project?.sections.findIndex((section) => section.id === 'demo-image-framing') ?? -1;
 const sample = sectionIndex >= 0 ? project?.sections[sectionIndex].sample : undefined;
 const authoring = import.meta.env.DEV && sample ? {
   documentKey: 'image-framing', path: ['sections', sectionIndex, 'sample'], sectionId: 'demo-image-framing',
 } : undefined;
+// Dev mirrors the last production build's publication boundary; rebuild to refresh its catalog.
+const catalog = import.meta.env.DEV ? await readPublishedDemoAssets({
+  distDir: path.join(process.cwd(), 'dist'),
+  projectsDir: path.join(process.cwd(), 'src/content/projects'),
+  mediaDir: path.join(process.cwd(), 'media'),
+}) : [];
 ---
 
-<DemoLayout title="Image framing" authoring={Boolean(authoring)}><Demo sample={sample} authoring={authoring} /></DemoLayout>
+<DemoLayout title="Image framing" authoring={Boolean(authoring)}><Demo sample={sample} catalog={catalog} authoring={authoring} /></DemoLayout>
