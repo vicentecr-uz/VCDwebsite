@@ -108,7 +108,22 @@ const initialThemeColor = resolveToken('sys.color.srf');
     <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
     <script>
       import { bindSafeVh } from '../lib/safeVh';
-      bindSafeVh();
+      const initializeLayout = () => bindSafeVh();
+      if (!import.meta.env.DEV) {
+        initializeLayout();
+      } else {
+        // DEV styles arrive as module scripts; production links are render-blocking.
+        const styleModules = Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')).filter((script) => {
+          try {
+            const url = new URL(script.src, location.href);
+            return url.pathname.endsWith('.css') || url.searchParams.get('type') === 'style';
+          } catch { return false; }
+        });
+        Promise.all(styleModules.map((script) => new Promise<void>((resolve) => {
+          script.addEventListener('load', () => resolve(), { once: true });
+          script.addEventListener('error', () => resolve(), { once: true });
+        }))).then(initializeLayout);
+      }
     </script>
     <Analytics />
     {persistentNavigation && <ClientRouter fallback="swap" />}
