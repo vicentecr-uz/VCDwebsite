@@ -32,17 +32,30 @@ function setup() {
   return { win, document, root, toolbars, api, blocks: [...root.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')] };
 }
 
-test('mouse pin captures fixed rect before changing gap, then fades and unpins', async () => {
+test('mouse choice keeps the pinned toolbar anchored while the pointer remains inside', async () => {
   const h = setup();
   const toolbar = h.toolbars[1];
   const pill = toolbar.querySelector('.dev-gap-toolbar__pill')!;
   pill.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'mouse' }));
   expect(toolbar.style.position).toBe('fixed');
   const choice = toolbar.querySelector('[data-dev-spacing-option="section"]') as HTMLButtonElement;
+  choice.focus();
   const click = event(h.win, 'click', { detail: 1 });
   choice.dispatchEvent(click);
   expect(h.blocks[1].style.getPropertyValue('--demo-block-gap')).toContain('var(--space-section)');
   expect(toolbar.style.position).toBe('fixed');
+  expect(h.document.activeElement).not.toBe(choice);
+  await wait(160);
+  expect(toolbar.style.position).toBe('fixed');
+  expect(toolbar.hasAttribute('data-relocating')).toBe(false);
+  const top = toolbar.style.top;
+  const left = toolbar.style.left;
+  const repeatedChoice = toolbar.querySelector('[data-dev-spacing-option="major"]') as HTMLButtonElement;
+  repeatedChoice.focus();
+  repeatedChoice.dispatchEvent(event(h.win, 'click', { detail: 1 }));
+  await wait(160);
+  expect(toolbar.style.top).toBe(top);
+  expect(toolbar.style.left).toBe(left);
   pill.dispatchEvent(event(h.win, 'pointerleave'));
   await wait(160);
   expect(toolbar.style.position).toBe('');
