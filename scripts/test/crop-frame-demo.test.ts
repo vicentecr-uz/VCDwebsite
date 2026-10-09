@@ -1,96 +1,151 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction } from '../../src/lib/responsiveImage';
-import { createImageCropStage, cropResizeHeight } from '../../src/lib/imageCropStage';
-import { readFileSync } from 'node:fs';
+import { createDemoImageCrop } from '../../src/lib/demoImageCrop';
 
-const source = readFileSync(new URL('../../src/components/project/demos/CropFrameDemo.astro', import.meta.url), 'utf8')
-  .split('<script>')[1].split('</script>')[0].replace(/^\s*import .*?;\s*$/gm, '');
-const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
+const frame = (win: Window) => new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
 
-function setup() {
+function setup({ sourceAspect = 16 / 9, initialAspect = 'original', active = true } = {}) {
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
-  document.body.innerHTML = `<vcd-crop-frame-demo>
-    <select class="dev-select__native"><option value="4:3">4:3</option><option value="1:1">1:1</option><option value="3:4">3:4</option></select>
-    <button data-crop-reset>Reset</button>
-    <div class="project-image"><div class="project-crop-clip"><img src="/example.jpg"></div></div>
-  </vcd-crop-frame-demo>`;
-  const env = { HTMLElement: win.HTMLElement, customElements: win.customElements, Event: win.Event, AbortController: win.AbortController, coverWidthFraction, normalizeImageVariants, responsiveImageStyle, createImageCropStage, cropResizeHeight };
-  new Function('env', `with (env) { ${compiled} }`)(env);
-  const host = document.querySelector('.project-image') as HTMLElement;
-  const stage = document.querySelector('.dev-crop-stage') as HTMLElement;
-  stage.getBoundingClientRect = () => ({ width: 400, height: 300, top: 0, left: 0, right: 400, bottom: 300 } as DOMRect);
+  document.body.innerHTML = `<div data-crop-demo>
+    <div class="dev-controls">
+      <div data-crop-preview><img src="/preview.jpg" alt="Preview"></div>
+      <select class="dev-select__native">
+        <option value="original">Original</option><option value="4:3">4:3</option><option value="1:1">1:1</option><option value="3:4">3:4</option>
+      </select>
+      <button data-crop-center-x>Center X</button><button data-crop-center-y>Center Y</button>
+      <button data-crop-fit>Fit</button>
+      <button data-crop-constraint><span data-crop-constraint-state></span></button>
+      <button data-crop-reset>Reset</button>
+    </div>
+    <div class="project-image"><div class="project-crop-clip"><img src="/source.jpg" alt="Source"></div></div>
+  </div>`;
+  const root = document.body.firstElementChild as HTMLElement;
+  const host = root.querySelector('.project-image') as HTMLElement;
+  const controls = root.querySelector('.dev-controls') as HTMLElement;
+  const stageRect = { width: 400, height: 300, top: 0, left: 0, right: 400, bottom: 300 } as DOMRect;
+  const stage = () => host.querySelector('.dev-crop-stage') as HTMLElement;
+  const preview = root.querySelector('[data-crop-preview]') as HTMLElement;
+  const setRects = () => {
+    stage().getBoundingClientRect = () => stageRect;
+    preview.getBoundingClientRect = () => stageRect;
+  };
   const captures = new Set<number>();
-  stage.setPointerCapture = (id: number) => captures.add(id);
-  stage.releasePointerCapture = (id: number) => captures.delete(id);
-  stage.hasPointerCapture = (id: number) => captures.has(id);
-  const select = document.querySelector('select') as HTMLSelectElement;
-  const changes: string[] = [];
-  select.addEventListener('change', () => changes.push(select.value));
-  const pointer = (target: Element, type: string, values: Record<string, number>) => {
-    const event = new win.Event(type, { bubbles: true, cancelable: true });
+  const pointer = (target: Element, type: string, values: Record<string, number> = {}) => {
+    const event = new win.Event(type, { bubbles: true, cancelable: true }) as Event & Record<string, unknown>;
     Object.assign(event, { button: 0, pointerId: 4, clientX: 200, clientY: 150 }, values);
     target.dispatchEvent(event);
+    return event;
   };
-  return { win, document, host, stage, select, changes, captures, pointer, reset: document.querySelector('[data-crop-reset]') as HTMLButtonElement };
+  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, active });
+  setRects();
+  return {
+    win, document, root, host, controls, stage, preview, captures, pointer, api,
+    select: controls.querySelector('select') as HTMLSelectElement,
+    reset: controls.querySelector('[data-crop-reset]') as HTMLButtonElement,
+    constraint: controls.querySelector('[data-crop-constraint]') as HTMLButtonElement,
+    centerX: controls.querySelector('[data-crop-center-x]') as HTMLButtonElement,
+    centerY: controls.querySelector('[data-crop-center-y]') as HTMLButtonElement,
+    fit: controls.querySelector('[data-crop-fit]') as HTMLButtonElement,
+  };
 }
 
-test('shared crop stage mounts eight handles; reset restores native selector and framing', () => {
+test('original finite non-4:3 source renders finite crop and preview state', () => {
   const h = setup();
-  expect(h.stage.querySelectorAll('[data-page-resize]').length).toBe(8);
-  h.select.value = '3:4';
-  h.select.dispatchEvent(new h.win.Event('change', { bubbles: true }));
+  expect(h.host.dataset.cropAspect).toBe('original');
+  expect(Number.isFinite(Number(h.host.style.getPropertyValue('--project-content-w-desktop')))).toBe(true);
+  expect(h.preview.style.aspectRatio).toBe(`${16 / 9} / 1`);
+  expect(h.preview.style.getPropertyValue('--tuner-content-w')).not.toBe('');
+  h.api.destroy();
+});
+
+test('preview pan and resize keep both surfaces synchronized', () => {
+  const h = setup({ initialAspect: '4:3' });
+  const stage = h.stage();
+  stage.setPointerCapture = (id: number) => h.captures.add(id);
+  stage.releasePointerCapture = (id: number) => h.captures.delete(id);
+  stage.hasPointerCapture = (id: number) => h.captures.has(id);
+  h.pointer(stage, 'pointerdown');
+  h.pointer(stage, 'pointermove', { clientX: 240, clientY: 120 });
+  expect(h.preview.style.getPropertyValue('--tuner-content-cx')).toBe(h.host.style.getPropertyValue('--project-content-cx-desktop'));
+  expect(h.preview.style.getPropertyValue('--tuner-content-cy')).toBe(h.host.style.getPropertyValue('--project-content-cy-desktop'));
+  const east = stage.querySelector('[data-page-resize="e"]')!;
+  h.pointer(east, 'pointerdown', { clientX: 200 });
+  h.pointer(stage, 'pointermove', { clientX: 260 });
+  expect(h.host.dataset.cropAspect).toBe('400:261');
+  expect(h.preview.style.aspectRatio).toBe(`${h.root.style.getPropertyValue('--crop-demo-aspect')} / 1`);
+  h.pointer(stage, 'pointerup', { clientX: 260 });
+  h.api.destroy();
+});
+
+test('center controls restore one axis independently', () => {
+  const h = setup({ initialAspect: '1:1' });
+  h.pointer(h.stage(), 'pointerdown');
+  h.pointer(h.stage(), 'pointermove', { clientX: 260, clientY: 210 });
+  h.pointer(h.stage(), 'pointerup');
+  h.centerX.click();
+  expect(h.host.style.getPropertyValue('--project-content-cx-desktop')).toBe('0.5');
+  expect(h.host.style.getPropertyValue('--project-content-cy-desktop')).not.toBe('0.5');
+  h.centerY.click();
+  expect(h.host.style.getPropertyValue('--project-content-cy-desktop')).toBe('0.5');
+  h.api.destroy();
+});
+
+test('fit unlocks and contains the frame, then unlock allows outside bounds and relock clamps', () => {
+  const h = setup({ sourceAspect: 2, initialAspect: '1:1' });
+  expect(h.constraint.getAttribute('aria-pressed')).toBe('true');
+  h.fit.click();
+  expect(h.constraint.getAttribute('aria-pressed')).toBe('false');
+  expect(Number(h.host.style.getPropertyValue('--project-content-w-desktop'))).toBeGreaterThanOrEqual(1);
+  h.pointer(h.stage(), 'pointerdown');
+  h.pointer(h.stage(), 'pointermove', { clientX: -1000, clientY: 1400 });
+  h.pointer(h.stage(), 'pointerup');
+  const outsideX = Number(h.host.style.getPropertyValue('--project-content-cx-desktop'));
+  expect(outsideX).toBeGreaterThan(1);
+  h.constraint.click();
+  expect(h.constraint.getAttribute('aria-pressed')).toBe('true');
+  expect(Number(h.host.style.getPropertyValue('--project-content-cx-desktop'))).toBeGreaterThanOrEqual(0);
+  h.api.destroy();
+});
+
+test('wheel batching and repeated reset restore finite locked state', async () => {
+  const h = setup({ initialAspect: '4:3' });
+  const stage = h.stage();
+  const wheel = new h.win.Event('wheel', { cancelable: true });
+  Object.assign(wheel, { ctrlKey: true, deltaY: -60, deltaX: 0, clientX: 200, clientY: 150 });
+  stage.dispatchEvent(wheel);
+  expect(wheel.defaultPrevented).toBe(true);
+  await frame(h.win);
+  expect(Number(h.host.style.getPropertyValue('--project-content-w-desktop'))).toBeLessThan(0.8);
+  h.reset.click();
   h.reset.click();
   expect(h.select.value).toBe('4:3');
-  expect(h.changes.at(-1)).toBe('4:3');
-  expect(h.host.dataset.cropAspect).toBe('4:3');
-  expect(Number(h.host.style.getPropertyValue('--project-content-w-desktop'))).toBeCloseTo(0.8);
-});
-
-test('pan uses measured stage geometry and releases pointer capture on cancellation', () => {
-  const h = setup();
-  h.pointer(h.stage, 'pointerdown', {});
-  h.pointer(h.stage, 'pointermove', { clientX: 220, clientY: 150 });
-  expect(Number(h.host.style.getPropertyValue('--project-content-cx-desktop'))).toBeCloseTo(0.46);
-  h.pointer(h.stage, 'pointermove', { clientX: -5000, clientY: 5000 });
-  expect(Number(h.host.style.getPropertyValue('--project-content-cx-desktop'))).toBeCloseTo(0.6);
-  expect(Number(h.host.style.getPropertyValue('--project-content-cy-desktop'))).toBeCloseTo(0.4);
-  h.pointer(h.stage, 'pointercancel', {});
-  expect(h.stage.classList.contains('is-dragging')).toBe(false);
-  expect(h.captures.size).toBe(0);
-});
-
-test('successive resize moves stay relative to the initial pointer and sync the selector', () => {
-  const h = setup();
-  const south = h.stage.querySelector('[data-page-resize="s"]')!;
-  h.pointer(south, 'pointerdown', {});
-  h.pointer(h.stage, 'pointermove', { clientY: 170 });
-  expect(h.host.dataset.cropAspect).toBe('400:320');
-  h.pointer(h.stage, 'pointermove', { clientY: 190 });
-  expect(h.host.dataset.cropAspect).toBe('400:340');
-  h.pointer(h.stage, 'pointerup', { clientY: 190 });
-  expect(h.select.value).toBe('400:340');
-  h.reset.click();
+  expect(h.constraint.getAttribute('aria-pressed')).toBe('true');
   expect(h.select.querySelector('[data-crop-custom]')).toBeNull();
+  h.api.destroy();
 });
 
-test('wheel zoom changes scale; disconnect removes stage and listeners', () => {
+test('inactive crop stage cannot focus, pan, resize, or wheel', () => {
+  const h = setup({ active: false });
+  const stage = h.stage();
+  expect(stage.tabIndex).toBe(-1);
+  expect(stage.getAttribute('aria-hidden')).toBe('true');
+  expect(stage.style.pointerEvents).toBe('none');
+  const wheel = h.pointer(stage, 'wheel', { deltaY: -40 });
+  expect(wheel.defaultPrevented).toBe(false);
+  const key = new h.win.KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true });
+  stage.dispatchEvent(key);
+  expect(key.defaultPrevented).toBe(false);
+  h.api.setActive(true);
+  expect(stage.tabIndex).toBe(0);
+  expect(stage.getAttribute('aria-hidden')).toBe('false');
+  h.api.destroy();
+});
+
+test('destroy removes crop stage, ghost, and listeners', () => {
   const h = setup();
-  const event = new h.win.Event('wheel', { cancelable: true });
-  Object.assign(event, { ctrlKey: true, deltaY: -60, deltaX: 0, clientX: 200, clientY: 150 });
-  h.stage.dispatchEvent(event);
-  expect(event.defaultPrevented).toBe(true);
-  expect(Number(h.host.style.getPropertyValue('--project-content-w-desktop'))).toBeLessThan(0.8);
-  const demo = h.document.querySelector('vcd-crop-frame-demo')!;
-  demo.remove();
+  h.api.destroy();
   expect(h.host.querySelector('.dev-crop-stage')).toBeNull();
   expect(h.host.querySelector('.dev-crop-ghost')).toBeNull();
-});
-
-test('shared resize math handles both edge axes, corners and ratio bounds', () => {
-  expect(cropResizeHeight('e', 400, 300, 100, 0)).toBe(240);
-  expect(cropResizeHeight('w', 400, 300, -100, 0)).toBe(240);
-  expect(cropResizeHeight('ne', 400, 300, 100, 40)).toBe(260);
-  expect(cropResizeHeight('s', 400, 300, 0, -500)).toBe(80);
+  expect(h.host.classList.contains('dev-crop-stage-host')).toBe(false);
 });

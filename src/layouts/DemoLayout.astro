@@ -1,8 +1,8 @@
 ---
 import '../styles/global.css';
 
-interface Props { title: string; captureAssets?: boolean }
-const { title, captureAssets = false } = Astro.props;
+interface Props { title: string; captureAssets?: boolean; scrolling?: boolean }
+const { title, captureAssets = false, scrolling = false } = Astro.props;
 const connections = captureAssets
   ? "'self' https://fonts.googleapis.com https://fonts.gstatic.com"
   : "'none'";
@@ -33,7 +33,7 @@ const policy = [
     <title>{title}</title>
   </head>
   <body>
-    <main class="demo-page"><slot /></main>
+    <main class:list={['demo-page', scrolling && 'demo-page--scrolling']}><slot /></main>
   </body>
 </html>
 
@@ -55,6 +55,18 @@ const policy = [
 
   .demo-page :global(.dev-panel) {
     width: 100%;
+  }
+
+  .demo-page--scrolling {
+    display: block;
+    padding-block: calc(var(--space-unit) * 5);
+    overflow-anchor: none;
+  }
+
+  .demo-page.demo-page--scrolling :global(.demo-controls) {
+    position: fixed;
+    z-index: 100;
+    bottom: calc(var(--space-unit) * 2);
   }
 
   .demo-page :global(.demo-controls) {

@@ -1,205 +1,124 @@
 ---
 import Button from '../../ui/Button.astro';
 import ProjectImage from '../ProjectImage.astro';
+import ProjectBodyText from '../ProjectBodyText.astro';
 import ProjectSectionTitle from '../ProjectSectionTitle.astro';
+import { sectionReorderHandleMarkup } from '../../../lib/sectionReorderChrome';
+import { spacingButtonsHtml } from '../../../lib/gapSpacingControl';
 import '../../../styles/project.css';
 import '../../../styles/gapSpacingControl.css';
-import { spacingButtonsHtml } from '../../../lib/gapSpacingControl';
+import '../../../styles/sectionReorderChrome.css';
+const blocks = [
+  { type: 'title', title: 'Made for a slower morning' },
+  { type: 'image', title: 'Teapot and mug' },
+  { type: 'text', title: 'The small details' },
+];
+const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
 ---
 
-<vcd-gap-spacing-demo>
-  <div class="gap-spacing-demo__viewport" data-gap-viewport tabindex="0" role="region" aria-label="Sample page">
-    <div class="gap-spacing-demo__sample">
-      <ProjectSectionTitle title="Inside the object" spacing="none" />
-      <div class="gap-spacing-demo__gap" data-gap-space aria-hidden="true"></div>
-      <ProjectImage src="IMG_2480.jpeg" srcWidth={4032} srcHeight={3024} alt="The parts of a utility knife on a cutting mat" variants={{ desktop: { aspect: "2:1", w: 1 } }} mobileInset spacing="none" />
-    </div>
-    <div class="gap-spacing-demo__toolbar" data-gap-toolbar data-visible>
-      <div class="dev-gap-toolbar__pill dev-surface" role="group" aria-label="Gap size">
-        <div class="dev-gap-toolbar__spacing" data-gap-control set:html={spacingButtonsHtml(false, false)}></div>
-      </div>
-    </div>
+<vcd-gap-spacing-demo class="is-dev-mode" data-crop-demo>
+  <div class="gap-spacing-demo__column" data-reorder-demo-list>
+    {blocks.map((block) => (
+      <article class="gap-spacing-demo__block" data-reorder-demo-block data-dev-section-reorderable data-title={block.title}>
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: `Drag to reorder ${block.title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <div class="dev-gap-toolbar" data-gap-toolbar>
+          <div class="dev-gap-toolbar__pill dev-surface" role="group" aria-label={`Space before ${block.title}`}>
+            <div class="dev-gap-toolbar__spacing" set:html={spacingButtonsHtml(false, false)}></div>
+          </div>
+        </div>
+        {block.type === 'title' && <ProjectSectionTitle title={block.title} spacing="none" />}
+        {block.type === 'image' && <ProjectImage kind="lead" src="Solo Teapot and Mug Side View.png" srcWidth={1920} srcHeight={1080} alt="A white teapot and matching mug" variants={{ desktop: pose, tablet: pose, mobile: pose }} mobileInset spacing="none" loading="eager" />}
+        {block.type === 'text' && <ProjectBodyText paragraphs={['A teapot and mug, made to sit comfortably together. A quiet shape, a generous handle, and enough room for the next cup.', 'Try moving the picture before the heading. Give the words a little more space, or bring a detail closer. The same pieces can tell a different story.']} spacing="none" />}
+      </article>
+    ))}
   </div>
-  <div class="demo-controls"><Button label="Reset" type="button" data-gap-reset /></div>
+  <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
+  <div class="demo-controls"><Button label="Reset" type="button" data-gap-reset data-reorder-demo-reset /></div>
 </vcd-gap-spacing-demo>
 
 <style>
-  vcd-gap-spacing-demo { display: block; width: min(100%, 38rem); }
-  .gap-spacing-demo__viewport {
-    position: relative;
-    height: 24rem;
-    min-height: 20rem;
-    overflow: auto;
-    overflow-anchor: none;
-    overscroll-behavior: contain;
-    border: 1px solid var(--sys-color-srf-container);
-    border-radius: var(--radius-control-smooth);
-    background: var(--sys-color-srf-container-low);
-    scrollbar-color: var(--sys-color-srf-container-high) transparent;
-  }
-  .gap-spacing-demo__sample { padding: calc(var(--space-unit) * 2); }
-  .gap-spacing-demo__gap { height: var(--gap-spacing-value, var(--space-group)); }
-  .gap-spacing-demo__toolbar {
+  vcd-gap-spacing-demo { display: block; width: min(100%, 38rem); margin-inline: auto; }
+  .gap-spacing-demo__column { padding-inline: calc(var(--space-unit) * 2); overflow-anchor: none; }
+  .gap-spacing-demo__block { position: relative; margin-top: var(--demo-block-gap, var(--space-group)); overflow-anchor: none; }
+  .gap-spacing-demo__block:first-child { margin-top: 0; }
+  .gap-spacing-demo__block:first-child > .dev-gap-toolbar { display: none; }
+  .dev-gap-toolbar {
     position: absolute;
-    z-index: 2;
-    top: 0;
+    top: calc(var(--demo-block-gap, var(--space-group)) / -2);
     left: 50%;
-    opacity: 0;
-    pointer-events: none;
+    width: max-content;
+    z-index: 80;
     transform: translate(-50%, -50%);
-    transition: opacity 150ms ease;
+    pointer-events: none;
   }
-  .gap-spacing-demo__toolbar[data-visible] { opacity: 1; pointer-events: auto; }
-  .gap-spacing-demo__toolbar[data-relocating] { opacity: 0; pointer-events: none; }
-  .gap-spacing-demo__viewport:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
-  .gap-spacing-demo__viewport:focus-within .gap-spacing-demo__toolbar,
-  .gap-spacing-demo__toolbar[data-visible] { opacity: 1; pointer-events: auto; }
-  .gap-spacing-demo__viewport:focus-within .gap-spacing-demo__toolbar[data-relocating] { opacity: 0; pointer-events: none; }
+  .dev-gap-toolbar__pill { opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
+  .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__pill,
+  .dev-gap-toolbar:focus-within > .dev-gap-toolbar__pill { opacity: 1; pointer-events: auto; }
+  .dev-gap-toolbar[data-relocating] > .dev-gap-toolbar__pill,
+  vcd-gap-spacing-demo[data-gap-suppressed] .dev-gap-toolbar__pill { opacity: 0; pointer-events: none; }
+  .gap-spacing-demo__block:has(> .dev-gap-toolbar.is-near-spacing),
+  .gap-spacing-demo__block:has(> .dev-gap-toolbar:focus-within) { z-index: 65; }
+  .gap-spacing-demo__block:focus-within > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
+  .gap-spacing-demo__block :global(.project-image) { margin: 0; }
+  vcd-gap-spacing-demo[data-crop-active] :global(.dev-section-drag-handle) { opacity: 0; pointer-events: none; }
+  vcd-gap-spacing-demo[data-reordering] :global(.dev-image-edit-trigger) { opacity: 0; pointer-events: none; }
+  .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   @media (pointer: coarse) {
-    .gap-spacing-demo__toolbar { opacity: 1; pointer-events: auto; }
-    .gap-spacing-demo__toolbar :global(.dev-spacing-control__btn) { min-height: 44px; min-width: 44px; }
+    .dev-gap-toolbar__pill { opacity: 1; pointer-events: auto; }
+    .gap-spacing-demo__block > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
   }
 </style>
 
 <script>
-  type GapToken = 'related' | 'group' | 'section' | 'major';
-  const values: Record<GapToken, string> = {
-    related: 'var(--space-related)', group: 'var(--space-group)', section: 'var(--space-section)', major: 'var(--space-major)',
-  };
+  import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
+  import { createDemoImageCrop } from '../../../lib/demoImageCrop';
+  import { createDemoGapSpacing } from '../../../lib/demoGapSpacing';
 
   class GapSpacingDemo extends HTMLElement {
-    private lifecycle?: AbortController;
-    private resizeObserver?: ResizeObserver;
-    private relocation?: number;
-    private generation = 0;
-    private pinned = false;
-
+    private dispose?: () => void;
     connectedCallback() {
-      this.lifecycle?.abort();
-      this.resizeObserver?.disconnect();
-      const lifecycle = new AbortController();
-      this.lifecycle = lifecycle;
-      const { signal } = lifecycle;
-      const viewport = this.querySelector<HTMLElement>('[data-gap-viewport]');
-      const gap = this.querySelector<HTMLElement>('[data-gap-space]');
-      const toolbar = this.querySelector<HTMLElement>('[data-gap-toolbar]');
-      const choices = [...this.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]')];
-      const reset = this.querySelector<HTMLButtonElement>('[data-gap-reset]');
-      if (!viewport || !gap || !toolbar || !reset || choices.length === 0) return;
-      this.querySelectorAll('img').forEach((image) => {
-        image.removeAttribute('role');
-        image.removeAttribute('tabindex');
-        image.removeAttribute('aria-label');
+      this.dispose?.();
+      const life = new AbortController();
+      const { signal } = life;
+      const image = this.querySelector<HTMLElement>('.project-image')!;
+      const crop = createDemoImageCrop({ host: image, sourceAspect: 16 / 9, initialAspect: '4:3', active: false });
+      const gaps = createDemoGapSpacing(this);
+      const trigger = this.ownerDocument.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'dev-image-edit-trigger';
+      trigger.textContent = 'Edit image';
+      trigger.setAttribute('aria-pressed', 'false');
+      image.classList.add('dev-image-edit-target');
+      image.append(trigger);
+      const setCropActive = (active: boolean) => {
+        crop.setActive(active);
+        gaps.setSuppressed(active);
+        this.toggleAttribute('data-crop-active', active);
+        image.classList.toggle('is-dev-image-selected', active);
+        trigger.setAttribute('aria-pressed', String(active));
+      };
+      const reorder = createDemoBlockReorder(this, {
+        scroll: true,
+        onLift: () => { setCropActive(false); gaps.setSuppressed(true); this.toggleAttribute('data-reordering', true); },
+        onSettle: () => { gaps.setSuppressed(false); this.removeAttribute('data-reordering'); },
       });
-      choices.forEach((choice) => {
-        const selected = choice.dataset.devSpacingOption === 'group';
-        choice.classList.toggle('is-active', selected);
-        choice.setAttribute('aria-pressed', selected ? 'true' : 'false');
-      });
-
-      const cancelRelocation = () => {
-        this.generation += 1;
-        if (this.relocation) window.clearTimeout(this.relocation);
-        this.relocation = undefined;
-        toolbar.removeAttribute('data-relocating');
-      };
-      const midpoint = () => {
-        const viewportRect = viewport.getBoundingClientRect();
-        const gapRect = gap.getBoundingClientRect();
-        toolbar.style.top = `${gapRect.top - viewportRect.top + gapRect.height / 2 + viewport.scrollTop}px`;
-      };
-      const revealIfNear = (event: PointerEvent) => {
-        if (event.pointerType === 'touch' || this.pinned) return;
-        const rect = toolbar.getBoundingClientRect();
-        const distanceX = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
-        const distanceY = Math.max(rect.top - event.clientY, 0, event.clientY - rect.bottom);
-        toolbar.toggleAttribute('data-visible', Math.hypot(distanceX, distanceY) <= 56);
-      };
-      const release = () => {
-        toolbar.removeAttribute('data-visible');
-        if (!this.pinned) return;
-        this.pinned = false;
-        cancelRelocation();
-        toolbar.setAttribute('data-relocating', '');
-        const generation = this.generation;
-        this.relocation = window.setTimeout(() => {
-          if (generation !== this.generation) return;
-          midpoint();
-          toolbar.removeAttribute('data-relocating');
-          toolbar.setAttribute('data-visible', '');
-          this.relocation = undefined;
-        }, 150);
-      };
-      const choose = (choice: HTMLButtonElement) => {
-        const next = choice.dataset.devSpacingOption as GapToken | undefined;
-        if (!next || !values[next]) return;
-        cancelRelocation();
-        gap.style.setProperty('--gap-spacing-value', values[next]);
-        choices.forEach((item) => {
-          item.classList.toggle('is-active', item === choice);
-          item.setAttribute('aria-pressed', item === choice ? 'true' : 'false');
-        });
-        if (!this.pinned) midpoint();
-        if (choice.matches(':focus-visible') || document.activeElement === choice) toolbar.setAttribute('data-visible', '');
-        if (eventIsTouch) {
-          this.pinned = false;
-          midpoint();
-          toolbar.removeAttribute('data-visible');
-        }
-      };
-      let eventIsTouch = false;
-
-      midpoint();
-      viewport.addEventListener('pointermove', revealIfNear, { signal });
-      viewport.addEventListener('pointerleave', () => {
-        cancelRelocation();
-        this.pinned = false;
-        midpoint();
-        toolbar.removeAttribute('data-visible');
+      trigger.addEventListener('click', (event) => { event.stopPropagation(); setCropActive(!this.hasAttribute('data-crop-active')); }, { signal });
+      this.ownerDocument.addEventListener('pointerdown', (event) => {
+        if (this.hasAttribute('data-crop-active') && !image.contains(event.target as Node)) setCropActive(false);
       }, { signal });
-      toolbar.addEventListener('pointerenter', () => {
-        this.pinned = true;
-        cancelRelocation();
-        toolbar.setAttribute('data-visible', '');
+      this.ownerDocument.addEventListener('keydown', (event) => { if (event.key === 'Escape') setCropActive(false); }, { signal });
+      this.querySelector('[data-gap-reset]')?.addEventListener('click', () => {
+        crop.reset(); gaps.reset(); setCropActive(false);
+        this.ownerDocument.defaultView?.scrollTo({ top: 0, behavior: 'instant' });
       }, { signal });
-      toolbar.addEventListener('pointerleave', release, { signal });
-      toolbar.addEventListener('wheel', (event) => event.preventDefault(), { signal, passive: false });
-      toolbar.addEventListener('pointerdown', (event) => { eventIsTouch = event.pointerType === 'touch'; }, { signal });
-      choices.forEach((choice) => choice.addEventListener('click', () => choose(choice), { signal }));
-      reset.addEventListener('click', () => {
-        cancelRelocation();
-        this.pinned = false;
-        gap.style.setProperty('--gap-spacing-value', values.group);
-        choices.forEach((choice) => {
-          const selected = choice.dataset.devSpacingOption === 'group';
-          choice.classList.toggle('is-active', selected);
-          choice.setAttribute('aria-pressed', selected ? 'true' : 'false');
-        });
-        viewport.scrollTop = 0;
-        midpoint();
-        toolbar.setAttribute('data-visible', '');
-      }, { signal });
-      const ResizeObserverCtor = window.ResizeObserver;
-      if (ResizeObserverCtor) {
-        this.resizeObserver = new ResizeObserverCtor(() => {
-          cancelRelocation();
-          this.pinned = false;
-          midpoint();
-        });
-        this.resizeObserver.observe(viewport);
-      }
+      this.dispose = () => {
+        life.abort(); reorder.destroy(); gaps.destroy(); crop.destroy(); trigger.remove();
+        image.classList.remove('dev-image-edit-target', 'is-dev-image-selected');
+        this.removeAttribute('data-crop-active');
+      };
     }
-
-    disconnectedCallback() {
-      this.generation += 1;
-      this.pinned = false;
-      this.lifecycle?.abort();
-      this.lifecycle = undefined;
-      this.resizeObserver?.disconnect();
-      this.resizeObserver = undefined;
-      if (this.relocation) window.clearTimeout(this.relocation);
-      this.relocation = undefined;
-    }
+    disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
   }
   if (!customElements.get('vcd-gap-spacing-demo')) customElements.define('vcd-gap-spacing-demo', GapSpacingDemo);
 </script>

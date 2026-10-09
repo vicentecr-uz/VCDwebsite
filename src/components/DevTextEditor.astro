@@ -169,7 +169,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
-  import { spacingButtonsHtml } from '../lib/gapSpacingControl';
+  import {
+    spacingButtonsHtml, pinGapToolbar as pinGapToolbarTop, unpinGapToolbar,
+    GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
+    GAP_INTENT_DELAY as SPACING_INTENT_DELAY_MS, GAP_FAST_POINTER as SPACING_FAST_POINTER_PX_PER_MS,
+  } from '../lib/gapSpacingControl';
 
   const disposePage = onPageLoad(() => {
   const pageScope = createPageScope();
@@ -264,12 +268,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (documentKey !== 'home' && documentKey !== 'play') return false;
     return element.dataset.devIntro === 'true';
   };
-
-  /** Hidden pills require a close approach; visible pills allow more room to move. */
-  const SPACING_ENTRY_RADIUS_PX = 8;
-  const SPACING_RETENTION_RADIUS_PX = 24;
-  const SPACING_INTENT_DELAY_MS = 140;
-  const SPACING_FAST_POINTER_PX_PER_MS = 0.18;
 
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
@@ -592,27 +590,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }, { signal: editorSignal });
     };
 
-    /**
-     * Freeze only while the pointer is on the pill/menu (not mere vicinity).
-     * Vicinity-revealed toolbars stay `position:absolute` so they scroll with
-     * the page; fixed freeze is for deliberate interaction.
-     */
-    const pinGapToolbarTop = (control: HTMLElement) => {
-      if (control.dataset.gapPinnedTop == null) {
-        const rect = control.getBoundingClientRect();
-        control.dataset.gapPinnedTop = String(rect.top);
-        control.dataset.gapPinnedLeft = String(rect.left);
-        control.dataset.gapPinnedWidth = String(rect.width);
-      }
-      control.style.position = 'fixed';
-      control.style.top = `${control.dataset.gapPinnedTop}px`;
-      control.style.left = `${control.dataset.gapPinnedLeft}px`;
-      control.style.right = 'auto';
-      control.style.width = `${control.dataset.gapPinnedWidth}px`;
-      control.style.transform = 'none';
-      control.dataset.gapTopPinned = 'true';
-    };
-
     const restoreGapToolbarTop = (control: HTMLElement) => {
       if (control.classList.contains('is-intro-leading-gap')) {
         control.style.top = 'calc(min(var(--intro-outer-air, 0px), var(--space-group)) / -2)';
@@ -624,16 +601,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const unpinGapToolbarTop = (control: HTMLElement) => {
-      control.style.removeProperty('position');
-      control.style.removeProperty('left');
-      control.style.removeProperty('right');
-      control.style.removeProperty('width');
-      control.style.removeProperty('transform');
+      unpinGapToolbar(control);
       restoreGapToolbarTop(control);
-      delete control.dataset.gapTopPinned;
-      delete control.dataset.gapPinnedTop;
-      delete control.dataset.gapPinnedLeft;
-      delete control.dataset.gapPinnedWidth;
     };
 
     const bindSpacingOptionClicks = (state: EditableSpacingState) => {

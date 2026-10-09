@@ -5,19 +5,12 @@ import SelectField from '../ui/EditorSelectField.astro';
 import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
-import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
-import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
-import maximizeIcon from 'lucide-static/icons/maximize.svg?raw';
-import lockIcon from 'lucide-static/icons/lock.svg?raw';
 import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import circleAlertIcon from 'lucide-static/icons/circle-alert.svg?raw';
 import { sizeIcon } from '../../lib/icons';
+import ImageCropControls from './ImageCropControls.astro';
 
-const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
-const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
-const maximizeSvg = sizeIcon(maximizeIcon, 14);
-const lockSvg = sizeIcon(lockIcon, 14);
 const monitorSvg = sizeIcon(monitorIcon, 16);
 const globeSvg = sizeIcon(globeIcon, 16);
 const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
@@ -48,150 +41,76 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       />
     </SegmentedControl>
 
-    <SelectField
-      label="Aspect ratio"
-      data-crop-aspect-ratio-wrap
-      data-crop-aspect-ratio
-      options={[
-        { value: 'original', label: 'Original' },
-        {
-          label: 'Landscape',
-          options: [
-            { value: '16:9', label: '16:9' },
-            { value: '16:10', label: '16:10' },
-            { value: '3:2', label: '3:2' },
-            { value: '4:3', label: '4:3' },
-            { value: '5:4', label: '5:4' },
-          ],
-        },
-        {
-          label: 'Square',
-          options: [{ value: '1:1', label: '1:1' }],
-        },
-        {
-          label: 'Portrait',
-          options: [
-            { value: '5:6', label: '5:6' },
-            { value: '4:5', label: '4:5' },
-            { value: '3:4', label: '3:4' },
-            { value: '2:3', label: '2:3' },
-            { value: '10:16', label: '10:16' },
-            { value: '9:16', label: '9:16' },
-          ],
-        },
-      ]}
-    >
-      <button
-        slot="labelAccessory"
-        type="button"
-        class="tapico-crop-tuner__linked-aspect-hint"
-        data-crop-linked-aspect-hint
-        hidden
-        aria-describedby="crop-linked-aspect-tooltip"
-      >
-        <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
-        <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
-      </button>
-      <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
-        <span data-crop-setting-source="aspect"></span>
-        <Button emphasis="ghost" label="Reset" data-crop-reset-setting="aspect" hidden aria-label="Reset aspect ratio to inherited value" />
-      </span>
-    </SelectField>
-
-    <div class="tapico-crop-tuner__pair">
-      <SelectField
-        label="Width"
-        hidden
-        data-crop-width-constrain-wrap
-        data-crop-width-constrain
-        options={[
-          { value: '100', label: 'Full' },
-          { value: 'text', label: 'Match text' },
-          { value: '90', label: '90%' },
-          { value: '80', label: '80%' },
-          { value: '70', label: '70%' },
-          { value: '60', label: '60%' },
-          { value: '50', label: '50%' },
-          { value: '40', label: '40%' },
-          { value: '30', label: '30%' },
-        ]}
-      >
-        <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
-          <span data-crop-setting-source="width"></span>
-          <Button emphasis="ghost" label="Reset" data-crop-reset-setting="width" hidden aria-label="Reset width to inherited value" />
+    <ImageCropControls>
+      <Fragment slot="aspectAccessory">
+        <button
+          type="button"
+          class="tapico-crop-tuner__linked-aspect-hint"
+          data-crop-linked-aspect-hint
+          hidden
+          aria-describedby="crop-linked-aspect-tooltip"
+        >
+          <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
+          <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
+        </button>
+        <span class="tapico-crop-tuner__setting-meta">
+          <span data-crop-setting-source="aspect"></span>
+          <Button emphasis="ghost" label="Reset" data-crop-reset-setting="aspect" hidden aria-label="Reset aspect ratio to inherited value" />
         </span>
-      </SelectField>
+      </Fragment>
+      <Fragment slot="frameSettings">
+        <div class="tapico-crop-tuner__pair">
+          <SelectField
+            label="Width"
+            hidden
+            data-crop-width-constrain-wrap
+            data-crop-width-constrain
+            options={[
+              { value: '100', label: 'Full' },
+              { value: 'text', label: 'Match text' },
+              { value: '90', label: '90%' },
+              { value: '80', label: '80%' },
+              { value: '70', label: '70%' },
+              { value: '60', label: '60%' },
+              { value: '50', label: '50%' },
+              { value: '40', label: '40%' },
+              { value: '30', label: '30%' },
+            ]}
+          >
+            <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
+              <span data-crop-setting-source="width"></span>
+              <Button emphasis="ghost" label="Reset" data-crop-reset-setting="width" hidden aria-label="Reset width to inherited value" />
+            </span>
+          </SelectField>
 
-      <SelectField
-        label="Max view height"
-        hidden
-        data-crop-height-constrain-wrap
-        data-crop-max-vh
-        options={[
-          { value: '', label: 'Off' },
-          { value: '90', label: '90%' },
-          { value: '80', label: '80%' },
-          { value: '70', label: '70%' },
-          { value: '60', label: '60%' },
-          { value: '50', label: '50%' },
-          { value: '40', label: '40%' },
-          { value: '30', label: '30%' },
-        ]}
-      />
-    </div>
-    <div class="tapico-crop-tuner__crop-label dev-field__label-row" data-crop-setting-wrap="crop">
-      <span class="dev-field__label" data-crop-setting-label="crop">Crop</span>
-      <span class="tapico-crop-tuner__setting-meta">
-        <span data-crop-setting-source="crop"></span>
-        <Button emphasis="ghost" label="Reset" data-crop-reset-setting="crop" hidden aria-label="Reset crop to inherited value" />
-      </span>
-    </div>
-
-    <div class="tapico-crop-tuner__stage">
-      <div class="tapico-crop-tuner__preview" data-crop-preview>
-        <div class="tapico-crop-tuner__preview-clip">
-          <img alt="" data-crop-image draggable="false" />
-          <span class="project-media__placeholder-label" aria-hidden="true">
-            <span class="project-media__placeholder-label-text"></span>
-          </span>
-          <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
+          <SelectField
+            label="Max view height"
+            hidden
+            data-crop-height-constrain-wrap
+            data-crop-max-vh
+            options={[
+              { value: '', label: 'Off' },
+              { value: '90', label: '90%' },
+              { value: '80', label: '80%' },
+              { value: '70', label: '70%' },
+              { value: '60', label: '60%' },
+              { value: '50', label: '50%' },
+              { value: '40', label: '40%' },
+              { value: '30', label: '30%' },
+            ]}
+          />
         </div>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--n" data-crop-resize="n" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--s" data-crop-resize="s" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--e" data-crop-resize="e" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--w" data-crop-resize="w" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--ne" data-crop-resize="ne" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--nw" data-crop-resize="nw" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--se" data-crop-resize="se" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--sw" data-crop-resize="sw" aria-hidden="true"></span>
-      </div>
-    </div>
-
-    <div class="tapico-crop-tuner__toolbar" aria-label="Crop controls">
-      <button type="button" data-crop-center-x aria-label="Centre horizontally">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignXSvg} />
-      </button>
-      <button type="button" data-crop-center-y aria-label="Centre vertically">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignYSvg} />
-      </button>
-      <button type="button" data-crop-fit aria-label="Fit to frame">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={maximizeSvg} />
-      </button>
-      <button
-        type="button"
-        class="tapico-crop-tuner__constraint"
-        data-crop-constraint
-        aria-pressed="true"
-      >
-        <span
-          class="tapico-crop-tuner__icon"
-          data-crop-constraint-icon
-          aria-hidden="true"
-          set:html={lockSvg}
-        />
-        <span data-crop-constraint-state>Crop locked</span>
-      </button>
-    </div>
+      </Fragment>
+      <Fragment slot="cropLabel">
+        <div class="tapico-crop-tuner__crop-label dev-field__label-row" data-crop-setting-wrap="crop">
+          <span class="dev-field__label" data-crop-setting-label="crop">Crop</span>
+          <span class="tapico-crop-tuner__setting-meta">
+            <span data-crop-setting-source="crop"></span>
+            <Button emphasis="ghost" label="Reset" data-crop-reset-setting="crop" hidden aria-label="Reset crop to inherited value" />
+          </span>
+        </div>
+      </Fragment>
+    </ImageCropControls>
 
     <div class="dev-field" data-crop-background-wrap>
       <label class="dev-field__label" for="crop-background">Background</label>
@@ -3745,435 +3664,3 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   });
   import.meta.hot?.dispose(disposePage);
 </script>
-
-<style>
-  .tapico-crop-tuner__setting-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-    font-size: 0.6875rem;
-    white-space: nowrap;
-  }
-
-  .tapico-crop-tuner__setting-meta [data-inheritance="local"] { color: var(--ref-palette-blue-400); }
-  .tapico-crop-tuner__setting-meta [data-inheritance="inherited"] { color: var(--ref-palette-orange-400); }
-  .tapico-crop-tuner__crop-label { margin-bottom: -0.5rem; }
-
-  .tapico-crop-tuner__background-value {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .tapico-crop-tuner__background-value input {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .tapico-crop-tuner__background-swatch {
-    position: relative;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex-shrink: 0;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.25rem;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__background-swatch::after {
-    content: '';
-    position: absolute;
-    inset: -8px;
-  }
-
-  [data-crop-background-wrap][hidden] {
-    display: none;
-  }
-
-  color-picker[data-crop-background-picker] {
-    position: absolute;
-    width: 0;
-    height: 0;
-    overflow: visible;
-    --font: var(--font-sans);
-    --bg-primary: var(--sys-color-srf);
-    --bg-secondary: var(--sys-color-srf-container-low);
-    --bg-header: var(--sys-color-srf-container-high);
-    --border-color-primary: var(--sys-color-outline-variant);
-    --border-color-secondary: var(--sys-color-on-srf);
-    --txt-color-primary: var(--sys-color-on-srf);
-  }
-
-
-  /* Width + height caps read as one decision, so they share a row. Collapses
-     to nothing when both children are hidden — an empty flex item would still
-     take the parent column's gap. */
-  .tapico-crop-tuner__pair {
-    display: none;
-    gap: var(--space-unit);
-  }
-
-  .tapico-crop-tuner__pair:has(> *:not([hidden])) {
-    display: flex;
-  }
-
-  .tapico-crop-tuner__pair > * {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .tapico-crop-tuner {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.7em;
-  }
-
-  /*
-    Resize handles sit half outside the preview. DevOverlay's body scrolls with
-    overflow-x:hidden, which clips anything that escapes the stage box — pad
-    every side enough for the 0.7em chip plus its ::before hit slop.
-  */
-  .tapico-crop-tuner__linked-aspect-hint {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    margin: 0;
-    border: 0;
-    background: transparent;
-    color: var(--sys-color-on-srf-subtle);
-    cursor: help;
-  }
-
-  .tapico-crop-tuner__linked-aspect-icon {
-    display: inline-flex;
-  }
-
-  .tapico-crop-tuner__linked-aspect-tooltip {
-    position: absolute;
-    left: calc(100% + 6px);
-    top: 50%;
-    z-index: 2;
-    width: max-content;
-    max-width: 14em;
-    padding: 6px 8px;
-    border-radius: var(--dev-radius-control);
-    background: var(--sys-color-inverse-srf);
-    color: var(--sys-color-inverse-on-srf-subtle);
-    font: var(--dev-text-label);
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(-50%) translateX(4px);
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-
-  .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
-  .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
-    opacity: 1;
-    transform: translateY(-50%) translateX(0);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tapico-crop-tuner__linked-aspect-tooltip {
-      transform: translateY(-50%);
-      transition: opacity 0.15s ease;
-    }
-
-    .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
-    .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
-      transform: translateY(-50%);
-    }
-  }
-
-  .tapico-crop-tuner__stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 14em;
-    padding: 0.85em;
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 10;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-    --tuner-content-w: 1;
-    --tuner-content-cx: 0.5;
-    --tuner-content-cy: 0.5;
-  }
-
-  .tapico-crop-tuner__preview-clip {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview:not(.tapico-crop-tuner__preview--placeholder) .project-media__placeholder-label {
-    display: none;
-  }
-
-  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip {
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip::after {
-    content: '';
-    position: absolute;
-    inset: 0.75em;
-    border: 2px dashed var(--ref-palette-grey-600);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .tapico-crop-tuner__preview--placeholder img {
-    opacity: 0;
-  }
-
-  .tapico-crop-tuner__preview--placeholder .project-media__placeholder-label {
-    z-index: 2;
-  }
-
-  .tapico-crop-tuner__preview.is-dragging {
-    cursor: grabbing;
-  }
-
-  .tapico-crop-tuner__preview.is-resizing {
-    cursor: inherit;
-  }
-
-  /* Identical placement rule to the page (project.css) so the preview cannot lie. */
-  .tapico-crop-tuner__preview img {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: calc(100% / var(--tuner-content-w, 1));
-    height: auto;
-    max-width: none;
-    pointer-events: none;
-    transform: translate(
-      calc(var(--tuner-content-cx, 0.5) * -100%),
-      calc(var(--tuner-content-cy, 0.5) * -100%)
-    );
-  }
-
-  .tapico-crop-tuner__handle {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 1.5em;
-    height: 1.5em;
-    border: 1px solid rgb(26 26 26 / 0.6);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-  }
-
-  .tapico-crop-tuner__handle::before,
-  .tapico-crop-tuner__handle::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    background: rgb(26 26 26 / 0.6);
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__handle::before {
-    width: 2em;
-    height: 1px;
-  }
-
-  .tapico-crop-tuner__handle::after {
-    width: 1px;
-    height: 2em;
-  }
-
-  .tapico-crop-tuner__resize {
-    position: absolute;
-    z-index: 2;
-    box-sizing: border-box;
-    width: 0.7em;
-    height: 0.7em;
-    border: 1px solid rgb(26 26 26 / 0.75);
-    border-radius: 1px;
-    background: #ffffff;
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
-  }
-
-  .tapico-crop-tuner__resize::before {
-    content: '';
-    position: absolute;
-    inset: -0.45em;
-  }
-
-  .tapico-crop-tuner__resize--n,
-  .tapico-crop-tuner__resize--s {
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: ns-resize;
-  }
-
-  .tapico-crop-tuner__resize--n {
-    top: 0;
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--s {
-    bottom: 0;
-    transform: translate(-50%, 50%);
-  }
-
-  .tapico-crop-tuner__resize--e,
-  .tapico-crop-tuner__resize--w {
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: ew-resize;
-  }
-
-  .tapico-crop-tuner__resize--e {
-    right: 0;
-    transform: translate(50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--w {
-    left: 0;
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--ne {
-    top: 0;
-    right: 0;
-    transform: translate(50%, -50%);
-    cursor: nesw-resize;
-  }
-
-  .tapico-crop-tuner__resize--nw {
-    top: 0;
-    left: 0;
-    transform: translate(-50%, -50%);
-    cursor: nwse-resize;
-  }
-
-  .tapico-crop-tuner__resize--se {
-    right: 0;
-    bottom: 0;
-    transform: translate(50%, 50%);
-    cursor: nwse-resize;
-  }
-
-  .tapico-crop-tuner__resize--sw {
-    bottom: 0;
-    left: 0;
-    transform: translate(-50%, 50%);
-    cursor: nesw-resize;
-  }
-
-  .tapico-crop-tuner__control {
-    display: grid;
-    grid-template-columns: 3em 1fr 3em;
-    align-items: center;
-    gap: 0.6em;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__toolbar {
-    display: grid;
-    grid-template-columns: repeat(3, 2.4em) 1fr;
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__toolbar > button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45em;
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.45em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.72rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__toolbar > button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__constraint {
-    justify-content: flex-start;
-    padding-inline: 0.55em;
-  }
-
-  .tapico-crop-tuner__constraint.is-locked {
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 88%, var(--sys-color-on-srf));
-  }
-
-  .tapico-crop-tuner__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    line-height: 0;
-  }
-
-  .tapico-crop-tuner__icon :global(svg) {
-    display: block;
-  }
-
-  .tapico-crop-tuner__control input {
-    width: 100%;
-    accent-color: var(--sys-color-on-srf);
-  }
-
-  .tapico-crop-tuner__control output {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tapico-crop-tuner__readout[hidden] {
-    display: none;
-  }
-
-  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
-     stay in the a11y tree for "Uploading…" / "Could not replace…". */
-  .tapico-crop-tuner__status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .tapico-crop-tuner__status[data-replacement-error="true"] {
-    position: static;
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    color: var(--sys-color-error);
-    white-space: normal;
-  }
-
-</style>

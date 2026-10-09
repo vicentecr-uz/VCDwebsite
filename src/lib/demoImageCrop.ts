@@ -1,0 +1,246 @@
+import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from './responsiveImage';
+import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
+
+interface CropDemoOptions {
+  host: HTMLElement;
+  controls?: HTMLElement;
+  sourceAspect?: number;
+  initialAspect?: string;
+  active?: boolean;
+}
+
+export function createDemoImageCrop({ host, controls, sourceAspect = 4 / 3, initialAspect = '4:3', active = true }: CropDemoOptions) {
+  const document = host.ownerDocument;
+  const win = document.defaultView!;
+  const lifecycle = new AbortController();
+  const { signal } = lifecycle;
+  const image = host.querySelector<HTMLImageElement>('.project-crop-clip img, img')!;
+  const { stage, ghost, ghostImg } = createImageCropStage({ src: image.dataset.imagePreview || image.src, document });
+  image.src = image.dataset.imagePreview || image.src;
+  image.removeAttribute('role');
+  image.removeAttribute('tabindex');
+  image.removeAttribute('aria-label');
+  image.draggable = false;
+  host.classList.add('dev-crop-stage-host');
+  host.prepend(ghost);
+  host.append(stage);
+  stage.style.inset = ghost.style.inset = '0';
+  const preview = controls?.querySelector<HTMLElement>('[data-crop-preview]');
+  const select = controls?.querySelector<HTMLSelectElement>('select.dev-select__native');
+  const constraint = controls?.querySelector<HTMLButtonElement>('[data-crop-constraint]');
+  const dimensions = { width: sourceAspect, height: 1 };
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  let aspect = initialAspect;
+  let w = coverWidthFraction(aspect, sourceAspect) / 1.25;
+  let cx = 0.5;
+  let cy = 0.5;
+  let locked = true;
+  let syncingSelect = false;
+  const aspectValue = () => aspect === 'original' ? sourceAspect : aspect.split(':').map(Number).reduce((a, b) => a / b);
+  const contentHeight = () => w * sourceAspect / aspectValue();
+  const minWidth = () => coverWidthFraction(aspect, sourceAspect) / 100;
+  const maxWidth = () => coverWidthFraction(aspect, sourceAspect) / (locked ? 1 : 0.01);
+  const render = () => {
+    w = clamp(w, minWidth(), maxWidth());
+    const h = contentHeight();
+    const xReach = Math.max(1.5, w / 2);
+    const yReach = Math.max(1.5, h / 2);
+    cx = locked ? clamp(cx, w / 2, 1 - w / 2) : clamp(cx, 0.5 - xReach, 0.5 + xReach);
+    cy = locked ? clamp(cy, h / 2, 1 - h / 2) : clamp(cy, 0.5 - yReach, 0.5 + yReach);
+    const pose = { aspect, cx, cy, w };
+    const styles = responsiveImageStyle(normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, aspect, dimensions), dimensions);
+    for (const declaration of styles.split(';')) {
+      const colon = declaration.indexOf(':');
+      host.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1));
+    }
+    host.dataset.cropAspect = aspect;
+    host.closest<HTMLElement>('[data-crop-demo]')?.style.setProperty('--crop-demo-aspect', String(aspectValue()));
+    if (preview) {
+      preview.style.aspectRatio = String(aspectValue());
+      preview.style.setProperty('--tuner-content-w', String(w));
+      preview.style.setProperty('--tuner-content-cx', String(cx));
+      preview.style.setProperty('--tuner-content-cy', String(cy));
+    }
+    ghostImg.style.setProperty('--project-content-w', String(w));
+    ghostImg.style.setProperty('--project-content-cx', String(cx));
+    ghostImg.style.setProperty('--project-content-cy', String(cy));
+    constraint?.setAttribute('aria-pressed', String(locked));
+    constraint?.classList.toggle('is-locked', locked);
+    const label = constraint?.querySelector('[data-crop-constraint-state]');
+    if (label) label.textContent = locked ? 'Crop locked' : 'Crop unlocked';
+    const lockPath = constraint?.querySelector('path');
+    lockPath?.setAttribute('d', locked ? 'M7 11V7a5 5 0 0 1 10 0v4' : 'M7 11V7a5 5 0 0 1 9.9-1');
+  };
+  const syncSelect = () => {
+    if (!select) return;
+    let custom = select.querySelector<HTMLOptionElement>('[data-crop-custom]');
+    const preset = [...select.options].some((option) => option !== custom && option.value === aspect);
+    if (preset) custom?.remove();
+    else {
+      if (!custom) { custom = document.createElement('option'); custom.dataset.cropCustom = ''; select.append(custom); }
+      custom.value = aspect;
+      custom.textContent = 'Custom';
+    }
+    select.value = aspect;
+    syncingSelect = true;
+    select.dispatchEvent(new win.Event('change', { bubbles: true }));
+    syncingSelect = false;
+  };
+  const zoomAt = (factor: number, x = 0.5, y = 0.5) => {
+    const sourceX = cx + (x - 0.5) * w;
+    const sourceY = cy + (y - 0.5) * contentHeight();
+    w = clamp(w / factor, minWidth(), maxWidth());
+    cx = sourceX - (x - 0.5) * w;
+    cy = sourceY - (y - 0.5) * contentHeight();
+  };
+  const releases: Array<() => void> = [];
+  const bind = (surface: HTMLElement) => {
+    surface.setAttribute('role', 'group');
+    surface.setAttribute('aria-label', 'Crop image. Drag or use arrow keys to pan; pinch or use plus and minus to zoom. Drag an edge to resize.');
+    surface.tabIndex = 0;
+    const pointers = new Map<number, { x: number; y: number }>();
+    let gesture: { x: number; y: number; cx: number; cy: number; w: number; h: number; bounds: DOMRect; direction?: CropResizeDirection } | undefined;
+    let pinch: { distance: number; w: number; sourceX: number; sourceY: number } | undefined;
+    let wheelFrame = 0;
+    let wheelIdle = 0;
+    let speed = 0;
+    let pending: { dx: number; dy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
+    const flushWheel = () => {
+      wheelFrame = 0;
+      if (!pending) return;
+      const { dx, dy, zoom, x, y, bounds } = pending;
+      pending = undefined;
+      speed += ((zoom ? Math.abs(dy) : Math.hypot(dx, dy)) - speed) * 0.32;
+      const t = Math.min(1, speed / 40);
+      const blend = t * t * (3 - 2 * t);
+      if (zoom) zoomAt(Math.exp(-dy * (0.00085 + (0.0022 - 0.00085) * blend)), x, y);
+      else {
+        const gain = 0.38 + (1 - 0.38) * blend;
+        cx += dx / bounds.width * w * gain;
+        cy += dy / bounds.height * contentHeight() * gain;
+      }
+      render();
+    };
+    const release = () => {
+      const ids = [...pointers.keys()];
+      pointers.clear();
+      gesture = pinch = undefined;
+      surface.classList.remove('is-dragging', 'is-resizing');
+      ids.forEach((id) => { if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id); });
+      if (wheelFrame) win.cancelAnimationFrame(wheelFrame);
+      if (wheelIdle) win.clearTimeout(wheelIdle);
+      wheelFrame = wheelIdle = 0;
+      pending = undefined;
+      speed = 0;
+    };
+    releases.push(release);
+    surface.addEventListener('pointerdown', (event) => {
+      if (!active || event.button !== 0 || (gesture?.direction && pointers.size)) return;
+      const bounds = surface.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      event.preventDefault();
+      surface.focus({ preventScroll: true });
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      surface.setPointerCapture(event.pointerId);
+      if (pointers.size === 1) {
+        const direction = (event.target as HTMLElement).closest<HTMLElement>('[data-page-resize], [data-crop-resize]');
+        gesture = { x: event.clientX, y: event.clientY, cx, cy, w, h: contentHeight(), bounds, direction: (direction?.dataset.pageResize || direction?.dataset.cropResize) as CropResizeDirection | undefined };
+        surface.classList.add(gesture.direction ? 'is-resizing' : 'is-dragging');
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinch = { distance: Math.max(8, Math.hypot(a.x - b.x, a.y - b.y)), w, sourceX: cx + ((a.x + b.x) / 2 - bounds.left - bounds.width / 2) / bounds.width * w, sourceY: cy + ((a.y + b.y) / 2 - bounds.top - bounds.height / 2) / bounds.height * contentHeight() };
+      }
+    }, { signal });
+    surface.addEventListener('pointermove', (event) => {
+      if (!pointers.has(event.pointerId) || !gesture) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      const { bounds } = gesture;
+      if (pinch && pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        w = clamp(pinch.w * pinch.distance / Math.max(8, Math.hypot(a.x - b.x, a.y - b.y)), minWidth(), maxWidth());
+        cx = pinch.sourceX - ((a.x + b.x) / 2 - bounds.left - bounds.width / 2) / bounds.width * w;
+        cy = pinch.sourceY - ((a.y + b.y) / 2 - bounds.top - bounds.height / 2) / bounds.height * contentHeight();
+      } else {
+        const dx = event.clientX - gesture.x;
+        const dy = event.clientY - gesture.y;
+        if (gesture.direction) aspect = `${Math.round(bounds.width)}:${Math.round(cropResizeHeight(gesture.direction, bounds.width, bounds.height, dx, dy))}`;
+        else {
+          cx = gesture.cx - (event.shiftKey && Math.abs(dy) > Math.abs(dx) ? 0 : dx) / bounds.width * gesture.w;
+          cy = gesture.cy - (event.shiftKey && Math.abs(dx) >= Math.abs(dy) ? 0 : dy) / bounds.height * gesture.h;
+        }
+      }
+      render();
+    }, { signal });
+    const end = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      const resized = Boolean(gesture?.direction);
+      release();
+      if (resized) syncSelect();
+    };
+    surface.addEventListener('pointerup', end, { signal });
+    surface.addEventListener('pointercancel', end, { signal });
+    surface.addEventListener('lostpointercapture', end, { signal });
+    surface.addEventListener('wheel', (event) => {
+      if (!active || gesture) return;
+      const bounds = surface.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      event.preventDefault();
+      const zoom = event.ctrlKey || (locked && w >= 0.9999 && contentHeight() >= 0.9999);
+      if (pending && pending.zoom !== zoom) flushWheel();
+      const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+      pending = { dx: (pending?.dx ?? 0) + event.deltaX * unit, dy: (pending?.dy ?? 0) + event.deltaY * unit, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
+      if (!wheelFrame) wheelFrame = win.requestAnimationFrame(flushWheel);
+      if (wheelIdle) win.clearTimeout(wheelIdle);
+      wheelIdle = win.setTimeout(() => { speed = 0; wheelIdle = 0; }, 160);
+    }, { signal, passive: false });
+    surface.addEventListener('keydown', (event) => {
+      if (!active) return;
+      const step = event.shiftKey ? 0.05 : 0.02;
+      if (event.key === 'Escape') release();
+      else if (event.key === '+' || event.key === '=') zoomAt(1.1);
+      else if (event.key === '-') zoomAt(1 / 1.1);
+      else if (event.key === 'ArrowLeft') cx -= step;
+      else if (event.key === 'ArrowRight') cx += step;
+      else if (event.key === 'ArrowUp') cy -= step;
+      else if (event.key === 'ArrowDown') cy += step;
+      else return;
+      event.preventDefault();
+      render();
+    }, { signal });
+  };
+  bind(stage);
+  if (preview) bind(preview);
+  select?.addEventListener('change', () => {
+    if (syncingSelect) return;
+    const value = select.value;
+    if (value !== 'original' && !/^\d+(?:\.\d+)?:\d+(?:\.\d+)?$/.test(value)) return;
+    aspect = value;
+    render();
+  }, { signal });
+  controls?.querySelector('[data-crop-center-x]')?.addEventListener('click', () => { cx = 0.5; render(); }, { signal });
+  controls?.querySelector('[data-crop-center-y]')?.addEventListener('click', () => { cy = 0.5; render(); }, { signal });
+  controls?.querySelector('[data-crop-fit]')?.addEventListener('click', () => { locked = false; cx = cy = 0.5; w = Math.max(1, aspectValue() / sourceAspect); render(); }, { signal });
+  constraint?.addEventListener('click', () => { locked = !locked; render(); }, { signal });
+  const reset = () => {
+    releases.forEach((release) => release());
+    aspect = initialAspect; w = coverWidthFraction(aspect, sourceAspect) / 1.25; cx = cy = 0.5; locked = true;
+    render(); syncSelect();
+  };
+  controls?.querySelector('[data-crop-reset]')?.addEventListener('click', reset, { signal });
+  const setActive = (next: boolean) => {
+    active = next;
+    if (!active) releases.forEach((release) => release());
+    stage.classList.toggle('is-visible', active);
+    ghost.classList.toggle('is-visible', active);
+    stage.style.pointerEvents = active ? '' : 'none';
+    stage.tabIndex = active ? 0 : -1;
+    stage.setAttribute('aria-hidden', String(!active));
+  };
+  render(); syncSelect(); setActive(active);
+  return { reset, setActive, destroy() {
+    releases.forEach((release) => release());
+    lifecycle.abort();
+    stage.remove(); ghost.remove();
+    host.classList.remove('dev-crop-stage-host');
+  } };
+}

@@ -26,3 +26,32 @@ export const spacingButtonsHtml = (pageTop: boolean, pageBottom: boolean) =>
       </button>
     `)
     .join('');
+
+export const GAP_ENTRY_RADIUS = 8;
+export const GAP_RETENTION_RADIUS = 24;
+export const GAP_INTENT_DELAY = 140;
+export const GAP_FAST_POINTER = 0.18;
+
+export function pinGapToolbar(control: HTMLElement) {
+  if (control.dataset.gapPinnedTop == null) {
+    const rect = control.getBoundingClientRect();
+    control.dataset.gapPinnedTop = String(rect.top);
+    control.dataset.gapPinnedLeft = String(rect.left);
+    control.dataset.gapPinnedWidth = String(rect.width);
+  }
+  control.style.position = 'fixed';
+  control.style.top = `${control.dataset.gapPinnedTop}px`;
+  control.style.left = `${control.dataset.gapPinnedLeft}px`;
+  control.style.right = 'auto';
+  control.style.width = `${control.dataset.gapPinnedWidth}px`;
+  control.style.transform = 'none';
+  control.dataset.gapTopPinned = 'true';
+}
+
+export function unpinGapToolbar(control: HTMLElement) {
+  for (const property of ['position', 'top', 'left', 'right', 'width', 'transform']) control.style.removeProperty(property);
+  delete control.dataset.gapTopPinned;
+  delete control.dataset.gapPinnedTop;
+  delete control.dataset.gapPinnedLeft;
+  delete control.dataset.gapPinnedWidth;
+}
