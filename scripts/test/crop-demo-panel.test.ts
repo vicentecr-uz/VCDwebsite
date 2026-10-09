@@ -14,10 +14,10 @@ function setup() {
   document.body.innerHTML = `<vcd-crop-frame-demo>
     <div data-crop-panel class="dev-overlay is-dev-overlay-open">
       <button data-minimize-toggle aria-expanded="true"></button><button data-hide-toggle></button>
-      <div data-overlay-body><button>Crop control</button></div>
+      <div data-overlay-body><button>Crop control</button><button data-crop-replace-assets>Asset manager</button><button data-demo-author-reset>Reset</button></div>
     </div>
     <div class="project-image"><img src="/source.jpg"></div>
-    <button data-crop-reset>Reset</button>
+    <div data-demo-asset-picker hidden></div>
   </vcd-crop-frame-demo>`;
   const timers = new Map<number, () => void>();
   let nextTimer = 0;
@@ -50,6 +50,7 @@ function setup() {
       reset() { replacementReset += 1; },
       destroy() { replacementDestroyed += 1; },
     }),
+    createDemoAssetPicker: () => ({ open: async () => undefined, destroy() {} }),
     createDevPanelCollapse: (panel: HTMLElement) => ({
       set(value: boolean, animate?: boolean) {
         collapseSets.push([value, animate]);
@@ -64,7 +65,7 @@ function setup() {
   const panel = demo.querySelector('[data-crop-panel]') as HTMLElement;
   const hide = panel.querySelector('[data-hide-toggle]') as HTMLButtonElement;
   const minimize = panel.querySelector('[data-minimize-toggle]') as HTMLButtonElement;
-  const reset = demo.querySelector('[data-crop-reset]') as HTMLButtonElement;
+  const reset = demo.querySelector('[data-demo-author-reset]') as HTMLButtonElement;
   return { win, document, demo, panel, hide, minimize, reset, timers, flushTimer: (id: number) => timers.get(id)?.(), get cropActive() { return cropActive; }, get cropReset() { return cropReset; }, get cropDestroyed() { return cropDestroyed; }, get replacementReset() { return replacementReset; }, get replacementDestroyed() { return replacementDestroyed; }, get collapseDestroyed() { return collapseDestroyed; }, collapseSets };
 }
 
@@ -95,13 +96,13 @@ test('hide makes the panel inert and reopens exactly after 2000ms', () => {
   expect(h.collapseSets.at(-1)).toEqual([false, false]);
 });
 
-test('reset cancels a scheduled reopen, resets replacement, and expands panel', () => {
+test('reset cancels a scheduled reopen and expands panel alongside the action controller', () => {
   const h = setup();
   h.hide.click();
   expect(h.timers.size).toBe(1);
   h.reset.click();
   expect(h.timers.size).toBe(0);
-  expect(h.replacementReset).toBe(1);
+  expect(h.replacementReset).toBe(0);
   expect(h.panel.inert).toBe(false);
   expect(h.panel.classList.contains('is-dev-overlay-open')).toBe(true);
   expect(h.cropActive).toBe(true);

@@ -42,7 +42,7 @@ for (const demo of CRAFT_DEMOS) {
     assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
   }
   const panelClass = demo.id === 'image-framing' ? 'dev-overlay' : 'dev-panel';
-  const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes(panelClass));
+  const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes(panelClass) && attr(node, 'data-demo-asset-picker') === undefined);
   let panelNodes = [];
   if (isCanvas && demo.id !== 'image-framing') {
     assert.equal(panels.length, 0, `${demo.id}: no DevPanel`);
@@ -60,7 +60,12 @@ for (const demo of CRAFT_DEMOS) {
     assert.ok(panelNodes.some((node) => attr(node, 'data-minimize-toggle') !== undefined), 'image panel: real minimize control');
     assert.ok(panelNodes.some((node) => attr(node, 'data-hide-toggle') !== undefined), 'image panel: real close control');
     assert.ok(panelNodes.some((node) => attr(node, 'data-crop-replace-file') !== undefined), 'image panel: local file replacement');
-    assert.equal(panelNodes.some((node) => attr(node, 'data-crop-replace-assets') !== undefined), false, 'image panel: no authoring library access');
+    assert.ok(panelNodes.some((node) => attr(node, 'data-crop-replace-assets') !== undefined), 'image panel: published asset picker');
+    const picker = nodes.find((node) => attr(node, 'data-demo-asset-picker') !== undefined);
+    assert.ok(picker && attr(picker, 'role') === 'dialog', 'image panel: named shared asset picker');
+    assert.equal(allNodes(picker).some((node) => attr(node, 'data-asset-filter') !== undefined), false, 'public picker omits library management filters');
+    assert.ok(nodes.some((node) => attr(node, 'data-published-demo-assets') !== undefined), 'public catalog is inline; no authoring endpoint');
+    for (const action of ['reset', 'revert', 'save']) assert.ok(panelNodes.some((node) => attr(node, `data-demo-author-${action}`) !== undefined), `image panel: ${action} action`);
     assert.equal(panelNodes.some((node) => attr(node, 'data-dev-overlay') !== undefined), false, 'image panel: isolated presentation only');
   }
   const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
@@ -70,7 +75,7 @@ for (const demo of CRAFT_DEMOS) {
     assert.ok(controls, `${demo.id}: image loading controls`);
     assert.ok(allNodes(controls).some((node) => node.tagName === 'button' && attr(node, 'aria-label') === 'Load'), `${demo.id}: reversible Load control`);
   }
-  assert.equal(panelNodes.includes(reset), false, `${demo.id}: Reset sits outside the panel`);
+  assert.equal(panelNodes.includes(reset), demo.id === 'image-framing', `${demo.id}: Reset follows this demo's action layout`);
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
   assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
   if (demo.id === 'gap-spacing') {
@@ -80,7 +85,7 @@ for (const demo of CRAFT_DEMOS) {
     assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('project-image')), 'block system: crop host matches the renderer');
     assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('demo-page--scrolling')), 'the demo document is the scroll surface');
   }
-  assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
+  if (demo.id !== 'image-framing') assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
   if (isProgressiveImage) {
