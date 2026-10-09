@@ -23,9 +23,10 @@ window.CSSStyleSheet.prototype.insertRule = function(rule: string, index?: numbe
 await import('media-chrome');
 const source = readFileSync(new URL('../../src/lib/projectVideoControls.ts', import.meta.url), 'utf8');
 const projectStyle = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
+const spinnerMarkup = readFileSync(new URL('../../src/components/ui/LoadingSpinner.svg', import.meta.url), 'utf8');
 const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;\n/gm, '').replaceAll('export function', 'function'));
 const svg = (name: string) => readFileSync(new URL(`../../node_modules/lucide-static/icons/${name}.svg`, import.meta.url), 'utf8');
-const env = { createPageScope, resolveVideoAudio, sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
+const env = { createPageScope, resolveVideoAudio, sizeIcon, spinnerMarkup, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
 const { enhanceProjectVideo, bindVideoVisibility, bindVideoPoster } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility, bindVideoPoster }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
 
