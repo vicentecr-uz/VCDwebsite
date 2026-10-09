@@ -289,7 +289,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
     if (!gateActive && !video.paused && !video.ended) showBuffering();
   });
   scope.listen(video, 'stalled', () => {
-    if (!gateActive && !video.paused && !video.ended) showBuffering();
+    if (!gateActive && !video.paused && !video.ended && video.readyState < 3) showBuffering();
   });
   scope.listen(video, 'playing', hideBuffering);
   scope.listen(video, 'pause', () => {
@@ -317,6 +317,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
     restore(false);
   });
   scope.listen(video, 'error', () => {
+    hideBuffering();
     if (!gateActive) return;
     video.preload = 'none';
     restore(false);
