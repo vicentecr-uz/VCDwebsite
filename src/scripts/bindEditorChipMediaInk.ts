@@ -68,7 +68,7 @@ function imageIn(frame: HTMLElement): HTMLImageElement | null {
   return frame.matches('img')
     ? frame as HTMLImageElement
     : frame.querySelector<HTMLImageElement>(
-      '.project-image-grid__image, .project-media__img, .project-image__img, img',
+      'img.project-image-grid__image, img.project-media__img, img.project-image__img, img',
     );
 }
 

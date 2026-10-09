@@ -195,7 +195,7 @@ async function refreshCarouselMediaInk(carousel: Carousel): Promise<void> {
 
   const slide = carousel.slides[carousel.active];
   const frame = slide?.querySelector<HTMLElement>('[data-carousel-frame]');
-  const image = frame?.querySelector<HTMLImageElement>('.project-image-grid__image');
+  const image = frame?.querySelector<HTMLImageElement>('img.project-image-grid__image');
   if (!frame || !image || !dots.getBoundingClientRect().width) {
     clearCarouselMediaInk(dots);
     return;
