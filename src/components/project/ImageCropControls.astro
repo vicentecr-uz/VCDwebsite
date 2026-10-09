@@ -1,0 +1,106 @@
+---
+import '../../styles/imageCropTuner.css';
+import SelectField from '../ui/EditorSelectField.astro';
+import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
+import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
+import maximizeIcon from 'lucide-static/icons/maximize.svg?raw';
+import lockIcon from 'lucide-static/icons/lock.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+
+interface Props { aspect?: string; imageSrc?: string; }
+const { aspect = 'original', imageSrc } = Astro.props;
+const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
+const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
+const maximizeSvg = sizeIcon(maximizeIcon, 14);
+const lockSvg = sizeIcon(lockIcon, 14);
+---
+
+<SelectField
+  label="Aspect ratio"
+  value={aspect}
+  data-crop-aspect-ratio-wrap
+  data-crop-aspect-ratio
+  options={[
+    { value: 'original', label: 'Original' },
+    {
+      label: 'Landscape',
+      options: [
+        { value: '16:9', label: '16:9' },
+        { value: '16:10', label: '16:10' },
+        { value: '3:2', label: '3:2' },
+        { value: '4:3', label: '4:3' },
+        { value: '5:4', label: '5:4' },
+      ],
+    },
+    {
+      label: 'Square',
+      options: [{ value: '1:1', label: '1:1' }],
+    },
+    {
+      label: 'Portrait',
+      options: [
+        { value: '5:6', label: '5:6' },
+        { value: '4:5', label: '4:5' },
+        { value: '3:4', label: '3:4' },
+        { value: '2:3', label: '2:3' },
+        { value: '10:16', label: '10:16' },
+        { value: '9:16', label: '9:16' },
+      ],
+    },
+  ]}
+>
+  <slot name="aspectAccessory" slot="labelAccessory" />
+</SelectField>
+<slot name="frameSettings" />
+<slot name="cropLabel">
+  <div class="tapico-crop-tuner__crop-label dev-field__label-row">
+    <span class="dev-field__label">Crop</span>
+  </div>
+</slot>
+
+<div class="tapico-crop-tuner__stage">
+  <div class="tapico-crop-tuner__preview" data-crop-preview>
+    <div class="tapico-crop-tuner__preview-clip">
+      <img src={imageSrc} alt="" data-crop-image draggable="false" />
+      <span class="project-media__placeholder-label" aria-hidden="true">
+        <span class="project-media__placeholder-label-text"></span>
+      </span>
+      <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
+    </div>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--n" data-crop-resize="n" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--s" data-crop-resize="s" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--e" data-crop-resize="e" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--w" data-crop-resize="w" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--ne" data-crop-resize="ne" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--nw" data-crop-resize="nw" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--se" data-crop-resize="se" aria-hidden="true"></span>
+    <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--sw" data-crop-resize="sw" aria-hidden="true"></span>
+  </div>
+</div>
+
+<div class="tapico-crop-tuner__toolbar" aria-label="Crop controls">
+  <button type="button" data-crop-center-x aria-label="Centre horizontally">
+    <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignXSvg} />
+  </button>
+  <button type="button" data-crop-center-y aria-label="Centre vertically">
+    <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignYSvg} />
+  </button>
+  <button type="button" data-crop-fit aria-label="Fit to frame">
+    <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={maximizeSvg} />
+  </button>
+  <button
+    type="button"
+    class="tapico-crop-tuner__constraint"
+    data-crop-constraint
+    aria-pressed="true"
+  >
+    <span
+      class="tapico-crop-tuner__icon"
+      data-crop-constraint-icon
+      aria-hidden="true"
+      set:html={lockSvg}
+    />
+    <span data-crop-constraint-state>Crop locked</span>
+  </button>
+</div>
+

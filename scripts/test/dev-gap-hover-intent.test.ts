@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'bun:test';
+import {
+  GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
+  GAP_INTENT_DELAY as SPACING_INTENT_DELAY_MS, GAP_FAST_POINTER as SPACING_FAST_POINTER_PX_PER_MS,
+} from '../../src/lib/gapSpacingControl';
 
 const source = fs.readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const between = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -69,6 +73,7 @@ function createHarness() {
   const abortCallbacks: Array<() => void> = [];
   const editorSignal = { addEventListener(_name: string, callback: () => void) { abortCallbacks.push(callback); } };
   const env = {
+    SPACING_ENTRY_RADIUS_PX, SPACING_RETENTION_RADIUS_PX, SPACING_INTENT_DELAY_MS, SPACING_FAST_POINTER_PX_PER_MS,
     pageScope: { timeout: window.setTimeout },
     window,
     document,
@@ -97,7 +102,6 @@ function createHarness() {
     }),
     preventScrollWhileGapToolbarHeld: () => {},
   };
-  const constants = source.slice(source.indexOf('  const SPACING_ENTRY_RADIUS_PX'), source.indexOf('\n\n  let editorAbortController'));
   const geometry = between('    /** Distance to the closest point', '    const isSectionMenuOpen');
   const intent = between('    let gapRevealTimer', '    const syncGapToolbarTopPin');
   const sync = between('    const syncSpacingProximity', '    // Caret suppression');
@@ -107,7 +111,7 @@ function createHarness() {
   const wheelBody = source.slice(source.indexOf('(event) => {', wheelStart), source.indexOf("}, { passive: false", wheelStart)) + '}';
   const syntheticStart = source.indexOf("document.addEventListener('dev:sync-gap-proximity'");
   const syntheticBody = source.slice(source.indexOf('((event: CustomEvent', syntheticStart), source.indexOf(") as EventListener", syntheticStart)) + ')';
-  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`${constants}\n${geometry}\n${intent}\n${sync}\nconst syncSpacingProximityApi = syncSpacingProximity;\nconst handlePointerMove = ${pointerBody};\nconst handleSynthetic = ${syntheticBody};\nconst handleWheel = ${wheelBody};\nreturn { syncSpacingProximity: syncSpacingProximityApi, handlePointerMove, handleSynthetic, handleWheel, setSuppressed: (value) => { suppressionState.value = value; }, setEditing: (value) => { editingState.value = value; }, setPinned: (kind, value) => { pinState[kind] = value; }, abort: () => abortCallbacks.forEach((callback) => callback()) };`);
+  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`${geometry}\n${intent}\n${sync}\nconst syncSpacingProximityApi = syncSpacingProximity;\nconst handlePointerMove = ${pointerBody};\nconst handleSynthetic = ${syntheticBody};\nconst handleWheel = ${wheelBody};\nreturn { syncSpacingProximity: syncSpacingProximityApi, handlePointerMove, handleSynthetic, handleWheel, setSuppressed: (value) => { suppressionState.value = value; }, setEditing: (value) => { editingState.value = value; }, setPinned: (kind, value) => { pinState[kind] = value; }, abort: () => abortCallbacks.forEach((callback) => callback()) };`);
   const api = new Function('env', `with (env) { ${compiled} }`)(env);
   return { first, second, drawingMenu, drawingControls, ...api, runTimers, advance: (amount: number) => { now += amount; } };
 }

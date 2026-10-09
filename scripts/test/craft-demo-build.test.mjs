@@ -43,7 +43,7 @@ for (const demo of CRAFT_DEMOS) {
   }
   const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes('dev-panel'));
   let panelNodes = [];
-  if (isCanvas) {
+  if (isCanvas && demo.id !== 'image-framing') {
     assert.equal(panels.length, 0, `${demo.id}: no DevPanel`);
   } else {
     assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
@@ -52,8 +52,8 @@ for (const demo of CRAFT_DEMOS) {
     const header = panelNodes.find((node) => node.tagName === 'header');
     const headerElements = header?.childNodes.filter((node) => node.tagName);
     assert.equal(headerElements?.length, 1, `${demo.id}: title-only header`);
-    assert.equal(headerElements[0].tagName, 'h1');
-    assert.equal(text(headerElements[0]).trim(), demo.title);
+    assert.equal(headerElements[0].tagName, demo.id === 'image-framing' ? 'p' : 'h1');
+    assert.equal(text(headerElements[0]).trim(), demo.id === 'image-framing' ? 'Image' : demo.title);
   }
   const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
   if (!isProgressiveImage) assert.ok(reset, `${demo.id}: Reset`);
@@ -65,6 +65,13 @@ for (const demo of CRAFT_DEMOS) {
   assert.equal(panelNodes.includes(reset), false, `${demo.id}: Reset sits outside the panel`);
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
   assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
+  if (demo.id === 'gap-spacing') {
+    const blocks = nodes.filter((node) => attr(node, 'data-reorder-demo-block') !== undefined);
+    assert.equal(blocks.length, 3, 'block system: three actual page blocks');
+    assert.equal(nodes.filter((node) => attr(node, 'data-gap-toolbar') !== undefined).length, 3, 'each block keeps its gap when reordered');
+    assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('project-image')), 'block system: crop host matches the renderer');
+    assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('demo-page--scrolling')), 'the demo document is the scroll surface');
+  }
   assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
