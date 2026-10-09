@@ -138,10 +138,10 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
   document.body.innerHTML = `<main data-page-viewport><vcd-gap-spacing-demo><div data-block-guide-cursor></div><div data-reorder-demo-list>
-    <article data-reorder-demo-block data-block-kind="title"><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
-    <article data-reorder-demo-block data-block-kind="image"><div class="project-image"><img src="/source.jpg"></div><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
-    <article data-reorder-demo-block data-block-kind="text"><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
-  </div><div data-block-save-bar hidden><button data-block-revert disabled>Revert</button><button data-block-save disabled>Save</button></div><button data-gap-reset data-reorder-demo-reset>Reset</button></vcd-gap-spacing-demo></main>`;
+    <article data-reorder-demo-block data-demo-spacing data-block-kind="title"><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
+    <article data-reorder-demo-block data-demo-spacing data-block-kind="image"><div class="project-image"><img src="/source.jpg"></div><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
+    <article data-reorder-demo-block data-demo-spacing data-block-kind="text"><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
+    </div><div class="block-demo-actions"><div data-block-save-bar hidden><button data-block-revert disabled>Revert</button><button data-block-save disabled>Save</button></div></div><div class="demo-controls gap-spacing-demo__reset-controls"><button data-gap-reset data-reorder-demo-reset>Reset</button></div></vcd-gap-spacing-demo></main>`;
   let cropActive = false;
   let cropState = { source: { src: '/source.jpg', width: 100, height: 80, alt: 'source' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true };
   let gapSuppressed = false;
@@ -163,24 +163,31 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   const viewport = document.querySelector<HTMLElement>('[data-page-viewport]')!;
   viewport.scrollTo = () => { resetScroll = true; };
   win.scrollTo = () => { throw new Error('reset should use the demo viewport'); };
-  const actionBar = demo.querySelector<HTMLElement>('[data-block-save-bar]')!;
-  const save = demo.querySelector<HTMLButtonElement>('[data-block-save]')!;
-  const revert = demo.querySelector<HTMLButtonElement>('[data-block-revert]')!;
+  const actionBar = document.querySelector<HTMLElement>('[data-block-save-bar]')!;
+  expect(document.querySelector('.block-demo-actions')?.parentElement).toBe(document.body);
+  expect(document.querySelector('.gap-spacing-demo__reset-controls')?.parentElement).toBe(document.body);
+  expect(document.querySelector('[data-block-guide-cursor]')?.parentElement).toBe(document.body);
+  const save = document.querySelector<HTMLButtonElement>('[data-block-save]')!;
+  const revert = document.querySelector<HTMLButtonElement>('[data-block-revert]')!;
   expect(actionBar.hidden).toBe(true);
   const gapChoice = demo.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option="section"]')[1];
   gapChoice.click();
   expect(actionBar.hidden).toBe(false);
+  expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(1);
   expect(save.disabled).toBe(false);
   save.click();
+  expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(0);
   const list = demo.querySelector<HTMLElement>('[data-reorder-demo-list]')!;
   const blocks = [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
   list.append(blocks[0]);
   cropState = { ...cropState, source: { ...cropState.source, src: '/changed.jpg' } };
   demo.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option="major"]')[1].click();
+  expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(1);
   expect(actionBar.hidden).toBe(false);
   revert.click();
   expect([...list.querySelectorAll('[data-reorder-demo-block]')][0]).toBe(blocks[0]);
   expect(cropState.source.src).toBe('/source.jpg');
+  expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(0);
   expect(actionBar.hidden).toBe(true);
   const trigger = demo.querySelector('.dev-image-edit-trigger') as HTMLButtonElement;
   trigger.click();
@@ -190,12 +197,21 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   settle?.();
   expect(gapSuppressed).toBe(false);
   document.dispatchEvent(event(win, 'pointerdown', { target: document.body }));
-  demo.querySelector('[data-gap-reset]')?.dispatchEvent(event(win, 'click'));
+  document.querySelector('[data-gap-reset]')?.dispatchEvent(event(win, 'click'));
   expect(resetScroll).toBe(true);
   expect(gapApi?.getState()).toEqual(['group', 'related', 'group']);
   expect(actionBar.hidden).toBe(true);
   expect(guideStops).toBeGreaterThan(0);
   expect(guidePlays).toBeGreaterThan(0);
   demo.remove();
+  expect(demo.querySelector('.block-demo-actions')).toBeTruthy();
+  expect(demo.querySelector('.gap-spacing-demo__reset-controls')).toBeTruthy();
+  expect(demo.querySelector('[data-block-guide-cursor]')).toBeTruthy();
   expect(demo.querySelector('.dev-image-edit-trigger')).toBeNull();
+  viewport.append(demo);
+  expect(document.querySelectorAll('.block-demo-actions')).toHaveLength(1);
+  expect(document.querySelector('.block-demo-actions')?.parentElement).toBe(document.body);
+  expect(document.querySelector('[data-block-guide-cursor]')?.parentElement).toBe(document.body);
+  demo.remove();
+  expect(document.querySelector('.block-demo-actions')).toBeNull();
 });

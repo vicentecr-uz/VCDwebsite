@@ -23,6 +23,7 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
     relocation: undefined as ReturnType<typeof win.setTimeout> | undefined,
     touch: false,
   }));
+  let saved = states.map(() => initial);
   const cancelIntent = () => {
     if (intent !== undefined) win.clearTimeout(intent);
     intent = undefined; candidate = undefined;
@@ -87,6 +88,7 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
       choice.classList.toggle('is-active', active);
       choice.setAttribute('aria-pressed', String(active));
     });
+    state.block.classList.toggle('is-dev-spacing-dirty', saved[states.indexOf(state)] !== value);
     if (notify) options.onChange?.();
   };
   for (const state of states) {
@@ -130,11 +132,16 @@ export function createDemoGapSpacing(root: HTMLElement, options: DemoGapSpacingO
   return {
     getState(): GapToken[] { return states.map((state) => state.choices.find((choice) => choice.classList.contains('is-active'))?.dataset.devSpacingOption as GapToken ?? initial); },
     restore(valuesToRestore: GapToken[]) { if (valuesToRestore.length !== states.length || valuesToRestore.some((value) => !values[value])) return; clear(); states.forEach((state, index) => select(state, valuesToRestore[index])); escaped = false; },
+    setSavedState(valuesToSave: GapToken[]) {
+      if (valuesToSave.length !== states.length || valuesToSave.some((value) => !values[value])) return;
+      saved = [...valuesToSave];
+      states.forEach((state, index) => state.block.classList.toggle('is-dev-spacing-dirty', saved[index] !== (state.choices.find((choice) => choice.classList.contains('is-active'))?.dataset.devSpacingOption as GapToken ?? initial)));
+    },
     reveal(block: HTMLElement) { const state = states.find((candidate) => candidate.block === block); if (!state) return; cancelIntent(); clearRelocation(state); show(state, true); pinGapToolbar(state.toolbar); },
     select(block: HTMLElement, value: GapToken) { const state = states.find((candidate) => candidate.block === block); if (state && values[value]) select(state, value); },
     hide() { clear(); },
-    reset() { clear(); states.forEach((state) => select(state, initial)); escaped = false; },
+    reset() { clear(); saved = states.map(() => initial); states.forEach((state) => select(state, initial)); escaped = false; },
     setSuppressed(value: boolean) { suppressed = value; root.toggleAttribute('data-gap-suppressed', value); if (value) clear(); },
-    destroy() { clear(); lifecycle.abort(); },
+    destroy() { clear(); states.forEach((state) => state.block.classList.remove('is-dev-spacing-dirty')); lifecycle.abort(); },
   };
 }

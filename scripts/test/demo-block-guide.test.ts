@@ -9,7 +9,7 @@ function setup(reduced = false) {
   let now = 0; let next = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
   const frames = new Map<number, FrameRequestCallback>();
-  win.performance.now = () => now;
+  Object.defineProperty(win, 'performance', { value: { now: () => now }, configurable: true });
   win.setTimeout = ((callback: TimerHandler, delay?: number) => { const id = ++next; timers.set(id, { at: now + Number(delay || 0), callback: callback as () => void }); return id; }) as typeof win.setTimeout;
   win.clearTimeout = ((id: number) => { timers.delete(id); }) as typeof win.clearTimeout;
   win.requestAnimationFrame = ((callback: FrameRequestCallback) => { const id = ++next; frames.set(id, callback); return id; }) as typeof win.requestAnimationFrame;
@@ -51,13 +51,22 @@ function setup(reduced = false) {
     for (const [id, callback] of [...frames]) { frames.delete(id); callback(now); }
     await flush();
   };
-  return { win, root, cursor, imageBlock, actions, guide, observerInstances, flush, advance };
+  return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance };
 }
 
 async function reachDrop(h: Harness) {
   h.guide.play(); await h.flush();
   await h.advance(600); await h.advance(420); await h.advance(250); await h.advance(320); await h.advance(100); await h.advance(120); await h.advance(120); await h.advance(350); await h.advance(400); await h.advance(120);
-  await h.advance(200); await h.advance(200); await h.advance(200); await h.advance(200); await h.advance(200); await h.advance(1000); await h.flush(); await h.advance(120); await h.advance(320); await h.advance(100); await h.advance(120); await h.advance(120); await h.advance(120); await h.advance(120); await h.advance(500); await h.advance(250);
+  await h.advance(200);
+  for (let i = 0; i < 20 && !h.actions.includes('drop'); i += 1) await h.advance(200);
+  await h.advance(500); await h.flush(); await h.advance(120); await h.advance(400); await h.advance(160); await h.advance(90); await h.advance(120); await h.advance(120); await h.advance(500); await h.advance(250);
+  for (let i = 0; i < 10; i += 1) await h.advance(200);
+}
+
+function trustedPointerMove(win: Window) {
+  const event = new win.Event('pointermove', { bubbles: true });
+  Object.defineProperty(event, 'isTrusted', { value: true });
+  win.document.dispatchEvent(event);
 }
 
 test('plays the guide sequence with grouped spacing, smooth drag, drop, and actual revert click', async () => {
@@ -79,10 +88,30 @@ test('cancelling during the initial wait or drag stops queued actions', async ()
 
 test('observer auto-starts once, leaving cancels, and destroy keeps Astro markup', async () => {
   const h = setup(); const observer = h.observerInstances[0];
-  observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver); for (let i = 0; i < 10; i += 1) await h.flush(); observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver); expect(h.actions.filter((action) => action === 'hide')).toHaveLength(1);
+  observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver); for (let i = 0; i < 10; i += 1) await h.flush(); observer.callback([{ isIntersecting: true } as IntersectionObserverEntry], observer as unknown as IntersectionObserver); expect(h.actions.filter((action) => action === 'hide')).toHaveLength(0);
   observer.callback([{ isIntersecting: false } as IntersectionObserverEntry], observer as unknown as IntersectionObserver); h.guide.destroy(); expect(h.root.querySelector('[data-image]')).not.toBeNull(); expect(h.root.querySelector('[data-cursor]')).not.toBeNull();
 });
 
 test('reduced motion never changes gaps or order', async () => {
   const h = setup(true); h.guide.play(); await h.flush(); await h.advance(280); await h.advance(700); await h.advance(250); expect(h.actions.filter((action) => action === 'reveal' || action === 'lift' || action === 'drop')).toEqual([]); h.guide.destroy();
+});
+
+test('trusted input after completion does not hide a manually reopened gap', async () => {
+  const h = setup();
+  await reachDrop(h);
+  const hides = h.actions.filter((action) => action === 'hide').length;
+  h.gaps.reveal(h.imageBlock);
+  trustedPointerMove(h.win);
+  expect(h.actions.filter((action) => action === 'hide')).toHaveLength(hides);
+  h.guide.destroy();
+});
+
+test('trusted input after cancellation does not clear a manually reopened gap', async () => {
+  const h = setup();
+  h.guide.play(); await h.flush(); await h.advance(300); h.guide.stop();
+  const hides = h.actions.filter((action) => action === 'hide').length;
+  h.gaps.reveal(h.imageBlock);
+  trustedPointerMove(h.win);
+  expect(h.actions.filter((action) => action === 'hide')).toHaveLength(hides);
+  h.guide.destroy();
 });
