@@ -146,7 +146,7 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
@@ -290,7 +290,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     console: { warn() {}, error() {}, log() {} },
   };
   if ((options as any).initialController) runInNewContext(earlyCompiled, context);
-  runInNewContext(compiled, context);
+  if (!options.deferNavigationModule) runInNewContext(compiled, context);
   return {
     overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks,
     get persistentHooks() { return persistentHooks; },
@@ -324,6 +324,49 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     },
   };
 }
+
+test('initial reveal waits for styles and thumbnails without waiting for editing or navigation modules', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, layoutPending: true, deferNavigationModule: true, images: [image] });
+  const globalStyle = Object.assign(new Target(), { src: '/src/styles/global.css' });
+  const componentStyle = Object.assign(new Target(), { src: '/src/components/Header.astro?astro&type=style&index=0&lang.css' });
+  const editor = Object.assign(new Target(), { src: '/src/components/DevTextEditor.astro?astro&type=script&index=0&lang.ts' });
+  const query = f.document.querySelectorAll;
+  f.document.querySelectorAll = (selector: string) => selector === 'script[type="module"][src]'
+    ? [globalStyle, componentStyle, editor] as any : query(selector);
+  const source = layout.match(/<head>\s*<!--[\s\S]*?-->\s*<script>([\s\S]*?)<\/script>/)![1];
+  const bootstrap = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    source.replace(/^\s*import .*?;\s*$/gm, '').replace(/import\.meta\.env\.DEV/g, 'true'),
+  );
+  let initialized = false;
+  runInNewContext(bootstrap, {
+    document: f.document, location: { href: sourceUrl }, URL, Promise,
+    bindSafeVh() {
+      initialized = true;
+      f.document.documentElement.dataset.introLayoutReady = 'true';
+      f.window.emit('vcd:intro-layout-ready');
+    },
+  });
+  await f.paint();
+  assert.equal(initialized, false);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  globalStyle.emit('load');
+  await flush();
+  assert.equal(initialized, false);
+  componentStyle.emit('load');
+  await flush();
+  assert.equal(initialized, true);
+  assert.equal(editor.count('load') + editor.count('error'), 0);
+  assert.equal(image.count('load'), 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  image.load();
+  image.decoded.resolve();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, true);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(f.persistentHooks, undefined);
+});
 
 test('cached content uses the native incoming fade and approved GSAP outgoing cover', async () => {
   const f = fixture();
