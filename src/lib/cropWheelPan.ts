@@ -1,6 +1,5 @@
 const BASE_FRAME_MS = 1000 / 60;
 const SPEED_ALPHA = 0.32;
-const GAIN_KNEE = 40;
 const PAN_GAIN_FINE = 0.38;
 const PAN_GAIN_FAST = 1;
 
@@ -9,7 +8,7 @@ export interface CropWheelPanGain {
   reset(): void;
 }
 
-export const createCropWheelPanGain = (idleMs = 160): CropWheelPanGain => {
+const createGain = (fine: number, fast: number, offset: number, range: number, idleMs: number): CropWheelPanGain => {
   let speed = 0;
   let lastTime: number | undefined;
   return {
@@ -26,9 +25,9 @@ export const createCropWheelPanGain = (idleMs = 160): CropWheelPanGain => {
       const magnitude = Math.hypot(dx, dy) * BASE_FRAME_MS / dt;
       const alpha = 1 - Math.pow(1 - SPEED_ALPHA, dt / BASE_FRAME_MS);
       speed += (magnitude - speed) * alpha;
-      const t = Math.min(1, Math.max(0, speed) / GAIN_KNEE);
+      const t = Math.min(1, Math.max(0, (speed - offset) / range));
       const blend = t * t * (3 - 2 * t);
-      return PAN_GAIN_FINE + (PAN_GAIN_FAST - PAN_GAIN_FINE) * blend;
+      return fine + (fast - fine) * blend;
     },
     reset() {
       speed = 0;
@@ -36,3 +35,6 @@ export const createCropWheelPanGain = (idleMs = 160): CropWheelPanGain => {
     },
   };
 };
+
+export const createCropWheelPanGain = (idleMs = 160): CropWheelPanGain => createGain(PAN_GAIN_FINE, PAN_GAIN_FAST, 0, 40, idleMs);
+export const createCropWheelZoomGain = (idleMs = 160): CropWheelPanGain => createGain(0.00085, 0.0044, 2, 14, idleMs);

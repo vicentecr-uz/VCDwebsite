@@ -1,6 +1,6 @@
 import { coverWidthFraction, IMAGE_VIEWPORTS, normalizeImageVariants, responsiveImageStyle, type ImageVariant, type ImageViewport } from './responsiveImage';
 import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
-import { createCropWheelPanGain } from './cropWheelPan';
+import { createCropWheelPanGain, createCropWheelZoomGain } from './cropWheelPan';
 
 export interface DemoImageCropState {
   source: { src: string; width: number; height: number; alt: string };
@@ -236,22 +236,18 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     let pinch: { distance: number; w: number; sourceX: number; sourceY: number } | undefined;
     let wheelFrame = 0;
     let wheelIdle = 0;
-    let speed = 0;
     const panGain = createCropWheelPanGain(160);
+    const zoomGain = createCropWheelZoomGain(160);
     let lastWheelMode: boolean | null = null;
-    let pending: { dx: number; dy: number; rawDx: number; rawDy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
+    let pending: { dx: number; dy: number; zoomDy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
     const flushWheel = () => {
       wheelFrame = 0;
       if (!pending) return;
-      const { dx, dy, rawDx, rawDy, zoom, x, y, bounds } = pending;
+      const { dx, dy, zoomDy, zoom, x, y, bounds } = pending;
       pending = undefined;
       if (zoom) {
-        speed += (Math.abs(rawDy) - speed) * 0.32;
-        const t = Math.min(1, speed / 40);
-        const blend = t * t * (3 - 2 * t);
-        zoomAt(Math.exp(-dy * (0.00085 + (0.0022 - 0.00085) * blend)), x, y);
+        zoomAt(Math.exp(-zoomDy), x, y);
       } else {
-        speed += (Math.hypot(rawDx, rawDy) - speed) * 0.32;
         cx += dx / bounds.width * w;
         cy += dy / bounds.height * contentHeight();
       }
@@ -267,8 +263,8 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       if (wheelIdle) win.clearTimeout(wheelIdle);
       wheelFrame = wheelIdle = 0;
       pending = undefined;
-      speed = 0;
       panGain.reset();
+      zoomGain.reset();
       lastWheelMode = null;
     };
     releases.push(release);
@@ -338,12 +334,13 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
       const dx = event.deltaX * unit;
       const dy = event.deltaY * unit;
-      const gain = zoom ? 1 : panGain.gainFor(dx, dy, event.timeStamp);
-      pending = { dx: (pending?.dx ?? 0) + dx * gain, dy: (pending?.dy ?? 0) + dy * gain, rawDx: (pending?.rawDx ?? 0) + dx, rawDy: (pending?.rawDy ?? 0) + dy, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
+      const gain = zoom ? zoomGain.gainFor(0, dy, event.timeStamp) : panGain.gainFor(dx, dy, event.timeStamp);
+      if (!zoom) zoomGain.gainFor(dx, dy, event.timeStamp);
+      pending = { dx: (pending?.dx ?? 0) + (zoom ? 0 : dx * gain), dy: (pending?.dy ?? 0) + (zoom ? 0 : dy * gain), zoomDy: (pending?.zoomDy ?? 0) + (zoom ? dy * gain : 0), zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
       if (!wheelFrame) wheelFrame = win.requestAnimationFrame(flushWheel);
       if (wheelIdle) win.clearTimeout(wheelIdle);
       wheelIdle = win.setTimeout(() => {
-        speed = 0;
+        zoomGain.reset();
         panGain.reset();
         lastWheelMode = null;
         wheelIdle = 0;

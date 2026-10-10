@@ -149,11 +149,11 @@ test('wheel pan is unchanged when timestamped events share or split RAF buckets'
   burst.api.destroy();
 });
 
-test('pan samples warm the existing zoom EMA without changing pure zoom', async () => {
+test('zoom gain is stable across RAF grouping and pan continuity', async () => {
   const zoomGain = (speed: number) => {
-    const t = Math.min(1, Math.max(0, speed) / 40);
+    const t = Math.min(1, Math.max(0, (speed - 2) / 14));
     const blend = t * t * (3 - 2 * t);
-    return 0.00085 + (0.0022 - 0.00085) * blend;
+    return 0.00085 + (0.0044 - 0.00085) * blend;
   };
   const ema = (speed: number, magnitude: number) => speed + (magnitude - speed) * 0.32;
   const dispatchWheel = (h: ReturnType<typeof setup>, values: { deltaX?: number; deltaY?: number; ctrlKey?: boolean; timeStamp: number }) => {
@@ -167,7 +167,7 @@ test('pan samples warm the existing zoom EMA without changing pure zoom', async 
   const initialWidth = pure.api.getState().crop.w;
   dispatchWheel(pure, { deltaY: 20, ctrlKey: true, timeStamp: 0 });
   await frame(pure.win);
-  dispatchWheel(pure, { deltaY: 20, ctrlKey: true, timeStamp: 16 });
+  dispatchWheel(pure, { deltaY: 20, ctrlKey: true, timeStamp: 1000 / 60 });
   await frame(pure.win);
   const pureWidth = pure.api.getState().crop.w;
   let pureSpeed = ema(0, 20);
@@ -176,12 +176,18 @@ test('pan samples warm the existing zoom EMA without changing pure zoom', async 
   const pureGain2 = zoomGain(pureSpeed);
   expect(pureWidth).toBeCloseTo(initialWidth * Math.exp(20 * (pureGain1 + pureGain2)), 10);
 
+  const burst = setup({ initialAspect: '1:1' });
+  dispatchWheel(burst, { deltaY: 20, ctrlKey: true, timeStamp: 0 });
+  dispatchWheel(burst, { deltaY: 20, ctrlKey: true, timeStamp: 1000 / 60 });
+  await frame(burst.win);
+  expect(burst.api.getState().crop.w).toBeCloseTo(pureWidth, 10);
+
   const mixed = setup({ initialAspect: '1:1' });
   dispatchWheel(mixed, { deltaY: 20, ctrlKey: true, timeStamp: 0 });
   await frame(mixed.win);
-  dispatchWheel(mixed, { deltaX: 10, timeStamp: 16 });
+  dispatchWheel(mixed, { deltaX: 10, timeStamp: 1000 / 60 });
   await frame(mixed.win);
-  dispatchWheel(mixed, { deltaY: 20, ctrlKey: true, timeStamp: 32 });
+  dispatchWheel(mixed, { deltaY: 20, ctrlKey: true, timeStamp: 2 * 1000 / 60 });
   await frame(mixed.win);
   const mixedWidth = mixed.api.getState().crop.w;
   let mixedSpeed = ema(0, 20);
@@ -199,10 +205,11 @@ test('pan samples warm the existing zoom EMA without changing pure zoom', async 
   const startupWidth = startup.api.getState().crop.w;
   dispatchWheel(startup, { deltaX: 40, timeStamp: 0 });
   await frame(startup.win);
-  dispatchWheel(startup, { deltaY: 10, ctrlKey: true, timeStamp: 16 });
+  dispatchWheel(startup, { deltaY: 10, ctrlKey: true, timeStamp: 1000 / 60 });
   await frame(startup.win);
   const startupSpeed = ema(ema(0, 40), 10);
   expect(startup.api.getState().crop.w).toBeCloseTo(startupWidth * Math.exp(10 * zoomGain(startupSpeed)), 10);
+  burst.api.destroy();
   startup.api.destroy();
 });
 

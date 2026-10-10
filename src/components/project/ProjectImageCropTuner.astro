@@ -177,7 +177,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
   import { createImageCropStage, cropResizeHeight } from '../../lib/imageCropStage';
-  import { createCropWheelPanGain } from '../../lib/cropWheelPan';
+  import { createCropWheelPanGain, createCropWheelZoomGain } from '../../lib/cropWheelPan';
 
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
@@ -2179,29 +2179,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     };
 
-    /*
-      Trackpad wheel arrives in uneven chunks. A flat low gain feels precise but
-      sluggish; a flat high gain covers ground but jumps. Blend by delta size:
-      slow nudges stay fine, quicker flicks use the original full sensitivity.
-      Apply through rAF (one paint/frame) so chunky packets don't grit the crop.
-    */
-    const WHEEL_ZOOM_GAIN_FINE = 0.00085;
-    const WHEEL_ZOOM_GAIN_FAST = 0.0022;
-    /** Higher knee = more of the common trackpad range stays in the fine→mid blend. */
-    const WHEEL_GAIN_KNEE = 40;
-    /** EMA toward per-frame |delta| so gain doesn't flicker with packet noise. */
-    const WHEEL_SPEED_EMA = 0.32;
+    // Weight each wheel event by input speed, then paint once per frame.
     const POINTER_PAN_GAIN = 1;
     const PINCH_ZOOM_EXPONENT = 1;
     /** Mid-gesture chrome (zoom % / readout) at most ~15 Hz — not every paint. */
     const GESTURE_CHROME_MS = 64;
-
-    /** Smoothstep blend from fine → fast gain based on gesture speed. */
-    const wheelGainForSpeed = (speed: number, fine: number, fast: number) => {
-      const t = Math.min(1, Math.max(0, speed) / WHEEL_GAIN_KNEE);
-      const blend = t * t * (3 - 2 * t);
-      return fine + (fast - fine) * blend;
-    };
 
     /** Zoom around a client point — mutates draft only; caller paints. */
     const zoomAtClientPoint = (
@@ -2260,14 +2242,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       let lastChromeAt = 0;
       let pendingStatus: string | null = null;
       let pointerDirty = false;
-      let wheelSpeedEma = 0;
       const panGain = createCropWheelPanGain(140);
+      const zoomGain = createCropWheelZoomGain(140);
       let lastWheelMode: boolean | null = null;
       let pendingWheel: {
         dx: number;
         dy: number;
-        rawDx: number;
-        rawDy: number;
+        zoomDy: number;
         zoom: boolean;
         clientX: number;
         clientY: number;
@@ -2380,23 +2361,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       const applyPendingWheel = () => {
         if (!pendingWheel) return;
-        const { dx, dy, rawDx, rawDy, zoom, clientX, clientY } = pendingWheel;
+        const { dx, dy, zoomDy, zoom, clientX, clientY } = pendingWheel;
         pendingWheel = null;
         const bounds = boundsOrRefresh();
         if (!bounds.width || !bounds.height) return;
 
         if (zoom) {
-          const mag = Math.abs(rawDy);
-          wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
-          const gain = wheelGainForSpeed(wheelSpeedEma, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
-          const factor = Math.exp(-dy * gain);
+          const factor = Math.exp(-zoomDy);
           zoomAtClientPoint(clientX, clientY, factor, bounds, gestureUndoCaptured);
           pendingStatus = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
           return;
         }
 
-        const mag = Math.hypot(rawDx, rawDy);
-        wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
         pushUndoIfNeeded(gestureUndoCaptured);
         beginCropEdit();
         draft.cx += (dx / bounds.width) * draft.w;
@@ -2467,8 +2443,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           wheelIdleTimer = 0;
         }
         gestureBounds = null;
-        wheelSpeedEma = 0;
         panGain.reset();
+        zoomGain.reset();
         lastWheelMode = null;
         if (paintRaf) {
           cancelAnimationFrame(paintRaf);
@@ -2593,14 +2569,14 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       pageScope.listen(surface, 'wheel', (event) => {
         event.preventDefault();
-        if (!gestureBounds) refreshGestureBounds();
+        const bounds = boundsOrRefresh();
 
         // Trackpad pinch (and ctrl+wheel) always zooms. At locked cover-fit,
         // swipe falls back to scroll-to-zoom so the gesture still does something.
         const zoom = event.ctrlKey || !cropCanPan();
         if (lastWheelMode !== null && lastWheelMode !== zoom) {
           // Mode change mid-frame — flush the previous bucket first.
-          if (pendingWheel && (pendingWheel.dx || pendingWheel.dy)) {
+          if (pendingWheel && (pendingWheel.dx || pendingWheel.dy || pendingWheel.zoomDy)) {
             if (paintRaf) {
               cancelAnimationFrame(paintRaf);
               flushGesturePaint();
@@ -2617,18 +2593,23 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           pendingWheel = {
             dx: 0,
             dy: 0,
-            rawDx: 0,
-            rawDy: 0,
+            zoomDy: 0,
             zoom,
             clientX: event.clientX,
             clientY: event.clientY,
           };
         }
-        const gain = zoom ? 1 : panGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
-        pendingWheel.dx += event.deltaX * gain;
-        pendingWheel.dy += event.deltaY * gain;
-        pendingWheel.rawDx += event.deltaX;
-        pendingWheel.rawDy += event.deltaY;
+        if (zoom) {
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+          const dy = event.deltaY * unit;
+          const gain = zoomGain.gainFor(0, dy, event.timeStamp);
+          pendingWheel.zoomDy += dy * gain;
+        } else {
+          const gain = panGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
+          zoomGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
+          pendingWheel.dx += event.deltaX * gain;
+          pendingWheel.dy += event.deltaY * gain;
+        }
         pendingWheel.clientX = event.clientX;
         pendingWheel.clientY = event.clientY;
         requestGesturePaint();
