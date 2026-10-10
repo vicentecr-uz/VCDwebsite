@@ -180,6 +180,19 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     cx = sourceX - (x - 0.5) * w;
     cy = sourceY - (y - 0.5) * contentHeight();
   };
+  const panBy = (dx: number, dy: number) => {
+    if (!active || !Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    cx -= dx * w;
+    cy -= dy * contentHeight();
+    render();
+    return true;
+  };
+  const zoomBy = (factor: number, x = 0.5, y = 0.5) => {
+    if (!active || !Number.isFinite(factor) || factor <= 0 || !Number.isFinite(x) || !Number.isFinite(y)) return false;
+    zoomAt(factor, x, y);
+    render();
+    return true;
+  };
   const releases: Array<() => void> = [];
   const bind = (surface: HTMLElement) => {
     surface.setAttribute('role', 'group');
@@ -362,7 +375,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   };
   applySource();
   render(); syncSelect(); setActive(active);
-  return { reset, setSource, getState, restore, setViewport, getViewport, setActive, destroy() {
+  return { reset, setSource, getState, restore, setViewport, getViewport, setActive, panBy, zoomBy, destroy() {
     releases.forEach((release) => release());
     lifecycle.abort();
     stage.remove(); ghost.remove();

@@ -6,7 +6,7 @@ import { coverWidthFraction } from '../../src/lib/responsiveImage';
 
 const frame = (win: Window) => new Promise<void>((resolve) => win.requestAnimationFrame(() => resolve()));
 
-function setup({ sourceAspect = 16 / 9, initialAspect = 'original', initialState, active = true }: { sourceAspect?: number; initialAspect?: string; initialState?: DemoImageCropState; active?: boolean } = {}) {
+function setup({ sourceAspect = 16 / 9, initialAspect = 'original', initialState, active = true, onChange }: { sourceAspect?: number; initialAspect?: string; initialState?: DemoImageCropState; active?: boolean; onChange?: () => void } = {}) {
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
   document.body.innerHTML = `<div data-crop-demo>
@@ -39,7 +39,7 @@ function setup({ sourceAspect = 16 / 9, initialAspect = 'original', initialState
     target.dispatchEvent(event);
     return event;
   };
-  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, initialState, active });
+  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, initialState, active, onChange });
   setRects();
   return {
     win, document, root, host, controls, stage, preview, captures, pointer, api,
@@ -141,6 +141,40 @@ test('inactive crop stage cannot focus, pan, resize, or wheel', () => {
   h.api.setActive(true);
   expect(stage.tabIndex).toBe(0);
   expect(stage.getAttribute('aria-hidden')).toBe('false');
+  h.api.destroy();
+});
+
+test('direct pan and zoom reject invalid values, inactive edits, and respect locked bounds', () => {
+  const h = setup({ initialAspect: '1:1' });
+  const before = h.api.getState();
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    expect(h.api.panBy(value, 0)).toBe(false);
+    expect(h.api.zoomBy(value)).toBe(false);
+  }
+  expect(h.api.zoomBy(0)).toBe(false);
+  expect(h.api.getState()).toEqual(before);
+  h.api.panBy(100, 100);
+  const locked = h.api.getState();
+  expect(locked.crop.cx).toBeGreaterThanOrEqual(locked.crop.w / 2);
+  expect(locked.crop.cx).toBeLessThanOrEqual(1 - locked.crop.w / 2);
+  const halfHeight = locked.crop.w * (16 / 9) / 2;
+  expect(locked.crop.cy).toBeGreaterThanOrEqual(halfHeight);
+  expect(locked.crop.cy).toBeLessThanOrEqual(1 - halfHeight);
+  h.api.setActive(false);
+  expect(h.api.panBy(0.1, 0.1)).toBe(false);
+  expect(h.api.zoomBy(1.1)).toBe(false);
+  h.api.destroy();
+});
+
+test('valid direct crop edits render and notify changes', () => {
+  let changes = 0;
+  const h = setup({ initialAspect: '1:1', onChange: () => { changes += 1; } });
+  const before = changes;
+  expect(h.api.panBy(0.01, 0.01)).toBe(true);
+  expect(changes).toBeGreaterThan(before);
+  const afterPan = changes;
+  expect(h.api.zoomBy(1.12)).toBe(true);
+  expect(changes).toBeGreaterThan(afterPan);
   h.api.destroy();
 });
 
