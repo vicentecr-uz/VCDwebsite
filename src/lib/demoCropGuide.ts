@@ -79,12 +79,23 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     stop(); active = true; const token = ++generation;
     overlay.hidden = false; overlay.classList.add('is-visible'); fingers.forEach((finger) => { finger.style.willChange = 'transform, opacity'; });
     void (async () => {
+      const coarse = win.matchMedia('(pointer: coarse)').matches;
       if (!await wait(200, token)) return;
       const start = framePoint();
-      paint(fingers[0], start, 0);
-      if (!await animate(280, (t) => paint(fingers[0], start, gestureEase(t)), token)) return;
+      const panLeft = (point: Point) => coarse ? point : { x: point.x - 20, y: point.y + 6 };
+      paint(fingers[0], panLeft(start), 0);
+      if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, 0);
+      if (!await animate(280, (t) => {
+        const opacity = gestureEase(t);
+        paint(fingers[0], panLeft(start), opacity);
+        if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, opacity);
+      }, token)) return;
       if (!await wait(160, token)) return;
-      if (!await animate(120, (t) => paint(fingers[0], start, 1, 1 - 0.12 * gestureEase(t)), token)) return;
+      if (!await animate(120, (t) => {
+        const scale = 1 - 0.12 * gestureEase(t);
+        paint(fingers[0], panLeft(start), 1, scale);
+        if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, 1, scale);
+      }, token)) return;
       if (!await wait(120, token)) return;
       const frameRect = host.getBoundingClientRect();
       let previous = { x: 0, y: 0 };
@@ -94,16 +105,25 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
         const dx = 0.08 * p + bow; const dy = 0.045 * p - bow;
         crop.panBy(dx - previous.x, dy - previous.y); previous = { x: dx, y: dy };
         panEnd = { x: start.x + frameRect.width * dx, y: start.y + frameRect.height * dy };
-        paint(fingers[0], panEnd, 1, 0.88);
+        paint(fingers[0], panLeft(panEnd), 1, 0.88);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 20, y: panEnd.y - 6 }, 1, 0.88);
       }, token)) return;
-      if (!await animate(120, (t) => paint(fingers[0], panEnd, 1, 0.88 + 0.12 * gestureEase(t)), token)) return;
+      if (!await animate(120, (t) => {
+        const scale = 0.88 + 0.12 * gestureEase(t);
+        paint(fingers[0], panLeft(panEnd), 1, scale);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 20, y: panEnd.y - 6 }, 1, scale);
+      }, token)) return;
       if (!await wait(180, token)) return;
       const midpoint = panEnd;
-      const pinchOffset = 28;
+      const pinchOffset = 56;
       const rightAnchor = { x: midpoint.x + pinchOffset, y: midpoint.y };
-      paint(fingers[1], rightAnchor, 0);
-      if (!await animate(160, (t) => paint(fingers[0], { x: panEnd.x - pinchOffset * gestureEase(t), y: panEnd.y }, 1), token)) return;
-      if (!await animate(200, (t) => paint(fingers[1], rightAnchor, gestureEase(t)), token)) return;
+      paint(fingers[1], coarse ? rightAnchor : { x: panEnd.x + 20, y: panEnd.y - 6 }, coarse ? 0 : 1);
+      if (!await animate(160, (t) => {
+        const p = gestureEase(t);
+        paint(fingers[0], { x: panEnd.x - (coarse ? pinchOffset * p : 20 + (pinchOffset - 20) * p), y: panEnd.y + (coarse ? 0 : 6 * (1 - p)) }, 1);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 20 + (pinchOffset - 20) * p, y: panEnd.y - 6 + 6 * p }, 1);
+      }, token)) return;
+      if (coarse && !await animate(200, (t) => paint(fingers[1], rightAnchor, gestureEase(t)), token)) return;
       const centerX = clamp((midpoint.x - frameRect.left) / frameRect.width, 0, 1);
       const centerY = clamp((midpoint.y - frameRect.top) / frameRect.height, 0, 1);
       let previousScale = 1;

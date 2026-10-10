@@ -80,7 +80,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
 <style>
   vcd-crop-frame-demo { display: block; width: 100%; max-width: var(--page-media-max-width); margin-inline: auto; align-self: start; }
   .crop-frame-demo__layout { position: relative; display: flex; flex-direction: column; gap: calc(var(--space-unit) * 2); width: 100%; max-width: var(--page-media-max-width); margin-inline: auto; }
-  .crop-frame-demo__panel { position: absolute; top: calc(var(--space-unit) * 2); left: clamp(0px, calc(100% - 10rem), calc(50% + 50vw - 21rem)); width: 20rem; z-index: 60; }
+  .crop-frame-demo__panel { position: absolute; top: var(--crop-panel-top, calc(var(--space-unit) * 2)); left: clamp(0px, calc(100% - 5rem), calc(50% + 50vw - 21rem)); width: 20rem; z-index: 60; }
   .crop-frame-demo__panel :global(.dev-overlay) { position: absolute; left: 0; top: 0; width: 100%; max-height: calc(100 * var(--vh-safe, 1svh) - (var(--space-unit) * 2)); }
   .crop-frame-demo__panel :global(.dev-overlay__resize) { display: none; }
   .crop-frame-demo__preview-column { min-width: 0; display: grid; place-items: center; }
@@ -124,11 +124,12 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
     connectedCallback() {
       this.dispose?.();
       const panel = this.querySelector<HTMLElement>('[data-crop-panel]');
+      const layout = this.querySelector<HTMLElement>('.crop-frame-demo__layout');
       const iframe = this.querySelector<HTMLIFrameElement>('.crop-frame-demo__preview-shell iframe');
       const previewColumn = this.querySelector<HTMLElement>('.crop-frame-demo__preview-column');
       const assetPanel = this.querySelector<HTMLElement>('[data-demo-asset-picker]');
       const assetOpener = panel?.querySelector<HTMLElement>('[data-crop-replace-assets]');
-      if (!panel || !iframe || !previewColumn || !assetPanel || !assetOpener) return;
+      if (!panel || !layout || !iframe || !previewColumn || !assetPanel || !assetOpener) return;
       const lifecycle = new AbortController();
       const { signal } = lifecycle;
       const initialState = this.dataset.initialState ? JSON.parse(this.dataset.initialState) : undefined;
@@ -144,6 +145,29 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
       const draggable = panel;
       let dragCleanup = () => {};
       const modeQuery = window.matchMedia('(min-width: 56.01em)');
+      let userPositioned = false;
+      let observedHost: HTMLElement | undefined;
+      const measurePanelTop = () => {
+        if (userPositioned || !modeQuery.matches || !host) return;
+        const iframeRect = iframe.getBoundingClientRect();
+        const hostRect = host.getBoundingClientRect();
+        const layoutRect = layout.getBoundingClientRect();
+        const scale = iframe.offsetWidth ? iframeRect.width / iframe.offsetWidth : 0;
+        const header = panel.querySelector<HTMLElement>('[data-drag-handle]');
+        const panelRect = panel.getBoundingClientRect();
+        const headerRect = header?.getBoundingClientRect();
+        if (!scale || !headerRect || !Number.isFinite(hostRect.top)) return;
+        const imageTop = iframeRect.top + hostRect.top * scale;
+        const headerOffset = headerRect.bottom - panelRect.top;
+        layout.style.setProperty('--crop-panel-top', `${Math.max(0, imageTop - layoutRect.top - headerOffset)}px`);
+      };
+      const geometryObserver = new ResizeObserver(measurePanelTop);
+      geometryObserver.observe(previewColumn);
+      const markUserPositioned = (event: PointerEvent) => {
+        const target = event.target as Element | null;
+        if (modeQuery.matches && event.button === 0 && target?.closest('[data-drag-handle]') && !target.closest('[data-drag-ignore]')) userPositioned = true;
+      };
+      panel.addEventListener('pointerdown', markUserPositioned, { signal });
       const syncDragMode = () => {
         dragCleanup();
         dragCleanup = () => {};
@@ -155,8 +179,11 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
           draggable.style.translate = 'none';
           draggable.style.position = modeQuery.matches ? 'absolute' : 'relative';
         }
+        userPositioned = false;
+        layout.style.removeProperty('--crop-panel-top');
         if (modeQuery.matches && draggable) {
           dragCleanup = createDevPanelDrag(draggable);
+          measurePanelTop();
         }
       };
       modeQuery.addEventListener?.('change', syncDragMode, { signal });
@@ -172,10 +199,14 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         replacement.destroy();
         crop?.destroy();
         host = nextHost;
+        if (observedHost) geometryObserver.unobserve(observedHost);
+        observedHost = host;
+        geometryObserver.observe(host);
         crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
         if (previousState) crop.restore(previousState);
         if (viewport) crop.setViewport(viewport.getViewport());
         panel.inert = false;
+        measurePanelTop();
         const localCrop = crop;
         if (import.meta.env.DEV && this.dataset.authoring) {
           void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
@@ -222,6 +253,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         crop?.destroy();
         viewport?.destroy();
         dragCleanup();
+        geometryObserver.disconnect();
       };
     }
     disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
