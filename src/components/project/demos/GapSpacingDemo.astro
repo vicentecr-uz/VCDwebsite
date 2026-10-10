@@ -12,7 +12,6 @@ import grabbingCursor from '../../../assets/demo-cursors/grabbing.svg?url';
 import '../../../styles/project.css';
 import '../../../styles/gapSpacingControl.css';
 import '../../../styles/sectionReorderChrome.css';
-import '../../../styles/demoFinger.css';
 const blocks = [
   { type: 'title', title: 'Made for a slower morning' },
   { type: 'image', title: 'Teapot and mug' },
@@ -79,7 +78,6 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
   .gap-spacing-demo__block:has(> .dev-gap-toolbar:focus-within) { z-index: 65; }
   .gap-spacing-demo__block:focus-within > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
   .gap-spacing-demo__block :global(.project-image) { margin: 0; }
-  vcd-gap-spacing-demo[data-crop-active] :global(.dev-section-drag-handle) { opacity: 0; pointer-events: none; }
   vcd-gap-spacing-demo[data-reordering] :global(.dev-image-edit-trigger) { opacity: 0; pointer-events: none; }
   .block-demo-actions { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; }
   .gap-spacing-demo__reset-controls { position: fixed; left: var(--space-unit); right: auto; bottom: var(--space-unit); z-index: 100; }
@@ -105,10 +103,8 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
 
 <script>
   import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
-  import { createDemoImageCrop } from '../../../lib/demoImageCrop';
   import { createDemoBlockGuide } from '../../../lib/demoBlockGuide';
   import { createDemoGapSpacing } from '../../../lib/demoGapSpacing';
-  import { createDemoCropGuide } from '../../../lib/demoCropGuide';
 
   class GapSpacingDemo extends HTMLElement {
     private dispose?: () => void;
@@ -118,43 +114,22 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
       const { signal } = life;
       const image = this.querySelector<HTMLElement>('.project-image')!;
       let syncBar = () => {};
-      const crop = createDemoImageCrop({ host: image, sourceAspect: 16 / 9, initialAspect: '4:3', active: false, onChange: () => syncBar() });
       const gaps = createDemoGapSpacing(this, { onChange: () => syncBar() });
       gaps.restore(['group', 'related', 'group']);
       gaps.setSavedState(gaps.getState());
-      const trigger = this.ownerDocument.createElement('button');
-      trigger.type = 'button';
+      const trigger = this.ownerDocument.createElement('a');
+      trigger.href = '/image-framing';
+      trigger.target = '_top';
       trigger.className = 'dev-image-edit-trigger';
       trigger.textContent = 'Edit image';
-      trigger.setAttribute('aria-pressed', 'false');
       image.classList.add('dev-image-edit-target');
       image.append(trigger);
-      let cropGuide: ReturnType<typeof createDemoCropGuide>;
       let guide: ReturnType<typeof createDemoBlockGuide>;
-      const setCropActive = (active: boolean) => {
-        crop.setActive(active);
-        gaps.setSuppressed(active);
-        this.toggleAttribute('data-crop-active', active);
-        image.classList.toggle('is-dev-image-selected', active);
-        trigger.setAttribute('aria-pressed', String(active));
-      };
       const reorder = createDemoBlockReorder(this, {
         scroll: true,
-        onLift: () => { cropGuide?.stop(); setCropActive(false); gaps.setSuppressed(true); this.toggleAttribute('data-reordering', true); syncBar(); },
+        onLift: () => { gaps.setSuppressed(true); this.toggleAttribute('data-reordering', true); syncBar(); },
         onSettle: () => { gaps.setSuppressed(false); this.removeAttribute('data-reordering'); syncBar(); },
       });
-      trigger.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const entering = !this.hasAttribute('data-crop-active');
-        guide?.stop();
-        cropGuide?.stop();
-        setCropActive(entering);
-        if (entering) cropGuide?.play();
-      }, { signal });
-      this.ownerDocument.addEventListener('pointerdown', (event) => {
-        if (this.hasAttribute('data-crop-active') && !image.contains(event.target as Node)) { cropGuide?.stop(); setCropActive(false); }
-      }, { signal });
-      this.ownerDocument.addEventListener('keydown', (event) => { if (event.key === 'Escape') { cropGuide?.stop(); setCropActive(false); } }, { signal });
       const viewport = this.closest<HTMLElement>('[data-page-viewport]')!;
       const revertButton = this.querySelector<HTMLButtonElement>('[data-block-revert]')!;
       const actionBar = this.querySelector<HTMLElement>('[data-block-save-bar]');
@@ -162,24 +137,20 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
       const actionControls = this.querySelector<HTMLElement>('.block-demo-actions');
       const resetControls = this.querySelector<HTMLElement>('.gap-spacing-demo__reset-controls');
       const cursor = this.querySelector<HTMLElement>('[data-block-guide-cursor]')!;
-      const snapshot = () => ({ order: reorder.getOrder(), gaps: gaps.getState(), crop: crop.getState() });
+      const snapshot = () => ({ order: reorder.getOrder(), gaps: gaps.getState() });
       const original = snapshot();
       let saved = original;
       syncBar = () => {
         const state = snapshot();
         const dirty = state.order.some((block, index) => block !== saved.order[index])
-          || JSON.stringify(state.gaps) !== JSON.stringify(saved.gaps)
-          || JSON.stringify(state.crop) !== JSON.stringify(saved.crop);
+          || JSON.stringify(state.gaps) !== JSON.stringify(saved.gaps);
         if (actionBar) actionBar.hidden = !dirty;
         revertButton.disabled = saveButton.disabled = !dirty || this.hasAttribute('data-reordering');
       };
       const restore = (state: typeof original) => {
-        cropGuide?.stop(); reorder.restore(state.order); gaps.restore(state.gaps); crop.restore(state.crop);
-        setCropActive(false); viewport.scrollTo({ top: 0, left: 0, behavior: 'instant' }); syncBar();
+        reorder.restore(state.order); gaps.restore(state.gaps);
+        viewport.scrollTo({ top: 0, left: 0, behavior: 'instant' }); syncBar();
       };
-      const guideFingers = [this.ownerDocument.createElement('div'), this.ownerDocument.createElement('div')] as [HTMLElement, HTMLElement];
-      guideFingers.forEach((finger) => { finger.innerHTML = '<span class="hint-finger"></span>'; });
-      cropGuide = createDemoCropGuide({ root: this, host: image, trigger, fingers: guideFingers, crop, onFinish: () => setCropActive(false) });
       guide = createDemoBlockGuide({
         root: this, cursor,
         imageBlock: image.closest<HTMLElement>('[data-reorder-demo-block]')!,
@@ -187,10 +158,10 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
         gaps, reorder, revertButton,
       });
       revertButton.addEventListener('click', () => restore(saved), { signal });
-      saveButton.addEventListener('click', () => { cropGuide.stop(); setCropActive(false); saved = snapshot(); gaps.setSavedState(saved.gaps); syncBar(); }, { signal });
+      saveButton.addEventListener('click', () => { saved = snapshot(); gaps.setSavedState(saved.gaps); syncBar(); }, { signal });
       const resetButton = this.querySelector('[data-gap-reset]');
       resetButton?.addEventListener('click', () => {
-        cropGuide.stop(); guide.stop(); saved = original; gaps.setSavedState(original.gaps); restore(original); guide.play();
+        guide.stop(); saved = original; gaps.setSavedState(original.gaps); restore(original); guide.play();
       }, { signal });
       if (actionControls) this.ownerDocument.body.append(actionControls);
       if (resetControls) this.ownerDocument.body.append(resetControls);
@@ -199,9 +170,8 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
         if (actionControls) this.append(actionControls);
         if (resetControls) this.append(resetControls);
         this.append(cursor);
-        life.abort(); guide.destroy(); cropGuide.destroy(); syncBar = () => {}; reorder.destroy(); gaps.destroy(); crop.destroy(); trigger.remove();
-        image.classList.remove('dev-image-edit-target', 'is-dev-image-selected');
-        this.removeAttribute('data-crop-active');
+        life.abort(); guide.destroy(); syncBar = () => {}; reorder.destroy(); gaps.destroy(); trigger.remove();
+        image.classList.remove('dev-image-edit-target');
       };
     }
     disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }

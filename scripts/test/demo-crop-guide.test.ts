@@ -4,7 +4,7 @@ import { createDemoCropGuide } from '../../src/lib/demoCropGuide';
 
 type Harness = ReturnType<typeof setup>;
 
-function setup(reduced = false, frameStep = 16, coarse = false) {
+function setup(reduced = false, frameStep = 16, coarse = false, scaled = false) {
   const win = new Window({ url: 'http://localhost/' });
   let now = 0; let next = 0;
   const timers = new Map<number, { at: number; callback: () => void }>();
@@ -20,14 +20,20 @@ function setup(reduced = false, frameStep = 16, coarse = false) {
   const trigger = win.document.createElement('button');
   const fingers: [HTMLElement, HTMLElement] = [win.document.createElement('span'), win.document.createElement('span')];
   root.append(host, trigger); win.document.body.append(root);
+  const child = scaled ? new Window({ url: 'http://child.local/' }) : undefined;
+  const iframe = scaled ? {
+    contentDocument: child!.document, contentWindow: child!, offsetWidth: 1600, offsetHeight: 1200,
+    getBoundingClientRect: () => rect(200, 100, 800, 600),
+  } as unknown as HTMLIFrameElement : undefined;
   const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
   host.getBoundingClientRect = () => rect(100, 100, 400, 300);
   trigger.getBoundingClientRect = () => rect(400, 110, 80, 30);
   const pans: Array<[number, number]> = [];
   const zooms: Array<number> = [];
+  const zoomCenters: Array<[number, number]> = [];
   let finish = 0;
-  const crop = { panBy: (x: number, y: number) => { pans.push([x, y]); return true; }, zoomBy: (factor: number) => { zooms.push(factor); return true; } };
-  const guide = createDemoCropGuide({ root, host, trigger, fingers, crop, onFinish: () => { finish += 1; } });
+  const crop = { panBy: (x: number, y: number) => { pans.push([x, y]); return true; }, zoomBy: (factor: number, x = 0.5, y = 0.5) => { zooms.push(factor); zoomCenters.push([x, y]); return true; } };
+  const guide = createDemoCropGuide({ root, host, trigger, fingers, crop, iframe, onFinish: () => { finish += 1; } });
   const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
   const advance = async (ms: number) => {
     now += ms;
@@ -36,7 +42,7 @@ function setup(reduced = false, frameStep = 16, coarse = false) {
     await flush();
   };
   const advanceTo = async (ms: number) => { for (let elapsed = 0; elapsed < ms; elapsed += frameStep) await advance(frameStep); };
-  return { win, root, fingers, guide, pans, zooms, get finish() { return finish; }, flush, advance, advanceTo, pending: () => ({ frames: frames.size, timers: timers.size }), overlay: () => root.ownerDocument.querySelector('.demo-crop-guide') as HTMLElement | null };
+  return { win, child, root, host, fingers, guide, pans, zooms, zoomCenters, get finish() { return finish; }, flush, advance, advanceTo, pending: () => ({ frames: frames.size, timers: timers.size }), overlay: () => root.ownerDocument.querySelector('.demo-crop-guide') as HTMLElement | null };
 }
 
 const fingerPoint = (finger: HTMLElement) => {
@@ -126,4 +132,25 @@ test('scroll cancellation stops the guide before it edits the crop', async () =>
   const h = setup(); h.guide.play(); await h.flush(); await h.advanceTo(300);
   h.win.document.dispatchEvent(new h.win.Event('scroll')); await h.advanceTo(7000);
   expect(h.pans).toHaveLength(0); expect(h.zooms).toHaveLength(0); expect(h.finish).toBe(0); h.guide.destroy();
+});
+
+test('scaled iframe maps origin and half-scale geometry through the complete guide', async () => {
+  const h = setup(false, 16, false, true); h.guide.play(); await h.flush(); await h.advanceTo(500);
+  const start = fingerPoint(h.fingers[0]);
+  expect(start.x).toBeCloseTo(298, 0); expect(start.y).toBeCloseTo(207, 0);
+  await h.advanceTo(7000);
+  expect(h.finish).toBe(1);
+  expect(h.pans.reduce((sum, [x]) => sum + x, 0)).toBeCloseTo(0.08, 5);
+  expect(h.zoomCenters[0][0]).toBeCloseTo(0.42, 1); expect(h.zoomCenters[0][1]).toBeCloseTo(0.385, 1);
+  expect(h.zooms.reduce((product, factor) => product * factor, 1)).toBeCloseTo(1.12, 5);
+  h.guide.destroy();
+});
+
+test('child scroll cancels scaled guide during pan and destroy removes child listeners', async () => {
+  const h = setup(false, 16, false, true); h.guide.play(); await h.flush(); await h.advanceTo(520);
+  const panCount = h.pans.length;
+  h.child!.document.dispatchEvent(new h.child!.Event('scroll')); await h.advanceTo(7000);
+  expect(h.pans).toHaveLength(panCount); expect(h.zooms).toHaveLength(0); expect(h.finish).toBe(0);
+  h.guide.destroy(); h.child!.document.dispatchEvent(new h.child!.Event('scroll')); await h.advanceTo(1000);
+  expect(h.finish).toBe(0); expect(h.pending()).toEqual({ frames: 0, timers: 0 });
 });

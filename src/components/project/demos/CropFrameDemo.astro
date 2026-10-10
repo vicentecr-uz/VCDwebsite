@@ -1,6 +1,7 @@
 ---
 import '../../../styles/project.css';
 import '../../../styles/loading-spinner.css';
+import '../../../styles/demoFinger.css';
 import loadingSpinner from '../../ui/LoadingSpinner.svg?raw';
 import DevOverlayFrame from '../../ui/DevOverlayFrame.astro';
 import ImageCropControls from '../ImageCropControls.astro';
@@ -44,7 +45,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
 
 {canvasOnly ? <div class="crop-frame-demo__canvas crop-frame-demo__canvas--only" data-crop-demo>
   <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
-</div> : <vcd-crop-frame-demo data-crop-demo data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
+</div> : <vcd-crop-frame-demo data-crop-demo data-page-reveal-ready="false" data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
       <DevOverlayFrame title="Image" embedded data-crop-panel>
@@ -81,6 +82,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   vcd-crop-frame-demo { display: block; width: 100%; max-width: var(--page-media-max-width); margin-inline: auto; align-self: start; }
   .crop-frame-demo__layout { position: relative; display: flex; flex-direction: column; gap: calc(var(--space-unit) * 2); width: 100%; max-width: var(--page-media-max-width); margin-inline: auto; }
   .crop-frame-demo__panel { position: absolute; top: var(--crop-panel-top, calc(var(--space-unit) * 2)); left: clamp(0px, calc(100% - 5rem), calc(50% + 50vw - 21rem)); width: 20rem; z-index: 60; }
+  vcd-crop-frame-demo[data-page-reveal-ready='false'] .crop-frame-demo__panel { visibility: hidden; }
   .crop-frame-demo__panel :global(.dev-overlay) { position: absolute; left: 0; top: 0; width: 100%; max-height: calc(100 * var(--vh-safe, 1svh) - (var(--space-unit) * 2)); }
   .crop-frame-demo__panel :global(.dev-overlay__resize) { display: none; }
   .crop-frame-demo__preview-column { min-width: 0; display: grid; place-items: center; }
@@ -119,6 +121,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   import { createDemoAssetPicker } from '../../../lib/demoAssetPicker';
   import { createDemoImageViewport } from '../../../lib/demoImageViewport';
   import { createDevPanelDrag } from '../../../lib/devPanelDrag';
+  import { createDemoCropGuide } from '../../../lib/demoCropGuide';
   class CropFrameDemo extends HTMLElement {
     private dispose?: () => void;
     connectedCallback() {
@@ -132,10 +135,32 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
       if (!panel || !layout || !iframe || !previewColumn || !assetPanel || !assetOpener) return;
       const lifecycle = new AbortController();
       const { signal } = lifecycle;
+      this.dataset.pageRevealReady = 'false';
       const initialState = this.dataset.initialState ? JSON.parse(this.dataset.initialState) : undefined;
       let crop: ReturnType<typeof createDemoImageCrop> | undefined;
       let host: HTMLElement | undefined;
       let authoringGeneration = 0;
+      let cropGuide: ReturnType<typeof createDemoCropGuide> | undefined;
+      let autoStarted = false;
+      let interrupted = false;
+      let inView = false;
+      let canvasLifecycle: AbortController | undefined;
+      const maybePlay = () => {
+        const veil = this.ownerDocument.getElementById('transition-overlay');
+        if (signal.aborted || autoStarted || interrupted || !inView || !cropGuide || this.dataset.pageRevealReady !== 'true') return;
+        if (veil && !veil.hidden) return;
+        autoStarted = true;
+        cropGuide.play();
+      };
+      const visibility = new IntersectionObserver(([entry]) => {
+        inView = entry.isIntersecting;
+        if (!inView) cropGuide?.stop();
+        maybePlay();
+      }, { threshold: 0.1 });
+      visibility.observe(this);
+      const interrupt = (event: Event) => { if (event.isTrusted) { interrupted = true; cropGuide?.stop(); } };
+      for (const type of ['pointerdown', 'wheel', 'keydown']) document.addEventListener(type, interrupt, { signal, capture: true, passive: true });
+      window.addEventListener('vcd:initial-reveal-complete', maybePlay, { signal });
       const viewport = createDemoImageViewport({ root: this, column: previewColumn, iframe });
       panel.inert = true;
       const catalog = JSON.parse(this.querySelector('[data-published-demo-assets]')?.textContent || '[]');
@@ -169,6 +194,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
       };
       panel.addEventListener('pointerdown', markUserPositioned, { signal });
       const syncDragMode = () => {
+        cropGuide?.stop();
         dragCleanup();
         dragCleanup = () => {};
         if (draggable) {
@@ -188,14 +214,32 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
       };
       modeQuery.addEventListener?.('change', syncDragMode, { signal });
       syncDragMode();
-      const ready = () => {
+      const publishReady = () => {
+        this.dataset.pageRevealReady = 'true';
+        this.dispatchEvent(new Event('vcd:page-reveal-ready'));
+      };
+      const showLoadError = () => {
+        const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
+        if (status) { status.textContent = 'Could not load the image. Reload the page to try again.'; status.hidden = false; }
+        publishReady();
+      };
+      const ready = async () => {
         if (signal.aborted) return;
         const frameDocument = iframe?.contentDocument;
         const nextHost = frameDocument?.querySelector<HTMLElement>('.project-image');
-        if (!nextHost) return;
+        if (!nextHost) { showLoadError(); return; }
         if (nextHost === host) return;
         const previousState = crop?.getState();
         const nextGeneration = ++authoringGeneration;
+        canvasLifecycle?.abort();
+        canvasLifecycle = new AbortController();
+        const canvasSignal = canvasLifecycle.signal;
+        const current = () => !signal.aborted && !canvasSignal.aborted && authoringGeneration === nextGeneration && crop === localCrop;
+        for (const type of ['pointerdown', 'wheel', 'keydown']) frameDocument?.addEventListener(type, interrupt, { signal: canvasSignal, capture: true, passive: true });
+        this.dataset.pageRevealReady = 'false';
+        panel.inert = true;
+        cropGuide?.destroy();
+        cropGuide = undefined;
         replacement.destroy();
         crop?.destroy();
         host = nextHost;
@@ -205,25 +249,86 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
         if (previousState) crop.restore(previousState);
         if (viewport) crop.setViewport(viewport.getViewport());
-        panel.inert = false;
         measurePanelTop();
         const localCrop = crop;
+        let controlsReady = true;
+        let authoringReady: Promise<void> = Promise.resolve();
         if (import.meta.env.DEV && this.dataset.authoring) {
-          void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
+          authoringReady = import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
             if (!signal.aborted && authoringGeneration === nextGeneration && crop === localCrop) replacement = createCropDemoAuthoring(panel, localCrop, { ...JSON.parse(this.dataset.authoring!), chooseAsset: picker.open });
           }).catch(() => {
+            controlsReady = false;
             if (signal.aborted || authoringGeneration !== nextGeneration || crop !== localCrop) return;
             const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
             if (status) { status.textContent = 'Could not load image controls. Reload the page to try again.'; status.hidden = false; }
           });
         } else if (crop) replacement = createDemoImageReplacement(panel, crop, { chooseAsset: picker.open });
+        await authoringReady;
+        if (signal.aborted || authoringGeneration !== nextGeneration || crop !== localCrop) return;
+        const waitImage = (image: HTMLImageElement | null) => new Promise<boolean>((resolve) => {
+          if (!image || canvasSignal.aborted) { resolve(false); return; }
+          const finish = (ok: boolean) => {
+            image.removeEventListener('load', onLoad);
+            image.removeEventListener('error', onError);
+            canvasSignal.removeEventListener('abort', onError);
+            resolve(ok);
+          };
+          const onLoad = () => finish(image.naturalWidth > 0);
+          const onError = () => finish(false);
+          image.addEventListener('load', onLoad);
+          image.addEventListener('error', onError);
+          canvasSignal.addEventListener('abort', onError, { once: true });
+          if (image.complete) onLoad();
+        }).then(async (ok) => {
+          if (!ok || !current()) return false;
+          try { await image?.decode?.(); return true; } catch { return false; }
+        });
+        const [visibleReady, ghostReady] = await Promise.all([
+          waitImage(host.querySelector<HTMLImageElement>('.project-crop-clip img')),
+          waitImage(host.querySelector<HTMLImageElement>('.dev-crop-ghost img')),
+          document.fonts?.ready,
+          frameDocument?.fonts?.ready,
+        ]);
+        if (!current()) return;
+        if (!visibleReady || !ghostReady) { showLoadError(); return; }
+        await new Promise<void>((resolve) => {
+          let first = 0;
+          let second = 0;
+          const finish = () => {
+            window.cancelAnimationFrame(first);
+            window.cancelAnimationFrame(second);
+            canvasSignal.removeEventListener('abort', finish);
+            resolve();
+          };
+          canvasSignal.addEventListener('abort', finish, { once: true });
+          first = window.requestAnimationFrame(() => { second = window.requestAnimationFrame(finish); });
+        });
+        if (!current()) return;
+        measurePanelTop();
+        panel.inert = false;
+        publishReady();
+        if (!controlsReady) return;
+        const revertButton = panel.querySelector<HTMLElement>('[data-demo-author-revert]');
+        const fingers = [document.createElement('div'), document.createElement('div')] as [HTMLElement, HTMLElement];
+        fingers.forEach((finger) => { finger.innerHTML = '<span class="hint-finger"></span>'; });
+        cropGuide?.destroy();
+        cropGuide = createDemoCropGuide({ root: this, host, iframe, trigger: revertButton ?? panel, fingers, crop: localCrop, onFinish: () => revertButton?.click() });
+        maybePlay();
       };
       iframe.addEventListener('load', ready, { signal });
-      if (iframe.contentDocument?.readyState === 'complete') ready();
+      iframe.addEventListener('error', () => {
+        ++authoringGeneration;
+        canvasLifecycle?.abort();
+        cropGuide?.destroy();
+        cropGuide = undefined;
+        panel.inert = true;
+        showLoadError();
+      }, { signal });
+      if (iframe.contentDocument?.readyState === 'complete' && iframe.contentDocument.querySelector('.project-image')) ready();
       this.querySelectorAll<HTMLElement>('[data-crop-viewport]').forEach((button) => button.addEventListener('click', () => {
         const next = button.dataset.cropViewport as 'desktop' | 'tablet' | 'mobile' | undefined;
         if (!crop || !next) return;
-        crop.setViewport(next); viewport?.setViewport(next);
+        cropGuide?.stop(); crop.setViewport(next); viewport?.setViewport(next);
       }, { signal }));
       let restoreTimer = 0;
       const show = () => {
@@ -241,19 +346,24 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         crop?.setActive(false);
         restoreTimer = window.setTimeout(show, 2000);
       };
-      panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => collapse.set(!panel.classList.contains('is-minimized')), { signal });
-      panel.querySelector('[data-hide-toggle]')?.addEventListener('click', hide, { signal });
-      this.querySelector('[data-demo-author-reset]')?.addEventListener('click', () => { collapse.set(false); show(); }, { signal });
+      panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => { cropGuide?.stop(); collapse.set(!panel.classList.contains('is-minimized')); }, { signal });
+      panel.querySelector('[data-hide-toggle]')?.addEventListener('click', () => { cropGuide?.stop(); hide(); }, { signal });
+      this.querySelector('[data-demo-author-reset]')?.addEventListener('click', () => { cropGuide?.stop(); collapse.set(false); show(); }, { signal });
+      panel.querySelector('[data-demo-author-save]')?.addEventListener('click', () => cropGuide?.stop(), { signal });
+      panel.querySelector('[data-demo-author-revert]')?.addEventListener('click', (event) => { if ((event as Event & { isTrusted?: boolean }).isTrusted) cropGuide?.stop(); }, { signal });
       this.dispose = () => {
         lifecycle.abort();
+        canvasLifecycle?.abort();
         window.clearTimeout(restoreTimer);
         collapse.destroy();
         replacement.destroy();
         picker.destroy();
         crop?.destroy();
+        cropGuide?.destroy();
         viewport?.destroy();
         dragCleanup();
         geometryObserver.disconnect();
+        visibility.disconnect();
       };
     }
     disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
