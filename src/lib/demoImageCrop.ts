@@ -276,6 +276,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       const bounds = surface.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return;
       event.preventDefault();
+      surface.setAttribute('data-pointer-focus', '');
       surface.focus({ preventScroll: true });
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       surface.setPointerCapture(event.pointerId);
@@ -348,6 +349,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       }, 160);
     }, { signal, passive: false });
     surface.addEventListener('keydown', (event) => {
+      surface.removeAttribute('data-pointer-focus');
       if (!active) return;
       const step = event.shiftKey ? 0.05 : 0.02;
       if (event.key === 'Escape') release();
@@ -361,6 +363,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       event.preventDefault();
       render();
     }, { signal });
+    surface.addEventListener('blur', () => surface.removeAttribute('data-pointer-focus'), { signal });
   };
   bind(stage);
   if (preview) bind(preview);

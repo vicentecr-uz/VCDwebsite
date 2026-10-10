@@ -168,8 +168,8 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
       if (cursor && !coarse) {
         const target = pointFor(trigger); const distance = Math.hypot(target.x - pinchEnd.x, target.y - pinchEnd.y);
         if (!await animate(200, (t) => { const p = gestureEase(t); paint(fingers[0], pinchEnd, 1 - p); paint(fingers[1], rightEnd, 1 - p); paintCursor(pinchEnd, p, 1.15); }, token)) return;
-        if (!await animate(clamp(1000 + distance * 0.6, 1000, 1600), (t) => {
-          const p = gestureEase(t); const bow = Math.sin(Math.PI * p) * Math.min(18, distance * 0.04);
+        if (!await animate(clamp(850 + distance * 0.45, 850, 1250), (t) => {
+          const p = t * t * t * (t * (t * 6 - 15) + 10); const bow = Math.sin(Math.PI * p) * Math.min(18, distance * 0.04);
           paintCursor({ x: pinchEnd.x + (target.x - pinchEnd.x) * p - (target.y - pinchEnd.y) / Math.max(1, distance) * bow, y: pinchEnd.y + (target.y - pinchEnd.y) * p + (target.x - pinchEnd.x) / Math.max(1, distance) * bow }, 1, 1.15);
         }, token)) return;
         cursor.dataset.cursorState = 'pointer';
