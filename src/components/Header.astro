@@ -1096,6 +1096,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
   });
 
+  if (import.meta.env.DEV) {
   const linkEditor = document.querySelector<HTMLElement>('[data-dev-header-link-editor]');
   const linkEditorInput = linkEditor?.querySelector<HTMLInputElement>('[data-dev-header-link-input]');
   const linkEditorError = linkEditor?.querySelector<HTMLElement>('[data-dev-header-link-error]');
@@ -1107,10 +1108,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   const positionLinkEditor = (button: HTMLElement) => {
     if (!linkEditor) return;
-    const rect = button.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 32);
-    const left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
-    const top = Math.max(16, Math.min(window.innerHeight - linkEditor.offsetHeight - 16, rect.bottom + 8));
+    const buttonRect = button.getBoundingClientRect();
+    const popupRect = linkEditor.getBoundingClientRect();
+    const popupWidth = popupRect.width;
+    const popupHeight = popupRect.height;
+    const opensLeft = Boolean(button.closest('.header-trigger--end'));
+    const preferredLeft = opensLeft
+      ? buttonRect.left - popupWidth - 8
+      : buttonRect.right + 8;
+    const preferredTop = buttonRect.top + (buttonRect.height - popupHeight) / 2;
+    const left = Math.max(16, Math.min(window.innerWidth - popupWidth - 16, preferredLeft));
+    const top = Math.max(16, Math.min(window.innerHeight - popupHeight - 16, preferredTop));
     linkEditor.style.left = `${left}px`;
     linkEditor.style.top = `${top}px`;
   };
@@ -1232,6 +1240,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (!(event as CustomEvent<{ active?: boolean }>).detail?.active) closeLinkEditor(true);
     });
     document.addEventListener('header:navigation-start', () => closeLinkEditor(true));
+  }
   }
 
   // Switching between hover and tap (rotation, devtools emulation, external
@@ -2530,7 +2539,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     position: absolute;
     inset-inline-end: 0;
     top: 50%;
-    transform: translateY(-50%);
+    translate: 0 -50%;
     --dev-control-height: 24px;
     padding: 4px;
     opacity: 0;
@@ -2545,6 +2554,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   :global(html.is-dev-mode) .header-menu__edit-link {
     display: inline-flex;
+  }
+
+  :global(html.is-dev-mode) .header-trigger--end .header-menu__item {
+    padding-inline-end: 0;
+    padding-inline-start: 2rem;
+  }
+
+  :global(html.is-dev-mode) .header-trigger--end .header-menu__edit-link {
+    inset-inline-end: auto;
+    inset-inline-start: 0;
   }
 
   :global(html.is-dev-mode) .header-menu__item:hover .header-menu__edit-link,
