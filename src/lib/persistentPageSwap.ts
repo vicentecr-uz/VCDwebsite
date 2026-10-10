@@ -31,8 +31,7 @@ export function persistentPageParts(doc: Document) {
 export function supportsPersistentPage(doc: Document) {
   if (!persistentPageParts(doc) || doc.querySelector('template[shadowrootmode]')) return false;
   return [...doc.querySelectorAll('astro-island')].every((island) =>
-    doc.body.hasAttribute('data-dev-authoring')
-    && /\/components\/base-ui\/EditorSelect\.tsx(?:\?|$)/.test(island.getAttribute('component-url') ?? ''),
+    /^(?:\/src\/components\/base-ui\/EditorSelect\.tsx|\/_astro\/EditorSelect\.[A-Za-z0-9_-]+\.js)(?:\?.*)?$/.test(island.getAttribute('component-url') ?? ''),
   );
 }
 
