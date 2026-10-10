@@ -35,10 +35,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
     display: inline-flex;
   }
 
-  .dev-file-picker:focus-within {
+  .dev-file-picker:has(> input:focus-visible) {
     outline: 2px solid var(--sys-color-outline);
-    outline-offset: 2px;
+    outline-offset: -2px;
     border-radius: var(--dev-radius-control);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .dev-file-picker:has(> input:hover) > .dev-btn {
+      background: var(--comp-button-ghost-container-hover);
+    }
+  }
+
+  .dev-file-picker:has(> input:active) > .dev-btn {
+    background: var(--comp-button-ghost-container-pressed);
+    transform: scale(var(--motion-press-scale));
   }
 
   .dev-file-picker > input {
@@ -46,6 +57,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
     inset: 0;
     width: 100%;
     height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-sizing: border-box;
     opacity: 0;
     cursor: pointer;
   }
