@@ -5,21 +5,11 @@ import SelectField from '../ui/EditorSelectField.astro';
 import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
-import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
-import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
-import maximizeIcon from 'lucide-static/icons/maximize.svg?raw';
-import lockIcon from 'lucide-static/icons/lock.svg?raw';
-import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
-import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import circleAlertIcon from 'lucide-static/icons/circle-alert.svg?raw';
 import { sizeIcon } from '../../lib/icons';
+import ImageCropControls from './ImageCropControls.astro';
+import ImageReplaceControls from './ImageReplaceControls.astro';
 
-const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
-const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
-const maximizeSvg = sizeIcon(maximizeIcon, 14);
-const lockSvg = sizeIcon(lockIcon, 14);
-const monitorSvg = sizeIcon(monitorIcon, 16);
-const globeSvg = sizeIcon(globeIcon, 16);
 const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 ---
 
@@ -48,150 +38,76 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       />
     </SegmentedControl>
 
-    <SelectField
-      label="Aspect ratio"
-      data-crop-aspect-ratio-wrap
-      data-crop-aspect-ratio
-      options={[
-        { value: 'original', label: 'Original' },
-        {
-          label: 'Landscape',
-          options: [
-            { value: '16:9', label: '16:9' },
-            { value: '16:10', label: '16:10' },
-            { value: '3:2', label: '3:2' },
-            { value: '4:3', label: '4:3' },
-            { value: '5:4', label: '5:4' },
-          ],
-        },
-        {
-          label: 'Square',
-          options: [{ value: '1:1', label: '1:1' }],
-        },
-        {
-          label: 'Portrait',
-          options: [
-            { value: '5:6', label: '5:6' },
-            { value: '4:5', label: '4:5' },
-            { value: '3:4', label: '3:4' },
-            { value: '2:3', label: '2:3' },
-            { value: '10:16', label: '10:16' },
-            { value: '9:16', label: '9:16' },
-          ],
-        },
-      ]}
-    >
-      <button
-        slot="labelAccessory"
-        type="button"
-        class="tapico-crop-tuner__linked-aspect-hint"
-        data-crop-linked-aspect-hint
-        hidden
-        aria-describedby="crop-linked-aspect-tooltip"
-      >
-        <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
-        <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
-      </button>
-      <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
-        <span data-crop-setting-source="aspect"></span>
-        <Button emphasis="ghost" label="Reset" data-crop-reset-setting="aspect" hidden aria-label="Reset aspect ratio to inherited value" />
-      </span>
-    </SelectField>
-
-    <div class="tapico-crop-tuner__pair">
-      <SelectField
-        label="Width"
-        hidden
-        data-crop-width-constrain-wrap
-        data-crop-width-constrain
-        options={[
-          { value: '100', label: 'Full' },
-          { value: 'text', label: 'Match text' },
-          { value: '90', label: '90%' },
-          { value: '80', label: '80%' },
-          { value: '70', label: '70%' },
-          { value: '60', label: '60%' },
-          { value: '50', label: '50%' },
-          { value: '40', label: '40%' },
-          { value: '30', label: '30%' },
-        ]}
-      >
-        <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
-          <span data-crop-setting-source="width"></span>
-          <Button emphasis="ghost" label="Reset" data-crop-reset-setting="width" hidden aria-label="Reset width to inherited value" />
+    <ImageCropControls>
+      <Fragment slot="aspectAccessory">
+        <button
+          type="button"
+          class="tapico-crop-tuner__linked-aspect-hint"
+          data-crop-linked-aspect-hint
+          hidden
+          aria-describedby="crop-linked-aspect-tooltip"
+        >
+          <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
+          <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
+        </button>
+        <span class="tapico-crop-tuner__setting-meta">
+          <span data-crop-setting-source="aspect"></span>
+          <Button emphasis="ghost" label="Reset" data-crop-reset-setting="aspect" hidden aria-label="Reset aspect ratio to inherited value" />
         </span>
-      </SelectField>
+      </Fragment>
+      <Fragment slot="frameSettings">
+        <div class="tapico-crop-tuner__pair">
+          <SelectField
+            label="Width"
+            hidden
+            data-crop-width-constrain-wrap
+            data-crop-width-constrain
+            options={[
+              { value: '100', label: 'Full' },
+              { value: 'text', label: 'Match text' },
+              { value: '90', label: '90%' },
+              { value: '80', label: '80%' },
+              { value: '70', label: '70%' },
+              { value: '60', label: '60%' },
+              { value: '50', label: '50%' },
+              { value: '40', label: '40%' },
+              { value: '30', label: '30%' },
+            ]}
+          >
+            <span slot="labelAccessory" class="tapico-crop-tuner__setting-meta">
+              <span data-crop-setting-source="width"></span>
+              <Button emphasis="ghost" label="Reset" data-crop-reset-setting="width" hidden aria-label="Reset width to inherited value" />
+            </span>
+          </SelectField>
 
-      <SelectField
-        label="Max view height"
-        hidden
-        data-crop-height-constrain-wrap
-        data-crop-max-vh
-        options={[
-          { value: '', label: 'Off' },
-          { value: '90', label: '90%' },
-          { value: '80', label: '80%' },
-          { value: '70', label: '70%' },
-          { value: '60', label: '60%' },
-          { value: '50', label: '50%' },
-          { value: '40', label: '40%' },
-          { value: '30', label: '30%' },
-        ]}
-      />
-    </div>
-    <div class="tapico-crop-tuner__crop-label dev-field__label-row" data-crop-setting-wrap="crop">
-      <span class="dev-field__label" data-crop-setting-label="crop">Crop</span>
-      <span class="tapico-crop-tuner__setting-meta">
-        <span data-crop-setting-source="crop"></span>
-        <Button emphasis="ghost" label="Reset" data-crop-reset-setting="crop" hidden aria-label="Reset crop to inherited value" />
-      </span>
-    </div>
-
-    <div class="tapico-crop-tuner__stage">
-      <div class="tapico-crop-tuner__preview" data-crop-preview>
-        <div class="tapico-crop-tuner__preview-clip">
-          <img alt="" data-crop-image draggable="false" />
-          <span class="project-media__placeholder-label" aria-hidden="true">
-            <span class="project-media__placeholder-label-text"></span>
-          </span>
-          <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
+          <SelectField
+            label="Max view height"
+            hidden
+            data-crop-height-constrain-wrap
+            data-crop-max-vh
+            options={[
+              { value: '', label: 'Off' },
+              { value: '90', label: '90%' },
+              { value: '80', label: '80%' },
+              { value: '70', label: '70%' },
+              { value: '60', label: '60%' },
+              { value: '50', label: '50%' },
+              { value: '40', label: '40%' },
+              { value: '30', label: '30%' },
+            ]}
+          />
         </div>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--n" data-crop-resize="n" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--s" data-crop-resize="s" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--e" data-crop-resize="e" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--w" data-crop-resize="w" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--ne" data-crop-resize="ne" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--nw" data-crop-resize="nw" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--se" data-crop-resize="se" aria-hidden="true"></span>
-        <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--sw" data-crop-resize="sw" aria-hidden="true"></span>
-      </div>
-    </div>
-
-    <div class="tapico-crop-tuner__toolbar" aria-label="Crop controls">
-      <button type="button" data-crop-center-x aria-label="Centre horizontally">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignXSvg} />
-      </button>
-      <button type="button" data-crop-center-y aria-label="Centre vertically">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignYSvg} />
-      </button>
-      <button type="button" data-crop-fit aria-label="Fit to frame">
-        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={maximizeSvg} />
-      </button>
-      <button
-        type="button"
-        class="tapico-crop-tuner__constraint"
-        data-crop-constraint
-        aria-pressed="true"
-      >
-        <span
-          class="tapico-crop-tuner__icon"
-          data-crop-constraint-icon
-          aria-hidden="true"
-          set:html={lockSvg}
-        />
-        <span data-crop-constraint-state>Crop locked</span>
-      </button>
-    </div>
+      </Fragment>
+      <Fragment slot="cropLabel">
+        <div class="tapico-crop-tuner__crop-label dev-field__label-row" data-crop-setting-wrap="crop">
+          <span class="dev-field__label" data-crop-setting-label="crop">Crop</span>
+          <span class="tapico-crop-tuner__setting-meta">
+            <span data-crop-setting-source="crop"></span>
+            <Button emphasis="ghost" label="Reset" data-crop-reset-setting="crop" hidden aria-label="Reset crop to inherited value" />
+          </span>
+        </div>
+      </Fragment>
+    </ImageCropControls>
 
     <div class="dev-field" data-crop-background-wrap>
       <label class="dev-field__label" for="crop-background">Background</label>
@@ -217,28 +133,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
          Figma dropped this line; keep the node, do not paint it. -->
     <p class="tapico-crop-tuner__readout" data-crop-readout hidden>shows 100% of width · centre 0.500, 0.500</p>
 
-    <div class="dev-field">
-      <span class="dev-field__label">Replace image</span>
-      <div
-        class="dev-drop"
-        data-crop-replace-drop
-        tabindex="0"
-        role="button"
-        aria-label="Replace image"
-      >
-        <div class="dev-drop__well">
-          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
-            <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
-            File system
-          </button>
-          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
-            <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
-            Asset manager
-          </button>
-          <input type="file" accept="image/*,.heic,.heif" hidden data-crop-replace-file />
-        </div>
-      </div>
-    </div>
+    <ImageReplaceControls />
 
     <button type="button" class="dev-btn dev-btn--ghost" data-crop-make-carousel hidden>Make carousel</button>
 
@@ -257,6 +152,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </DevOverlay>
 
 <script>
+  import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
   import { devEditPendingId, withDevEditTarget } from '../../scripts/devEditTarget';
   import {
     imageGridConstrainedStyle,
@@ -280,6 +176,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
+  import { createImageCropStage, cropResizeHeight } from '../../lib/imageCropStage';
+  import { createCropWheelPanGain, createCropWheelZoomGain } from '../../lib/cropWheelPan';
 
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
@@ -345,11 +243,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const settingResetButtons = [...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-reset-setting]')];
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
-    const replaceDrop = tuner.querySelector<HTMLElement>('[data-crop-replace-drop]');
-    const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
     const replaceAssetsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-assets]');
     const makeCarouselButton = tuner.querySelector<HTMLButtonElement>('[data-crop-make-carousel]');
-    const replaceFileInput = tuner.querySelector<HTMLInputElement>('[data-crop-replace-file]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
@@ -377,10 +272,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       !revertButton ||
       !resetButton ||
       !useGridDefaultButton ||
-      !replaceDrop ||
-      !replaceChooseButton ||
       !replaceAssetsButton ||
-      !replaceFileInput ||
       !initialTarget ||
       !initialImage
     ) return;
@@ -2180,8 +2072,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let closingStage: NonNullable<typeof pageStage> | null = null;
     let closingStageTimer = 0;
 
-    const PAGE_RESIZE_DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
-
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
       // Gallery covers nest the clip under `.project-grid__stack` (hover + meta).
@@ -2289,31 +2179,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     };
 
-    /*
-      Trackpad wheel arrives in uneven chunks. A flat low gain feels precise but
-      sluggish; a flat high gain covers ground but jumps. Blend by delta size:
-      slow nudges stay fine, quicker flicks use the original full sensitivity.
-      Apply through rAF (one paint/frame) so chunky packets don't grit the crop.
-    */
-    const WHEEL_ZOOM_GAIN_FINE = 0.00085;
-    const WHEEL_ZOOM_GAIN_FAST = 0.0022;
-    const WHEEL_PAN_GAIN_FINE = 0.38;
-    const WHEEL_PAN_GAIN_FAST = 1;
-    /** Higher knee = more of the common trackpad range stays in the fine→mid blend. */
-    const WHEEL_GAIN_KNEE = 40;
-    /** EMA toward per-frame |delta| so gain doesn't flicker with packet noise. */
-    const WHEEL_SPEED_EMA = 0.32;
+    // Weight each wheel event by input speed, then paint once per frame.
     const POINTER_PAN_GAIN = 1;
     const PINCH_ZOOM_EXPONENT = 1;
     /** Mid-gesture chrome (zoom % / readout) at most ~15 Hz — not every paint. */
     const GESTURE_CHROME_MS = 64;
-
-    /** Smoothstep blend from fine → fast gain based on gesture speed. */
-    const wheelGainForSpeed = (speed: number, fine: number, fast: number) => {
-      const t = Math.min(1, Math.max(0, speed) / WHEEL_GAIN_KNEE);
-      const blend = t * t * (3 - 2 * t);
-      return fine + (fast - fine) * blend;
-    };
 
     /** Zoom around a client point — mutates draft only; caller paints. */
     const zoomAtClientPoint = (
@@ -2372,10 +2242,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       let lastChromeAt = 0;
       let pendingStatus: string | null = null;
       let pointerDirty = false;
-      let wheelSpeedEma = 0;
+      const panGain = createCropWheelPanGain(140);
+      const zoomGain = createCropWheelZoomGain(140);
+      let lastWheelMode: boolean | null = null;
       let pendingWheel: {
         dx: number;
         dy: number;
+        zoomDy: number;
         zoom: boolean;
         clientX: number;
         clientY: number;
@@ -2488,28 +2361,22 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       const applyPendingWheel = () => {
         if (!pendingWheel) return;
-        const { dx, dy, zoom, clientX, clientY } = pendingWheel;
+        const { dx, dy, zoomDy, zoom, clientX, clientY } = pendingWheel;
         pendingWheel = null;
         const bounds = boundsOrRefresh();
         if (!bounds.width || !bounds.height) return;
 
         if (zoom) {
-          const mag = Math.abs(dy);
-          wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
-          const gain = wheelGainForSpeed(wheelSpeedEma, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
-          const factor = Math.exp(-dy * gain);
+          const factor = Math.exp(-zoomDy);
           zoomAtClientPoint(clientX, clientY, factor, bounds, gestureUndoCaptured);
           pendingStatus = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
           return;
         }
 
-        const mag = Math.hypot(dx, dy);
-        wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
-        const panGain = wheelGainForSpeed(wheelSpeedEma, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
         pushUndoIfNeeded(gestureUndoCaptured);
         beginCropEdit();
-        draft.cx += (dx / bounds.width) * draft.w * panGain;
-        draft.cy += (dy / bounds.height) * contentH(draft) * panGain;
+        draft.cx += (dx / bounds.width) * draft.w;
+        draft.cy += (dy / bounds.height) * contentH(draft);
         pendingStatus = 'Unsaved changes.';
       };
 
@@ -2576,7 +2443,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           wheelIdleTimer = 0;
         }
         gestureBounds = null;
-        wheelSpeedEma = 0;
+        panGain.reset();
+        zoomGain.reset();
+        lastWheelMode = null;
         if (paintRaf) {
           cancelAnimationFrame(paintRaf);
           flushGesturePaint();
@@ -2700,14 +2569,14 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       pageScope.listen(surface, 'wheel', (event) => {
         event.preventDefault();
-        if (!gestureBounds) refreshGestureBounds();
+        const bounds = boundsOrRefresh();
 
         // Trackpad pinch (and ctrl+wheel) always zooms. At locked cover-fit,
         // swipe falls back to scroll-to-zoom so the gesture still does something.
         const zoom = event.ctrlKey || !cropCanPan();
-        if (!pendingWheel || pendingWheel.zoom !== zoom) {
+        if (lastWheelMode !== null && lastWheelMode !== zoom) {
           // Mode change mid-frame — flush the previous bucket first.
-          if (pendingWheel && (pendingWheel.dx || pendingWheel.dy)) {
+          if (pendingWheel && (pendingWheel.dx || pendingWheel.dy || pendingWheel.zoomDy)) {
             if (paintRaf) {
               cancelAnimationFrame(paintRaf);
               flushGesturePaint();
@@ -2716,16 +2585,31 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
               paintDraftCrop();
             }
           }
+          pendingWheel = null;
+          panGain.reset();
+        }
+        lastWheelMode = zoom;
+        if (!pendingWheel) {
           pendingWheel = {
             dx: 0,
             dy: 0,
+            zoomDy: 0,
             zoom,
             clientX: event.clientX,
             clientY: event.clientY,
           };
         }
-        pendingWheel.dx += event.deltaX;
-        pendingWheel.dy += event.deltaY;
+        if (zoom) {
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+          const dy = event.deltaY * unit;
+          const gain = zoomGain.gainFor(0, dy, event.timeStamp);
+          pendingWheel.zoomDy += dy * gain;
+        } else {
+          const gain = panGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
+          zoomGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
+          pendingWheel.dx += event.deltaX * gain;
+          pendingWheel.dy += event.deltaY * gain;
+        }
         pendingWheel.clientX = event.clientX;
         pendingWheel.clientY = event.clientY;
         requestGesturePaint();
@@ -2781,24 +2665,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!editingSession || !viewportGateOk()) return;
       const target = editTarget;
 
-      const ghost = document.createElement('div');
-      ghost.className = 'dev-crop-ghost';
-      ghost.setAttribute('aria-hidden', 'true');
-      const ghostImg = document.createElement('img');
-      ghostImg.alt = '';
-      ghostImg.draggable = false;
-      ghostImg.style.backgroundColor = draftBackground;
-      ghostImg.src = editedImage.src || editedImage.currentSrc;
-      ghost.append(ghostImg);
-
-      const stage = document.createElement('div');
-      stage.className = 'dev-crop-stage';
-      PAGE_RESIZE_DIRS.forEach((dir) => {
-        const handle = document.createElement('span');
-        handle.className = `dev-crop-stage__handle dev-crop-stage__handle--${dir}`;
-        handle.dataset.pageResize = dir;
-        handle.setAttribute('aria-hidden', 'true');
-        stage.append(handle);
+      const { ghost, ghostImg, stage } = createImageCropStage({
+        src: editedImage.src || editedImage.currentSrc,
+        background: draftBackground,
       });
 
       // Lock clip/track height while siblings are still measurable — isolation
@@ -3038,27 +2907,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!resizeDir) return;
       pushUndoIfNeeded(resizeUndoCaptured);
       const width = resizeStartWidth || preview.clientWidth || 1;
-      let height = resizeStartHeight;
-      const deltaX = clientX - startX;
-      const deltaY = clientY - startY;
-      const edges = new Set(resizeDir.split(''));
-      const affectsN = edges.has('n');
-      const affectsS = edges.has('s');
-      const affectsE = edges.has('e');
-      const affectsW = edges.has('w');
-      const vertical = affectsN || affectsS;
-      const horizontalOnly = (affectsE || affectsW) && !vertical;
-
-      if (affectsN) height = resizeStartHeight - deltaY;
-      if (affectsS) height = resizeStartHeight + deltaY;
-      if (horizontalOnly) {
-        // Outward horizontal drag → wider ratio → shorter frame (width is layout-fixed).
-        const impliedWidth = affectsE
-          ? resizeStartWidth + deltaX
-          : resizeStartWidth - deltaX;
-        height = resizeStartHeight * (resizeStartWidth / Math.max(1, impliedWidth));
-      }
-
       const rootFs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
       // 12em floor is an on-page length. Scale it when resizing the smaller panel
       // preview so both surfaces share the same shortest aspect (5:1 at full width).
@@ -3074,7 +2922,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         minHeightOnPage * (width / pageWidth),
       );
       const maxHeight = width / RATIO_MIN;
-      height = clamp(height, minHeight, maxHeight);
+      const height = cropResizeHeight(resizeDir, width, resizeStartHeight, clientX - startX, clientY - startY, minHeight, maxHeight);
       beginCropEdit('both');
       const zoom = zoomOf(draft);
       draft.aspect = ratioFromSize(width, height);
@@ -3452,47 +3300,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       })();
     };
 
-    const replaceControlFrom = (event: Event) =>
-      event.target instanceof Element && Boolean(event.target.closest('button, input'));
-
-    // Click focuses the well for paste. Ghost buttons own Finder / library;
-    // double-click (and Enter/Space on the well) still open the file picker.
-    pageScope.listen(replaceDrop, 'click', (event) => {
-      if (replaceControlFrom(event)) return;
-      replaceDrop.focus();
-    });
-    pageScope.listen(replaceDrop, 'dblclick', (event) => {
-      if (replaceControlFrom(event)) return;
-      replaceFileInput.click();
-    });
-    pageScope.listen(replaceDrop, 'keydown', (event) => {
-      if (replaceControlFrom(event)) return;
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        replaceFileInput.click();
-      }
-    });
-    pageScope.listen(replaceDrop, 'paste', (event) => {
-      const items = event.clipboardData?.items;
-      if (!items) return;
-      const file = [...items]
-        .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
-        .find(isAcceptedImageFile);
-      if (!file) return;
-      event.preventDefault();
-      replaceWithFile(file);
-    });
-
-    pageScope.listen(replaceChooseButton, 'click', (event) => {
-      event.stopPropagation();
-      replaceFileInput.click();
-    });
-
-    pageScope.listen(replaceFileInput, 'change', () => {
-      const file = replaceFileInput.files?.[0];
-      replaceFileInput.value = '';
-      replaceWithFile(file);
-    });
+    bindImageReplaceControls(tuner, { onFile: replaceWithFile, signal: pageScope.signal });
 
     pageScope.listen(replaceAssetsButton, 'click', (event) => {
       event.stopPropagation();
@@ -3521,29 +3329,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
         }
       })();
-    });
-
-    // Stop page-level image-drop from inserting a section when the well is the target.
-    pageScope.listen(replaceDrop, 'dragenter', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      replaceDrop.classList.add('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'dragover', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      replaceDrop.classList.add('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'dragleave', (event) => {
-      event.stopPropagation();
-      replaceDrop.classList.remove('is-dragover');
-    });
-    pageScope.listen(replaceDrop, 'drop', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      replaceDrop.classList.remove('is-dragover');
-      replaceWithFile(event.dataTransfer?.files?.[0]);
     });
 
     pageScope.listen(saveButton, 'click', saveDraft);
@@ -3782,435 +3567,3 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   });
   import.meta.hot?.dispose(disposePage);
 </script>
-
-<style>
-  .tapico-crop-tuner__setting-meta {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-left: auto;
-    font-size: 0.6875rem;
-    white-space: nowrap;
-  }
-
-  .tapico-crop-tuner__setting-meta [data-inheritance="local"] { color: var(--ref-palette-blue-400); }
-  .tapico-crop-tuner__setting-meta [data-inheritance="inherited"] { color: var(--ref-palette-orange-400); }
-  .tapico-crop-tuner__crop-label { margin-bottom: -0.5rem; }
-
-  .tapico-crop-tuner__background-value {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .tapico-crop-tuner__background-value input {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .tapico-crop-tuner__background-swatch {
-    position: relative;
-    width: 1.5rem;
-    height: 1.5rem;
-    flex-shrink: 0;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.25rem;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__background-swatch::after {
-    content: '';
-    position: absolute;
-    inset: -8px;
-  }
-
-  [data-crop-background-wrap][hidden] {
-    display: none;
-  }
-
-  color-picker[data-crop-background-picker] {
-    position: absolute;
-    width: 0;
-    height: 0;
-    overflow: visible;
-    --font: var(--font-sans);
-    --bg-primary: var(--sys-color-srf);
-    --bg-secondary: var(--sys-color-srf-container-low);
-    --bg-header: var(--sys-color-srf-container-high);
-    --border-color-primary: var(--sys-color-outline-variant);
-    --border-color-secondary: var(--sys-color-on-srf);
-    --txt-color-primary: var(--sys-color-on-srf);
-  }
-
-
-  /* Width + height caps read as one decision, so they share a row. Collapses
-     to nothing when both children are hidden — an empty flex item would still
-     take the parent column's gap. */
-  .tapico-crop-tuner__pair {
-    display: none;
-    gap: var(--space-unit);
-  }
-
-  .tapico-crop-tuner__pair:has(> *:not([hidden])) {
-    display: flex;
-  }
-
-  .tapico-crop-tuner__pair > * {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .tapico-crop-tuner {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: 0.7em;
-  }
-
-  /*
-    Resize handles sit half outside the preview. DevOverlay's body scrolls with
-    overflow-x:hidden, which clips anything that escapes the stage box — pad
-    every side enough for the 0.7em chip plus its ::before hit slop.
-  */
-  .tapico-crop-tuner__linked-aspect-hint {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-    margin: 0;
-    border: 0;
-    background: transparent;
-    color: var(--sys-color-on-srf-subtle);
-    cursor: help;
-  }
-
-  .tapico-crop-tuner__linked-aspect-icon {
-    display: inline-flex;
-  }
-
-  .tapico-crop-tuner__linked-aspect-tooltip {
-    position: absolute;
-    left: calc(100% + 6px);
-    top: 50%;
-    z-index: 2;
-    width: max-content;
-    max-width: 14em;
-    padding: 6px 8px;
-    border-radius: var(--dev-radius-control);
-    background: var(--sys-color-inverse-srf);
-    color: var(--sys-color-inverse-on-srf-subtle);
-    font: var(--dev-text-label);
-    pointer-events: none;
-    opacity: 0;
-    transform: translateY(-50%) translateX(4px);
-    transition: opacity 0.15s ease, transform 0.15s ease;
-  }
-
-  .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
-  .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
-    opacity: 1;
-    transform: translateY(-50%) translateX(0);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .tapico-crop-tuner__linked-aspect-tooltip {
-      transform: translateY(-50%);
-      transition: opacity 0.15s ease;
-    }
-
-    .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
-    .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
-      transform: translateY(-50%);
-    }
-  }
-
-  .tapico-crop-tuner__stage {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 14em;
-    padding: 0.85em;
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview {
-    position: relative;
-    width: 100%;
-    aspect-ratio: 16 / 10;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-    cursor: grab;
-    touch-action: none;
-    user-select: none;
-    --tuner-content-w: 1;
-    --tuner-content-cx: 0.5;
-    --tuner-content-cy: 0.5;
-  }
-
-  .tapico-crop-tuner__preview-clip {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview:not(.tapico-crop-tuner__preview--placeholder) .project-media__placeholder-label {
-    display: none;
-  }
-
-  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip {
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip::after {
-    content: '';
-    position: absolute;
-    inset: 0.75em;
-    border: 2px dashed var(--ref-palette-grey-600);
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .tapico-crop-tuner__preview--placeholder img {
-    opacity: 0;
-  }
-
-  .tapico-crop-tuner__preview--placeholder .project-media__placeholder-label {
-    z-index: 2;
-  }
-
-  .tapico-crop-tuner__preview.is-dragging {
-    cursor: grabbing;
-  }
-
-  .tapico-crop-tuner__preview.is-resizing {
-    cursor: inherit;
-  }
-
-  /* Identical placement rule to the page (project.css) so the preview cannot lie. */
-  .tapico-crop-tuner__preview img {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: calc(100% / var(--tuner-content-w, 1));
-    height: auto;
-    max-width: none;
-    pointer-events: none;
-    transform: translate(
-      calc(var(--tuner-content-cx, 0.5) * -100%),
-      calc(var(--tuner-content-cy, 0.5) * -100%)
-    );
-  }
-
-  .tapico-crop-tuner__handle {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 1.5em;
-    height: 1.5em;
-    border: 1px solid rgb(26 26 26 / 0.6);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    pointer-events: none;
-  }
-
-  .tapico-crop-tuner__handle::before,
-  .tapico-crop-tuner__handle::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    background: rgb(26 26 26 / 0.6);
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__handle::before {
-    width: 2em;
-    height: 1px;
-  }
-
-  .tapico-crop-tuner__handle::after {
-    width: 1px;
-    height: 2em;
-  }
-
-  .tapico-crop-tuner__resize {
-    position: absolute;
-    z-index: 2;
-    box-sizing: border-box;
-    width: 0.7em;
-    height: 0.7em;
-    border: 1px solid rgb(26 26 26 / 0.75);
-    border-radius: 1px;
-    background: #ffffff;
-    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
-  }
-
-  .tapico-crop-tuner__resize::before {
-    content: '';
-    position: absolute;
-    inset: -0.45em;
-  }
-
-  .tapico-crop-tuner__resize--n,
-  .tapico-crop-tuner__resize--s {
-    left: 50%;
-    transform: translateX(-50%);
-    cursor: ns-resize;
-  }
-
-  .tapico-crop-tuner__resize--n {
-    top: 0;
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--s {
-    bottom: 0;
-    transform: translate(-50%, 50%);
-  }
-
-  .tapico-crop-tuner__resize--e,
-  .tapico-crop-tuner__resize--w {
-    top: 50%;
-    transform: translateY(-50%);
-    cursor: ew-resize;
-  }
-
-  .tapico-crop-tuner__resize--e {
-    right: 0;
-    transform: translate(50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--w {
-    left: 0;
-    transform: translate(-50%, -50%);
-  }
-
-  .tapico-crop-tuner__resize--ne {
-    top: 0;
-    right: 0;
-    transform: translate(50%, -50%);
-    cursor: nesw-resize;
-  }
-
-  .tapico-crop-tuner__resize--nw {
-    top: 0;
-    left: 0;
-    transform: translate(-50%, -50%);
-    cursor: nwse-resize;
-  }
-
-  .tapico-crop-tuner__resize--se {
-    right: 0;
-    bottom: 0;
-    transform: translate(50%, 50%);
-    cursor: nwse-resize;
-  }
-
-  .tapico-crop-tuner__resize--sw {
-    bottom: 0;
-    left: 0;
-    transform: translate(-50%, 50%);
-    cursor: nesw-resize;
-  }
-
-  .tapico-crop-tuner__control {
-    display: grid;
-    grid-template-columns: 3em 1fr 3em;
-    align-items: center;
-    gap: 0.6em;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__toolbar {
-    display: grid;
-    grid-template-columns: repeat(3, 2.4em) 1fr;
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__toolbar > button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45em;
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.45em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.72rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__toolbar > button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__constraint {
-    justify-content: flex-start;
-    padding-inline: 0.55em;
-  }
-
-  .tapico-crop-tuner__constraint.is-locked {
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 88%, var(--sys-color-on-srf));
-  }
-
-  .tapico-crop-tuner__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    line-height: 0;
-  }
-
-  .tapico-crop-tuner__icon :global(svg) {
-    display: block;
-  }
-
-  .tapico-crop-tuner__control input {
-    width: 100%;
-    accent-color: var(--sys-color-on-srf);
-  }
-
-  .tapico-crop-tuner__control output {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tapico-crop-tuner__readout[hidden] {
-    display: none;
-  }
-
-  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
-     stay in the a11y tree for "Uploading…" / "Could not replace…". */
-  .tapico-crop-tuner__status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .tapico-crop-tuner__status[data-replacement-error="true"] {
-    position: static;
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    color: var(--sys-color-error);
-    white-space: normal;
-  }
-
-</style>

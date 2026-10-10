@@ -4,6 +4,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import sharp from 'sharp';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { isVideoSrc } from '../src/lib/imageUpload.mjs';
 
@@ -449,7 +450,6 @@ export async function readImageDimsFromSrc(src) {
   try {
     const filePath = resolveAssetFilePath(src);
     if (!filePath) return null;
-    const { default: sharp } = await import('sharp');
     const { width, height, orientation } = await sharp(filePath).metadata();
     if (!width || !height) return null;
     const rotated = typeof orientation === 'number' && orientation >= 5 && orientation <= 8;
@@ -469,7 +469,6 @@ export async function readMediaDimsFromSrc(src) {
   const value = String(src || '').trim();
   if (value === 'placeholder.svg') {
     try {
-      const { default: sharp } = await import('sharp');
       const { width, height } = await sharp(path.join(process.cwd(), 'media', value)).metadata();
       return width && height ? { srcWidth: width, srcHeight: height } : null;
     } catch {

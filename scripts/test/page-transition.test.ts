@@ -149,9 +149,24 @@ class ContainerFixture {
   }
 }
 
+class ReadinessRoot extends Target {
+  dataset: Record<string, string> = {};
+  parentElement: ContainerFixture | null = null;
+  style: Record<string, string> = {};
+  constructor(public visible = true) {
+    super();
+  }
+  getBoundingClientRect() {
+    return this.visible
+      ? { top: 0, left: 0, bottom: 100, right: 100 }
+      : { top: 900, left: 0, bottom: 1000, right: 100 };
+  }
+  closest() { return null; }
+}
+
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; fontSetReady?: Promise<void>; fontFaces?: Array<{ status: string; loaded: Promise<void> }>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessRoot[]; fonts?: Promise<void>; fontSetReady?: Promise<void>; fontFaces?: Array<{ status: string; loaded: Promise<void> }>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   let bodyReads = 0;
@@ -227,7 +242,9 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; font
       : (options.noOverlay ? null : overlay),
     querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {}
       : selector === '[data-home-intro-surface]' ? homeIntro : null,
-    querySelectorAll: (selector: string) => selector === 'img'
+    querySelectorAll: (selector: string) => selector === '[data-page-reveal-ready]'
+      ? options.readinessRoots ?? []
+      : selector === 'img'
       ? options.images ?? []
       : selector === 'img[data-image-preview]'
         ? (options.images ?? []).filter((image) => image.preview)
@@ -305,7 +322,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; font
   if ((options as any).initialController) runInNewContext(earlyCompiled, context);
   if (!options.deferNavigationModule) runInNewContext(compiled, context);
   return {
-    overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks,
+    overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks, readinessRoots: options.readinessRoots ?? [],
     get persistentHooks() { return persistentHooks; },
     get upgrades() { return upgrades; }, get bound() { return bound; }, get bodyReads() { return bodyReads; },
     click(index = 0, properties: Record<string, unknown> = {}) {
@@ -381,6 +398,21 @@ test('initial reveal waits for styles and thumbnails without waiting for editing
   assert.equal(f.persistentHooks, undefined);
 });
 
+test('initial reveal keeps the veil opaque until a visible opted-in root is ready', async () => {
+  const root = new ReadinessRoot();
+  const f = fixture({ initialController: true, layoutPending: true, readinessRoots: [root] });
+  await f.paint();
+  f.document.documentElement.dataset.introLayoutReady = 'true';
+  f.window.emit('vcd:intro-layout-ready');
+  await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  root.dataset.pageRevealReady = 'true';
+  root.emit('vcd:page-reveal-ready');
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, true);
+});
+
 for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} reveal waits for requested faces without waiting for FontFaceSet.ready`, async () => {
     const requested = deferred();
@@ -443,6 +475,34 @@ test('cached content uses the native incoming fade and approved GSAP outgoing co
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[0].vars.opacity, 1);
+});
+
+test('navigation readiness waits for opted-in roots, ignores offscreen roots, and cleans up on cancel', async () => {
+  const pending = new ReadinessRoot();
+  const f = fixture({ readinessRoots: [pending] });
+  await f.paint();
+  assert.equal(f.animations.length, 0);
+  assert.equal(pending.count('vcd:page-reveal-ready'), 1);
+  pending.dataset.pageRevealReady = 'true';
+  pending.emit('vcd:page-reveal-ready');
+  await f.paint();
+  assert.equal(f.animations.length, 1);
+  const ready = new ReadinessRoot(); ready.dataset.pageRevealReady = 'true';
+  const offscreen = new ReadinessRoot(false);
+  const immediate = fixture({ readinessRoots: [ready, offscreen] });
+  await immediate.paint();
+  assert.equal(immediate.animations.length, 1);
+  assert.equal(offscreen.count('vcd:page-reveal-ready'), 0);
+  const cancelledRoot = new ReadinessRoot();
+  const cancelled = fixture({ readinessRoots: [cancelledRoot] });
+  await cancelled.paint();
+  assert.equal(cancelledRoot.count('vcd:page-reveal-ready'), 1);
+  cancelled.click();
+  assert.equal(cancelledRoot.count('vcd:page-reveal-ready'), 0);
+  cancelledRoot.dataset.pageRevealReady = 'true';
+  cancelledRoot.emit('vcd:page-reveal-ready');
+  await cancelled.paint();
+  assert.equal(cancelled.animations.length, 0);
 });
 
 test('incoming WAAPI fade completes only when its owned animation finishes', async () => {

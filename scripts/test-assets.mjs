@@ -30,7 +30,7 @@ const check = (label, condition, detail = '') => {
   }
 };
 
-/** A throwaway { dist, media } pair, cleaned up after `fn` runs. */
+/** A throwaway { root, dist, media } pair, cleaned up after `fn` runs. */
 async function withFixture(label, fn) {
   console.log(`\n${label}`);
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-assets-test-'));
@@ -39,7 +39,7 @@ async function withFixture(label, fn) {
   await mkdir(dist, { recursive: true });
   await mkdir(media, { recursive: true });
   try {
-    await fn({ dist, media });
+    await fn({ root, dist, media });
   } catch (error) {
     failures += 1;
     console.log(`  ✗ threw — ${error instanceof Error ? error.message : error}`);
@@ -233,7 +233,7 @@ await withFixture('svg refs copy through unchanged', async ({ dist, media }) => 
   check('no preview generated', !existsSync(path.join(dist, 'images', 'icon.preview.webp')));
 });
 
-await withFixture('image generation survives the Vite config runner closing', async ({ media }) => {
+await withFixture('image metadata and generation survive the Vite config runner closing', async ({ root, media }) => {
   const { createServer } = await import('vite');
   const server = await createServer({
     configFile: false,
@@ -242,13 +242,56 @@ await withFixture('image generation survives the Vite config runner closing', as
     ssr: { external: true },
   });
   let generate;
+  let readImageDimsFromSrc;
+  let readMediaDimsFromSrc;
+  let mediaDevServer;
   try {
-    const module = await server.environments.ssr.runner.import(path.resolve('scripts/image-derivatives.mjs'));
-    generate = module.generateDerivativeBuffer;
+    const derivatives = await server.environments.ssr.runner.import(path.resolve('scripts/image-derivatives.mjs'));
+    generate = derivatives.generateDerivativeBuffer;
+    const assets = await server.environments.ssr.runner.import(path.resolve('scripts/dev-assets.mjs'));
+    ({ readImageDimsFromSrc, readMediaDimsFromSrc } = assets);
+    ({ mediaDevServer } = await server.environments.ssr.runner.import(path.resolve('scripts/dev-api-plugins.mjs')));
   } finally {
     await server.close();
   }
   await writeTestJpeg(media, 'hero.jpg');
+  await writeMedia(media, 'placeholder.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"/>');
+
+  const previousCwd = process.cwd();
+  process.chdir(root);
+  try {
+    const imageDims = await readImageDimsFromSrc('/images/hero.jpg');
+    check('image metadata remains available after runner shutdown', imageDims?.srcWidth === 8 && imageDims?.srcHeight === 8);
+    const placeholderDims = await readMediaDimsFromSrc('placeholder.svg');
+    check('placeholder metadata remains available after runner shutdown', placeholderDims?.srcWidth === 12 && placeholderDims?.srcHeight === 8);
+
+    let middleware;
+    mediaDevServer().configureServer({
+      middlewares: {
+        use(prefix, callback) {
+          middleware = callback ?? prefix;
+        },
+      },
+    });
+    const response = {
+      statusCode: 0,
+      headers: new Map(),
+      body: null,
+      setHeader(name, value) { this.headers.set(name.toLowerCase(), value); },
+      end(body) { this.body = body; },
+    };
+    let passedToNext = false;
+    await middleware(
+      { method: 'GET', url: '/hero.jpg?w=32', headers: {} },
+      response,
+      () => { passedToNext = true; },
+    );
+    check('thumbnail middleware remains available after runner shutdown', response.statusCode === 200 && Buffer.isBuffer(response.body));
+    check('thumbnail middleware returns an image', response.headers.get('content-type') === 'image/jpeg' && !passedToNext);
+  } finally {
+    process.chdir(previousCwd);
+  }
+
   for (const kind of ['thumb', 'preview']) {
     const buffer = await generate(path.join(media, 'hero.jpg'), kind);
     check(`${kind} remains available after runner shutdown`, isWebpBytes(buffer));

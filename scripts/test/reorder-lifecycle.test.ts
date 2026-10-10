@@ -12,7 +12,10 @@ class FakeClassList {
 
 class FakeStyle {
   [key: string]: string | undefined;
-  removeProperty(name: string) { delete this[name]; }
+  removeProperty(name: string) {
+    delete this[name];
+    delete this[name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())];
+  }
   setProperty(name: string, value: string) { this[name] = value; }
   getPropertyValue(name: string) { return this[name] ?? ''; }
 }
@@ -67,6 +70,13 @@ let nextTimer = 1;
 let createdElements: FakeElement[] = [];
 let computedOpacity = '1';
 let computedProperties = new Map<string, string>();
+const globalKeys = [
+  'HTMLElement', 'performance', 'requestAnimationFrame', 'cancelAnimationFrame',
+  'setTimeout', 'clearTimeout', 'window', 'document', 'getComputedStyle',
+] as const;
+const originalGlobalDescriptors = new Map<PropertyKey, PropertyDescriptor | undefined>(
+  globalKeys.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
+);
 
 const flushFrame = () => {
   const next = scheduled.entries().next().value as [number, FrameRequestCallback] | undefined;
@@ -110,17 +120,31 @@ const resetGlobals = (reduced = false) => {
   });
 };
 
+const restoreGlobals = () => {
+  globalKeys.forEach((key) => {
+    const descriptor = originalGlobalDescriptors.get(key);
+    if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+    else delete (globalThis as Record<string, unknown>)[key];
+  });
+};
+
 const fixture = (
   moveIndicatorWithFlip = true,
   events: string[] = [],
   onSlotSync?: (indicator: FakeElement) => void,
   onIndicatorCreate?: (indicator: FakeElement) => void,
   onSlotLayout?: (indicator: FakeElement) => void,
+  withBackdrop = false,
 ) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
     const item = new FakeElement();
     item.rect = { top: index * 56, left: 0, width: 120, height: 40, right: 120, bottom: index * 56 + 40 };
+    if (withBackdrop) {
+      const backdrop = new FakeElement();
+      backdrop.classList.add('backdrop');
+      item.append(backdrop);
+    }
     zone.append(item);
     return item;
   });
@@ -129,7 +153,10 @@ const fixture = (
     getItems: () => items.filter((item) => item !== dragItem),
     getDropZone: () => zone,
     getDragItem: () => dragItem,
-    classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
+    classes: {
+      indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost',
+      ...(withBackdrop ? { liftBackdrop: 'backdrop' } : {}),
+    },
     measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px', marginTop: '24px' }; },
     onSlotSync: (indicator) => { events.push('slot'); onSlotSync?.(indicator as FakeElement); },
     onSlotLayout: (indicator) => { events.push('layout'); onSlotLayout?.(indicator as FakeElement); },
@@ -138,6 +165,16 @@ const fixture = (
     moveIndicatorWithFlip,
   });
   return { zone, items, controller, setDrag: (item: FakeElement | null) => { dragItem = item; } };
+};
+
+const backdropOf = (item: FakeElement) => item.children.find((child) => child.classList.contains('backdrop')) ?? null;
+
+const flushUntilSettled = async (promise: Promise<void>) => {
+  for (let frame = 0; frame < 80 && scheduled.size; frame += 1) {
+    flushFrame();
+    await Promise.resolve();
+  }
+  await promise;
 };
 
 const test = async (name: string, run: () => Promise<void> | void) => {
@@ -328,3 +365,63 @@ await test('destroy cancels fade ghost schedulers', () => {
     assert.equal(zone.children.some((element) => element.classList.contains('ghost')), false);
   }
 });
+
+await test('a second normal lift releases the prior drop shadow override', async () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(true, [], undefined, undefined, undefined, true);
+  const backdrop = backdropOf(items[0]);
+  assert.ok(backdrop);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  const drop = controller.endDrop();
+  await flushUntilSettled(drop);
+  assert.equal(backdrop!.style.boxShadow, 'none');
+  assert.equal(backdrop!.style.transition, 'opacity 200ms ease-out');
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(backdrop!.style.boxShadow, undefined);
+  assert.equal(backdrop!.style.transition, undefined);
+  assert.ok(items[0].classList.contains('lifted'));
+  assert.ok(controller.getState().phase === 'lifted');
+  controller.destroy();
+});
+
+await test('a second reduced-motion lift releases the prior drop shadow override', async () => {
+  resetGlobals(true);
+  const { items, controller, setDrag } = fixture(true, [], undefined, undefined, undefined, true);
+  const backdrop = backdropOf(items[0]);
+  assert.ok(backdrop);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  await controller.endDrop();
+  assert.equal(backdrop!.style.boxShadow, 'none');
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(backdrop!.style.boxShadow, undefined);
+  assert.equal(backdrop!.style.transition, undefined);
+  assert.ok(items[0].classList.contains('lifted'));
+  controller.destroy();
+});
+
+await test('prepareLift centralizes new, blocked, resumed, and switched decisions', async () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(true);
+  const handle = new FakeElement();
+  setDrag(items[0]);
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'new');
+  controller.beginLift(items[0], handle, 10, 10, 0, { followPointer: false });
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'blocked');
+
+  const firstDrop = controller.endDrop();
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'resumed');
+  await firstDrop;
+  assert.equal(controller.getState().phase, 'lifted');
+
+  const secondDrop = controller.endDrop();
+  assert.equal(controller.prepareLift(items[1], new FakeElement(), 10, 70), 'new');
+  setDrag(items[1]);
+  controller.beginLift(items[1], new FakeElement(), 10, 70, 0, { followPointer: false });
+  assert.equal(controller.getState().phase, 'lifted');
+  controller.destroy();
+  await secondDrop;
+});
+
+restoreGlobals();

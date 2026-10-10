@@ -5,6 +5,7 @@ import { createHistory, pageHistory, registerHistoryScope } from '../../src/lib/
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 import { devEditPendingId } from '../../src/scripts/devEditTarget';
 import { imageGridConstrainedStyle, resolveImageGridConstrained } from '../../src/lib/responsiveImage';
+import { createCropWheelPanGain } from '../../src/lib/cropWheelPan';
 import {
   IMAGE_VIEWPORTS,
   matchCarouselViewport,
@@ -68,6 +69,7 @@ const env = {
   matchCarouselViewport,
   resolveCarouselSettings,
   serializeCarouselSettings,
+  createCropWheelPanGain,
   sizeIcon: (value: string) => value,
   refreshProjectCropCovers: () => {},
 };
