@@ -54,7 +54,7 @@ function setup(reduced = false) {
     for (const [id, callback] of [...frames]) { frames.delete(id); callback(now); }
     await flush();
   };
-  return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance, setHitCursor: (value: string) => { hitCursor = value; } };
+  return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance, isHolding: () => [...timers.values()].some((timer) => timer.at === now + 180), setHitCursor: (value: string) => { hitCursor = value; } };
 }
 
 async function advanceUntil(h: Harness, predicate: () => boolean, maxMs = 10000, onAdvance?: () => void) {
@@ -148,6 +148,27 @@ test('long approaches slow into a bounded overshoot and land exactly before acti
   const final = approach[approach.length - 1];
   expect(final.x).toBe(700);
   expect(final.y).toBe(670);
+  h.guide.destroy();
+});
+
+test('carries the image below the text boundary before the held drop', async () => {
+  const h = setup();
+  await reachLift(h);
+  await advanceUntil(h, () => h.actions.includes('drop'));
+  const moves = h.actions.filter((action) => action.startsWith('move:'));
+  const final = moves[moves.length - 1].match(/move:([-\d]+),([-\d]+)/);
+  expect(final).not.toBeNull();
+  expect(Number(final![2])).toBeGreaterThanOrEqual(573);
+  h.guide.destroy();
+});
+
+test('interrupting the arrival hold cancels the drop cleanly', async () => {
+  const h = setup();
+  await reachLift(h);
+  await advanceUntil(h, () => h.isHolding());
+  h.guide.stop();
+  await h.advance(500);
+  expect(h.actions).not.toContain('drop');
   h.guide.destroy();
 });
 
