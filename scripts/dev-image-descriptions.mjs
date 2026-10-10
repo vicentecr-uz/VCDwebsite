@@ -6,6 +6,7 @@ import { parse } from 'parse5';
 import sharp from 'sharp';
 import { documentInfo } from './public-site-output.mjs';
 import { readDevDocument, resolveEditableDocument, writeDevDocument } from './dev-api-plugins.mjs';
+import { requestVpsAgent } from './vps-agent.mjs';
 
 const DEFAULT_SITE = 'https://wip.vcruzdesigns.com';
 const MAX_PAGES = 100;
@@ -208,7 +209,7 @@ export function createImageDescriptionsService(options = {}) {
   const cwd = options.cwd || process.cwd();
   const site = new URL(options.site || process.env.PUBLIC_SITE_URL || DEFAULT_SITE);
   const fetchImpl = options.fetchImpl || fetch;
-  const modelFetch = options.modelFetch || fetchImpl;
+  const requestAgent = options.requestAgent || requestVpsAgent;
   const cacheFile = options.cacheFile || path.join(cwd, '.dev-session/image-descriptions.json');
   const mediaDir = options.mediaDir || path.join(cwd, 'media');
   const readDocument = options.readDocument || (async (document) => {
@@ -337,12 +338,9 @@ export function createImageDescriptionsService(options = {}) {
     const publicBytes = await fetchPublicImage(row.publicSrc);
     if (!original.equals(publicBytes)) throw new Error('Public image does not match the local source.');
     const resized = await sharp(publicBytes).flatten({ background: '#ffffff' }).resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
-    const response = await modelFetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal: AbortSignal.timeout(90_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma3:4b', stream: false, options: { temperature: 0, num_predict: 90 }, messages: [{ role: 'user', content: 'Write one concise factual image description for a screen reader, in 25 words or fewer. Name only the main objects or action clearly visible. Never speculate about purpose, use, relationships, identity, or project facts. Do not use likely, probably, perhaps, or showcasing. Return only the description, without an introduction or quotes.', images: [resized.toString('base64')] }] }) });
-    if (!response.ok) throw new Error('The local vision model failed.');
-    let body;
-    try { body = JSON.parse(await readBoundedBody(response, 64 * 1024) || ''); } catch { throw new Error('The model returned invalid JSON.'); }
-    const text = typeof body.message?.content === 'string' ? body.message.content.trim() : '';
-    if (!plain(text)) throw new Error('The model returned invalid description text.');
+    const body = await requestAgent({ task: 'image', image: resized.toString('base64') }, { timeout: 90_000 });
+    const text = typeof body?.description === 'string' ? body.description.trim() : '';
+    if (!plain(text)) throw new Error('The vision agent returned invalid description text.');
     return text;
   }
 
