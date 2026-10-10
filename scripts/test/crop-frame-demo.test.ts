@@ -242,6 +242,22 @@ test('inactive crop stage cannot focus, pan, resize, or wheel', () => {
   h.api.destroy();
 });
 
+test('pointer focus marker suppresses the ring until keyboard or blur focus', () => {
+  const h = setup();
+  const stage = h.stage();
+  h.pointer(stage, 'pointerdown');
+  expect(stage.hasAttribute('data-pointer-focus')).toBe(true);
+  h.pointer(stage, 'pointerup');
+  expect(stage.hasAttribute('data-pointer-focus')).toBe(true);
+  stage.dispatchEvent(new h.win.KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }));
+  expect(stage.hasAttribute('data-pointer-focus')).toBe(false);
+  h.pointer(stage, 'pointerdown');
+  expect(stage.hasAttribute('data-pointer-focus')).toBe(true);
+  stage.dispatchEvent(new h.win.Event('blur'));
+  expect(stage.hasAttribute('data-pointer-focus')).toBe(false);
+  h.api.destroy();
+});
+
 test('direct pan and zoom reject invalid values, inactive edits, and respect locked bounds', () => {
   const h = setup({ initialAspect: '1:1' });
   const before = h.api.getState();
