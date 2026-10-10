@@ -5,7 +5,7 @@ import path from 'node:path';
 let suppressUntil = 0;
 
 const isContentPath = (file = '') =>
-  /[/\\]src[/\\]content[/\\](projects|pages)[/\\]/.test(file);
+  /[/\\]src[/\\]content[/\\]/.test(file);
 
 /** Anchored to the repo root's `media/` — a bare `media` regex would also
  *  match an unrelated `media/` directory under node_modules. */
@@ -75,7 +75,7 @@ export function contentHmrGate() {
      * @param {{ file: string }} ctx
      */
     handleHotUpdate({ file }) {
-      // Media + content JSON: served/read outside the module graph.
+      // Media + all content JSON: served/read outside the module graph.
       // Branch sync / Save writing these must not invalidate modules.
       if (isMediaPath(file) || isContentPath(file)) return [];
       // Colour-token Save already applied live — skip CSS HMR flash.
