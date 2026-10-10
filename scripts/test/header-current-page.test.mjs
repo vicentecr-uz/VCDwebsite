@@ -139,6 +139,7 @@ function createHarness({
   globalThis.CSSTransition = class {};
   globalThis.clearTimeout = window.clearTimeout;
   globalThis.syncMenuSurfaceInlineSize = () => {};
+  globalThis.isDevEditing = () => false;
   const transformed = new Bun.Transpiler({ loader: 'ts' }).transformSync(
     `const syncMenuSurfaceInlineSize = globalThis.syncMenuSurfaceInlineSize;\n${controllerSource}\nglobalThis.controller = { messageForClick, removeCurrentPage };`,
   );
