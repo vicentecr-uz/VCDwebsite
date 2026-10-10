@@ -255,6 +255,7 @@ const STATIC_EDITABLE_DOCUMENTS = new Map([
   ['parentpal', 'src/content/projects/parentpal.json'],
   ['conic-collection', 'src/content/projects/conic-collection.json'],
   ['styles', 'src/content/pages/styles.json'],
+  ['header-settings', 'src/content/settings/header.json'],
 ]);
 
 export function resolveEditableDocument(documentKey) {
