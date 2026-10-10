@@ -14,15 +14,39 @@ const globeSvg = sizeIcon(globeIcon, 16);
   <div class="dev-drop" data-crop-replace-drop tabindex="0" role="button" aria-label="Replace image">
     <div class="dev-drop__well">
       {dropLabel && <p class="dev-drop__label">{dropLabel}</p>}
-      <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
-        <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
-        File system
-      </button>
+      <span class="dev-file-picker">
+        <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose tabindex="-1" aria-hidden="true">
+          <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
+          File system
+        </button>
+        <input type="file" accept="image/*,.heic,.heif" aria-label="File system" data-crop-replace-file />
+      </span>
       {showAssetManager && <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
         <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
         Asset manager
       </button>}
-      <input type="file" accept="image/*,.heic,.heif" hidden data-crop-replace-file />
     </div>
   </div>
 </div>
+
+<style>
+  .dev-file-picker {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .dev-file-picker:focus-within {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+    border-radius: var(--dev-radius-control);
+  }
+
+  .dev-file-picker > input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+</style>
