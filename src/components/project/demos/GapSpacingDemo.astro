@@ -6,10 +6,9 @@ import ProjectBodyText from '../ProjectBodyText.astro';
 import ProjectSectionTitle from '../ProjectSectionTitle.astro';
 import { sectionReorderHandleMarkup } from '../../../lib/sectionReorderChrome';
 import { spacingButtonsHtml } from '../../../lib/gapSpacingControl';
-import pointerIcon from 'lucide-static/icons/pointer.svg?raw';
-import handIcon from 'lucide-static/icons/hand.svg?raw';
-import handGrabIcon from 'lucide-static/icons/hand-grab.svg?raw';
-import { sizeIcon } from '../../../lib/icons';
+import pointingCursor from '../../../assets/demo-cursors/pointing.svg?url';
+import openCursor from '../../../assets/demo-cursors/open.svg?url';
+import grabbingCursor from '../../../assets/demo-cursors/grabbing.svg?url';
 import '../../../styles/project.css';
 import '../../../styles/gapSpacingControl.css';
 import '../../../styles/sectionReorderChrome.css';
@@ -19,9 +18,6 @@ const blocks = [
   { type: 'text', title: 'The small details' },
 ];
 const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
-const cursorPointerSvg = sizeIcon(pointerIcon, 24);
-const cursorHandSvg = sizeIcon(handIcon, 24);
-const cursorHandGrabSvg = sizeIcon(handGrabIcon, 24);
 ---
 
 <vcd-gap-spacing-demo class="is-dev-mode" data-crop-demo>
@@ -51,9 +47,9 @@ const cursorHandGrabSvg = sizeIcon(handGrabIcon, 24);
   </div>
   <span class="block-demo-cursor" data-block-guide-cursor aria-hidden="true">
     <span data-cursor-glyph="arrow"><svg width="24" height="24" viewBox="0 0 24 24"><path d="M4.65 2.7C3.45 2.18 2.18 3.45 2.7 4.65l6.85 16.2c.5 1.17 2.17 1.17 2.67 0l2.32-5.4c.19-.44.54-.79.98-.98l5.33-2.25c1.17-.5 1.17-2.17 0-2.67L4.65 2.7Z" fill="#171717" stroke="white" stroke-width="1.5" stroke-linejoin="round" /></svg></span>
-    <span data-cursor-glyph="pointer" set:html={cursorPointerSvg}></span>
-    <span data-cursor-glyph="grab" set:html={cursorHandSvg}></span>
-    <span data-cursor-glyph="grabbing" set:html={cursorHandGrabSvg}></span>
+    <span data-cursor-glyph="pointer"><img src={pointingCursor} alt="" draggable="false" /></span>
+    <span data-cursor-glyph="grab"><img src={openCursor} alt="" draggable="false" /></span>
+    <span data-cursor-glyph="grabbing"><img src={grabbingCursor} alt="" draggable="false" /></span>
   </span>
   <div class="demo-controls gap-spacing-demo__reset-controls"><Button label="Reset" type="button" data-gap-reset data-reorder-demo-reset /></div>
 </vcd-gap-spacing-demo>
@@ -89,10 +85,11 @@ const cursorHandGrabSvg = sizeIcon(handGrabIcon, 24);
   .gap-spacing-demo__reset-controls :global(.dev-btn) { --dev-btn-hit-inset: 8px; }
   .block-demo-cursor { position: fixed; left: 0; top: 0; width: 24px; height: 24px; z-index: 150; opacity: 0; pointer-events: none; transform-origin: 0 0; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.2)); }
   .block-demo-cursor [data-cursor-glyph] { display: none; position: absolute; inset: 0; width: 24px; height: 24px; color: #171717; }
+  .block-demo-cursor [data-cursor-glyph] img { display: block; max-width: none; }
   .block-demo-cursor [data-cursor-glyph="arrow"] { left: -3px; top: -2px; }
-  .block-demo-cursor [data-cursor-glyph="pointer"] { left: -8px; top: -2px; filter: drop-shadow(0 0 1px white); }
-  .block-demo-cursor [data-cursor-glyph="grab"] { left: -12px; top: -12px; filter: drop-shadow(0 0 1px white); }
-  .block-demo-cursor [data-cursor-glyph="grabbing"] { left: -12px; top: -12px; filter: drop-shadow(0 0 1px white); }
+  .block-demo-cursor [data-cursor-glyph="pointer"] { left: -17.5px; top: -18.75px; width: 32px; height: 33px; transform: scale(1.25); transform-origin: 0 0; }
+  .block-demo-cursor [data-cursor-glyph="grab"] { left: -20px; top: -21.25px; width: 32px; height: 32px; transform: scale(1.25); transform-origin: 0 0; }
+  .block-demo-cursor [data-cursor-glyph="grabbing"] { left: -20px; top: -21.25px; width: 32px; height: 32px; transform: scale(1.25); transform-origin: 0 0; }
   .block-demo-cursor[data-cursor-state="arrow"] [data-cursor-glyph="arrow"],
   .block-demo-cursor[data-cursor-state="pointer"] [data-cursor-glyph="pointer"],
   .block-demo-cursor[data-cursor-state="grab"] [data-cursor-glyph="grab"],
