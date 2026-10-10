@@ -401,4 +401,27 @@ await test('a second reduced-motion lift releases the prior drop shadow override
   controller.destroy();
 });
 
+await test('prepareLift centralizes new, blocked, resumed, and switched decisions', async () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(true);
+  const handle = new FakeElement();
+  setDrag(items[0]);
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'new');
+  controller.beginLift(items[0], handle, 10, 10, 0, { followPointer: false });
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'blocked');
+
+  const firstDrop = controller.endDrop();
+  assert.equal(controller.prepareLift(items[0], handle, 10, 10), 'resumed');
+  await firstDrop;
+  assert.equal(controller.getState().phase, 'lifted');
+
+  const secondDrop = controller.endDrop();
+  assert.equal(controller.prepareLift(items[1], new FakeElement(), 10, 70), 'new');
+  setDrag(items[1]);
+  controller.beginLift(items[1], new FakeElement(), 10, 70, 0, { followPointer: false });
+  assert.equal(controller.getState().phase, 'lifted');
+  controller.destroy();
+  await secondDrop;
+});
+
 restoreGlobals();
