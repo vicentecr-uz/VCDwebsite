@@ -101,6 +101,13 @@ for (const demo of CRAFT_DEMOS) {
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
   assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
   if (demo.id === 'gap-spacing') {
+    for (const state of ['pointer', 'grab', 'grabbing']) {
+      const glyph = nodes.find((node) => attr(node, 'data-cursor-glyph') === state);
+      const image = allNodes(glyph).find((node) => node.tagName === 'img');
+      const src = attr(image, 'src');
+      assert.match(src, /^(?:\/_astro\/[^\s]+\.svg|data:image\/svg\+xml,)/, `${state}: cursor import is an image URL`);
+      if (src.startsWith('/')) assert.ok((await readFile(path.join(dist, src))).length > 0, `${state}: cursor asset exists`);
+    }
     const blocks = nodes.filter((node) => attr(node, 'data-reorder-demo-block') !== undefined);
     assert.equal(blocks.length, 3, 'block system: three actual page blocks');
     assert.equal(nodes.filter((node) => attr(node, 'data-gap-toolbar') !== undefined).length, 3, 'each block keeps its gap when reordered');
