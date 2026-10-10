@@ -158,21 +158,18 @@ export function createDemoBlockReorder(
     if (focus && activeGeneration === generation && !signal.aborted) handle?.focus();
   };
   const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
-    const phase = controller?.getState().phase;
-    if (phase === 'lifted') return false;
-    if (phase === 'dropping') {
-      const previous = dragItem;
-      if (!previous) return false;
-      if (item === previous) {
-        if (!controller?.resumeLift(item, handle, x, y)) return false;
-        generation += 1;
-        dropping = false;
-        dragHandle = handle;
-        setPressed(true);
-        announce();
-        return true;
-      }
-      if (!controller?.settleNow()) return false;
+    const previous = controller?.isActive() ? dragItem : null;
+    const lift = controller?.prepareLift(item, handle, x, y);
+    if (!lift || lift === 'blocked') return false;
+    if (lift === 'resumed') {
+      generation += 1;
+      dropping = false;
+      dragHandle = handle;
+      setPressed(true);
+      announce();
+      return true;
+    }
+    if (previous && previous !== item) {
       generation += 1;
       dropping = false;
       setPressed(false);

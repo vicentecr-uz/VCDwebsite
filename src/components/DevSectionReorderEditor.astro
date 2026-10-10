@@ -726,19 +726,14 @@ import '../styles/sectionReorderChrome.css';
     // and lifts it again from where it is; another block's handle lands the
     // settling one in its slot right away and lifts the new one. Only a block
     // that is actively held (not settling) blocks a second lift.
-    const previous = dragItem;
-    let resumed = false;
-    if (controller.isActive()) {
-      if (root === previous) {
-        if (!controller.resumeLift(root, handle, x, y)) return;
-        resumed = true;
-      } else if (!controller.settleNow()) {
-        return;
-      } else {
-        commitReorderSpacing(previous);
-        syncPending();
-        releaseSessionRoot(previous);
-      }
+    const previous = controller.isActive() ? dragItem : null;
+    const lift = controller.prepareLift(root, handle, x, y);
+    if (lift === 'blocked') return;
+    const resumed = lift === 'resumed';
+    if (!resumed && previous && previous !== root) {
+      commitReorderSpacing(previous);
+      syncPending();
+      releaseSessionRoot(previous);
     }
 
     dragItem = root;

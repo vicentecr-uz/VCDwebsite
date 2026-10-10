@@ -94,12 +94,15 @@ test('keyboard choices stay focusable and touch choices unpin immediately', () =
   const h = setup();
   const toolbar = h.toolbars[1];
   const pill = toolbar.querySelector('.dev-gap-toolbar__pill')!;
-  pill.dispatchEvent(event(h.win, 'focusin'));
   const keyboardChoice = toolbar.querySelector('[data-dev-spacing-option="major"]') as HTMLButtonElement;
   Object.defineProperty(keyboardChoice, 'isConnected', { value: true });
+  keyboardChoice.focus();
   const keyboardClick = event(h.win, 'click', { detail: 0 });
   keyboardChoice.dispatchEvent(keyboardClick);
   expect(keyboardChoice.classList.contains('is-active')).toBe(true);
+  expect(h.document.activeElement).toBe(keyboardChoice);
+  keyboardChoice.blur();
+  expect(toolbar.classList.contains('is-near-spacing')).toBe(false);
   pill.dispatchEvent(event(h.win, 'pointerenter', { pointerType: 'mouse' }));
   pill.dispatchEvent(event(h.win, 'pointerdown', { pointerType: 'touch' }));
   const touchChoice = toolbar.querySelector('[data-dev-spacing-option="section"]') as HTMLButtonElement;
