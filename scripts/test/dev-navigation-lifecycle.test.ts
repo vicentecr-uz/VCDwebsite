@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { deselectScripts } from '../../node_modules/astro/dist/transitions/swap-functions.js';
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 
 const componentSource = (name: string) => readFileSync(new URL(`../../src/components/${name}.astro`, import.meta.url), 'utf8');
@@ -104,6 +105,85 @@ test('real Edit controller survives repeated page swaps with one heartbeat and n
     expect(chipMounts).toBe(4);
   } finally {
     dispose?.();
+    restoreGlobals();
+    await window.happyDOM.close();
+  }
+});
+
+test('real gallery editor reruns after Astro deduplicates an identical page script', async () => {
+  const window = new Window({ url: 'http://localhost:4322/' });
+  const restoreGlobals = browserGlobals(window, {
+    HTMLAnchorElement: window.HTMLAnchorElement,
+    HTMLButtonElement: window.HTMLButtonElement,
+    HTMLFormElement: window.HTMLFormElement,
+    HTMLImageElement: window.HTMLImageElement,
+    HTMLInputElement: window.HTMLInputElement,
+    HTMLSelectElement: window.HTMLSelectElement,
+    File: window.File,
+    URL: window.URL,
+    DOMException: window.DOMException,
+    AbortController: window.AbortController,
+    fetch: async () => ({ ok: true, json: async () => ({}) }),
+  });
+  const source = componentSource('DevProjectGridEditor');
+  const inline = source.match(/<script define:vars[\s\S]*?>([\s\S]*?)<\/script>/)?.[1];
+  const rerunAttribute = /<script define:vars[^>]*data-astro-rerun/.test(source)
+    ? ' data-astro-rerun'
+    : '';
+  expect(inline).toBeTruthy();
+  const scriptBody = transpile(inline!);
+  const history = { replaying: false, push() {} };
+  window.__vcdPageHistory = history;
+  window.__vcdRegisterHistoryScope = () => () => {};
+  window.__vcdResolveDevPanelTitle = () => 'Project settings';
+  window.__vcdCreateHistory = () => ({ replaying: false, push() {} });
+  window.__vcdProjectGridPageScope = createPageScope;
+
+  const renderPage = (scriptSource: string) => {
+    window.document.body.innerHTML = `
+      <main id="main-content">
+        <ul data-dev-project-grid="home">
+          <li data-dev-project-slug="first" data-dev-status="published">
+            <div class="project-grid__cover" data-dev-cover-drop="first"></div>
+            <div class="project-grid__chips">
+              <button type="button" data-dev-project-hover="first" data-dev-hover-chip-for="First"></button>
+            </div>
+          </li>
+        </ul>
+        <div data-dev-panel-key="project-settings" hidden><div data-dev-project-settings-root></div></div>
+        <script define:vars="{}"${rerunAttribute}>${scriptSource}</script>
+      </main>`;
+    return window.document.querySelector<HTMLButtonElement>('[data-dev-project-hover]')!;
+  };
+  const runPageScript = () => {
+    const script = window.document.scripts[0]!;
+    deselectScripts(window.document);
+    if (script.dataset.astroExec === undefined) new Function(scriptBody)();
+  };
+
+  try {
+    const oldButton = renderPage(inline!);
+    runPageScript();
+    oldButton.click();
+    expect(oldButton.closest('[data-dev-project-slug]')?.querySelector('.project-grid__cover')?.classList.contains('is-dev-hover-forced')).toBe(true);
+
+    let currentButton = oldButton;
+    for (let i = 0; i < 3; i++) {
+      window.document.dispatchEvent(new window.Event('astro:before-swap'));
+      currentButton = renderPage(inline!);
+      runPageScript();
+      const currentCover = currentButton.closest('[data-dev-project-slug]')?.querySelector('.project-grid__cover')!;
+      currentButton.click();
+      expect(currentCover.classList.contains('is-dev-hover-forced')).toBe(true);
+      currentButton.click();
+      expect(currentCover.classList.contains('is-dev-hover-forced')).toBe(false);
+      expect(currentButton.getAttribute('aria-pressed')).toBe('false');
+    }
+    window.__vcdProjectGridCleanup?.();
+    currentButton.click();
+    expect(currentButton.closest('[data-dev-project-slug]')?.querySelector('.project-grid__cover')?.classList.contains('is-dev-hover-forced')).toBe(false);
+  } finally {
+    window.__vcdProjectGridCleanup?.();
     restoreGlobals();
     await window.happyDOM.close();
   }
