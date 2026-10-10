@@ -112,6 +112,7 @@ function setup(options: { imageComplete?: boolean; imageDecodePending?: boolean;
       setViewport(value: string) { selectedViewport = value; },
       getViewport() { return selectedViewport; },
       setActive(value: boolean) { cropActive = value; },
+      whenReady() { return Promise.resolve(true); },
       destroy() { cropDestroyed += 1; },
     }); },
     createDemoImageReplacement: () => ({
