@@ -95,6 +95,13 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   .crop-frame-demo__preview-shell iframe { display: block; width: 1024px; height: 900px; border: 0; transform-origin: top left; transition: width 280ms cubic-bezier(.645,.045,.355,1), opacity 160ms ease; }
   .crop-frame-demo__canvas { width: min(100%, 48rem, calc(38rem * var(--crop-demo-aspect, 1))); height: 100%; min-height: 0; display: grid; place-items: center; margin-inline: auto; }
   .crop-frame-demo__canvas :global(.project-image) { width: 100%; margin: 0; }
+  .crop-frame-demo__canvas :global(.project-cropped > .project-crop-clip > img),
+  .crop-frame-demo__canvas :global(.dev-crop-ghost > img) {
+    width: 100%;
+    transform-origin: 0 0;
+    transform: scale(calc(1 / var(--project-content-w, 1))) translate(calc(var(--project-content-cx, .5) * -100%), calc(var(--project-content-cy, .5) * -100%));
+    will-change: transform;
+  }
   .crop-frame-demo__panel :global(.tapico-crop-tuner__preview) { width: min(100%, calc(14rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; }
   .crop-frame-demo__canvas :global(.project-image.dev-crop-stage-host) { overflow: visible; }
   .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible:not([data-pointer-focus]):not(.is-dragging):not(.is-resizing)) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
@@ -317,6 +324,8 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         ]);
         if (!current()) return;
         if (!visibleReady || !ghostReady) { showLoadError(); return; }
+        await localCrop.whenReady();
+        if (!current()) return;
         await new Promise<void>((resolve) => {
           let first = 0;
           let second = 0;
