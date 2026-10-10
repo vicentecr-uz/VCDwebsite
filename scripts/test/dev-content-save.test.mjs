@@ -92,8 +92,12 @@ test('header settings links normalize safe URLs and reject unsafe URLs', async (
   try {
     const text = writer('content-text-dev-writer');
     const saved = response();
-    await text(request({ changes: [{ document: 'header-settings', path: ['menuLinks', 0, 'href'], value: 'example.com/work' }] }), saved, () => {});
+    await text(request({ changes: [
+      { document: 'header-settings', path: ['menuLinks', 0, 'label'], value: 'Physical' },
+      { document: 'header-settings', path: ['menuLinks', 0, 'href'], value: 'example.com/work' },
+    ] }), saved, () => {});
     assert.equal((await saved.done).status, 200);
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).menuLinks[0].label, 'Physical');
     assert.equal(JSON.parse(await readFile(file, 'utf8')).menuLinks[0].href, 'https://example.com/work');
 
     const batch = writer('content-batch-dev-writer');
