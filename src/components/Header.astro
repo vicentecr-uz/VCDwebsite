@@ -39,6 +39,13 @@ const titleEditAttrs = import.meta.env.DEV && titleDocument
       'data-dev-text-kind': 'text',
     }
   : undefined;
+const menuLabelEditAttrs = import.meta.env.DEV
+  ? (index: number) => ({
+      'data-dev-text-document': 'header-settings',
+      'data-dev-text-path': JSON.stringify(['menuLinks', index, 'label']),
+      'data-dev-text-kind': 'text',
+    })
+  : () => undefined;
 const WordmarkTag = wordmarkAsH1 ? 'h1' : 'span';
 const homeWordmark = headerSettings.siteTitle.replace(' ', '\u00a0');
 const wordmark = title.replace(' ', '\u00a0');
@@ -102,7 +109,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {menuLinks.map((link, index) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -111,7 +118,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label">{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
                 </a>
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
                   You are on this page
@@ -137,7 +144,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {menuLinks.map((link, index) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -146,7 +153,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label">{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
                 </a>
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
                   You are on this page
@@ -816,7 +823,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const openMenu = (event?: Event) => {
       if (navigationClosing || isOpen() || trigger.dataset.headerTitlePending !== undefined) return;
-      if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
       if (import.meta.env.DEV) {
         const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
         if (pinnedSide && pinnedSide !== previewSide) return;
@@ -974,6 +980,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       menuScrollClosed = false;
       const active = document.activeElement;
       if (active instanceof HTMLElement && trigger.contains(active)) {
+        if (isDevEditing() && active.isContentEditable) return;
         if (active.matches(':focus-visible')) return;
         active.blur();
       }
@@ -1002,8 +1009,20 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     trigger.addEventListener(
       'click',
       (event) => {
+        if (isDevEditing() && trigger.classList.contains('header-trigger--start')) {
+          const target = event.target as Element | null;
+          if (target?.closest('.header-menu__link-label')) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          if (target?.closest('.header-trigger__brand-link')) {
+            event.preventDefault();
+            if (!isOpen()) openMenu(event);
+            return;
+          }
+        }
         if (!isTapMode()) return;
-        if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
 
         const target = event.target as Element | null;
         if (target?.closest('.header-menu__link')) return;

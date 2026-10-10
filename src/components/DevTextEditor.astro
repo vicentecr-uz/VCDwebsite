@@ -2603,6 +2603,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { element } = state;
       if (state.kind === 'paragraphs') removeParagraphRootWhitespace(element);
       const notifyTextInput = () => {
+        if (typeof textStates !== 'undefined' && typeof readValue === 'function' && typeof renderValue === 'function') {
+          const value = readValue(state);
+          textStates.forEach((candidate) => {
+            if (candidate === state || candidate.document !== state.document
+              || JSON.stringify(candidate.path) !== JSON.stringify(state.path)) return;
+            renderValue(candidate, value);
+          });
+        }
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         stickyStatus = '';
         updateActions();
