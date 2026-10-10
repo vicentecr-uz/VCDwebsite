@@ -29,6 +29,11 @@ function setup(reduced = false, frameStep = 16, coarse = false, scaled = false, 
   const rect = (left: number, top: number, width: number, height: number) => ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
   host.getBoundingClientRect = () => rect(100, 100, 400, 300);
   trigger.getBoundingClientRect = () => rect(400, 110, 80, 30);
+  Object.defineProperty(win.document, 'elementFromPoint', { value: (x: number, y: number) => {
+    const target = trigger.getBoundingClientRect();
+    return x >= target.left && x <= target.right && y >= target.top && y <= target.bottom ? trigger : host;
+  }, configurable: true });
+  Object.defineProperty(win, 'getComputedStyle', { value: (element: Element) => ({ cursor: element === trigger ? 'pointer' : 'default' }), configurable: true });
   const pans: Array<[number, number]> = [];
   const zooms: Array<number> = [];
   const zoomCenters: Array<[number, number]> = [];

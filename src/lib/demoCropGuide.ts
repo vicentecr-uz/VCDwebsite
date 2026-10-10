@@ -1,6 +1,7 @@
 import type { createDemoImageCrop } from './demoImageCrop';
 import { CustomEase } from 'gsap/CustomEase';
 import gsap from 'gsap';
+import { createDemoCursorInteraction } from './demoCursorInteraction';
 
 gsap.registerPlugin(CustomEase);
 
@@ -28,6 +29,7 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
   const reducedMotion = win.matchMedia('(prefers-reduced-motion: reduce)');
   const childDocument = iframe?.contentDocument;
   const childWindow = iframe?.contentWindow;
+  const interaction = createDemoCursorInteraction({ root, iframe });
   const toParent = (point: Point): Point => {
     if (!iframe || !childWindow) return point;
     const box = iframe.getBoundingClientRect();
@@ -62,8 +64,13 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     finger.style.opacity = String(opacity);
     finger.style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`;
   };
-  const hide = () => { overlay.hidden = true; overlay.classList.remove('is-visible'); fingers.forEach((finger) => { finger.style.opacity = '0'; finger.style.willChange = ''; }); if (cursor) cursor.style.opacity = '0'; };
-  const paintCursor = (point: Point, opacity: number, scale = 1) => { if (!cursor) return; cursor.style.opacity = String(opacity); cursor.style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`; };
+  const hide = () => { overlay.hidden = true; overlay.classList.remove('is-visible'); fingers.forEach((finger) => { finger.style.opacity = '0'; finger.style.willChange = ''; }); interaction.clear(); if (cursor) cursor.style.opacity = '0'; };
+  const paintCursor = (point: Point, opacity: number, scale = 1) => {
+    if (!cursor) return;
+    cursor.dataset.cursorState = interaction.update(point, opacity > 0);
+    cursor.style.opacity = String(opacity);
+    cursor.style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`;
+  };
   const wait = (ms: number, token: number) => new Promise<boolean>((resolve) => {
     pendingResolve = resolve;
     timer = win.setTimeout(() => { timer = undefined; pendingResolve = undefined; resolve(alive(token)); }, ms);
@@ -172,11 +179,12 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
           const p = t * t * t * (t * (t * 6 - 15) + 10); const bow = Math.sin(Math.PI * p) * Math.min(18, distance * 0.04);
           paintCursor({ x: pinchEnd.x + (target.x - pinchEnd.x) * p - (target.y - pinchEnd.y) / Math.max(1, distance) * bow, y: pinchEnd.y + (target.y - pinchEnd.y) * p + (target.x - pinchEnd.x) / Math.max(1, distance) * bow }, 1, 1.15);
         }, token)) return;
-        cursor.dataset.cursorState = 'pointer';
         if (!await wait(180, token)) return;
+        interaction.press();
         if (!await animate(120, (t) => paintCursor(target, 1, 1.15 - 0.2 * gestureEase(t)), token)) return;
         onFinish();
         if (!await wait(120, token)) return;
+        interaction.release();
         await animate(220, (t) => paintCursor(target, 1 - gestureEase(t), 0.95 + 0.2 * gestureEase(t)), token);
         if (alive(token)) { active = false; hide(); }
         return;
@@ -213,5 +221,5 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     childWindow.addEventListener('pagehide', () => stop(), { signal });
     childDocument.addEventListener('visibilitychange', () => { if (childDocument.visibilityState === 'hidden') stop(); }, { signal });
   }
-  return { play, stop, destroy() { if (destroyed) return; destroyed = true; stop(); lifecycle.abort(); overlay.remove(); } };
+  return { play, stop, destroy() { if (destroyed) return; destroyed = true; stop(); lifecycle.abort(); interaction.destroy(); overlay.remove(); } };
 }

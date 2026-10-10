@@ -1,5 +1,6 @@
 import type { DemoBlockReorderHandle } from './demoBlockReorder';
 import type { createDemoGapSpacing } from './demoGapSpacing';
+import { createDemoCursorInteraction } from './demoCursorInteraction';
 
 type Point = { x: number; y: number };
 type CursorState = Point & { scale: number; opacity: number };
@@ -34,20 +35,12 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   let cursorState: CursorState = { x: 0, y: 0, scale: restingScale, opacity: 0 };
 
   cursor.setAttribute('aria-hidden', 'true');
+  const interaction = createDemoCursorInteraction({ root });
 
-  const cursorMode = (point: Point): 'arrow' | 'pointer' | 'grab' | 'grabbing' => {
-    if (lifting && !dropStarted) return 'grabbing';
-    const hit = document.elementFromPoint?.(point.x, point.y);
-    if (!hit || !win.getComputedStyle) return 'arrow';
-    const cssCursor = win.getComputedStyle(hit).cursor;
-    if (cssCursor === 'pointer') return 'pointer';
-    if (cssCursor === 'grab') return 'grab';
-    if (cssCursor === 'grabbing') return 'grabbing';
-    return 'arrow';
-  };
   const paint = () => {
+    const hitMode = interaction.update(cursorState, cursorState.opacity > 0);
+    const mode = lifting && !dropStarted ? 'grabbing' : hitMode;
     cursor.style.opacity = String(cursorState.opacity);
-    const mode = cursorMode(cursorState);
     cursor.dataset.cursorState = mode;
     cursor.style.transform = `translate(${cursorState.x}px, ${cursorState.y}px) scale(${cursorState.scale})`;
   };
@@ -132,9 +125,11 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   });
   const tap = async (point: Point, action: () => void, token: number, dwell: number) => {
     if (!await move(point, token) || !await wait(dwell, token)) return false;
+    interaction.press();
     if (!await animate({ scale: pressedScale }, 90, token)) return false;
     action();
     if (!await wait(120, token)) return false;
+    interaction.release();
     return animate({ scale: restingScale }, 120, token);
   };
   const gapPill = () => imageBlock.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
@@ -155,6 +150,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     gaps.hide();
     imageBlock.classList.remove('is-dev-section-controls-visible');
     cursorState.opacity = 0;
+    interaction.clear();
     paint();
   };
 
@@ -195,6 +191,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       const handle = imageBlock.querySelector<HTMLElement>('[data-reorder-demo-handle], .dev-section-drag-handle');
       if (!handle || !await move(center(handle), token)) return;
       const grab = center(handle);
+      interaction.press();
       if (!await animate({ scale: pressedScale }, 90, token)) return;
       const imageRect = imageBlock.getBoundingClientRect();
       const marginTop = Number.parseFloat(win.getComputedStyle(imageBlock).marginTop);
@@ -238,6 +235,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       animate({ scale: restingScale }, 120, token),
       reorder.guideDrop(),
     ]);
+    interaction.release();
     if (!alive(token) || !released) return;
     lifting = false;
     dropStarted = false;
@@ -266,6 +264,6 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   return {
     play,
     stop,
-    destroy() { if (destroyed) return; destroyed = true; stop(); observer?.disconnect(); lifecycle.abort(); cursorState.opacity = 0; paint(); },
+    destroy() { if (destroyed) return; destroyed = true; stop(); observer?.disconnect(); lifecycle.abort(); interaction.destroy(); cursorState.opacity = 0; paint(); },
   };
 }
