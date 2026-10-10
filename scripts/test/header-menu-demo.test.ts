@@ -115,15 +115,18 @@ test('desktop demo uses a composited travel and owns the real menu lifecycle', a
 test('mobile demo uses the finger path and closes only its opened menu', async () => {
   const h = harness({ mobile: true });
   const keyframes: Keyframe[][] = [];
+  const options: KeyframeAnimationOptions[] = [];
   const oldAnimate = h.win.HTMLElement.prototype.animate;
   const oldTimer = globalThis.setTimeout;
   const oldRandom = Math.random;
   Math.random = () => 0.75;
-  h.win.HTMLElement.prototype.animate = function (frames: Keyframe[]) {
+  h.win.HTMLElement.prototype.animate = function (frames: Keyframe[], animationOptions: KeyframeAnimationOptions) {
     keyframes.push(frames);
+    options.push(animationOptions);
     return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
   };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
+  const delays: number[] = [];
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => { delays.push(delay ?? 0); if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
   let opened = 0;
   let closed = 0;
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opened++; h.setExpanded(true); h.trigger.dataset.menuOpen = 'true'; }, close: () => { closed++; }, isEditing: () => false });
@@ -134,6 +137,8 @@ test('mobile demo uses the finger path and closes only its opened menu', async (
   expect(closed).toBe(1);
   expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('scale(.88)')))).toBe(true);
   expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('translate(448px, 648px)')))).toBe(true);
+  expect(delays).toContain(150);
+  expect(options.filter((option) => option.easing === 'cubic-bezier(.645,.045,.355,1)')).toHaveLength(2);
   h.win.HTMLElement.prototype.animate = oldAnimate;
   globalThis.setTimeout = oldTimer;
   Math.random = oldRandom;
