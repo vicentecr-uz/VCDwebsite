@@ -2183,26 +2183,41 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       historyCaptureQueued = false;
       if (editorSignal.aborted) return;
       const changes: Array<{ undo: () => void; redo: () => void; key: string }> = [];
+      const textChanges = new Map<string, {
+        states: Array<{ state: EditableTextState; before: EditableTextValue; after: EditableTextValue }>;
+        focus: EditableTextState | null;
+      }>();
       textStates.forEach((state) => {
         const before = textHistoryValues.get(state);
         const after = structuredClone(readValue(state));
         textHistoryValues.set(state, after);
         if (before === undefined || valuesMatch(before, after)) return;
-        const restore = (value: EditableTextValue) => {
-          if (!state.element.isConnected) throw new Error('Restore this section before restoring its text.');
-          renderValue(state, value);
-          textHistoryValues.set(state, structuredClone(value));
-          if (state.element.isConnected && !state.element.hidden) {
-            state.element.focus({ preventScroll: true });
+        const key = `text:${state.document}:${state.path.join('.')}`;
+        const group = textChanges.get(key) ?? { states: [], focus: null };
+        group.states.push({ state, before, after });
+        if (state.element.contains(document.activeElement)) group.focus = state;
+        textChanges.set(key, group);
+      });
+      textChanges.forEach((group, key) => {
+        const restore = (direction: 'before' | 'after') => {
+          group.states.forEach(({ state, before, after }) => {
+            if (!state.element.isConnected) throw new Error('Restore this section before restoring its text.');
+            const value = direction === 'before' ? before : after;
+            renderValue(state, value);
+            textHistoryValues.set(state, structuredClone(value));
+          });
+          const focusState = group.focus ?? group.states[0]?.state;
+          if (focusState?.element.isConnected && !focusState.element.hidden) {
+            focusState.element.focus({ preventScroll: true });
             const range = document.createRange();
-            range.selectNodeContents(state.element);
+            range.selectNodeContents(focusState.element);
             range.collapse(false);
             const selection = window.getSelection();
             selection?.removeAllRanges();
             selection?.addRange(range);
           }
         };
-        changes.push({ undo: () => restore(before), redo: () => restore(after), key: `text:${state.document}:${state.path.join('.')}` });
+        changes.push({ undo: () => restore('before'), redo: () => restore('after'), key });
       });
       spacingStates.forEach((state) => {
         const before = spacingHistoryValues.get(state);
@@ -2603,6 +2618,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { element } = state;
       if (state.kind === 'paragraphs') removeParagraphRootWhitespace(element);
       const notifyTextInput = () => {
+        const value = readValue(state);
+        textStates.forEach((candidate) => {
+          if (candidate === state || candidate.document !== state.document
+            || JSON.stringify(candidate.path) !== JSON.stringify(state.path)) return;
+          renderValue(candidate, value);
+        });
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         stickyStatus = '';
         updateActions();
@@ -2658,6 +2679,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             queueMicrotask(() => pageHistory.breakGroup());
             return;
           }
+        }
+        if (state.document === 'header-settings' && state.kind === 'text' && event.key === 'Enter') {
+          event.preventDefault();
+          element.blur();
+          return;
         }
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;

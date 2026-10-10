@@ -81,6 +81,36 @@ test('stable save targets survive stale section and item positions across save e
   }
 });
 
+test('header settings links normalize safe URLs and reject unsafe URLs', async () => {
+  const previous = process.cwd();
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-header-settings-'));
+  const directory = path.join(root, 'src/content/settings');
+  const file = path.join(directory, 'header.json');
+  await mkdir(directory, { recursive: true });
+  await writeFile(file, JSON.stringify({ menuLinks: [{ label: 'Work', href: '/' }] }));
+  process.chdir(root);
+  try {
+    const text = writer('content-text-dev-writer');
+    const saved = response();
+    await text(request({ changes: [
+      { document: 'header-settings', path: ['menuLinks', 0, 'label'], value: 'Physical' },
+      { document: 'header-settings', path: ['menuLinks', 0, 'href'], value: 'example.com/work' },
+    ] }), saved, () => {});
+    assert.equal((await saved.done).status, 200);
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).menuLinks[0].label, 'Physical');
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).menuLinks[0].href, 'https://example.com/work');
+
+    const batch = writer('content-batch-dev-writer');
+    const rejected = response();
+    await batch(request({ text: [{ document: 'header-settings', path: ['menuLinks', 0, 'href'], value: 'javascript:alert(1)' }] }), rejected, () => {});
+    assert.equal((await rejected.done).status, 400);
+    assert.equal(JSON.parse(await readFile(file, 'utf8')).menuLinks[0].href, 'https://example.com/work');
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('Reddit board heights save only on the matching section with bounded breakpoint values', async () => {
   const previous = process.cwd();
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-board-height-'));
