@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createDemoImageViewport } from '../../src/lib/demoImageViewport';
 
-function setup(reduced = false) {
+function setup(reduced = false, mobile = false) {
   const win = new Window();
   const root = win.document.createElement('div');
   const column = win.document.createElement('div');
@@ -18,7 +18,7 @@ function setup(reduced = false) {
     observe() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
-  (win as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = () => ({ matches: reduced }) as MediaQueryList;
+  (win as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = (query: string) => ({ matches: query.includes('prefers-reduced-motion') ? reduced : mobile }) as MediaQueryList;
   const animations: Array<{ cancel(): void }> = [];
   iframe.animate = (() => { const animation = { cancel() { animations.splice(animations.indexOf(animation), 1); } }; animations.push(animation); return animation; }) as unknown as typeof iframe.animate;
   const previous = globalThis.ResizeObserver;
@@ -43,6 +43,18 @@ test('resize measurements use the stable column and bypass transitions immediate
   h.setWidth(834);
   expect(h.iframe.style.transform).toBe(`scale(${834 / 1024})`);
   expect(h.iframe.style.width).toBe('390px');
+  h.controller.destroy(); h.restore();
+});
+
+test('mobile measurements fill the column for the selected viewport', () => {
+  const h = setup(false, true);
+  h.setWidth(430);
+  h.controller.setViewport('mobile');
+  expect(h.shell.style.width).toBe('430px');
+  expect(h.iframe.style.transform).toBe(`scale(${430 / 390})`);
+  h.controller.setViewport('tablet');
+  expect(h.shell.style.width).toBe('430px');
+  expect(h.iframe.style.transform).toBe(`scale(${430 / 834})`);
   h.controller.destroy(); h.restore();
 });
 
