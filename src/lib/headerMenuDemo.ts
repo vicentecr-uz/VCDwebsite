@@ -108,12 +108,12 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
       y: Math.max(16, Math.min(window.innerHeight - 16, rect.bottom + 48)),
     };
   };
-  const move = (from: { x: number; y: number }, to: { x: number; y: number }, duration: number, currentToken: number) => {
+  const move = (from: { x: number; y: number }, to: { x: number; y: number }, duration: number, currentToken: number, easing = 'cubic-bezier(.22,1,.36,1)') => {
     if (!pointer) return Promise.resolve();
     return animate(pointer, [
       { transform: `translate(${from.x}px, ${from.y}px)` },
       { transform: `translate(${to.x}px, ${to.y}px)` },
-    ], { duration, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' }, currentToken);
+    ], { duration, easing, fill: 'forwards' }, currentToken);
   };
   const run = async (currentToken: number) => {
     if (isEditing() || introVisible() || document.visibilityState === 'hidden' || trigger.dataset.menuOpen === 'true' || trigger.dataset.headerTitlePending !== undefined || trigger.matches(':hover') || trigger.contains(document.activeElement)) return cleanup();
@@ -154,7 +154,9 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
       pointer.style.transform = `translate(${entrance.x}px, ${entrance.y}px)`;
       await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], { duration: 240, fill: 'forwards' }, currentToken);
       if (currentToken !== token) return;
-      await move(entrance, start, 600, currentToken);
+      await wait(150);
+      if (currentToken !== token) return;
+      await move(entrance, start, 600, currentToken, 'cubic-bezier(.645,.045,.355,1)');
       if (currentToken !== token) return;
       await animate(pointer, [{ transform: `translate(${start.x}px, ${start.y}px) scale(.88)` }], { duration: 120, fill: 'forwards' }, currentToken);
       if (currentToken !== token) return;
@@ -165,7 +167,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
       await wait(1000);
       if (currentToken !== token) return;
       away = outsidePoint();
-      await move(start, away, 450, currentToken);
+      await move(start, away, 450, currentToken, 'cubic-bezier(.645,.045,.355,1)');
       if (currentToken !== token) return;
       await animate(pointer, [{ transform: `translate(${away.x}px, ${away.y}px) scale(.88)` }], { duration: 120, fill: 'forwards' }, currentToken);
       if (currentToken !== token) return;
