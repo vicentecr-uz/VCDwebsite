@@ -183,7 +183,7 @@ test('cursor guide cancellation during entry and return prevents finish', async 
     await returning.advance(16);
     reachedReturn = returning.cursor!.dataset.cursorState === 'arrow' && returning.cursor!.style.opacity !== '0' && Number(returning.fingers[0].style.opacity || '0') === 0 && returning.finish === 0;
   }
-  expect(reachedReturn).toBe(true); returning.guide.stop(); await returning.advanceTo(3000); expect(returning.finish).toBe(0); returning.guide.destroy();
+  expect(reachedReturn).toBe(true); await returning.advance(200); expect(returning.finish).toBe(0); returning.guide.stop(); await returning.advanceTo(3000); expect(returning.finish).toBe(0); returning.guide.destroy();
 });
 
 test('coarse pointer ignores an optional cursor and remains finger-only', async () => {
