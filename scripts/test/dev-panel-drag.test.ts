@@ -15,7 +15,7 @@ function setup() {
   });
   Object.defineProperty(panel, 'getBoundingClientRect', {
     configurable: true,
-    value: () => ({ left: 40, top: 30, width: 120, height: 80, right: 160, bottom: 110 }),
+    value: () => { const left = panel.style.left ? Number.parseFloat(panel.style.left) : 40; const top = panel.style.top ? Number.parseFloat(panel.style.top) : 30; return ({ left, top, width: 120, height: 80, right: left + 120, bottom: top + 80 }); },
   });
   handle.setPointerCapture = () => {};
   handle.releasePointerCapture = () => {};
@@ -81,7 +81,7 @@ test('foreign-created drag-ignore controls are ignored without preventing defaul
   });
   Object.defineProperty(panel, 'getBoundingClientRect', {
     configurable: true,
-    value: () => ({ left: 40, top: 30, width: 120, height: 80, right: 160, bottom: 110 }),
+    value: () => { const left = panel.style.left ? Number.parseFloat(panel.style.left) : 40; const top = panel.style.top ? Number.parseFloat(panel.style.top) : 30; return ({ left, top, width: 120, height: 80, right: left + 120, bottom: top + 80 }); },
   });
   handle.setPointerCapture = () => {};
   handle.releasePointerCapture = () => {};
@@ -91,5 +91,27 @@ test('foreign-created drag-ignore controls are ignored without preventing defaul
   button.dispatchEvent(event);
   expect(event.defaultPrevented).toBe(false);
   expect(panel.classList.contains('is-dragging')).toBe(false);
+  cleanup();
+});
+
+test('absolute panels preserve a nonzero containing origin on grab, move, release, and reclamp', () => {
+  const h = setup();
+  const origin = { left: 60, top: 40 };
+  h.panel.style.left = '100px';
+  h.panel.style.top = '50px';
+  Object.defineProperty(h.panel, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => { const left = origin.left + (h.panel.style.left ? Number.parseFloat(h.panel.style.left) : 0); const top = origin.top + (h.panel.style.top ? Number.parseFloat(h.panel.style.top) : 0); return ({ left, top, width: 120, height: 80, right: left + 120, bottom: top + 80 }); },
+  });
+  const cleanup = createDevPanelDrag(h.panel);
+  h.handle.dispatchEvent(pointer(h.win, 'pointerdown', { clientX: 160, clientY: 90 }));
+  expect(h.panel.style.left).toBe('100px');
+  h.handle.dispatchEvent(pointer(h.win, 'pointermove', { clientX: 210, clientY: 120 }));
+  h.handle.dispatchEvent(pointer(h.win, 'pointerup', { clientX: 210, clientY: 120 }));
+  expect(h.panel.style.left).toBe('150px');
+  expect(h.panel.style.top).toBe('80px');
+  h.panel.style.left = '400px';
+  h.win.dispatchEvent(new h.win.Event('resize'));
+  expect(h.panel.style.left).toBe('220px');
   cleanup();
 });

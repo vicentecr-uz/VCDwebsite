@@ -23,6 +23,17 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
     top: clamp(top, 0, Math.max(0, win.innerHeight - panel.offsetHeight)),
   });
 
+  const setViewportPosition = (left: number, top: number) => {
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.translate = 'none';
+    panel.style.left = '0px';
+    panel.style.top = '0px';
+    const origin = panel.getBoundingClientRect();
+    panel.style.left = `${left - origin.left}px`;
+    panel.style.top = `${top - origin.top}px`;
+  };
+
   const applyPendingPosition = () => {
     frame = null;
     const next = clampPosition(pendingLeft, pendingTop);
@@ -39,9 +50,7 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
     const next = clampPosition(left, top);
     if (frame !== null) win.cancelAnimationFrame(frame);
     frame = null;
-    panel.style.translate = 'none';
-    panel.style.left = `${next.left}px`;
-    panel.style.top = `${next.top}px`;
+    setViewportPosition(next.left, next.top);
     userPositioned = true;
   };
 
@@ -51,20 +60,12 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
     }
     const rect = panel.getBoundingClientRect();
     const next = clampPosition(rect.left, rect.top);
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    panel.style.translate = 'none';
-    panel.style.left = `${next.left}px`;
-    panel.style.top = `${next.top}px`;
+    setViewportPosition(next.left, next.top);
   };
 
   const anchorToLeftTop = () => {
     const rect = panel.getBoundingClientRect();
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
-    panel.style.translate = 'none';
+    setViewportPosition(rect.left, rect.top);
     return rect;
   };
 
@@ -90,12 +91,11 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
     event.preventDefault();
     const rect = anchorToLeftTop();
     const next = clampPosition(rect.left, rect.top);
+    setViewportPosition(next.left, next.top);
     originLeft = next.left;
     originTop = next.top;
     pendingLeft = originLeft;
     pendingTop = originTop;
-    panel.style.left = `${originLeft}px`;
-    panel.style.top = `${originTop}px`;
     startX = event.clientX;
     startY = event.clientY;
     pointerId = event.pointerId;

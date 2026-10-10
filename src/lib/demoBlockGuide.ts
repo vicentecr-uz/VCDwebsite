@@ -196,6 +196,10 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
       if (!handle || !await move(center(handle), token)) return;
       const grab = center(handle);
       if (!await animate({ scale: pressedScale }, 90, token)) return;
+      const imageRect = imageBlock.getBoundingClientRect();
+      const marginTop = Number.parseFloat(win.getComputedStyle(imageBlock).marginTop);
+      const grabOffset = Math.max(0, grab.y - imageRect.top);
+      const clearance = Math.max(96, grabOffset + (Number.isFinite(marginTop) ? marginTop : 0));
       if (!reorder.guideLift(imageBlock, grab.x, grab.y)) return;
       lifting = true;
       const started = win.performance.now();
@@ -205,8 +209,8 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
         if (!alive(token)) return;
         const text = textBlock.getBoundingClientRect();
         const elapsed = now - started;
-        const travel = Math.min(1, elapsed / 1500);
-        const target = clampToViewport({ x: grab.x, y: text.bottom + 24 });
+        const travel = Math.min(1, elapsed / 1800);
+        const target = clampToViewport({ x: grab.x, y: text.bottom + clearance });
         const destination = clampToViewport({ x: grab.x + (target.x - grab.x) * travel, y: grab.y + (target.y - grab.y) * smootherstep(travel) });
         const blend = 1 - Math.exp(-Math.max(0, now - previous) / 80);
         current = { x: current.x + (destination.x - current.x) * blend, y: current.y + (destination.y - current.y) * blend };
@@ -214,7 +218,11 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
         previous = now;
         reorder.guideMove(point.x, point.y);
         cursorState.x = point.x; cursorState.y = point.y; paint();
-        if (elapsed >= 1500 && text.bottom + 12 <= point.y) { frame = null; void finishDrag(token); return; }
+        if (elapsed >= 1800 && Math.hypot(point.x - target.x, point.y - target.y) <= 3 && point.y >= text.bottom + Math.min(96, clearance) - 3) {
+          frame = null;
+          void (async () => { if (await wait(180, token)) await finishDrag(token); })();
+          return;
+        }
         if (elapsed >= 4000) { stop(); return; }
         frame = win.requestAnimationFrame(drag);
       };

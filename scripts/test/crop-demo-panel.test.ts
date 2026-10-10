@@ -25,6 +25,8 @@ function setup() {
   const frameHost = document.querySelector('.project-image')!;
   frame.contentDocument!.body.append(frameHost);
   const demoButtons = [...document.querySelectorAll<HTMLElement>('[data-crop-viewport]')];
+  const media = { matches: true, listeners: [] as Array<() => void>, addEventListener(_: string, listener: () => void) { this.listeners.push(listener); }, removeEventListener() {} };
+  win.matchMedia = (() => media) as typeof win.matchMedia;
   const timers = new Map<number, () => void>();
   let nextTimer = 0;
   win.setTimeout = ((callback: () => void, delay?: number) => {
@@ -43,6 +45,8 @@ function setup() {
   const errors: ErrorEvent[] = [];
   win.addEventListener('error', (event) => errors.push(event));
   let selectedViewport = 'desktop';
+  let dragCreated = 0;
+  let dragCleaned = 0;
   let collapseDestroyed = 0;
   const collapseSets: Array<[boolean, boolean | undefined]> = [];
   const env = {
@@ -67,6 +71,7 @@ function setup() {
     }),
     createDemoAssetPicker: () => ({ open: async () => undefined, destroy() {} }),
     createDemoImageViewport: () => ({ setViewport(value: string) { selectedViewport = value; demoButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.cropViewport === value))); }, getViewport() { return selectedViewport; }, destroy() {} }),
+    createDevPanelDrag: () => { dragCreated += 1; return () => { dragCleaned += 1; }; },
     createDevPanelCollapse: (panel: HTMLElement) => ({
       set(value: boolean, animate?: boolean) {
         collapseSets.push([value, animate]);
@@ -83,7 +88,7 @@ function setup() {
   const hide = panel.querySelector('[data-hide-toggle]') as HTMLButtonElement;
   const minimize = panel.querySelector('[data-minimize-toggle]') as HTMLButtonElement;
   const reset = demo.querySelector('[data-demo-author-reset]') as HTMLButtonElement;
-  return { win, document, demo, panel, frame, hide, minimize, reset, timers, flushTimer: (id: number) => timers.get(id)?.(), errors, get cropCreated() { return cropCreated; }, get cropActive() { return cropActive; }, get cropReset() { return cropReset; }, get cropDestroyed() { return cropDestroyed; }, get replacementReset() { return replacementReset; }, get replacementDestroyed() { return replacementDestroyed; }, get collapseDestroyed() { return collapseDestroyed; }, get selectedViewport() { return selectedViewport; }, collapseSets };
+  return { win, document, demo, panel, frame, media, hide, minimize, reset, timers, flushTimer: (id: number) => timers.get(id)?.(), errors, get dragCreated() { return dragCreated; }, get dragCleaned() { return dragCleaned; }, get cropCreated() { return cropCreated; }, get cropActive() { return cropActive; }, get cropReset() { return cropReset; }, get cropDestroyed() { return cropDestroyed; }, get replacementReset() { return replacementReset; }, get replacementDestroyed() { return replacementDestroyed; }, get collapseDestroyed() { return collapseDestroyed; }, get selectedViewport() { return selectedViewport; }, collapseSets };
 }
 
 test('minimize light toggles the real collapse controller', () => {
@@ -155,4 +160,20 @@ test('repeated iframe readiness does not recreate the same host crop', () => {
   h.frame.dispatchEvent(new h.win.Event('load'));
   expect(h.cropCreated).toBe(1);
   expect(h.errors).toEqual([]);
+});
+
+test('desktop and narrow mode changes clean up and recreate panel dragging', () => {
+  const h = setup();
+  expect(h.dragCreated).toBe(1);
+  h.media.matches = false;
+  h.media.listeners.forEach((listener) => listener());
+  expect(h.dragCleaned).toBe(1);
+  expect(h.panel.style.position).toBe('relative');
+  expect(h.panel.style.left).toBe('0px');
+  h.media.matches = true;
+  h.media.listeners.forEach((listener) => listener());
+  expect(h.dragCreated).toBe(2);
+  expect(h.panel.style.position).toBe('absolute');
+  h.demo.remove();
+  expect(h.dragCleaned).toBe(2);
 });
