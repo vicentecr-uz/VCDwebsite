@@ -1,3 +1,39 @@
 ---
-return Astro.redirect('/play', 302);
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import ProjectSections from '../components/project/ProjectSections.astro';
+import DevImageDrop from '../components/DevImageDrop.astro';
+import { loadPageDocument } from '../lib/projects';
+import { pageColumnStyle } from '../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
+
+const playPage = loadPageDocument('play');
 ---
+
+<Layout persistentNavigation title="Digital — Vicente Cruz" columnStyle={pageColumnStyle(playPage.sections)}>
+  <div data-page-shell class="flex flex-col min-h-dvh">
+    <Header title="Digital" navMenu />
+
+    <h1 class="sr-only">Digital — Vicente Cruz</h1>
+
+    <main id="main-content" class="listing-main" style="flex: 1;">
+      <div data-dev-project-drop-zone>
+        <ProjectSections documentKey="play" sections={playPage.sections} introHeight={playPage.introHeight} />
+        <div
+          class:list={[projectStackClass(playPage.trailingSpacing ?? 'none')]}
+          {...(spacingDevAttrs('play', ['sections', playPage.sections.length], playPage.trailingSpacing ?? 'none', { writePath: ['trailingSpacing'] }) ?? {})}
+        />
+      </div>
+    </main>
+
+    <Footer />
+  </div>
+  <DevImageDrop documentKey="play" />
+</Layout>
+
+<style>
+  .listing-main {
+    padding: 0;
+  }
+</style>
