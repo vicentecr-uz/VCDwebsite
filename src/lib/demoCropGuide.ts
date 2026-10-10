@@ -11,6 +11,7 @@ interface DemoCropGuideOptions {
   fingers: [HTMLElement, HTMLElement];
   crop: Pick<ReturnType<typeof createDemoImageCrop>, 'panBy' | 'zoomBy'>;
   onFinish: () => void;
+  iframe?: HTMLIFrameElement;
 }
 
 type Point = { x: number; y: number };
@@ -18,12 +19,19 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const gestureEase = CustomEase.create('demoCropGesture', '0.4,0,0.2,1');
 const repositionEase = CustomEase.create('demoCropReposition', '0.32,0.72,0,1');
 
-export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFinish }: DemoCropGuideOptions) {
+export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFinish, iframe }: DemoCropGuideOptions) {
   const document = root.ownerDocument;
   const win = document.defaultView!;
   const lifecycle = new win.AbortController();
   const { signal } = lifecycle;
   const reducedMotion = win.matchMedia('(prefers-reduced-motion: reduce)');
+  const childDocument = iframe?.contentDocument;
+  const childWindow = iframe?.contentWindow;
+  const toParent = (point: Point): Point => {
+    if (!iframe || !childWindow) return point;
+    const box = iframe.getBoundingClientRect();
+    return { x: box.left + point.x * box.width / Math.max(1, iframe.offsetWidth), y: box.top + point.y * box.height / Math.max(1, iframe.offsetHeight) };
+  };
   const overlay = document.createElement('div');
   overlay.className = 'hint demo-crop-guide';
   overlay.hidden = true;
@@ -69,7 +77,7 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     frame = win.requestAnimationFrame(tick);
   });
   const pointFor = (element: Element): Point => { const rect = element.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; };
-  const framePoint = (): Point => { const rect = host.getBoundingClientRect(); return { x: rect.left + rect.width * 0.34, y: rect.top + rect.height * 0.34 }; };
+  const framePoint = (): Point => { const rect = host.getBoundingClientRect(); return toParent({ x: rect.left + rect.width * 0.34, y: rect.top + rect.height * 0.34 }); };
   const stop = () => {
     if (!active) return;
     active = false; generation += 1; clearMotion(); hide();
@@ -98,13 +106,17 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
       }, token)) return;
       if (!await wait(120, token)) return;
       const frameRect = host.getBoundingClientRect();
+      const parentFrameRect = toParent({ x: frameRect.left + frameRect.width, y: frameRect.top + frameRect.height });
+      const parentStart = toParent({ x: frameRect.left, y: frameRect.top });
+      const displayWidth = parentFrameRect.x - parentStart.x;
+      const displayHeight = parentFrameRect.y - parentStart.y;
       let previous = { x: 0, y: 0 };
       let panEnd = start;
       if (!await animate(900, (t) => {
         const p = gestureEase(t); const bow = Math.sin(Math.PI * p) * 0.018;
         const dx = 0.08 * p + bow; const dy = 0.045 * p - bow;
         crop.panBy(dx - previous.x, dy - previous.y); previous = { x: dx, y: dy };
-        panEnd = { x: start.x + frameRect.width * dx, y: start.y + frameRect.height * dy };
+        panEnd = { x: start.x + displayWidth * dx, y: start.y + displayHeight * dy };
         paint(fingers[0], panLeft(panEnd), 1, 0.88);
         if (!coarse) paint(fingers[1], { x: panEnd.x + 20, y: panEnd.y - 6 }, 1, 0.88);
       }, token)) return;
@@ -124,8 +136,8 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
         if (!coarse) paint(fingers[1], { x: panEnd.x + 20 + (pinchOffset - 20) * p, y: panEnd.y - 6 + 6 * p }, 1);
       }, token)) return;
       if (coarse && !await animate(200, (t) => paint(fingers[1], rightAnchor, gestureEase(t)), token)) return;
-      const centerX = clamp((midpoint.x - frameRect.left) / frameRect.width, 0, 1);
-      const centerY = clamp((midpoint.y - frameRect.top) / frameRect.height, 0, 1);
+      const centerX = clamp((midpoint.x - parentStart.x) / displayWidth, 0, 1);
+      const centerY = clamp((midpoint.y - parentStart.y) / displayHeight, 0, 1);
       let previousScale = 1;
       if (!await animate(800, (t) => {
         const scale = 1 + 0.12 * gestureEase(t); const factor = scale / previousScale; previousScale = scale;
@@ -159,5 +171,14 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
   win.addEventListener('pagehide', () => stop(), { signal });
   reducedMotion.addEventListener?.('change', stop, { signal });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stop(); }, { signal });
+  if (childDocument && childWindow) {
+    childDocument.addEventListener('pointerdown', interrupt, { signal, capture: true });
+    childDocument.addEventListener('wheel', interrupt, { signal, capture: true, passive: true });
+    childDocument.addEventListener('keydown', interrupt, { signal, capture: true });
+    childDocument.addEventListener('scroll', () => stop(), { signal, capture: true, passive: true });
+    childWindow.addEventListener('resize', () => stop(), { signal });
+    childWindow.addEventListener('pagehide', () => stop(), { signal });
+    childDocument.addEventListener('visibilitychange', () => { if (childDocument.visibilityState === 'hidden') stop(); }, { signal });
+  }
   return { play, stop, destroy() { if (destroyed) return; destroyed = true; stop(); lifecycle.abort(); overlay.remove(); } };
 }

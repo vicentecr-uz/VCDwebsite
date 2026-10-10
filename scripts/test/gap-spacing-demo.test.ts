@@ -147,7 +147,7 @@ test('destroy aborts listeners and clears visible state', () => {
   expect(h.toolbars[1].classList.contains('is-near-spacing')).toBe(false);
 });
 
-test('Astro lifecycle wires crop suppression, outside click, reset scroll, and disconnect cleanup', () => {
+test('Astro lifecycle exposes the image framing link and disconnect cleanup', () => {
   const source = readFileSync(new URL('../../src/components/project/demos/GapSpacingDemo.astro', import.meta.url), 'utf8')
     .split('<script>')[1].split('</script>')[0].replace(/^\s*import .*?;\s*$/gm, '');
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
@@ -158,26 +158,18 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
     <article data-reorder-demo-block data-demo-spacing data-block-kind="image"><div class="project-image"><img src="/source.jpg"></div><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
     <article data-reorder-demo-block data-demo-spacing data-block-kind="text"><div data-gap-toolbar><div class="dev-gap-toolbar__pill"><div class="dev-gap-toolbar__spacing">${spacingButtonsHtml(false, false)}</div></div></div></article>
     </div><div class="block-demo-actions"><div data-block-save-bar hidden><button data-block-revert disabled>Revert</button><button data-block-save disabled>Save</button></div></div><div class="demo-controls gap-spacing-demo__reset-controls"><button data-gap-reset data-reorder-demo-reset>Reset</button></div></vcd-gap-spacing-demo></main>`;
-  let cropActive = false;
-  let cropState = { source: { src: '/source.jpg', width: 100, height: 80, alt: 'source' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true };
   let gapSuppressed = false;
   let lift: (() => void) | undefined;
   let settle: (() => void) | undefined;
   let resetScroll = false;
   let guideStops = 0;
   let guidePlays = 0;
-  let cropGuideStops = 0;
-  let cropGuidePlays = 0;
-  let cropGuideDestroys = 0;
-  let cropGuideFinish: (() => void) | undefined;
   let gapApi: ReturnType<typeof createDemoGapSpacing> | undefined;
   const env = {
     HTMLElement: win.HTMLElement, customElements: win.customElements, document, window: win, AbortController: win.AbortController,
-    createDemoImageCrop: (options: { onChange?: () => void }) => ({ reset() {}, destroy() {}, setActive(value: boolean) { cropActive = value; }, getState: () => structuredClone(cropState), restore: (value: typeof cropState) => { cropState = structuredClone(value); options.onChange?.(); return true; } }),
     createDemoGapSpacing: (root: HTMLElement, options: { onChange?: () => void }) => { gapApi = createDemoGapSpacing(root, options); const api = gapApi; return { ...api, setSuppressed(value: boolean) { gapSuppressed = value; api.setSuppressed(value); } }; },
     createDemoBlockReorder: (root: HTMLElement, options: { onLift?: () => void; onSettle?: () => void }) => { lift = options.onLift; settle = options.onSettle; const list = root.querySelector<HTMLElement>('[data-reorder-demo-list]')!; return { reset() {}, destroy() {}, getOrder: () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')], restore(order: HTMLElement[]) { order.forEach((block) => list.append(block)); }, guideLift: () => false, guideMove() {}, guideDrop: async () => {}, cancel() {}, guideTarget() {} }; },
     createDemoBlockGuide: () => ({ stop() { guideStops += 1; }, play() { guidePlays += 1; }, destroy() {} }),
-    createDemoCropGuide: (options: { onFinish: () => void }) => { cropGuideFinish = options.onFinish; return { stop() { cropGuideStops += 1; }, play() { cropGuidePlays += 1; }, destroy() { cropGuideDestroys += 1; } }; },
   };
   new Function('env', `with (env) { ${compiled} }`)(env);
   const demo = document.querySelector('vcd-gap-spacing-demo') as HTMLElement;
@@ -197,45 +189,33 @@ test('Astro lifecycle wires crop suppression, outside click, reset scroll, and d
   expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(1);
   expect(save.disabled).toBe(false);
   save.click();
-  expect(cropGuideStops).toBeGreaterThan(0);
   expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(0);
   const list = demo.querySelector<HTMLElement>('[data-reorder-demo-list]')!;
   const blocks = [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
   list.append(blocks[0]);
-  cropState = { ...cropState, source: { ...cropState.source, src: '/changed.jpg' } };
   demo.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option="major"]')[1].click();
   expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(1);
   expect(actionBar.hidden).toBe(false);
   revert.click();
-  expect(cropGuideStops).toBeGreaterThan(1);
   expect([...list.querySelectorAll('[data-reorder-demo-block]')][0]).toBe(blocks[0]);
-  expect(cropState.source.src).toBe('/source.jpg');
   expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(0);
   expect(actionBar.hidden).toBe(true);
-  const trigger = demo.querySelector('.dev-image-edit-trigger') as HTMLButtonElement;
-  trigger.click();
-  expect(cropActive).toBe(true);
-  expect(cropGuidePlays).toBe(1);
-  trigger.click();
-  expect(cropGuideStops).toBeGreaterThan(2);
-  expect(cropActive).toBe(false);
-  trigger.click();
-  cropGuideFinish?.();
-  expect(cropActive).toBe(false);
+  const trigger = demo.querySelector('.dev-image-edit-trigger') as HTMLAnchorElement;
+  expect(trigger.getAttribute('href')).toBe('/image-framing');
+  expect(trigger.target).toBe('_top');
+  expect(demo.querySelector('[data-crop-active]')).toBeNull();
   lift?.();
   expect(gapSuppressed).toBe(true);
   settle?.();
   expect(gapSuppressed).toBe(false);
   document.dispatchEvent(event(win, 'pointerdown', { target: document.body }));
   document.querySelector('[data-gap-reset]')?.dispatchEvent(event(win, 'click'));
-  expect(cropGuideStops).toBeGreaterThan(3);
   expect(resetScroll).toBe(true);
   expect(gapApi?.getState()).toEqual(['group', 'related', 'group']);
   expect(actionBar.hidden).toBe(true);
   expect(guideStops).toBeGreaterThan(0);
   expect(guidePlays).toBeGreaterThan(0);
   demo.remove();
-  expect(cropGuideDestroys).toBe(1);
   expect(demo.querySelector('.block-demo-actions')).toBeTruthy();
   expect(demo.querySelector('.gap-spacing-demo__reset-controls')).toBeTruthy();
   expect(demo.querySelector('[data-block-guide-cursor]')).toBeTruthy();
