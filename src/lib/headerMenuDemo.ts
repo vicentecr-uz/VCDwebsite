@@ -18,7 +18,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   let token = 0;
   let menuOwned = false;
   let revealListener: (() => void) | undefined;
-  let introListener: (() => void) | undefined;
+  let idleIntroListener: (() => void) | undefined;
   const introVisible = () => {
     const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
     return Boolean(intro && !intro.hidden && intro.dataset.state !== 'dismissed');
@@ -55,8 +55,8 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     cancelAnimations();
     if (revealListener) window.removeEventListener('vcd:initial-reveal-complete', revealListener);
     revealListener = undefined;
-    if (introListener) window.removeEventListener('vcd:home-intro-dismissed', introListener);
-    introListener = undefined;
+    if (idleIntroListener) window.removeEventListener('vcd:home-intro-dismissed', idleIntroListener);
+    idleIntroListener = undefined;
     removeListeners();
     if (interrupted && menuOwned && !preserveMenu && !trigger.matches(':hover') && !trigger.contains(document.activeElement)) close(true);
     menuOwned = false;
@@ -210,9 +210,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     });
   };
   const start = () => {
-    if (hasSeen() || lifecycleActive) return;
-    lifecycleActive = true;
-    addListeners();
+    if (hasSeen() || lifecycleActive || idleIntroListener) return;
     const ready = () => {
       if (!lifecycleActive) return;
       const reveal = document.querySelector<HTMLElement>('[data-vcd-initial-reveal]');
@@ -223,16 +221,19 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
         }
         return;
       }
-      if (introVisible()) {
-        if (!introListener) {
-          introListener = () => { introListener = undefined; ready(); };
-          window.addEventListener('vcd:home-intro-dismissed', introListener, { once: true });
-        }
-        return;
-      }
       schedule();
     };
-    ready();
+    const onIntroDismissed = () => {
+      const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
+      if (!document.querySelector('.project-grid') || !intro || intro.dataset.state !== 'dismissed') return;
+      window.removeEventListener('vcd:home-intro-dismissed', onIntroDismissed);
+      idleIntroListener = undefined;
+      lifecycleActive = true;
+      addListeners();
+      ready();
+    };
+    idleIntroListener = onIntroDismissed;
+    window.addEventListener('vcd:home-intro-dismissed', onIntroDismissed);
   };
   return { start, cancel: () => cleanup(true) };
 }
