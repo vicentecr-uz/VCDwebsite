@@ -32,7 +32,7 @@ function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle', incl
   return includeParagraph ? paragraph.outerHTML : paragraph.innerHTML;
 }
 
-function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory = false) {
+function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory = false, shared = false) {
   const window = new Window();
   const document = window.document;
   const element = document.createElement('div');
@@ -51,11 +51,21 @@ function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory
     insertRightIndentTab, removeRightIndentTab, breakRightIndentTab,
     isDevContentEditing: () => editing,
     stickyStatus: '', linkPanelOpen: false, pageHistory: history,
+    textStates: [state],
+    readValue: (candidate: typeof state) => candidate.element.textContent ?? '',
+    renderValue: (candidate: typeof state, value: string | string[]) => { candidate.element.textContent = Array.isArray(value) ? value.join('\n') : value; },
     hideFormatBar() {}, setStickyStatus() {},
     updateActions() { updates++; if (capture) queueMicrotask(capture); },
     tryMergeBlockAtCaret() { merges++; return false; },
     splitBlockAtCaret() { splits++; },
   };
+  let mirror: HTMLElement | undefined;
+  if (shared) {
+    mirror = document.createElement('div');
+    mirror.textContent = element.textContent;
+    document.body.append(mirror);
+    env.textStates.push({ ...state, element: mirror });
+  }
   if (withHistory) {
     Object.assign(globalThis, { Element: window.Element });
     const valueStart = source.indexOf('    const createParagraphPlaceholderBreak =');
@@ -85,7 +95,7 @@ function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory
     element.dispatchEvent(event);
     return event;
   };
-  return { window, document, element, commands, select, key, history, counts: () => ({ updates, merges, splits }) };
+  return { window, document, element, mirror, commands, select, key, history, counts: () => ({ updates, merges, splits }) };
 }
 
 test('Shift+Tab inserts a saved right run only at an editable explicit line end', () => {
@@ -109,6 +119,14 @@ test('ordinary Tab and Shift+Tab away from line ends or outside Edit retain navi
   view.select();
   expect(view.key('Tab', { shiftKey: true }).defaultPrevented).toBe(false);
   expect(view.element.querySelector('[data-text-right-tab]')).toBeNull();
+});
+
+test('shared mapped text fields mirror input across duplicate menu instances', () => {
+  const f = setup('<p>Work</p>', true, false, true);
+  f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+  f.element.textContent = 'Physical';
+  f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+  expect(f.mirror?.textContent).toBe('Physical');
 });
 
 test('right-run gap deletion and line exit notify the shared editor history', () => {
