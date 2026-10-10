@@ -239,18 +239,19 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     let speed = 0;
     const panGain = createCropWheelPanGain(160);
     let lastWheelMode: boolean | null = null;
-    let pending: { dx: number; dy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
+    let pending: { dx: number; dy: number; rawDx: number; rawDy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
     const flushWheel = () => {
       wheelFrame = 0;
       if (!pending) return;
-      const { dx, dy, zoom, x, y, bounds } = pending;
+      const { dx, dy, rawDx, rawDy, zoom, x, y, bounds } = pending;
       pending = undefined;
       if (zoom) {
-        speed += (Math.abs(dy) - speed) * 0.32;
+        speed += (Math.abs(rawDy) - speed) * 0.32;
         const t = Math.min(1, speed / 40);
         const blend = t * t * (3 - 2 * t);
         zoomAt(Math.exp(-dy * (0.00085 + (0.0022 - 0.00085) * blend)), x, y);
       } else {
+        speed += (Math.hypot(rawDx, rawDy) - speed) * 0.32;
         cx += dx / bounds.width * w;
         cy += dy / bounds.height * contentHeight();
       }
@@ -338,7 +339,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       const dx = event.deltaX * unit;
       const dy = event.deltaY * unit;
       const gain = zoom ? 1 : panGain.gainFor(dx, dy, event.timeStamp);
-      pending = { dx: (pending?.dx ?? 0) + dx * gain, dy: (pending?.dy ?? 0) + dy * gain, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
+      pending = { dx: (pending?.dx ?? 0) + dx * gain, dy: (pending?.dy ?? 0) + dy * gain, rawDx: (pending?.rawDx ?? 0) + dx, rawDy: (pending?.rawDy ?? 0) + dy, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
       if (!wheelFrame) wheelFrame = win.requestAnimationFrame(flushWheel);
       if (wheelIdle) win.clearTimeout(wheelIdle);
       wheelIdle = win.setTimeout(() => {

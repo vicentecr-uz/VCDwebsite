@@ -149,6 +149,63 @@ test('wheel pan is unchanged when timestamped events share or split RAF buckets'
   burst.api.destroy();
 });
 
+test('pan samples warm the existing zoom EMA without changing pure zoom', async () => {
+  const zoomGain = (speed: number) => {
+    const t = Math.min(1, Math.max(0, speed) / 40);
+    const blend = t * t * (3 - 2 * t);
+    return 0.00085 + (0.0022 - 0.00085) * blend;
+  };
+  const ema = (speed: number, magnitude: number) => speed + (magnitude - speed) * 0.32;
+  const dispatchWheel = (h: ReturnType<typeof setup>, values: { deltaX?: number; deltaY?: number; ctrlKey?: boolean; timeStamp: number }) => {
+    const event = new h.win.Event('wheel', { cancelable: true }) as Event & Record<string, unknown>;
+    for (const [key, value] of Object.entries({ deltaX: 0, deltaY: 0, deltaMode: 0, ctrlKey: false, clientX: 200, clientY: 150, ...values })) {
+      Object.defineProperty(event, key, { configurable: true, value });
+    }
+    h.stage().dispatchEvent(event);
+  };
+  const pure = setup({ initialAspect: '1:1' });
+  const initialWidth = pure.api.getState().crop.w;
+  dispatchWheel(pure, { deltaY: 20, ctrlKey: true, timeStamp: 0 });
+  await frame(pure.win);
+  dispatchWheel(pure, { deltaY: 20, ctrlKey: true, timeStamp: 16 });
+  await frame(pure.win);
+  const pureWidth = pure.api.getState().crop.w;
+  let pureSpeed = ema(0, 20);
+  const pureGain1 = zoomGain(pureSpeed);
+  pureSpeed = ema(pureSpeed, 20);
+  const pureGain2 = zoomGain(pureSpeed);
+  expect(pureWidth).toBeCloseTo(initialWidth * Math.exp(20 * (pureGain1 + pureGain2)), 10);
+
+  const mixed = setup({ initialAspect: '1:1' });
+  dispatchWheel(mixed, { deltaY: 20, ctrlKey: true, timeStamp: 0 });
+  await frame(mixed.win);
+  dispatchWheel(mixed, { deltaX: 10, timeStamp: 16 });
+  await frame(mixed.win);
+  dispatchWheel(mixed, { deltaY: 20, ctrlKey: true, timeStamp: 32 });
+  await frame(mixed.win);
+  const mixedWidth = mixed.api.getState().crop.w;
+  let mixedSpeed = ema(0, 20);
+  const mixedGain1 = zoomGain(mixedSpeed);
+  mixedSpeed = ema(mixedSpeed, 10);
+  mixedSpeed = ema(mixedSpeed, 20);
+  const mixedGain2 = zoomGain(mixedSpeed);
+  expect(mixedWidth).toBeCloseTo(initialWidth * Math.exp(20 * (mixedGain1 + mixedGain2)), 10);
+  expect(mixedWidth).toBeGreaterThan(pureWidth);
+  expect(mixedWidth).toBeGreaterThan(initialWidth);
+  pure.api.destroy();
+  mixed.api.destroy();
+
+  const startup = setup({ initialAspect: '1:1' });
+  const startupWidth = startup.api.getState().crop.w;
+  dispatchWheel(startup, { deltaX: 40, timeStamp: 0 });
+  await frame(startup.win);
+  dispatchWheel(startup, { deltaY: 10, ctrlKey: true, timeStamp: 16 });
+  await frame(startup.win);
+  const startupSpeed = ema(ema(0, 40), 10);
+  expect(startup.api.getState().crop.w).toBeCloseTo(startupWidth * Math.exp(10 * zoomGain(startupSpeed)), 10);
+  startup.api.destroy();
+});
+
 test('reset and destroy cancel stale pointer paints', async () => {
   const reset = setup({ initialAspect: '1:1' });
   const resetStage = reset.stage();
