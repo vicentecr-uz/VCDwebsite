@@ -46,7 +46,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
 
 {canvasOnly ? <div class="crop-frame-demo__canvas crop-frame-demo__canvas--only" data-crop-demo>
   <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
-</div> : <vcd-crop-frame-demo data-crop-demo data-page-reveal-ready="false" data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
+</div> : <vcd-crop-frame-demo data-crop-demo data-crop-preview-viewport="desktop" data-page-reveal-ready="false" data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
   <template data-crop-guide-cursor><DemoCursor /></template>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
@@ -88,7 +88,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   .crop-frame-demo__panel :global(.dev-overlay) { position: absolute; left: 0; top: 0; width: 100%; max-height: calc(100 * var(--vh-safe, 1svh) - (var(--space-unit) * 2)); }
   .crop-frame-demo__panel :global(.dev-overlay__resize) { display: none; }
   .crop-frame-demo__preview-column { min-width: 0; display: grid; place-items: center; }
-  .crop-frame-demo__preview-shell { position: relative; width: 100%; height: 900px; overflow: hidden; background: var(--comp-demo-frame-container); border-radius: var(--radius-control-smooth); transition: width 280ms cubic-bezier(.645,.045,.355,1), height 280ms cubic-bezier(.645,.045,.355,1); }
+  .crop-frame-demo__preview-shell { position: relative; width: 100%; height: 900px; overflow: hidden; background: var(--comp-demo-frame-container); border-radius: var(--radius-control-smooth); transition: width 280ms cubic-bezier(.645,.045,.355,1), height 280ms cubic-bezier(.645,.045,.355,1), border-radius 280ms cubic-bezier(.645,.045,.355,1); }
   .crop-frame-demo__preview-shell::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent), inset 0 0 0 1px var(--sys-color-surface-outline); }
   :global(:root[data-theme='dark']) .crop-frame-demo__preview-shell::after { box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 0 0 1px var(--sys-color-surface-outline); }
   .crop-frame-demo__preview-shell iframe { display: block; width: 1024px; height: 900px; border: 0; transform-origin: top left; transition: width 280ms cubic-bezier(.645,.045,.355,1), opacity 160ms ease; }
@@ -112,8 +112,14 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   }
   @media (max-width: 56em) { .crop-frame-demo__panel { position: relative; inset: auto; width: min(100%, 22rem); margin-inline: auto; } .crop-frame-demo__panel :global(.dev-overlay) { position: relative; inset: auto; max-height: none; } .crop-frame-demo__preview-column { order: -1; } }
   @media (max-width: 40em) {
-    .crop-frame-demo__preview-shell,
-    .crop-frame-demo__preview-shell::after { border-radius: 0; }
+    vcd-crop-frame-demo[data-crop-preview-viewport='desktop'] .crop-frame-demo__preview-shell,
+    vcd-crop-frame-demo[data-crop-preview-viewport='desktop'] .crop-frame-demo__preview-shell::after { border-radius: 0; }
+    vcd-crop-frame-demo[data-crop-preview-viewport='desktop'] .crop-frame-demo__preview-shell::after {
+      box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 1px 0 var(--sys-color-surface-outline);
+    }
+    :global(:root[data-theme='dark']) vcd-crop-frame-demo[data-crop-preview-viewport='desktop'] .crop-frame-demo__preview-shell::after {
+      box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 1px 0 var(--sys-color-surface-outline);
+    }
     .crop-frame-demo__panel :global(.dev-overlay.is-dev-overlay-open) { transform: none; }
   }
   @media (prefers-reduced-motion: reduce) {
