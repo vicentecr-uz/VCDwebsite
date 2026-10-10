@@ -11,7 +11,7 @@ export function createDemoImageViewport({ root, column, iframe }: Options) {
   let scale = 1;
   let fade: Animation | undefined;
   const reducedMotion = ownerWindow.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  const mobileViewport = ownerWindow.matchMedia?.('(max-width: 40em)').matches ?? false;
+  const mobileViewport = ownerWindow.matchMedia?.('(max-width: 40em)');
   const syncButtons = () => root.querySelectorAll<HTMLElement>('[data-crop-viewport]').forEach((button) => {
     const selected = button.dataset.cropViewport === viewport;
     button.classList.toggle('is-active', selected);
@@ -19,7 +19,7 @@ export function createDemoImageViewport({ root, column, iframe }: Options) {
   });
   const measureScale = () => {
     const width = widths[viewport];
-    return mobileViewport
+    return mobileViewport?.matches
       ? column.getBoundingClientRect().width / width
       : Math.min(1, column.getBoundingClientRect().width / widths.desktop);
   };
