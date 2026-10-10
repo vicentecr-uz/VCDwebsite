@@ -103,6 +103,12 @@ export function documentInfo(document) {
       if (match) links.push(match[1].trim().replace(/^['"]|['"]$/g, ''));
     }
     if (tag === 'style' || tag === 'script') inline.push((node.childNodes || []).map((child) => child.value || '').join(''));
+    if (tag === 'astro-island') {
+      for (const name of ['component-url', 'renderer-url']) {
+        const value = attr(node, name);
+        if (value) resources.push(value);
+      }
+    }
   });
   return { links, resources, inline };
 }
