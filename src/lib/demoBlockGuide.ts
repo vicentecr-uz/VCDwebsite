@@ -249,11 +249,9 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   };
 
   const interrupt = (event: Event) => { if (active && (event as Event & { isTrusted?: boolean }).isTrusted) { autoStarted = true; stop(); } };
-  document.addEventListener('pointermove', interrupt, { signal, capture: true });
   document.addEventListener('pointerdown', interrupt, { signal, capture: true });
   document.addEventListener('wheel', interrupt, { signal, capture: true, passive: true });
   document.addEventListener('keydown', interrupt, { signal, capture: true });
-  root.addEventListener('pointerleave', interrupt, { signal });
   win.addEventListener('resize', interrupt, { signal });
   win.addEventListener('pagehide', interrupt, { signal });
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') stop(); }, { signal });
