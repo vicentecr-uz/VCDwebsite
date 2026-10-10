@@ -12,6 +12,9 @@ interface Props {
 import headerSettings from '../content/settings/header.json';
 import type { SvgComponent } from 'astro/types';
 import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw';
+import settingsIcon from 'lucide-static/icons/settings.svg?raw';
+import Button from './ui/Button.astro';
+import TextField from './ui/TextField.astro';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
@@ -46,6 +49,7 @@ const menuLabelEditAttrs = import.meta.env.DEV
       'data-dev-text-kind': 'text',
     })
   : () => undefined;
+const showDevLinkControls = import.meta.env.DEV;
 const WordmarkTag = wordmarkAsH1 ? 'h1' : 'span';
 const homeWordmark = headerSettings.siteTitle.replace(' ', '\u00a0');
 const wordmark = title.replace(' ', '\u00a0');
@@ -109,7 +113,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link, index) => (
+            {menuLinks.map((link) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -118,8 +122,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(menuLinks.indexOf(link))}>{link.label}</span>
                 </a>
+                {showDevLinkControls && (
+                  <Button class="header-menu__edit-link" emphasis="ghost" label="Edit link" aria-label={`Edit ${link.label} link`} data-dev-header-link-trigger data-menu-index={menuLinks.indexOf(link)}>
+                    <span slot="icon" set:html={settingsIcon}></span>
+                  </Button>
+                )}
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
                   You are on this page
                 </span>
@@ -144,7 +153,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link, index) => (
+            {menuLinks.map((link) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -153,8 +162,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(menuLinks.indexOf(link))}>{link.label}</span>
                 </a>
+                {showDevLinkControls && (
+                  <Button class="header-menu__edit-link" emphasis="ghost" label="Edit link" aria-label={`Edit ${link.label} link`} data-dev-header-link-trigger data-menu-index={menuLinks.indexOf(link)}>
+                    <span slot="icon" set:html={settingsIcon}></span>
+                  </Button>
+                )}
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
                   You are on this page
                 </span>
@@ -165,6 +179,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       </div>
     </div>
   </header>
+  {showDevLinkControls && (
+    <div class="header-link-editor dev-panel dev-surface" data-dev-header-link-editor popover="manual" hidden>
+      <TextField label="Link URL" hideLabel prefix="vicentecr.uz" data-dev-header-link-input autocomplete="off" spellcheck="false" />
+      <p class="header-link-editor__error" data-dev-header-link-error aria-live="polite"></p>
+    </div>
+  )}
   </div>
 ) : (
   <div class="site-header-slot">
@@ -199,6 +219,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
 
 <script>
+  import { normalizeHref } from '../lib/normalizeHref.mjs';
+  import { initTextField } from '../lib/devTextField.js';
+
   // Touch / no-hover devices open the menu on tap instead of on hover.
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
   const isTapMode = () => tapModeMq.matches;
@@ -976,6 +999,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger.addEventListener('mouseleave', () => {
       if (previewPinned) return;
+      if (document.documentElement.hasAttribute('data-dev-header-link-editor-open')) return;
       if (isTapMode()) return;
       menuScrollClosed = false;
       const active = document.activeElement;
@@ -997,6 +1021,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.contains(event.relatedTarget as Node | null)) {
+        if (document.documentElement.hasAttribute('data-dev-header-link-editor-open')) return;
         if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
       }
@@ -1013,7 +1038,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           const target = event.target as Element | null;
           if (target?.closest('.header-menu__link-label')) {
             event.preventDefault();
-            event.stopPropagation();
             return;
           }
           if (target?.closest('.header-trigger__brand-link')) {
@@ -1041,6 +1065,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       },
       true,
     );
+    trigger.addEventListener('keydown', (event) => {
+      if (!isDevEditing() || !trigger.classList.contains('header-trigger--start')) return;
+      const target = event.target as Element | null;
+      if (!target?.closest('.header-trigger__brand-link') || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      if (!isOpen()) openMenu(event);
+    });
 
     document.addEventListener('click', (event) => {
       if (!isTapMode() || !isOpen()) return;
@@ -1058,6 +1089,142 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       closeMenu();
     });
   });
+
+  const linkEditor = document.querySelector<HTMLElement>('[data-dev-header-link-editor]');
+  const linkEditorInput = linkEditor?.querySelector<HTMLInputElement>('[data-dev-header-link-input]');
+  const linkEditorError = linkEditor?.querySelector<HTMLElement>('[data-dev-header-link-error]');
+  const linkEditorPrefix = linkEditor?.querySelector<HTMLElement>('.dev-text-field__prefix');
+  let linkEditorIndex: number | null = null;
+  let linkEditorOriginal = '';
+  let linkEditorSaving = false;
+
+  const positionLinkEditor = (button: HTMLElement) => {
+    if (!linkEditor) return;
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 32);
+    const left = Math.max(16, Math.min(window.innerWidth - width - 16, rect.left));
+    const top = Math.max(16, Math.min(window.innerHeight - linkEditor.offsetHeight - 16, rect.bottom + 8));
+    linkEditor.style.left = `${left}px`;
+    linkEditor.style.top = `${top}px`;
+  };
+  const closeLinkEditor = (force = false) => {
+    if (!linkEditor || (linkEditorSaving && !force)) return;
+    linkEditor.hidePopover?.();
+    linkEditor.hidden = true;
+    delete document.documentElement.dataset.devHeaderLinkEditorOpen;
+    linkEditorIndex = null;
+    linkEditorError && (linkEditorError.textContent = '');
+  };
+  const updateHeaderMenuLink = (index: number, href: string) => {
+    document.querySelectorAll<HTMLAnchorElement>(`.header-menu__link`).forEach((link) => {
+      const label = link.querySelector<HTMLElement>('[data-dev-text-path]');
+      if (label?.dataset.devTextPath !== JSON.stringify(['menuLinks', index, 'label'])) return;
+      link.href = href;
+      link.removeAttribute('data-header-navigation-title');
+    });
+    document.dispatchEvent(new CustomEvent('vcd:header-menu-link-change', { detail: { index, href } }));
+    window.dispatchEvent(new Event('vcd:dev-content-written'));
+  };
+  const saveLinkEditor = async () => {
+    if (!linkEditorInput || linkEditorIndex === null || linkEditorSaving) return false;
+    const normalized = normalizeHref(linkEditorInput.value);
+    if (!normalized) {
+      if (linkEditorError) linkEditorError.textContent = 'Use a valid URL like /work or example.com.';
+      linkEditorInput.focus();
+      return false;
+    }
+    if (normalized === linkEditorOriginal) {
+      closeLinkEditor();
+      return true;
+    }
+    linkEditorSaving = true;
+    linkEditorInput.disabled = true;
+    if (linkEditorError) linkEditorError.textContent = '';
+    try {
+      const response = await fetch('/api/content-text', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ changes: [{ document: 'header-settings', path: ['menuLinks', linkEditorIndex, 'href'], value: normalized }] }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Could not save this link.');
+      updateHeaderMenuLink(linkEditorIndex, normalized);
+      linkEditorSaving = false;
+      closeLinkEditor(true);
+      return true;
+    } catch (error) {
+      if (linkEditorError) linkEditorError.textContent = error instanceof Error ? error.message : 'Could not save this link.';
+      return false;
+    } finally {
+      linkEditorSaving = false;
+      linkEditorInput.disabled = false;
+    }
+  };
+  const openLinkEditor = (button: HTMLElement) => {
+    if (!linkEditor || !linkEditorInput) return;
+    const index = Number(button.dataset.menuIndex);
+    if (!Number.isInteger(index)) return;
+    const link = button.closest('.header-menu__item')?.querySelector<HTMLAnchorElement>('.header-menu__link');
+    if (!link) return;
+    linkEditorIndex = index;
+    linkEditorOriginal = link.getAttribute('href') || '';
+    linkEditorInput.value = linkEditorOriginal;
+    if (linkEditorPrefix) linkEditorPrefix.hidden = !/^[/#]/.test(linkEditorOriginal);
+    if (linkEditorError) linkEditorError.textContent = '';
+    linkEditor.hidden = false;
+    linkEditor.showPopover?.();
+    document.documentElement.dataset.devHeaderLinkEditorOpen = '';
+    positionLinkEditor(button);
+    linkEditorInput.focus();
+    linkEditorInput.select();
+  };
+
+  if (linkEditor && linkEditorInput) {
+    const linkEditorField = linkEditor.querySelector<HTMLElement>('[data-dev-text-field]');
+    if (linkEditorField) initTextField(linkEditorField);
+    document.querySelectorAll<HTMLElement>('[data-dev-header-link-trigger]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!linkEditor.hidden && linkEditorIndex === Number(button.dataset.menuIndex)) {
+          linkEditorInput.focus();
+          return;
+        }
+        if (!linkEditor.hidden && linkEditorIndex !== Number(button.dataset.menuIndex)) {
+          void saveLinkEditor().then((saved) => { if (saved) openLinkEditor(button); });
+          return;
+        }
+        openLinkEditor(button);
+      });
+    });
+    linkEditorInput.addEventListener('input', () => {
+      document.querySelectorAll<HTMLElement>('.header-trigger').forEach(syncMenuSurfaceInlineSize);
+    });
+    linkEditorInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void saveLinkEditor();
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeLinkEditor();
+      }
+    });
+    document.addEventListener('pointerdown', (event) => {
+      if (linkEditor.hidden || linkEditor.contains(event.target as Node)) return;
+      if ((event.target as Element | null)?.closest('[data-dev-header-link-trigger]')) return;
+      void saveLinkEditor();
+    }, true);
+    window.addEventListener('resize', () => {
+      if (!linkEditor.hidden) {
+        const trigger = document.querySelector<HTMLElement>(`[data-menu-index="${linkEditorIndex}"]`);
+        if (trigger) positionLinkEditor(trigger);
+      }
+    });
+    window.addEventListener('vcd:dev-mode-change', (event) => {
+      if (!(event as CustomEvent<{ active?: boolean }>).detail?.active) closeLinkEditor();
+    });
+    document.addEventListener('header:navigation-start', closeLinkEditor);
+  }
 
   // Switching between hover and tap (rotation, devtools emulation, external
   // pointer) leaves stale open state behind — reset it.
@@ -1774,6 +1941,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     link.addEventListener(
       'click',
       (event) => {
+        if (isDevEditing()) return;
         if (!link.hasAttribute('data-current-page') || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
         event.preventDefault();
         if (currentPageRemoved || suppressNextCurrentPageClick) {
@@ -1842,6 +2010,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       true,
     );
     link.addEventListener('pointerdown', (event) => {
+      if (isDevEditing()) return;
       if (!link.hasAttribute('data-current-page')) return;
       if (storyIsLocked()) return;
       if (event.pointerType === 'mouse' && event.button === 0 &&
@@ -1852,6 +2021,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
     }, true);
   });
+
+  const reconcileCurrentPageMenu = (path = window.location.pathname) => {
+    const normalizedPath = path.replace(/\/+$/, '') || '/';
+    document.querySelectorAll<HTMLAnchorElement>('.header-menu__link').forEach((link) => {
+      const current = (new URL(link.href, window.location.href).pathname.replace(/\/+$/, '') || '/') === normalizedPath;
+      link.toggleAttribute('data-current-page', current);
+      if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+      const item = link.closest<HTMLElement>('.header-menu__item');
+      item?.classList.toggle('header-menu__item--current-page', current);
+    });
+    currentPageLinks = [...document.querySelectorAll<HTMLAnchorElement>('[data-current-page]')];
+    currentPageItems = currentPageLinks.map((link) => link.closest<HTMLElement>('.header-menu__item')!);
+    currentPageNotes = currentPageItems.map((item) => item.querySelector<HTMLElement>('[data-current-page-note]')!);
+  };
+
+  document.addEventListener('vcd:header-menu-link-change', () => reconcileCurrentPageMenu());
 
   document.addEventListener('header:navigation-commit', (event) => {
     clearStoryLock(); cancelIdle();
@@ -2320,6 +2505,40 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-menu__link-label {
     display: inline-block;
   }
+
+  .header-menu__edit-link {
+    display: none;
+    margin-inline-start: 0.35em;
+    padding: 0.15em;
+    vertical-align: middle;
+  }
+
+  :global(html.is-dev-mode) .header-menu__item:hover .header-menu__edit-link,
+  :global(html.is-dev-mode) .header-menu__item:focus-within .header-menu__edit-link {
+    display: inline-flex;
+  }
+
+  @media (hover: none), (pointer: coarse) {
+    :global(html.is-dev-mode) .header-menu__edit-link { display: inline-flex; }
+  }
+
+  .header-link-editor {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    box-sizing: border-box;
+    z-index: 300;
+    width: min(20rem, calc(100vw - 2rem));
+    padding: var(--dev-panel-pad);
+  }
+
+  .header-link-editor__error {
+    margin: 0.5rem 0 0;
+    color: var(--sys-color-error, #b42318);
+    font-size: 0.8rem;
+  }
+
+  .header-link-editor__error:empty { display: none; }
 
   .header-menu__link-label.is-error-shaking {
     animation: header-current-page-error-shake var(--current-shake-duration, 0.24s) cubic-bezier(0.36, 0.07, 0.19, 0.97);

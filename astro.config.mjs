@@ -595,7 +595,17 @@ function contentTextDevWriter() {
                 send(400, { error: 'An editable text field no longer exists.' });
                 return;
               }
-              if (target.type === 'award' && field === 'href') {
+              const isHeaderMenuHref = relativeFile === 'src/content/settings/header.json'
+                && resolvedPath[0] === 'menuLinks'
+                && field === 'href';
+              if (isHeaderMenuHref) {
+                const href = normalizeHref(change.value);
+                if (!href) {
+                  send(400, { error: 'Enter a valid menu link.' });
+                  return;
+                }
+                target[field] = href;
+              } else if (target.type === 'award' && field === 'href') {
                 const href = normalizeHref(change.value);
                 if (change.value.trim() && !href) {
                   send(400, { error: 'Enter a valid award link.' });
@@ -1587,7 +1597,17 @@ function contentBatchDevWriter() {
                 send(400, { error: 'An editable text field no longer exists.' });
                 return;
               }
-              if (target.type === 'award' && field === 'href') {
+              const isHeaderMenuHref = relativeFile === 'src/content/settings/header.json'
+                && resolvedPath[0] === 'menuLinks'
+                && field === 'href';
+              if (isHeaderMenuHref) {
+                const href = normalizeHref(change.value);
+                if (!href) {
+                  send(400, { error: 'Enter a valid menu link.' });
+                  return;
+                }
+                target[field] = href;
+              } else if (target.type === 'award' && field === 'href') {
                 const href = normalizeHref(change.value);
                 if (change.value.trim() && !href) {
                   send(400, { error: 'Enter a valid award link.' });
