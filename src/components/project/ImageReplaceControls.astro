@@ -15,11 +15,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
     <div class="dev-drop__well">
       {dropLabel && <p class="dev-drop__label">{dropLabel}</p>}
       <span class="dev-file-picker">
-        <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose tabindex="-1" aria-hidden="true">
+        <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
           <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
           File system
         </button>
-        <input type="file" accept="image/*,.heic,.heif" aria-label="File system" data-crop-replace-file />
+        <input type="file" accept="image/*,.heic,.heif" aria-label="File system" tabindex="-1" aria-hidden="true" data-crop-replace-file />
       </span>
       {showAssetManager && <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
         <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
@@ -35,23 +35,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
     display: inline-flex;
   }
 
-  .dev-file-picker:has(> input:focus-visible) {
-    outline: 2px solid var(--sys-color-outline);
-    outline-offset: -2px;
-    border-radius: var(--dev-radius-control);
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .dev-file-picker:has(> input:hover) > .dev-btn {
-      background: var(--comp-button-ghost-container-hover);
-    }
-  }
-
-  .dev-file-picker:has(> input:active) > .dev-btn {
-    background: var(--comp-button-ghost-container-pressed);
-    transform: scale(var(--motion-press-scale));
-  }
-
   .dev-file-picker > input {
     position: absolute;
     inset: 0;
@@ -61,7 +44,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     padding: 0;
     border: 0;
     box-sizing: border-box;
-    opacity: 0;
-    cursor: pointer;
+    visibility: hidden;
+    pointer-events: none;
   }
 </style>

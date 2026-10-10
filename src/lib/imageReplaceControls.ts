@@ -7,11 +7,17 @@ export function bindImageReplaceControls(root: HTMLElement, options: { onFile: (
   const input = root.querySelector<HTMLInputElement>('[data-crop-replace-file]');
   if (!drop || !choose || !input) return;
   const isControl = (event: Event) => event.target instanceof Element && Boolean(event.target.closest('button, input'));
+  const openPicker = () => {
+    if (typeof input.showPicker === 'function') {
+      try { input.showPicker(); return; } catch { /* fall through when native picker rejects activation */ }
+    }
+    input.click();
+  };
   drop.addEventListener('click', (event) => { if (!isControl(event)) drop.focus(); }, { signal });
-  drop.addEventListener('dblclick', (event) => { if (!isControl(event)) input.click(); }, { signal });
-  drop.addEventListener('keydown', (event) => { if (!isControl(event) && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); input.click(); } }, { signal });
+  drop.addEventListener('dblclick', (event) => { if (!isControl(event)) openPicker(); }, { signal });
+  drop.addEventListener('keydown', (event) => { if (!isControl(event) && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openPicker(); } }, { signal });
   drop.addEventListener('paste', (event) => { const file = [...(event.clipboardData?.items ?? [])].map((item) => item.kind === 'file' ? item.getAsFile() : null).find((item): item is File => Boolean(item && isAcceptedImageFile(item))); if (!file) return; event.preventDefault(); onFile(file); }, { signal });
-  choose.addEventListener('click', (event) => { event.stopPropagation(); input.click(); }, { signal });
+  choose.addEventListener('click', (event) => { event.stopPropagation(); openPicker(); }, { signal });
   input.addEventListener('click', (event) => { event.stopPropagation(); }, { signal });
   input.addEventListener('change', () => { const file = input.files?.[0]; input.value = ''; onFile(file); }, { signal });
   drop.addEventListener('dragenter', (event) => { event.preventDefault(); event.stopPropagation(); drop.classList.add('is-dragover'); }, { signal });
