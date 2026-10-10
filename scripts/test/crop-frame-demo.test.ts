@@ -39,10 +39,11 @@ function setup({ sourceAspect = 16 / 9, initialAspect = 'original', initialState
     target.dispatchEvent(event);
     return event;
   };
-  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, initialState, active, onChange });
+  let paints = 0;
+  const api = createDemoImageCrop({ host, controls, sourceAspect, initialAspect, initialState, active, onChange: () => { paints += 1; onChange?.(); } });
   setRects();
   return {
-    win, document, root, host, controls, stage, preview, captures, pointer, api,
+    win, document, root, host, controls, stage, preview, captures, pointer, api, paints: () => paints,
     select: controls.querySelector('select') as HTMLSelectElement,
     reset: controls.querySelector('[data-crop-reset]') as HTMLButtonElement,
     constraint: controls.querySelector('[data-crop-constraint]') as HTMLButtonElement,
@@ -61,7 +62,7 @@ test('original finite non-4:3 source renders finite crop and preview state', () 
   h.api.destroy();
 });
 
-test('preview pan and resize keep both surfaces synchronized', () => {
+test('preview pan and resize keep both surfaces synchronized', async () => {
   const h = setup({ initialAspect: '4:3' });
   const stage = h.stage();
   stage.setPointerCapture = (id: number) => h.captures.add(id);
@@ -69,15 +70,112 @@ test('preview pan and resize keep both surfaces synchronized', () => {
   stage.hasPointerCapture = (id: number) => h.captures.has(id);
   h.pointer(stage, 'pointerdown');
   h.pointer(stage, 'pointermove', { clientX: 240, clientY: 120 });
+  await frame(h.win);
   expect(h.preview.style.getPropertyValue('--tuner-content-cx')).toBe(h.host.style.getPropertyValue('--project-content-cx-desktop'));
   expect(h.preview.style.getPropertyValue('--tuner-content-cy')).toBe(h.host.style.getPropertyValue('--project-content-cy-desktop'));
   const east = stage.querySelector('[data-page-resize="e"]')!;
   h.pointer(east, 'pointerdown', { clientX: 200 });
   h.pointer(stage, 'pointermove', { clientX: 260 });
+  await frame(h.win);
   expect(h.host.dataset.cropAspect).toBe('400:261');
   expect(h.preview.style.aspectRatio).toBe(`${h.root.style.getPropertyValue('--crop-demo-aspect')} / 1`);
   h.pointer(stage, 'pointerup', { clientX: 260 });
   h.api.destroy();
+});
+
+test('pointermove paints once per frame with the latest pose', async () => {
+  const h = setup({ initialAspect: '1:1' });
+  const stage = h.stage();
+  stage.setPointerCapture = (id: number) => h.captures.add(id);
+  stage.releasePointerCapture = (id: number) => h.captures.delete(id);
+  stage.hasPointerCapture = (id: number) => h.captures.has(id);
+  const before = h.paints();
+  h.pointer(stage, 'pointerdown');
+  h.pointer(stage, 'pointermove', { clientX: 220, clientY: 150 });
+  h.pointer(stage, 'pointermove', { clientX: 260, clientY: 150 });
+  expect(h.paints()).toBe(before);
+  expect(h.api.getState().crop.cx).toBeLessThan(0.5);
+  await frame(h.win);
+  expect(h.paints()).toBe(before + 1);
+  expect(h.host.style.getPropertyValue('--project-content-cx-desktop')).toBe(String(h.api.getState().crop.cx));
+  h.pointer(stage, 'pointerup', { clientX: 260, clientY: 150 });
+  h.api.destroy();
+});
+
+test('pointerup flushes the final pending pose before the next frame', async () => {
+  const h = setup({ initialAspect: '1:1' });
+  const stage = h.stage();
+  stage.setPointerCapture = (id: number) => h.captures.add(id);
+  stage.releasePointerCapture = (id: number) => h.captures.delete(id);
+  stage.hasPointerCapture = (id: number) => h.captures.has(id);
+  const before = h.paints();
+  h.pointer(stage, 'pointerdown');
+  h.pointer(stage, 'pointermove', { clientX: 260, clientY: 150 });
+  h.pointer(stage, 'pointerup', { clientX: 260, clientY: 150 });
+  expect(h.paints()).toBe(before + 1);
+  const painted = h.host.style.getPropertyValue('--project-content-cx-desktop');
+  await frame(h.win);
+  expect(h.paints()).toBe(before + 1);
+  expect(h.host.style.getPropertyValue('--project-content-cx-desktop')).toBe(painted);
+  h.api.destroy();
+});
+
+test('wheel pan is unchanged when timestamped events share or split RAF buckets', async () => {
+  const dispatchWheel = (h: ReturnType<typeof setup>, deltaX: number, timeStamp: number) => {
+    const event = new h.win.Event('wheel', { cancelable: true }) as Event & Record<string, unknown>;
+    Object.assign(event, { deltaX, deltaY: 0, deltaMode: 0, clientX: 200, clientY: 150 });
+    Object.defineProperty(event, 'timeStamp', { configurable: true, value: timeStamp });
+    h.stage().dispatchEvent(event);
+  };
+  const split = setup({ initialAspect: '1:1' });
+  dispatchWheel(split, 10, 0);
+  await frame(split.win);
+  dispatchWheel(split, 10, 16);
+  await frame(split.win);
+  dispatchWheel(split, 10, 32);
+  await frame(split.win);
+  const splitState = split.api.getState();
+
+  const burst = setup({ initialAspect: '1:1' });
+  dispatchWheel(burst, 10, 0);
+  dispatchWheel(burst, 10, 16);
+  dispatchWheel(burst, 10, 32);
+  await frame(burst.win);
+  const burstState = burst.api.getState();
+  expect(burstState.crop.cx).toBeGreaterThan(0.5);
+  expect(burstState.crop.cx).toBe(splitState.crop.cx);
+  expect(burstState.crop.cy).toBe(splitState.crop.cy);
+  split.api.destroy();
+  burst.api.destroy();
+});
+
+test('reset and destroy cancel stale pointer paints', async () => {
+  const reset = setup({ initialAspect: '1:1' });
+  const resetStage = reset.stage();
+  resetStage.setPointerCapture = (id: number) => reset.captures.add(id);
+  resetStage.releasePointerCapture = (id: number) => reset.captures.delete(id);
+  resetStage.hasPointerCapture = (id: number) => reset.captures.has(id);
+  const resetBefore = reset.paints();
+  reset.pointer(resetStage, 'pointerdown');
+  reset.pointer(resetStage, 'pointermove', { clientX: 260, clientY: 150 });
+  reset.api.reset();
+  const resetAfter = reset.paints();
+  await frame(reset.win);
+  expect(reset.paints()).toBe(resetAfter);
+  expect(reset.paints()).toBe(resetBefore + 1);
+  reset.api.destroy();
+
+  const destroyed = setup({ initialAspect: '1:1' });
+  const destroyedStage = destroyed.stage();
+  destroyedStage.setPointerCapture = (id: number) => destroyed.captures.add(id);
+  destroyedStage.releasePointerCapture = (id: number) => destroyed.captures.delete(id);
+  destroyedStage.hasPointerCapture = (id: number) => destroyed.captures.has(id);
+  const destroyedBefore = destroyed.paints();
+  destroyed.pointer(destroyedStage, 'pointerdown');
+  destroyed.pointer(destroyedStage, 'pointermove', { clientX: 260, clientY: 150 });
+  destroyed.api.destroy();
+  await frame(destroyed.win);
+  expect(destroyed.paints()).toBe(destroyedBefore);
 });
 
 test('center controls restore one axis independently', () => {

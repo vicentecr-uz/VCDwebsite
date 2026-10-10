@@ -177,6 +177,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
   import { createImageCropStage, cropResizeHeight } from '../../lib/imageCropStage';
+  import { createCropWheelPanGain } from '../../lib/cropWheelPan';
 
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
@@ -2186,8 +2187,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     */
     const WHEEL_ZOOM_GAIN_FINE = 0.00085;
     const WHEEL_ZOOM_GAIN_FAST = 0.0022;
-    const WHEEL_PAN_GAIN_FINE = 0.38;
-    const WHEEL_PAN_GAIN_FAST = 1;
     /** Higher knee = more of the common trackpad range stays in the fine→mid blend. */
     const WHEEL_GAIN_KNEE = 40;
     /** EMA toward per-frame |delta| so gain doesn't flicker with packet noise. */
@@ -2262,6 +2261,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       let pendingStatus: string | null = null;
       let pointerDirty = false;
       let wheelSpeedEma = 0;
+      const panGain = createCropWheelPanGain(140);
+      let lastWheelMode: boolean | null = null;
       let pendingWheel: {
         dx: number;
         dy: number;
@@ -2392,13 +2393,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           return;
         }
 
-        const mag = Math.hypot(dx, dy);
-        wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
-        const panGain = wheelGainForSpeed(wheelSpeedEma, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
         pushUndoIfNeeded(gestureUndoCaptured);
         beginCropEdit();
-        draft.cx += (dx / bounds.width) * draft.w * panGain;
-        draft.cy += (dy / bounds.height) * contentH(draft) * panGain;
+        draft.cx += (dx / bounds.width) * draft.w;
+        draft.cy += (dy / bounds.height) * contentH(draft);
         pendingStatus = 'Unsaved changes.';
       };
 
@@ -2466,6 +2464,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         }
         gestureBounds = null;
         wheelSpeedEma = 0;
+        panGain.reset();
+        lastWheelMode = null;
         if (paintRaf) {
           cancelAnimationFrame(paintRaf);
           flushGesturePaint();
@@ -2594,7 +2594,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         // Trackpad pinch (and ctrl+wheel) always zooms. At locked cover-fit,
         // swipe falls back to scroll-to-zoom so the gesture still does something.
         const zoom = event.ctrlKey || !cropCanPan();
-        if (!pendingWheel || pendingWheel.zoom !== zoom) {
+        if (lastWheelMode !== null && lastWheelMode !== zoom) {
           // Mode change mid-frame — flush the previous bucket first.
           if (pendingWheel && (pendingWheel.dx || pendingWheel.dy)) {
             if (paintRaf) {
@@ -2605,6 +2605,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
               paintDraftCrop();
             }
           }
+          pendingWheel = null;
+          panGain.reset();
+        }
+        lastWheelMode = zoom;
+        if (!pendingWheel) {
           pendingWheel = {
             dx: 0,
             dy: 0,
@@ -2613,8 +2618,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             clientY: event.clientY,
           };
         }
-        pendingWheel.dx += event.deltaX;
-        pendingWheel.dy += event.deltaY;
+        const gain = zoom ? 1 : panGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
+        pendingWheel.dx += event.deltaX * gain;
+        pendingWheel.dy += event.deltaY * gain;
         pendingWheel.clientX = event.clientX;
         pendingWheel.clientY = event.clientY;
         requestGesturePaint();
