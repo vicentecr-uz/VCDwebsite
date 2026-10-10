@@ -38,6 +38,9 @@ function setup(reduced = false) {
   Object.defineProperty(imageBlock.querySelector('[data-reorder-demo-handle]'), 'getBoundingClientRect', { value: () => rect(180, 150, 30, 30) });
   Object.defineProperty(revertButton, 'getBoundingClientRect', { value: () => rect(650, 650, 100, 40) });
   const image = root.querySelector('img')! as HTMLImageElement; image.decode = () => Promise.resolve();
+  let hitCursor = 'default';
+  Object.defineProperty(win.document, 'elementFromPoint', { value: () => imageBlock, configurable: true });
+  Object.defineProperty(win, 'getComputedStyle', { value: () => ({ cursor: hitCursor }), configurable: true });
   Object.defineProperty(win.document, 'fonts', { value: { ready: Promise.resolve() } });
   const actions: string[] = [];
   const gaps = { reveal: () => actions.push('reveal'), hide: () => actions.push('hide') };
@@ -51,7 +54,7 @@ function setup(reduced = false) {
     for (const [id, callback] of [...frames]) { frames.delete(id); callback(now); }
     await flush();
   };
-  return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance };
+  return { win, root, cursor, imageBlock, gaps, actions, guide, observerInstances, flush, advance, setHitCursor: (value: string) => { hitCursor = value; } };
 }
 
 async function advanceUntil(h: Harness, predicate: () => boolean, maxMs = 10000, onAdvance?: () => void) {
@@ -90,6 +93,34 @@ test('plays the guide sequence with grouped spacing, smooth drag, drop, and actu
   expect(h.actions.indexOf('drop')).toBeGreaterThan(h.actions.indexOf('lift'));
   expect(h.actions.indexOf('revert')).toBeGreaterThan(h.actions.indexOf('drop'));
   expect(h.cursor.style.opacity).toBe('0');
+  h.guide.destroy();
+});
+
+test('enters from the visible gutter and uses the softened pressed scale', async () => {
+  const h = setup();
+  const transforms: string[] = [];
+  h.guide.play(); await h.flush();
+  await h.advance(600);
+  transforms.push(h.cursor.style.transform);
+  expect(transforms[0]).toContain('translate(50px, 254px)');
+  await advanceUntil(h, () => transforms.some((value) => value.endsWith('scale(0.95)')), 10000, () => transforms.push(h.cursor.style.transform));
+  expect(transforms.some((value) => value.endsWith('scale(0.7)'))).toBe(false);
+  h.guide.destroy();
+});
+
+test('maps hit-tested cursor styles and releases the held override when dropping', async () => {
+  const h = setup();
+  h.setHitCursor('pointer'); h.guide.play(); await h.flush(); await h.advance(600); await h.advance(20);
+  expect(h.cursor.dataset.cursorState).toBe('pointer');
+  h.setHitCursor('grab'); await h.advance(20);
+  expect(h.cursor.dataset.cursorState).toBe('grab');
+  await reachLift(h);
+  await h.advance(20);
+  expect(h.cursor.dataset.cursorState).toBe('grabbing');
+  h.setHitCursor('pointer');
+  await advanceUntil(h, () => h.actions.includes('drop'));
+  await h.advance(20);
+  expect(h.cursor.dataset.cursorState).toBe('pointer');
   h.guide.destroy();
 });
 
