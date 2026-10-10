@@ -15,6 +15,8 @@ import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw
 import settingsIcon from 'lucide-static/icons/settings.svg?raw';
 import Button from './ui/Button.astro';
 import TextField from './ui/TextField.astro';
+import DemoCursor from './project/demos/DemoCursor.astro';
+import '../styles/demoFinger.css';
 import { sizeIcon } from '../lib/icons';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
@@ -186,6 +188,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       <p class="header-link-editor__error" data-dev-header-link-error aria-live="polite"></p>
     </div>
   )}
+  <template data-header-menu-demo>
+    <div class="header-menu-demo-overlay hint is-visible" aria-hidden="true">
+      <DemoCursor data-header-menu-demo-cursor />
+      <div class="hint-pointer" data-header-menu-demo-finger><span class="hint-finger"></span></div>
+    </div>
+  </template>
   </div>
 ) : (
   <div class="site-header-slot">
@@ -222,6 +230,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 <script>
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { initTextField } from '../lib/devTextField.js';
+  import { createHeaderMenuDemo } from '../lib/headerMenuDemo';
 
   // Touch / no-hover devices open the menu on tap instead of on hover.
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
@@ -1094,6 +1103,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
       closeMenu();
     });
+    if (trigger.classList.contains('header-trigger--start')) {
+      const demoTemplate = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]');
+      if (demoTemplate) {
+        createHeaderMenuDemo({ trigger, template: demoTemplate, open: () => openMenu(), close: (force = false) => closeMenu(force), isEditing: isDevEditing }).start();
+      }
+    }
   });
 
   if (import.meta.env.DEV) {
@@ -2594,6 +2609,24 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     border-radius: 12px;
     opacity: 0;
     transition: opacity 0.15s ease, display 0.15s allow-discrete, overlay 0.15s allow-discrete;
+  }
+
+  .header-menu-demo-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .header-menu-demo-overlay .block-demo-cursor {
+    z-index: 1;
+  }
+
+  .header-menu-demo-overlay .hint-pointer {
+    position: fixed;
+    z-index: 1;
+    filter: blur(0);
   }
 
   .header-link-editor:popover-open { opacity: 1; }
