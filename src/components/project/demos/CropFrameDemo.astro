@@ -11,6 +11,7 @@ import PanelActions from '../../ui/PanelActions.astro';
 import AssetManagerContent from '../../ui/AssetManagerContent.astro';
 import ProjectImage from '../ProjectImage.astro';
 import ViewportSelector from '../../ui/ViewportSelector.astro';
+import DemoCursor from './DemoCursor.astro';
 import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
 import { projectImageTier } from '../../../lib/images';
 import type { DemoAssetProject } from '../../../lib/demoAssetPicker';
@@ -46,6 +47,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
 {canvasOnly ? <div class="crop-frame-demo__canvas crop-frame-demo__canvas--only" data-crop-demo>
   <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
 </div> : <vcd-crop-frame-demo data-crop-demo data-page-reveal-ready="false" data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
+  <template data-crop-guide-cursor><DemoCursor /></template>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
       <DevOverlayFrame title="Image" embedded data-crop-panel>
@@ -312,7 +314,9 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         const fingers = [document.createElement('div'), document.createElement('div')] as [HTMLElement, HTMLElement];
         fingers.forEach((finger) => { finger.innerHTML = '<span class="hint-finger"></span>'; });
         cropGuide?.destroy();
-        cropGuide = createDemoCropGuide({ root: this, host, iframe, trigger: revertButton ?? panel, fingers, crop: localCrop, onFinish: () => revertButton?.click() });
+        const cursorTemplate = this.querySelector<HTMLTemplateElement>('[data-crop-guide-cursor]');
+        const cursor = cursorTemplate?.content.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
+        cropGuide = createDemoCropGuide({ root: this, host, iframe, trigger: revertButton ?? panel, fingers, cursor, crop: localCrop, onFinish: () => revertButton?.click() });
         maybePlay();
       };
       iframe.addEventListener('load', ready, { signal });

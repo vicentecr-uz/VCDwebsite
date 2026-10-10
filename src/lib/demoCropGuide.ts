@@ -12,6 +12,7 @@ interface DemoCropGuideOptions {
   crop: Pick<ReturnType<typeof createDemoImageCrop>, 'panBy' | 'zoomBy'>;
   onFinish: () => void;
   iframe?: HTMLIFrameElement;
+  cursor?: HTMLElement;
 }
 
 type Point = { x: number; y: number };
@@ -19,7 +20,7 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const gestureEase = CustomEase.create('demoCropGesture', '0.4,0,0.2,1');
 const repositionEase = CustomEase.create('demoCropReposition', '0.32,0.72,0,1');
 
-export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFinish, iframe }: DemoCropGuideOptions) {
+export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFinish, iframe, cursor }: DemoCropGuideOptions) {
   const document = root.ownerDocument;
   const win = document.defaultView!;
   const lifecycle = new win.AbortController();
@@ -38,6 +39,8 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
   overlay.setAttribute('aria-hidden', 'true');
   overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:none;overflow:visible;';
   fingers.forEach((finger) => { finger.classList.add('hint-pointer'); finger.setAttribute('aria-hidden', 'true'); overlay.append(finger); });
+  cursor?.setAttribute('aria-hidden', 'true');
+  if (cursor) overlay.append(cursor);
   document.body.append(overlay);
 
   let generation = 0;
@@ -59,7 +62,8 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     finger.style.opacity = String(opacity);
     finger.style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`;
   };
-  const hide = () => { overlay.hidden = true; overlay.classList.remove('is-visible'); fingers.forEach((finger) => { finger.style.opacity = '0'; finger.style.willChange = ''; }); };
+  const hide = () => { overlay.hidden = true; overlay.classList.remove('is-visible'); fingers.forEach((finger) => { finger.style.opacity = '0'; finger.style.willChange = ''; }); if (cursor) cursor.style.opacity = '0'; };
+  const paintCursor = (point: Point, opacity: number, scale = 1) => { if (!cursor) return; cursor.style.opacity = String(opacity); cursor.style.transform = `translate(${point.x}px, ${point.y}px) scale(${scale})`; };
   const wait = (ms: number, token: number) => new Promise<boolean>((resolve) => {
     pendingResolve = resolve;
     timer = win.setTimeout(() => { timer = undefined; pendingResolve = undefined; resolve(alive(token)); }, ms);
@@ -90,19 +94,32 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
       const coarse = win.matchMedia('(pointer: coarse)').matches;
       if (!await wait(200, token)) return;
       const start = framePoint();
-      const panLeft = (point: Point) => coarse ? point : { x: point.x - 20, y: point.y + 6 };
+      const panLeft = (point: Point) => coarse ? point : { x: point.x - 36, y: point.y + 6 };
+      if (cursor && !coarse) {
+        cursor.dataset.cursorState = 'arrow';
+        const box = root.getBoundingClientRect();
+        paintCursor({ x: Math.max(12, box.left - 40), y: start.y }, 0, 1.15);
+        const entryDuration = clamp(700 + Math.hypot(start.x - box.left, start.y - box.top) * 0.3, 700, 1000);
+        if (!await animate(entryDuration, (t) => {
+          const p = repositionEase(t); const bow = Math.sin(Math.PI * p) * 12;
+          const entryX = Math.max(12, box.left - 40);
+          paintCursor({ x: entryX + (start.x - entryX) * p, y: start.y + bow }, gestureEase(Math.min(1, t * entryDuration / 160)), 1.15);
+        }, token)) return;
+        paintCursor(start, 1, 1.15);
+      }
       paint(fingers[0], panLeft(start), 0);
-      if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, 0);
+      if (!coarse) paint(fingers[1], { x: start.x + 36, y: start.y - 6 }, 0);
       if (!await animate(280, (t) => {
         const opacity = gestureEase(t);
         paint(fingers[0], panLeft(start), opacity);
-        if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, opacity);
+        if (!coarse) paint(fingers[1], { x: start.x + 36, y: start.y - 6 }, opacity);
+        if (cursor && !coarse) paintCursor(start, 1 - opacity, 1.15);
       }, token)) return;
       if (!await wait(160, token)) return;
       if (!await animate(120, (t) => {
         const scale = 1 - 0.12 * gestureEase(t);
         paint(fingers[0], panLeft(start), 1, scale);
-        if (!coarse) paint(fingers[1], { x: start.x + 20, y: start.y - 6 }, 1, scale);
+        if (!coarse) paint(fingers[1], { x: start.x + 36, y: start.y - 6 }, 1, scale);
       }, token)) return;
       if (!await wait(120, token)) return;
       const frameRect = host.getBoundingClientRect();
@@ -118,22 +135,22 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
         crop.panBy(dx - previous.x, dy - previous.y); previous = { x: dx, y: dy };
         panEnd = { x: start.x + displayWidth * dx, y: start.y + displayHeight * dy };
         paint(fingers[0], panLeft(panEnd), 1, 0.88);
-        if (!coarse) paint(fingers[1], { x: panEnd.x + 20, y: panEnd.y - 6 }, 1, 0.88);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 36, y: panEnd.y - 6 }, 1, 0.88);
       }, token)) return;
       if (!await animate(120, (t) => {
         const scale = 0.88 + 0.12 * gestureEase(t);
         paint(fingers[0], panLeft(panEnd), 1, scale);
-        if (!coarse) paint(fingers[1], { x: panEnd.x + 20, y: panEnd.y - 6 }, 1, scale);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 36, y: panEnd.y - 6 }, 1, scale);
       }, token)) return;
       if (!await wait(180, token)) return;
       const midpoint = panEnd;
       const pinchOffset = 56;
       const rightAnchor = { x: midpoint.x + pinchOffset, y: midpoint.y };
-      paint(fingers[1], coarse ? rightAnchor : { x: panEnd.x + 20, y: panEnd.y - 6 }, coarse ? 0 : 1);
+      paint(fingers[1], coarse ? rightAnchor : { x: panEnd.x + 36, y: panEnd.y - 6 }, coarse ? 0 : 1);
       if (!await animate(160, (t) => {
         const p = gestureEase(t);
-        paint(fingers[0], { x: panEnd.x - (coarse ? pinchOffset * p : 20 + (pinchOffset - 20) * p), y: panEnd.y + (coarse ? 0 : 6 * (1 - p)) }, 1);
-        if (!coarse) paint(fingers[1], { x: panEnd.x + 20 + (pinchOffset - 20) * p, y: panEnd.y - 6 + 6 * p }, 1);
+        paint(fingers[0], { x: panEnd.x - (coarse ? pinchOffset * p : 36 + (pinchOffset - 36) * p), y: panEnd.y + (coarse ? 0 : 6 * (1 - p)) }, 1);
+        if (!coarse) paint(fingers[1], { x: panEnd.x + 36 + (pinchOffset - 36) * p, y: panEnd.y - 6 + 6 * p }, 1);
       }, token)) return;
       if (coarse && !await animate(200, (t) => paint(fingers[1], rightAnchor, gestureEase(t)), token)) return;
       const centerX = clamp((midpoint.x - parentStart.x) / displayWidth, 0, 1);
@@ -148,6 +165,22 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
       if (!await wait(200, token)) return;
       const pinchEnd = { x: midpoint.x - pinchOffset * 1.12, y: midpoint.y };
       const rightEnd = { x: midpoint.x + pinchOffset * 1.12, y: midpoint.y };
+      if (cursor && !coarse) {
+        const target = pointFor(trigger); const distance = Math.hypot(target.x - pinchEnd.x, target.y - pinchEnd.y);
+        if (!await animate(200, (t) => { const p = gestureEase(t); paint(fingers[0], pinchEnd, 1 - p); paint(fingers[1], rightEnd, 1 - p); paintCursor(pinchEnd, p, 1.15); }, token)) return;
+        if (!await animate(clamp(700 + distance * 0.35, 700, 1000), (t) => {
+          const p = repositionEase(t); const bow = Math.sin(Math.PI * p) * Math.min(18, distance * 0.04);
+          paintCursor({ x: pinchEnd.x + (target.x - pinchEnd.x) * p - (target.y - pinchEnd.y) / Math.max(1, distance) * bow, y: pinchEnd.y + (target.y - pinchEnd.y) * p + (target.x - pinchEnd.x) / Math.max(1, distance) * bow }, 1, 1.15);
+        }, token)) return;
+        cursor.dataset.cursorState = 'pointer';
+        if (!await wait(180, token)) return;
+        if (!await animate(120, (t) => paintCursor(target, 1, 1.15 - 0.2 * gestureEase(t)), token)) return;
+        onFinish();
+        if (!await wait(120, token)) return;
+        await animate(220, (t) => paintCursor(target, 1 - gestureEase(t), 0.95 + 0.2 * gestureEase(t)), token);
+        if (alive(token)) { active = false; hide(); }
+        return;
+      }
       if (!await animate(200, (t) => paint(fingers[1], rightEnd, 1 - gestureEase(t)), token)) return;
       const target = pointFor(trigger); const from = pinchEnd; const distance = Math.hypot(target.x - from.x, target.y - from.y);
       if (!await animate(clamp(700 + distance * 0.35, 700, 1000), (t) => { const p = repositionEase(t); const bow = Math.sin(Math.PI * p) * Math.min(18, distance * 0.04); paint(fingers[0], { x: from.x + (target.x - from.x) * p - (target.y - from.y) / Math.max(1, distance) * bow, y: from.y + (target.y - from.y) * p + (target.x - from.x) / Math.max(1, distance) * bow }, 1); }, token)) return;

@@ -84,6 +84,12 @@ function trustedPointerMove(win: Window) {
   win.document.dispatchEvent(event);
 }
 
+function trustedEvent(win: Window, type: string) {
+  const event = new win.Event(type, { bubbles: true });
+  Object.defineProperty(event, 'isTrusted', { value: true });
+  return event;
+}
+
 test('plays the guide sequence with grouped spacing, smooth drag, drop, and actual revert click', async () => {
   const h = setup();
   await reachDrop(h);
@@ -127,6 +133,27 @@ test('maps hit-tested cursor styles and releases the held override when dropping
 test('cancelling during the initial wait or drag stops queued actions', async () => {
   const waiting = setup(); waiting.guide.play(); await waiting.flush(); await waiting.advance(300); waiting.guide.stop(); await waiting.advance(5000); expect(waiting.actions.filter((action) => action === 'reveal')).toEqual([]); waiting.guide.destroy();
   const moving = setup(); await reachLift(moving); const moves = moving.actions.filter((action) => action.startsWith('move:')).length; moving.guide.stop(); await moving.advance(5000); expect(moving.actions.filter((action) => action.startsWith('move:')).length).toBe(moves); expect(moving.actions).not.toContain('drop'); moving.guide.destroy();
+});
+
+test('pointer movement and leaving after reset do not interrupt a restarted guide', async () => {
+  const h = setup();
+  h.guide.play(); h.guide.stop(); h.guide.play();
+  h.win.document.dispatchEvent(trustedEvent(h.win, 'pointermove'));
+  h.root.dispatchEvent(trustedEvent(h.win, 'pointerleave'));
+  await advanceUntil(h, () => h.actions.includes('reveal'));
+  expect(h.actions).not.toContain('cancel');
+  h.guide.destroy();
+});
+
+test('trusted pointerdown interrupts the guide without delayed revert', async () => {
+  const h = setup();
+  h.guide.play();
+  h.win.document.dispatchEvent(trustedEvent(h.win, 'pointerdown'));
+  await h.advance(5000);
+  expect(h.actions).not.toContain('reveal');
+  expect(h.actions).not.toContain('drop');
+  expect(h.actions).not.toContain('revert');
+  h.guide.destroy();
 });
 
 test('long approaches slow into a bounded overshoot and land exactly before acting', async () => {
