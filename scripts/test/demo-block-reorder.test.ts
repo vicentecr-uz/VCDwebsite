@@ -48,6 +48,7 @@ test('scrolling demo measures flat-list margins through lift and target changes'
   handles[0].dispatchEvent(pointerDown);
   await flush();
   expect(lifted).toBe(1);
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(true);
 
   const moveDown = new win.Event('keydown', { bubbles: true, cancelable: true }) as KeyboardEvent;
   Object.defineProperty(moveDown, 'key', { value: 'ArrowDown' });
@@ -57,6 +58,7 @@ test('scrolling demo measures flat-list margins through lift and target changes'
   const reset = root.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]')!;
   reset.click();
   expect(settled).toBeGreaterThanOrEqual(1);
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
   expect(root.querySelector('[data-reorder-demo-list]')?.firstElementChild).toBe(blocks[0]);
   reorder.destroy();
 });
@@ -94,7 +96,11 @@ test('scrolling demo keeps the lifted block gap in the final slot through drop',
   });
   const reorder = createDemoBlockReorder(root, { scroll: true });
 
+  handles[0].dispatchEvent(new win.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
+  handles[0].dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
   expect(reorder.guideLift(blocks[1], 0, 0)).toBe(true);
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
   await flush();
   const indicator = root.querySelector<HTMLElement>('.dev-section-drop-indicator');
   expect(indicator).not.toBeNull();
@@ -168,6 +174,7 @@ test('re-lifts a block while its drop is settling', async () => {
   };
   handles[0].dispatchEvent(pointer('pointerdown', 1));
   handles[0].dispatchEvent(pointer('pointerup', 1));
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
   handles[0].dispatchEvent(pointer('pointerdown', 2));
   expect(lifted).toBe(2);
   expect(settled).toBe(0);
@@ -201,7 +208,13 @@ test('re-lifts a block while its drop is settling', async () => {
   handles[1].dispatchEvent(pointer('pointerup', 4));
   await new Promise<void>((resolve) => setTimeout(resolve, 650));
   root.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]')?.click();
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
   expect(blocks.some((block) => block.classList.contains('is-section-lifted-session'))).toBe(false);
   expect(blocks.some((block) => block.querySelector('.dev-section-lift-backdrop')?.classList.contains('is-visible'))).toBe(false);
+  handles[0].dispatchEvent(pointer('pointerdown', 5));
+  handles[0].dispatchEvent(pointer('pointercancel', 5));
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
+  handles[0].dispatchEvent(pointer('pointerdown', 6));
   reorder.destroy();
+  expect(document.documentElement.classList.contains('is-section-reorder-holding')).toBe(false);
 });

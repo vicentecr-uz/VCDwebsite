@@ -24,6 +24,8 @@ export function createDemoBlockReorder(
 ): DemoBlockReorderHandle {
   const lifecycle = new AbortController();
   const { signal } = lifecycle;
+  const document = root.ownerDocument;
+  const documentElement = document.documentElement;
   const list = root.querySelector<HTMLElement>('[data-reorder-demo-list]');
   const resetButton = root.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]');
   const status = root.querySelector<HTMLElement>('.reorder-demo__status');
@@ -102,6 +104,7 @@ export function createDemoBlockReorder(
   const releaseCapture = () => {
     const handle = dragHandle;
     const currentPointerId = pointerId;
+    documentElement.classList.remove('is-section-reorder-holding');
     pointerId = null;
     if (handle && currentPointerId !== null && handle.hasPointerCapture(currentPointerId)) {
       handle.releasePointerCapture(currentPointerId);
@@ -206,6 +209,7 @@ export function createDemoBlockReorder(
       if (!pickUp(item, handle, event.clientX, event.clientY)) return;
       handle.blur();
       pointerId = event.pointerId;
+      documentElement.classList.add('is-section-reorder-holding');
       handle.setPointerCapture(event.pointerId);
     }, { signal });
     handle.addEventListener('pointermove', (event) => {
@@ -263,10 +267,7 @@ export function createDemoBlockReorder(
     generation += 1;
     dropping = false;
     cancelFrames();
-    const handle = dragHandle;
-    const currentPointerId = pointerId;
-    pointerId = null;
-    if (handle && currentPointerId !== null && handle.hasPointerCapture(currentPointerId)) handle.releasePointerCapture(currentPointerId);
+    releaseCapture();
     lifecycle.abort();
     controller?.destroy();
     root.querySelectorAll('.is-section-lifted-session').forEach((item) => item.classList.remove('is-section-lifted-session'));

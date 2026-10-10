@@ -12,12 +12,12 @@ function setup() {
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
   document.body.innerHTML = `<vcd-crop-frame-demo>
-    <div data-crop-panel class="dev-overlay is-dev-overlay-open">
-      <button data-minimize-toggle aria-expanded="true"></button><button data-hide-toggle></button>
+    <div class="crop-frame-demo__layout"><div class="crop-frame-demo__panel"><div data-crop-panel class="dev-overlay is-dev-overlay-open">
+      <header data-drag-handle><button data-drag-ignore data-minimize-toggle aria-expanded="true"></button><button data-drag-ignore data-hide-toggle></button></header>
       <div data-overlay-body><button>Crop control</button><button data-crop-replace-assets>Asset manager</button><button data-demo-author-reset>Reset</button></div>
-    </div>
+    </div></div>
     <button data-crop-viewport="desktop" aria-pressed="false"></button><button data-crop-viewport="tablet" aria-pressed="false"></button><button data-crop-viewport="mobile" aria-pressed="false"></button>
-    <div class="crop-frame-demo__preview-column"><div class="crop-frame-demo__preview-shell"><iframe></iframe></div></div>
+    <div class="crop-frame-demo__preview-column"><div class="crop-frame-demo__preview-shell"><iframe></iframe></div></div></div>
     <div class="project-image"><img src="/source.jpg"></div>
     <div data-demo-asset-picker hidden></div>
   </vcd-crop-frame-demo>`;
@@ -49,13 +49,15 @@ function setup() {
   let dragCleaned = 0;
   let collapseDestroyed = 0;
   const collapseSets: Array<[boolean, boolean | undefined]> = [];
+  const resizeCallbacks: Array<() => void> = [];
+  let resizeDisconnects = 0;
   const env = {
     HTMLElement: win.HTMLElement,
     customElements: win.customElements,
     document,
     window: win,
     AbortController: win.AbortController,
-    ResizeObserver: class { observe() {} disconnect() {} },
+    ResizeObserver: class { constructor(callback: () => void) { resizeCallbacks.push(callback); } observe() {} unobserve() {} disconnect() { resizeDisconnects += 1; } },
     createDemoImageCrop: () => { cropCreated += 1; return ({
       reset() { cropReset += 1; },
       getState() { return { source: { src: '/source.jpg', width: 1, height: 1, alt: '' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true }; },
@@ -88,7 +90,7 @@ function setup() {
   const hide = panel.querySelector('[data-hide-toggle]') as HTMLButtonElement;
   const minimize = panel.querySelector('[data-minimize-toggle]') as HTMLButtonElement;
   const reset = demo.querySelector('[data-demo-author-reset]') as HTMLButtonElement;
-  return { win, document, demo, panel, frame, media, hide, minimize, reset, timers, flushTimer: (id: number) => timers.get(id)?.(), errors, get dragCreated() { return dragCreated; }, get dragCleaned() { return dragCleaned; }, get cropCreated() { return cropCreated; }, get cropActive() { return cropActive; }, get cropReset() { return cropReset; }, get cropDestroyed() { return cropDestroyed; }, get replacementReset() { return replacementReset; }, get replacementDestroyed() { return replacementDestroyed; }, get collapseDestroyed() { return collapseDestroyed; }, get selectedViewport() { return selectedViewport; }, collapseSets };
+  return { win, document, demo, panel, frame, layout: demo.querySelector('.crop-frame-demo__layout') as HTMLElement, previewColumn: demo.querySelector('.crop-frame-demo__preview-column') as HTMLElement, frameHost, media, resizeCallbacks, get resizeDisconnects() { return resizeDisconnects; }, hide, minimize, reset, timers, flushTimer: (id: number) => timers.get(id)?.(), errors, get dragCreated() { return dragCreated; }, get dragCleaned() { return dragCleaned; }, get cropCreated() { return cropCreated; }, get cropActive() { return cropActive; }, get cropReset() { return cropReset; }, get cropDestroyed() { return cropDestroyed; }, get replacementReset() { return replacementReset; }, get replacementDestroyed() { return replacementDestroyed; }, get collapseDestroyed() { return collapseDestroyed; }, get selectedViewport() { return selectedViewport; }, collapseSets };
 }
 
 test('minimize light toggles the real collapse controller', () => {
@@ -176,4 +178,40 @@ test('desktop and narrow mode changes clean up and recreate panel dragging', () 
   expect(h.panel.style.position).toBe('absolute');
   h.demo.remove();
   expect(h.dragCleaned).toBe(2);
+});
+
+test('panel alignment follows iframe image geometry until a real header drag', () => {
+  const h = setup();
+  const pointer = (clientX: number, clientY: number) => { const event = new h.win.Event('pointerdown', { bubbles: true, cancelable: true }) as PointerEvent; Object.defineProperties(event, { button: { value: 0 }, isPrimary: { value: true }, pointerId: { value: 2 }, clientX: { value: clientX }, clientY: { value: clientY } }); return event; };
+  const header = h.panel.querySelector('[data-drag-handle]') as HTMLElement;
+  const traffic = h.panel.querySelector('[data-drag-ignore]') as HTMLButtonElement;
+  const frame = h.frame;
+  Object.defineProperty(frame, 'offsetWidth', { configurable: true, value: 1000 });
+  frame.getBoundingClientRect = () => ({ top: 100, left: 0, width: 500, height: 450 } as DOMRect);
+  h.layout.getBoundingClientRect = () => ({ top: 100, left: 0, width: 800, height: 900 } as DOMRect);
+  h.frameHost.getBoundingClientRect = () => ({ top: 200, left: 0, width: 300, height: 300 } as DOMRect);
+  h.panel.getBoundingClientRect = () => ({ top: 150, left: 0, width: 320, height: 200 } as DOMRect);
+  header.getBoundingClientRect = () => ({ top: 150, bottom: 190, left: 0, width: 320, height: 40 } as DOMRect);
+  h.resizeCallbacks.at(-1)?.();
+  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('60px');
+  h.frameHost.getBoundingClientRect = () => ({ top: 240, left: 0, width: 300, height: 300 } as DOMRect);
+  h.resizeCallbacks.at(-1)?.();
+  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('80px');
+  traffic.dispatchEvent(pointer(10, 10));
+  h.frameHost.getBoundingClientRect = () => ({ top: 320, left: 0, width: 300, height: 300 } as DOMRect);
+  h.resizeCallbacks.at(-1)?.();
+  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('120px');
+  header.dispatchEvent(pointer(10, 10));
+  h.frameHost.getBoundingClientRect = () => ({ top: 360, left: 0, width: 300, height: 300 } as DOMRect);
+  h.resizeCallbacks.at(-1)?.();
+  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('120px');
+  h.media.matches = false;
+  h.media.listeners.forEach((listener) => listener());
+  h.media.matches = true;
+  h.media.listeners.forEach((listener) => listener());
+  h.frameHost.getBoundingClientRect = () => ({ top: 300, left: 0, width: 300, height: 300 } as DOMRect);
+  h.resizeCallbacks.at(-1)?.();
+  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('110px');
+  h.demo.remove();
+  expect(h.resizeDisconnects).toBeGreaterThan(0);
 });
