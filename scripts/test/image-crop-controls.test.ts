@@ -1,3 +1,4 @@
+import { expect, test } from 'bun:test';
 import { transform } from '@astrojs/compiler';
 import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 
