@@ -9,10 +9,10 @@ const response = (body: object = { ok: true }, status = 200) => new Response(JSO
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
 const original = (): DemoImageCropState => ({ source: { src: '/images/original.preview.webp', width: 1200, height: 900, alt: 'Original' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true });
 
-function setup() {
+function setup(initial = original()) {
   const win = new Window({ url: 'http://localhost/preview/image-framing' }); const parent = new Window({ url: 'http://localhost/image-framing' }); Object.defineProperty(win, 'parent', { value: parent });
   const root = win.document.createElement('div'); root.innerHTML = '<button data-crop-replace-assets>Assets</button><div data-crop-replace-drop><button data-crop-replace-choose>File</button><input data-crop-replace-file type="file"></div><p data-image-replacement-status hidden></p><button data-demo-author-reset>Reset</button><button data-demo-author-revert>Revert</button><button data-demo-author-save>Save</button>'; win.document.body.append(root);
-  let state = original(); const crop = { getState: () => structuredClone(state), restore: (next: DemoImageCropState) => { state = structuredClone(next); return true; }, setSource: (source: DemoImageCropState['source']) => { state = { source: { ...source }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true }; return true; } };
+  let state = initial; const crop = { getState: () => structuredClone(state), restore: (next: DemoImageCropState) => { state = structuredClone(next); return true; }, setSource: (source: DemoImageCropState['source']) => { state = { source: { ...source }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true }; return true; } };
   const images: Array<{ src: string; complete(): void; fail(): void }> = []; win.Image = class { naturalWidth = 1600; naturalHeight = 1200; onload?: () => void; onerror?: () => void; set src(src: string) { images.push({ src, complete: () => this.onload?.(), fail: () => this.onerror?.() }); } } as unknown as typeof win.Image;
   const picks: Array<ReturnType<typeof deferred<DemoImageReplacementAsset | undefined>>> = []; const chooseAsset = () => { const pick = deferred<DemoImageReplacementAsset | undefined>(); picks.push(pick); return pick.promise; };
   const requests: Array<{ url: string; body: any; signal?: AbortSignal }> = []; let respond = async (_url: string) => response(); win.fetch = (async (url: string, init: RequestInit) => { requests.push({ url, body: JSON.parse(String(init.body)), signal: init.signal as AbortSignal }); return respond(url); }) as typeof win.fetch;
@@ -90,5 +90,19 @@ test('save commits the requested snapshot even if another image is selected duri
   h.button('demo-author-revert').click();
   expect(h.crop.getState()).toEqual(saved);
   expect(h.written).toBe(1);
+  h.handle.destroy();
+});
+
+test('responsive save sends every breakpoint variant', async () => {
+  const state = original();
+  state.variants = {
+    desktop: { ...state.crop, cx: 0.2 },
+    tablet: { ...state.crop, cx: 0.5 },
+    mobile: { ...state.crop, cx: 0.8 },
+  };
+  const h = setup(state);
+  h.button('demo-author-save').click();
+  await tick();
+  expect(h.requests[0].body.variants).toEqual(state.variants);
   h.handle.destroy();
 });

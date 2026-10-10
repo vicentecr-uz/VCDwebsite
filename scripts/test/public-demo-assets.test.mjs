@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -108,4 +108,54 @@ test('injected catalog drives derivative collection without shipping dormant med
     await assert.doesNotReject(() => readFile(path.join(distDir, 'images', file)));
   }
   await assert.rejects(() => readFile(path.join(distDir, 'images', 'dormant.png')));
+});
+
+test('injects the catalog into retained inline project markers', async () => {
+  const { root, put } = await fixture();
+  const catalog = [{ slug: 'published', title: 'Published', images: [] }];
+  await put('published/index.html', '<main><script type="application/json" data-published-demo-assets>[]</script></main>');
+  await put('preview/image-framing/index.html', '<script type="application/json" data-published-demo-assets>[]</script>');
+
+  assert.equal(await injectPublishedDemoAssets(root, catalog, ['published/index.html', 'preview/image-framing/index.html']), true);
+  assert.match(await readFile(path.join(root, 'published/index.html'), 'utf8'), /Published/);
+  assert.match(await readFile(path.join(root, 'preview/image-framing/index.html'), 'utf8'), /Published/);
+});
+
+test('leaves HTML without a marker unchanged', async () => {
+  const { root, put } = await fixture();
+  const original = '<main><p>no demo here</p></main>';
+  await put('plain/index.html', original);
+
+  assert.equal(await injectPublishedDemoAssets(root, [{ slug: 'x', title: 'X', images: [] }], ['plain/index.html']), false);
+  assert.equal(await readFile(path.join(root, 'plain/index.html'), 'utf8'), original);
+});
+
+test('retained HTML allowlist excludes draft routes', async () => {
+  const { root, put } = await fixture();
+  await put('published/index.html', '<script type="application/json" data-published-demo-assets>[]</script>');
+  await put('draft/index.html', '<script type="application/json" data-published-demo-assets>[]</script>');
+
+  assert.equal(await injectPublishedDemoAssets(root, [{ slug: 'x', title: 'Published', images: [] }], ['published/index.html']), true);
+  assert.match(await readFile(path.join(root, 'published/index.html'), 'utf8'), /Published/);
+  assert.equal(await readFile(path.join(root, 'draft/index.html'), 'utf8'), '<script type="application/json" data-published-demo-assets>[]</script>');
+});
+
+test('updates every marker in one retained HTML file', async () => {
+  const { root, put } = await fixture();
+  await put('published/index.html', '<script type="application/json" data-published-demo-assets>[]</script><script type="application/json" data-published-demo-assets>[]</script>');
+
+  assert.equal(await injectPublishedDemoAssets(root, [{ slug: 'x', title: 'Published', images: [] }], ['published/index.html']), true);
+  const html = await readFile(path.join(root, 'published/index.html'), 'utf8');
+  assert.equal((html.match(/Published/g) || []).length, 2);
+});
+
+test('rejects symlinks while scanning retained HTML', async () => {
+  const { root, put } = await fixture();
+  await put('published/index.html', '<script type="application/json" data-published-demo-assets>[]</script>');
+  await symlink('published', path.join(root, 'linked-published'));
+
+  await assert.rejects(
+    () => injectPublishedDemoAssets(root, [{ slug: 'x', title: 'Published', images: [] }], ['published/index.html']),
+    /symlink is not allowed in dist/,
+  );
 });

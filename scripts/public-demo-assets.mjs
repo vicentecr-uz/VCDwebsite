@@ -5,7 +5,33 @@ import { parse } from 'parse5';
 
 const IMAGE_EXTENSIONS = new Set(['.avif', '.gif', '.jpeg', '.jpg', '.png', '.svg', '.webp']);
 const TECHNICAL_FILENAMES = new Set(['placeholder.svg', 'black-token.svg']);
-const MARKER = /(<script\b[^>]*\btype=["']application\/json["'][^>]*\bdata-published-demo-assets(?=\s|=|>)[^>]*>)[\s\S]*?(<\/script>)/i;
+const MARKER = /(<script\b[^>]*\btype=["']application\/json["'][^>]*\bdata-published-demo-assets(?=\s|=|>)[^>]*>)[\s\S]*?(<\/script>)/gi;
+
+/** @param {string} dir @returns {Promise<string[]>} */
+async function listHtmlFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const file = path.join(dir, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`public output: symlink is not allowed in dist: ${file}`);
+    if (entry.isDirectory()) files.push(...await listHtmlFiles(file));
+    else if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.html') files.push(file);
+  }
+  return files;
+}
+
+/** @param {string} distDir @param {string[]|Set<string>|undefined} retainedHtml */
+async function publishedHtmlFiles(distDir, retainedHtml) {
+  let files;
+  try { files = await listHtmlFiles(distDir); }
+  catch (error) {
+    if (error?.code === 'ENOENT') return [];
+    throw error;
+  }
+  if (!retainedHtml) return files;
+  const allowed = new Set([...retainedHtml].map((file) => path.normalize(String(file))));
+  return files.filter((file) => allowed.has(path.normalize(path.relative(distDir, file))));
+}
 
 /** @param {string} value @returns {string|null} */
 function normalizeImageToken(value) {
@@ -140,14 +166,15 @@ export async function readPublishedDemoAssets({ distDir, projectsDir, mediaDir, 
 
 /** @param {string} distDir @param {Array<{slug:string,title:string,images:Array<{src:string,filename:string,url:string,thumb:string}>}>} catalog @param {string[]|Set<string>|undefined} retainedHtml */
 export async function injectPublishedDemoAssets(distDir, catalog, retainedHtml) {
-  const relative = path.join('preview', 'image-framing', 'index.html');
-  if (retainedHtml && !new Set([...retainedHtml].map((file) => path.normalize(file))).has(path.normalize(relative))) return false;
-  const file = path.join(distDir, relative);
-  let html;
-  try { html = await readFile(file, 'utf8'); } catch { return false; }
-  const match = html.match(MARKER);
-  if (!match) return false;
   const json = JSON.stringify(catalog).replace(/</g, '\\u003c');
-  await writeFile(file, html.replace(MARKER, (_match, open, close) => `${open}${json}${close}`), 'utf8');
-  return true;
+  let changed = false;
+  for (const file of await publishedHtmlFiles(distDir, retainedHtml)) {
+    const html = await readFile(file, 'utf8');
+    const updated = html.replace(MARKER, (_match, open, close) => {
+      changed = true;
+      return `${open}${json}${close}`;
+    });
+    if (updated !== html) await writeFile(file, updated, 'utf8');
+  }
+  return changed;
 }

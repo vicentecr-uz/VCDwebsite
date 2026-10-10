@@ -230,3 +230,94 @@ test('invalid restore preserves the current state without releasing or rendering
   expect(h.api.getState()).toEqual(before);
   h.api.destroy();
 });
+
+test('responsive variants edit independently and restore atomically', () => {
+  const initialState: DemoImageCropState = {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
+    crop: { aspect: '3:2', cx: 0.2, cy: 0.3, w: 0.6 },
+    variants: {
+      desktop: { aspect: '3:2', cx: 0.4, cy: 0.3, w: 0.6 },
+      tablet: { aspect: '4:3', cx: 0.7, cy: 0.4, w: 0.5 },
+      mobile: { aspect: '1:1', cx: 0.4, cy: 0.8, w: 0.4 },
+    },
+    locked: true,
+  };
+  const h = setup({ initialState });
+  h.api.setViewport('tablet');
+  h.centerX.click();
+  expect(h.host.style.getPropertyValue('--project-content-cx-desktop')).toBe('0.4');
+  expect(h.host.style.getPropertyValue('--project-content-cx-tablet')).toBe('0.5');
+  h.api.setViewport('mobile');
+  expect(h.select.value).toBe('1:1');
+  expect(h.api.getState().crop.cx).toBe(0.4);
+  h.api.setViewport('desktop');
+  expect(h.api.getState().crop.cx).toBe(0.4);
+  const before = h.api.getState();
+  const untouched = structuredClone(before);
+  before.variants!.tablet.cx = 0.1;
+  expect(h.api.getState().variants!.tablet.cx).toBe(0.5);
+  expect(h.api.restore({ ...untouched, variants: { ...untouched.variants!, tablet: { ...untouched.variants!.tablet, w: 0 } } })).toBe(false);
+  expect(h.api.getState()).toEqual(untouched);
+  h.api.destroy();
+});
+
+test('restore returns every saved pose and keeps the selected viewport', () => {
+  const h = setup({ initialState: {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
+    crop: { aspect: '3:2', cx: 0.4, cy: 0.3, w: 0.6 },
+    variants: {
+      desktop: { aspect: '3:2', cx: 0.4, cy: 0.3, w: 0.6 },
+      tablet: { aspect: '4:3', cx: 0.7, cy: 0.4, w: 0.5 },
+      mobile: { aspect: '1:1', cx: 0.4, cy: 0.8, w: 0.4 },
+    },
+    locked: true,
+  } });
+  h.api.setViewport('tablet');
+  h.centerY.click();
+  h.api.setViewport('mobile');
+  h.centerX.click();
+  const saved = h.api.getState();
+  h.api.setViewport('desktop');
+  h.centerX.click();
+  expect(h.api.restore(saved)).toBe(true);
+  expect(h.api.getViewport()).toBe('desktop');
+  expect(h.api.getState().variants).toEqual(saved.variants);
+  h.api.setViewport('tablet');
+  expect(h.api.getState().crop).toEqual(saved.variants!.tablet);
+  h.api.setViewport('mobile');
+  expect(h.api.getState().crop).toEqual(saved.variants!.mobile);
+  h.api.destroy();
+});
+
+test('switching to an out-of-bounds saved pose infers unlocked compatibility', () => {
+  const h = setup({ initialState: {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
+    crop: { aspect: '3:2', cx: 0.5, cy: 0.5, w: 0.6 },
+    variants: {
+      desktop: { aspect: '3:2', cx: 0.5, cy: 0.5, w: 0.6 },
+      tablet: { aspect: '4:3', cx: 0.95, cy: 0.1, w: 0.5 },
+      mobile: { aspect: '1:1', cx: 0.5, cy: 0.5, w: 0.4 },
+    },
+    locked: true,
+  } });
+  h.api.setViewport('tablet');
+  expect(h.api.getState().locked).toBe(false);
+  expect(h.api.getState().crop.cx).toBe(0.95);
+  expect(h.api.getState().crop.cy).toBe(0.1);
+  h.api.destroy();
+});
+
+test('locked keyboard pan stays clamped and relocking an outside crop clamps it', () => {
+  const h = setup({ initialAspect: '1:1' });
+  const key = (key: string) => h.stage().dispatchEvent(new h.win.KeyboardEvent('keydown', { key, cancelable: true }));
+  for (let i = 0; i < 30; i += 1) key('ArrowRight');
+  expect(h.api.getState().locked).toBe(true);
+  expect(h.api.getState().crop.cx).toBeLessThanOrEqual(1 - h.api.getState().crop.w / 2);
+  h.constraint.click();
+  for (let i = 0; i < 30; i += 1) key('ArrowRight');
+  expect(h.api.getState().crop.cx).toBeGreaterThan(1);
+  h.constraint.click();
+  expect(h.api.getState().locked).toBe(true);
+  expect(h.api.getState().crop.cx).toBeLessThanOrEqual(1 - h.api.getState().crop.w / 2);
+  h.api.destroy();
+});

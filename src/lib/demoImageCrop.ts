@@ -1,10 +1,11 @@
-import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from './responsiveImage';
+import { coverWidthFraction, IMAGE_VIEWPORTS, normalizeImageVariants, responsiveImageStyle, type ImageVariant, type ImageViewport } from './responsiveImage';
 import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
 
 export interface DemoImageCropState {
   source: { src: string; width: number; height: number; alt: string };
   crop: { aspect: string; cx: number; cy: number; w: number };
   locked: boolean;
+  variants?: Record<ImageViewport, ImageVariant>;
 }
 
 interface CropDemoOptions {
@@ -23,6 +24,21 @@ const isValidAspect = (value: unknown): value is string => {
   const [width, height] = value.split(':').map(Number);
   return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
 };
+
+const viewports = IMAGE_VIEWPORTS;
+
+const isValidCrop = (value: unknown): value is ImageVariant => {
+  if (!value || typeof value !== 'object') return false;
+  const crop = value as ImageVariant;
+  return isValidAspect(crop.aspect)
+    && Number.isFinite(crop.cx) && Number.isFinite(crop.cy)
+    && Number.isFinite(crop.w) && crop.w > 0;
+};
+
+const validVariants = (value: unknown): value is Record<ImageViewport, ImageVariant> => (
+  !!value && typeof value === 'object'
+    && viewports.every((viewport) => isValidCrop((value as Record<string, unknown>)[viewport]))
+);
 
 const isValidState = (value: unknown): value is DemoImageCropState => {
   if (!value || typeof value !== 'object') return false;
@@ -43,6 +59,9 @@ const cloneState = (state: DemoImageCropState): DemoImageCropState => ({
   source: { ...state.source },
   crop: { ...state.crop },
   locked: state.locked,
+  ...(validVariants(state.variants) ? {
+    variants: Object.fromEntries(viewports.map((viewport) => [viewport, { ...state.variants![viewport] }])) as Record<ImageViewport, ImageVariant>,
+  } : {}),
 });
 
 export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true, onChange }: CropDemoOptions) {
@@ -53,6 +72,8 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   const image = host.querySelector<HTMLImageElement>('.project-crop-clip img, img')!;
   const original = { src: image.dataset.imagePreview || image.src, alt: image.alt, width: initialSourceAspect, height: 1 };
   const requestedInitialState = isValidState(initialState) ? cloneState(initialState) : undefined;
+  let variants = validVariants(requestedInitialState?.variants) ? requestedInitialState.variants : undefined;
+  let viewport: ImageViewport = 'desktop';
   let source = requestedInitialState?.source ? { ...requestedInitialState.source } : { ...original };
   let dimensions = { width: source.width, height: source.height };
   let sourceAspect = source.width / source.height;
@@ -61,11 +82,22 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   let cx = requestedInitialState?.crop.cx ?? 0.5;
   let cy = requestedInitialState?.crop.cy ?? 0.5;
   let locked = requestedInitialState?.locked ?? true;
+  const poseFitsLockedBounds = (pose: ImageVariant) => {
+    const frameAspect = pose.aspect === 'original' ? sourceAspect : pose.aspect.split(':').map(Number).reduce((a, b) => a / b);
+    const h = pose.w * sourceAspect / frameAspect;
+    return pose.w <= 1 && h <= 1 && pose.cx >= pose.w / 2 && pose.cx <= 1 - pose.w / 2 && pose.cy >= h / 2 && pose.cy <= 1 - h / 2;
+  };
+  const loadPose = (pose: ImageVariant) => {
+    aspect = pose.aspect; cx = pose.cx; cy = pose.cy; w = pose.w;
+    if (locked && !poseFitsLockedBounds(pose)) locked = false;
+  };
+  if (variants) loadPose(variants.desktop);
   const initialBaseline = requestedInitialState ?? {
     source: { ...original },
     crop: { aspect: initialAspect, cx: 0.5, cy: 0.5, w: coverWidthFraction(initialAspect, initialSourceAspect) / 1.25 },
     locked: true,
   };
+  const initialBaselineState = cloneState(initialBaseline);
   const { stage, ghost, ghostImg } = createImageCropStage({ src: source.src, document });
   image.src = source.src;
   image.alt = source.alt;
@@ -99,13 +131,15 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     cx = locked ? clamp(cx, w / 2, 1 - w / 2) : clamp(cx, 0.5 - xReach, 0.5 + xReach);
     cy = locked ? clamp(cy, h / 2, 1 - h / 2) : clamp(cy, 0.5 - yReach, 0.5 + yReach);
     const pose = { aspect, cx, cy, w };
-    const styles = responsiveImageStyle(normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, aspect, dimensions), dimensions);
+    if (variants) variants[viewport] = { ...pose };
+    const styles = responsiveImageStyle(variants ?? normalizeImageVariants({ desktop: pose, tablet: pose, mobile: pose }, aspect, dimensions), dimensions);
     for (const declaration of styles.split(';')) {
       const colon = declaration.indexOf(':');
       host.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1));
     }
     host.dataset.cropAspect = aspect;
     host.closest<HTMLElement>('[data-crop-demo]')?.style.setProperty('--crop-demo-aspect', String(aspectValue()));
+    controls?.style.setProperty('--crop-demo-aspect', String(aspectValue()));
     if (preview) {
       preview.style.aspectRatio = String(aspectValue());
       preview.style.setProperty('--tuner-content-w', String(w));
@@ -129,13 +163,14 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     const preset = [...select.options].some((option) => option !== custom && option.value === aspect);
     if (preset) custom?.remove();
     else {
-      if (!custom) { custom = document.createElement('option'); custom.dataset.cropCustom = ''; select.append(custom); }
+      if (!custom) { custom = select.ownerDocument.createElement('option'); custom.dataset.cropCustom = ''; select.append(custom); }
       custom.value = aspect;
       custom.textContent = 'Custom';
     }
     select.value = aspect;
     syncingSelect = true;
-    select.dispatchEvent(new win.Event('change', { bubbles: true }));
+    const selectWindow = select.ownerDocument.defaultView!;
+    select.dispatchEvent(new selectWindow.Event('change', { bubbles: true }));
     syncingSelect = false;
   };
   const zoomAt = (factor: number, x = 0.5, y = 0.5) => {
@@ -269,6 +304,14 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     aspect = value;
     render();
   }, { signal });
+  const setViewport = (next: ImageViewport) => {
+    if (!variants || !viewports.includes(next)) return;
+    releases.forEach((release) => release());
+    viewport = next;
+    loadPose(variants[viewport]);
+    render(); syncSelect();
+  };
+  const getViewport = () => viewport;
   controls?.querySelector('[data-crop-center-x]')?.addEventListener('click', () => { cx = 0.5; render(); }, { signal });
   controls?.querySelector('[data-crop-center-y]')?.addEventListener('click', () => { cy = 0.5; render(); }, { signal });
   controls?.querySelector('[data-crop-fit]')?.addEventListener('click', () => { locked = false; cx = cy = 0.5; w = Math.max(1, aspectValue() / sourceAspect); render(); }, { signal });
@@ -279,6 +322,10 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     w = coverWidthFraction(aspect, sourceAspect) / 1.25;
     cx = cy = 0.5;
     locked = true;
+    if (variants) {
+      const pose = { aspect, cx, cy, w };
+      variants = { desktop: { ...pose }, tablet: { ...pose }, mobile: { ...pose } };
+    }
     render(); syncSelect();
   };
   const setSource = (next: { src: string; width: number; height: number; alt?: string }) => {
@@ -286,24 +333,23 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     source = { src: next.src, width: next.width, height: next.height, alt: next.alt ?? source.alt }; dimensions = { width: next.width, height: next.height }; sourceAspect = next.width / next.height; applySource();
     resetCrop(); return true;
   };
-  const getState = (): DemoImageCropState => cloneState({ source: { ...source }, crop: { aspect, cx, cy, w }, locked });
+  const getState = (): DemoImageCropState => cloneState({ source: { ...source }, crop: { aspect, cx, cy, w }, locked, ...(variants ? { variants } : {}) });
   const restore = (next: DemoImageCropState) => {
-    if (!isValidState(next)) return false;
+    if (!isValidState(next) || (next.variants !== undefined && !validVariants(next.variants))) return false;
+    const nextVariants = validVariants(next.variants) ? Object.fromEntries(viewports.map((name) => [name, { ...next.variants![name] }])) as Record<ImageViewport, ImageVariant> : undefined;
     releases.forEach((release) => release());
     source = { ...next.source };
     dimensions = { width: source.width, height: source.height };
     sourceAspect = source.width / source.height;
-    aspect = next.crop.aspect;
-    cx = next.crop.cx;
-    cy = next.crop.cy;
-    w = next.crop.w;
     locked = next.locked;
+    variants = nextVariants;
+    loadPose(variants?.[viewport] ?? next.crop);
     applySource();
     render();
     syncSelect();
     return true;
   };
-  const reset = () => restore(initialBaseline);
+  const reset = () => restore(initialBaselineState);
   controls?.querySelector('[data-crop-reset]')?.addEventListener('click', reset, { signal });
   const setActive = (next: boolean) => {
     active = next;
@@ -316,7 +362,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   };
   applySource();
   render(); syncSelect(); setActive(active);
-  return { reset, setSource, getState, restore, setActive, destroy() {
+  return { reset, setSource, getState, restore, setViewport, getViewport, setActive, destroy() {
     releases.forEach((release) => release());
     lifecycle.abort();
     stage.remove(); ghost.remove();
