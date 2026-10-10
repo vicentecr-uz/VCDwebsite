@@ -141,13 +141,18 @@ test('body additions from connected custom elements survive the swap and disconn
 
 test('lightbox document handlers dispose before page replacement and rebind exactly once', () => {
   const win = fixture(); const doc = win.document;
-  const markup = '<main id="main-content"></main><dialog data-image-lightbox><div data-image-lightbox-viewer><img data-image-lightbox-image><p data-image-lightbox-error></p><select data-image-lightbox-input-mode></select></div></dialog>';
+  const markup = '<main id="main-content"></main><dialog data-image-lightbox><div data-image-lightbox-viewer><span data-image-lightbox-demo-pointer="one"></span><span data-image-lightbox-demo-pointer="two"></span><img data-image-lightbox-image><p data-image-lightbox-error></p><select data-image-lightbox-input-mode></select></div></dialog>';
   doc.body.innerHTML = markup;
   const clicks = new Set<EventListenerOrEventListenerObject>();
   const add = doc.addEventListener.bind(doc), remove = doc.removeEventListener.bind(doc);
   doc.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: any) => { if (type === 'click') clicks.add(listener); add(type, listener as any, options); }) as any;
   doc.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: any) => { if (type === 'click') clicks.delete(listener); remove(type, listener as any, options); }) as any;
-  new Function('onPageLoad', 'IMAGE_LIGHTBOX_MAX_SCALE', componentScript('ImageLightbox'))(onPageLoad, 8);
+  new Function('onPageLoad', 'IMAGE_LIGHTBOX_MAX_SCALE', 'gsap', 'CustomEase', componentScript('ImageLightbox'))(
+    onPageLoad,
+    8,
+    { registerPlugin() {}, parseEase: () => () => {} },
+    { create: () => () => {} },
+  );
   expect(clicks.size).toBe(1);
   doc.dispatchEvent(new win.Event('astro:page-load')); expect(clicks.size).toBe(1);
   doc.dispatchEvent(new win.Event('astro:before-swap')); expect(clicks.size).toBe(0);
@@ -202,8 +207,14 @@ test('EditorSelect islands navigate persistently while unsupported islands remai
   island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx');
   doc.body.append(island);
   expect(supportsPersistentPage(doc as any)).toBe(true);
+  doc.body.setAttribute('data-dev-authoring', '');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
   island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx?direct');
   expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/src/components/Unknown.tsx');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx');
+  doc.body.removeAttribute('data-dev-authoring');
   island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js');
   expect(supportsPersistentPage(doc as any)).toBe(true);
   island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js?hash=1');
@@ -219,6 +230,10 @@ test('EditorSelect islands navigate persistently while unsupported islands remai
   island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.css');
   expect(supportsPersistentPage(doc as any)).toBe(false);
   island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js/other');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/_astro/NotEditorSelect.MXJVIDIA.js');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/_astro/EditorSelectExtra.MXJVIDIA.js');
   expect(supportsPersistentPage(doc as any)).toBe(false);
   const supported = island.cloneNode() as Element;
   supported.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js');
