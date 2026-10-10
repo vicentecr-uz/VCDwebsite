@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { createCropWheelPanGain } from '../../src/lib/cropWheelPan';
+import { createCropWheelPanGain, createCropWheelZoomGain } from '../../src/lib/cropWheelPan';
 
 const travel = (count: number, delta: number, interval: number) => {
   const gain = createCropWheelPanGain();
@@ -26,6 +26,28 @@ test('equal velocity at common frame rates has near-equal travel', () => {
     const distances = [30, 60, 120, 144].map((rate) => travel(rate, velocity / rate, 1000 / rate));
     expect((Math.max(...distances) - Math.min(...distances)) / Math.min(...distances)).toBeLessThan(0.02);
   }
+});
+
+test('zoom gain keeps fine, medium, and fast endpoints', () => {
+  const gain = createCropWheelZoomGain();
+  expect(gain.gainFor(4, 0, 0)).toBeCloseTo(0.00085, 10);
+  expect(gain.gainFor(20, 0, 1000 / 60)).toBeGreaterThan(0.00085);
+  expect(gain.gainFor(2400, 0, 2 * 1000 / 60)).toBeCloseTo(0.0044, 10);
+});
+
+test('zoom gain resets after idle and has comparable 60/120Hz travel', () => {
+  const fresh = createCropWheelZoomGain(140);
+  const idle = createCropWheelZoomGain(140);
+  idle.gainFor(20, 0, 0);
+  expect(idle.gainFor(20, 0, 1000)).toBeCloseTo(fresh.gainFor(20, 0, 0), 10);
+  const travel = (rate: number) => {
+    const gain = createCropWheelZoomGain();
+    let total = 0;
+    const delta = 1200 / rate;
+    for (let index = 0; index < rate; index += 1) total += delta * gain.gainFor(0, delta, index * 1000 / rate);
+    return total;
+  };
+  expect(Math.abs(travel(60) - travel(120)) / travel(60)).toBeLessThan(0.02);
 });
 
 test('first event, idle reset, and invalid timestamps stay finite', () => {
