@@ -10,21 +10,39 @@ function setup() {
   const choose = root.querySelector<HTMLButtonElement>('[data-crop-replace-choose]')!;
   const files: File[] = [];
   let pickerOpens = 0;
+  let pickerMethod = 'click';
+  let showPickerError: Error | undefined;
   input.click = () => {
     pickerOpens++;
     input.dispatchEvent(new win.Event('click', { bubbles: true }));
   };
+  Object.defineProperty(input, 'showPicker', { configurable: true, value: () => {
+    pickerMethod = 'showPicker';
+    if (showPickerError) throw showPickerError;
+  } });
   bindImageReplaceControls(root, { onFile: (file) => { if (file) files.push(file); }, signal: new AbortController().signal });
-  return { win, root, input, choose, files, get pickerOpens() { return pickerOpens; } };
+  return { win, root, input, choose, files, setShowPickerError: (error: Error) => { showPickerError = error; }, get pickerOpens() { return pickerOpens; }, get pickerMethod() { return pickerMethod; } };
 }
 
-test('visual choose forwards to the native input once without recursive bubbling', () => {
+test('visual choose prefers the native picker without recursive bubbling', () => {
   const h = setup();
   let rootClicks = 0;
   h.root.addEventListener('click', () => { rootClicks++; });
   h.choose.click();
-  expect(h.pickerOpens).toBe(1);
+  expect(h.pickerMethod).toBe('showPicker');
+  expect(h.pickerOpens).toBe(0);
   expect(rootClicks).toBe(0);
+});
+
+test('picker falls back to input click when showPicker is unavailable or rejects', () => {
+  const h = setup();
+  Object.defineProperty(h.input, 'showPicker', { configurable: true, value: undefined });
+  h.choose.click();
+  expect(h.pickerOpens).toBe(1);
+  const rejected = setup();
+  rejected.setShowPickerError(new Error('activation rejected'));
+  rejected.choose.click();
+  expect(rejected.pickerOpens).toBe(1);
 });
 
 test('native input change forwards the selected file and clears the value', () => {
