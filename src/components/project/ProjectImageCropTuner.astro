@@ -2266,6 +2266,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       let pendingWheel: {
         dx: number;
         dy: number;
+        rawDx: number;
+        rawDy: number;
         zoom: boolean;
         clientX: number;
         clientY: number;
@@ -2378,13 +2380,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       const applyPendingWheel = () => {
         if (!pendingWheel) return;
-        const { dx, dy, zoom, clientX, clientY } = pendingWheel;
+        const { dx, dy, rawDx, rawDy, zoom, clientX, clientY } = pendingWheel;
         pendingWheel = null;
         const bounds = boundsOrRefresh();
         if (!bounds.width || !bounds.height) return;
 
         if (zoom) {
-          const mag = Math.abs(dy);
+          const mag = Math.abs(rawDy);
           wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
           const gain = wheelGainForSpeed(wheelSpeedEma, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
           const factor = Math.exp(-dy * gain);
@@ -2393,6 +2395,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           return;
         }
 
+        const mag = Math.hypot(rawDx, rawDy);
+        wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
         pushUndoIfNeeded(gestureUndoCaptured);
         beginCropEdit();
         draft.cx += (dx / bounds.width) * draft.w;
@@ -2613,6 +2617,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           pendingWheel = {
             dx: 0,
             dy: 0,
+            rawDx: 0,
+            rawDy: 0,
             zoom,
             clientX: event.clientX,
             clientY: event.clientY,
@@ -2621,6 +2627,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const gain = zoom ? 1 : panGain.gainFor(event.deltaX, event.deltaY, event.timeStamp);
         pendingWheel.dx += event.deltaX * gain;
         pendingWheel.dy += event.deltaY * gain;
+        pendingWheel.rawDx += event.deltaX;
+        pendingWheel.rawDy += event.deltaY;
         pendingWheel.clientX = event.clientX;
         pendingWheel.clientY = event.clientY;
         requestGesturePaint();
