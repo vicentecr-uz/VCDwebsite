@@ -1,6 +1,7 @@
 import { coverWidthFraction, IMAGE_VIEWPORTS, normalizeImageVariants, responsiveImageStyle, type ImageVariant, type ImageViewport } from './responsiveImage';
 import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
 import { createCropWheelPanGain, createCropWheelZoomGain } from './cropWheelPan';
+import { createDemoCropBitmap } from './demoCropBitmap';
 
 export interface DemoImageCropState {
   source: { src: string; width: number; height: number; alt: string };
@@ -111,6 +112,8 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   host.append(stage);
   stage.style.inset = ghost.style.inset = '0';
   const preview = controls?.querySelector<HTMLElement>('[data-crop-preview]');
+  const previewImage = preview?.querySelector<HTMLImageElement>('[data-crop-image]');
+  const bitmap = createDemoCropBitmap({ image, ghostImage: ghostImg, previewImage });
   const select = controls?.querySelector<HTMLSelectElement>('select.dev-select__native');
   const constraint = controls?.querySelector<HTMLButtonElement>('[data-crop-constraint]');
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -138,8 +141,8 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   };
   const applySource = () => {
     image.src = source.src; image.alt = source.alt; ghostImg.src = source.src;
-    const previewImage = preview?.querySelector<HTMLImageElement>('[data-crop-image]');
     if (previewImage) { previewImage.src = source.src; previewImage.alt = source.alt; }
+    void bitmap.prepare(source.src);
   };
   const aspectValue = () => aspect === 'original' ? sourceAspect : aspect.split(':').map(Number).reduce((a, b) => a / b);
   const contentHeight = () => w * sourceAspect / aspectValue();
@@ -179,6 +182,9 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     ghostImg.style.setProperty('--project-content-w', String(w));
     ghostImg.style.setProperty('--project-content-cx', String(cx));
     ghostImg.style.setProperty('--project-content-cy', String(cy));
+    ghost.style.setProperty('--project-content-w', String(w));
+    ghost.style.setProperty('--project-content-cx', String(cx));
+    ghost.style.setProperty('--project-content-cy', String(cy));
     if (locked !== renderedLocked) {
       constraint?.setAttribute('aria-pressed', String(locked));
       constraint?.classList.toggle('is-locked', locked);
@@ -436,10 +442,11 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   };
   applySource();
   render(); syncSelect(); setActive(active);
-  return { reset, setSource, getState, restore, setViewport, getViewport, setActive, panBy, zoomBy, destroy() {
+  return { reset, setSource, getState, restore, setViewport, getViewport, setActive, panBy, zoomBy, whenReady: bitmap.whenReady, destroy() {
     cancelPointerRender();
     releases.forEach((release) => release());
     lifecycle.abort();
+    bitmap.destroy();
     stage.remove(); ghost.remove();
     host.classList.remove('dev-crop-stage-host');
   } };
