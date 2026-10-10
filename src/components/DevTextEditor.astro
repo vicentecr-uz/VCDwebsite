@@ -10,9 +10,11 @@ import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
 import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
+import '../styles/gapSpacingControl.css';
 import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
 import ProjectAward from './project/ProjectAward.astro';
+import SaveBar from './ui/SaveBar.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
@@ -29,8 +31,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
 
 <div class="dev-text-action-stack">
-  <div class="dev-text-actions dev-surface" data-dev-text-actions hidden>
-    <div class="dev-text-actions__surface">
+  <SaveBar data-dev-text-actions hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
       <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
       <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
@@ -38,15 +39,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       <button type="button" data-dev-text-save>Save</button>
       <button type="button" data-dev-text-commit-styles hidden>Publish styles</button>
       <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
-    </div>
-  </div>
+  </SaveBar>
 
-  <div class="dev-text-actions dev-surface" data-dev-branch-update-actions hidden>
-    <div class="dev-text-actions__surface">
+  <SaveBar data-dev-branch-update-actions hidden>
       <span class="dev-text-actions__status" data-dev-branch-update-status aria-live="polite">Update available</span>
       <button type="button" class="dev-text-actions__save" data-dev-branch-update>Update</button>
-    </div>
-  </div>
+  </SaveBar>
 
 </div>
 
@@ -168,6 +166,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import {
+    spacingButtonsHtml, pinGapToolbar as pinGapToolbarTop, unpinGapToolbar,
+    GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
+    GAP_INTENT_DELAY as SPACING_INTENT_DELAY_MS, GAP_FAST_POINTER as SPACING_FAST_POINTER_PX_PER_MS,
+  } from '../lib/gapSpacingControl';
 
   const disposePage = onPageLoad(() => {
   const pageScope = createPageScope();
@@ -211,22 +214,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
-  type SpacingOption = { value: SpacingValue; label: string; title: string };
-
-  const SPACING_OPTIONS: SpacingOption[] = [
-    { value: 'related', label: 'unit', title: 'Related · --space-unit' },
-    { value: 'group', label: '4em', title: 'Group · 4em' },
-    { value: 'section', label: '8em', title: 'Section · 8em' },
-    { value: 'major', label: '12em', title: 'Major · 12em' },
-  ];
-
-  /** Page boundary gap controls offer 0. */
-  const NONE_OPTION: SpacingOption = {
-    value: 'none',
-    label: '0',
-    title: 'None · 0',
-  };
-
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
     left.desktop === right.desktop && left.tablet === right.tablet && left.mobile === right.mobile
@@ -242,27 +229,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (viewport === 'mobile') return 'tablet';
     return null;
   };
-
-  const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
-    pageTop || pageBottom ? [NONE_OPTION, ...SPACING_OPTIONS] : SPACING_OPTIONS;
-
-  const spacingButtonsHtml = (pageTop: boolean, pageBottom: boolean) =>
-    spacingOptionsFor(pageTop, pageBottom)
-      .map(
-        (option) => `
-          <button
-            type="button"
-            class="dev-spacing-control__btn"
-            data-dev-spacing-option="${option.value}"
-            title="${option.title}"
-            aria-label="${option.title}"
-          >
-            <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
-            <span class="dev-spacing-control__label">${option.label}</span>
-          </button>
-        `,
-      )
-      .join('');
 
   const isSpacingStackParent = (el: HTMLElement | null): el is HTMLElement =>
     Boolean(
@@ -299,12 +265,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (documentKey !== 'home' && documentKey !== 'play') return false;
     return element.dataset.devIntro === 'true';
   };
-
-  /** Hidden pills require a close approach; visible pills allow more room to move. */
-  const SPACING_ENTRY_RADIUS_PX = 8;
-  const SPACING_RETENTION_RADIUS_PX = 24;
-  const SPACING_INTENT_DELAY_MS = 140;
-  const SPACING_FAST_POINTER_PX_PER_MS = 0.18;
 
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
@@ -627,27 +587,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }, { signal: editorSignal });
     };
 
-    /**
-     * Freeze only while the pointer is on the pill/menu (not mere vicinity).
-     * Vicinity-revealed toolbars stay `position:absolute` so they scroll with
-     * the page; fixed freeze is for deliberate interaction.
-     */
-    const pinGapToolbarTop = (control: HTMLElement) => {
-      if (control.dataset.gapPinnedTop == null) {
-        const rect = control.getBoundingClientRect();
-        control.dataset.gapPinnedTop = String(rect.top);
-        control.dataset.gapPinnedLeft = String(rect.left);
-        control.dataset.gapPinnedWidth = String(rect.width);
-      }
-      control.style.position = 'fixed';
-      control.style.top = `${control.dataset.gapPinnedTop}px`;
-      control.style.left = `${control.dataset.gapPinnedLeft}px`;
-      control.style.right = 'auto';
-      control.style.width = `${control.dataset.gapPinnedWidth}px`;
-      control.style.transform = 'none';
-      control.dataset.gapTopPinned = 'true';
-    };
-
     const restoreGapToolbarTop = (control: HTMLElement) => {
       if (control.classList.contains('is-intro-leading-gap')) {
         control.style.top = 'calc(min(var(--intro-outer-air, 0px), var(--space-group)) / -2)';
@@ -659,16 +598,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const unpinGapToolbarTop = (control: HTMLElement) => {
-      control.style.removeProperty('position');
-      control.style.removeProperty('left');
-      control.style.removeProperty('right');
-      control.style.removeProperty('width');
-      control.style.removeProperty('transform');
+      unpinGapToolbar(control);
       restoreGapToolbarTop(control);
-      delete control.dataset.gapTopPinned;
-      delete control.dataset.gapPinnedTop;
-      delete control.dataset.gapPinnedLeft;
-      delete control.dataset.gapPinnedWidth;
     };
 
     const bindSpacingOptionClicks = (state: EditableSpacingState) => {
@@ -6672,175 +6603,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     background: color-mix(in srgb, currentColor 10%, var(--sys-color-srf-container-low));
   }
 
-  .dev-text-action-stack {
-    position: fixed;
-    right: max(1em, env(safe-area-inset-right));
-    bottom: max(1em, env(safe-area-inset-bottom));
-    z-index: 90;
-    display: flex;
-    flex-direction: column-reverse;
-    align-items: flex-end;
-    gap: calc(var(--space-unit) / 2);
-    max-width: calc(100vw - 2em);
-    pointer-events: none;
-  }
-
-  .dev-text-actions {
-    max-width: 100%;
-    pointer-events: auto;
-    border-radius: 12px;
-    padding: 0;
-    transition: opacity 0.28s ease;
-  }
-
-  [data-dev-branch-update-actions] .dev-text-actions__status {
-    white-space: normal;
-  }
-
-  .dev-text-actions__surface {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    overflow: hidden;
-    border-radius: 12px; /* literal in Figma; no radius token covers 12px */
-  }
-
-  .dev-text-actions[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions__status {
-    padding-inline: 7px;
-    color: var(--sys-color-on-srf-variant);
-    font: 400 12px/normal var(--font-sans);
-    white-space: nowrap;
-  }
-
-  .dev-text-actions__branch {
-    max-width: 12em;
-    overflow: hidden;
-    border-left: 1px solid var(--sys-color-outline-variant);
-    padding-inline: 13px 7px;
-    color: var(--sys-color-on-srf-variant);
-    font: 400 12px/normal var(--font-sans);
-    white-space: nowrap;
-    text-overflow: ellipsis;
-  }
-
-  /* Idle: no Status text to separate from, so the rule clears. */
-  .dev-text-actions__surface:has(.dev-text-actions__status:empty) .dev-text-actions__branch {
-    border-left: 0;
-    padding-inline-start: 7px;
-  }
-
-  .dev-text-actions__branch[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions__branch.is-dev-branch-off-target {
-    color: var(--sys-color-on-srf);
-  }
-
-  /* The one colour in dev chrome. Everything else here is monochrome, so amber
-     on a single icon is enough to read as a warning without a palette token. */
-  .dev-text-actions__warn {
-    display: inline-flex;
-    align-items: center;
-    padding-left: 8px;
-    color: #b26a00;
-    line-height: 1;
-    cursor: help;
-  }
-
-  .dev-text-actions__warn svg {
-    display: block;
-  }
-
-  .dev-text-actions__warn[hidden] {
-    display: none;
-  }
-
-  .dev-text-actions button {
-    box-sizing: border-box;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-width: var(--dev-control-min-width);
-    min-height: var(--dev-control-height);
-    border: 0;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-button-ghost-container);
-    padding: 8px;
-    color: var(--comp-button-label);
-    font: var(--dev-text-label);
-    cursor: pointer;
-  }
-
-  .dev-text-actions button:hover {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  .dev-text-actions button:active {
-    background: var(--comp-button-ghost-container-pressed);
-  }
-
-  .dev-text-actions button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .dev-text-actions button.is-dev-actions-busy:disabled {
-    cursor: wait;
-    opacity: 0.55;
-    pointer-events: none;
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles] {
-    background: var(--comp-button-soft-container);
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles]:hover {
-    background: var(--comp-button-soft-container-hover);
-  }
-
-  .dev-text-actions [data-dev-text-commit-styles]:active {
-    background: var(--comp-button-soft-container-pressed);
-  }
-
-  .dev-text-actions .dev-text-actions__save {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
-  }
-
-  .dev-text-actions .dev-text-actions__save:hover:not(:disabled),
-  .dev-text-actions .dev-text-actions__save:active:not(:disabled) {
-    background: var(--comp-button-filled-container-hover);
-  }
-
-  /* Publish only disables while a publish is in flight. */
-  .dev-text-actions .dev-text-actions__save:disabled {
-    cursor: default;
-  }
-
-  .dev-text-actions .dev-text-actions__save.is-dev-actions-busy:disabled {
-    cursor: wait;
-  }
-
-  /* Rendering code changed on this branch: Publish steps down to Soft, not
-     filled and not ringed — a plain surface, still clickable, still asks for
-     confirmation. */
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
-    background: var(--comp-button-soft-container);
-    color: var(--comp-button-label);
-  }
-
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled),
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:active:not(:disabled) {
-    background: var(--comp-button-soft-container-hover);
-  }
 
   /* ── Selection formatting popup ───────────────────────── */
   .dev-text-format {
@@ -7236,22 +6998,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: auto;
   }
 
-  /* Unified pill (630:5633, Spacing Toolbar Base) — Add + the spacing chips
-     as one surface, matching Figma. Previously two separate floating
-     elements at Anto's request; reversed 2026-08-25. */
-  .dev-gap-toolbar__pill {
-    --dev-gap-pill-padding: 6px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex: 0 0 auto;
-    width: max-content;
-    max-width: calc(100vw - 24px);
-    min-width: 0;
-    padding: var(--dev-gap-pill-padding);
-    border-radius: calc(var(--dev-radius-control) + var(--dev-gap-pill-padding));
-  }
-
   .dev-gap-toolbar__pill > .dev-hairline--vertical,
   .dev-text-format__buttons > .dev-hairline--vertical {
     margin-inline: 2px;
@@ -7405,14 +7151,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     outline-offset: -2px;
   }
 
-  /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
-     chips inside it. */
-  .dev-gap-toolbar__spacing {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
   .dev-spacing-control__reset-separator:has(+ .dev-spacing-control__reset[hidden]) {
     display: none;
   }
@@ -7446,142 +7184,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     .dev-spacing-control__reset.is-dev-spacing-reset-revealing {
       animation-name: dev-spacing-reset-fade;
     }
-  }
-
-  /* Ghost Button Base at 72px. */
-  .dev-spacing-control__btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    width: 72px;
-    min-height: var(--dev-control-height);
-    box-sizing: border-box;
-    padding: 8px;
-    border: 0;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-button-ghost-container);
-    color: var(--comp-button-label);
-    font: var(--dev-text-label);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .dev-spacing-control__btn:hover {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  /* Ghost hover — Figma Spacing Toolbar Base uses Ghost/Hover for the
-     selected-looking chip, not Soft. */
-  .dev-spacing-control__btn.is-active {
-    background: var(--comp-button-ghost-container-hover);
-    color: var(--comp-button-label);
-  }
-
-  /* Affordance the static master doesn't draw — its chips are label-only. */
-  .dev-spacing-control__mark {
-    display: block;
-    width: 1.1em;
-    border-radius: 999px;
-    background: currentColor;
-    flex-shrink: 0;
-  }
-
-  .dev-spacing-control__mark--related {
-    height: 0.12em;
-  }
-
-  .dev-spacing-control__mark--group {
-    height: 0.2em;
-  }
-
-  .dev-spacing-control__mark--section {
-    height: 0.28em;
-  }
-
-  .dev-spacing-control__mark--major {
-    height: 0.45em;
-  }
-
-  .dev-spacing-control__mark--none {
-    height: 0;
-    width: 1.1em;
-    border: 1px solid currentColor;
-    background: transparent;
-    box-sizing: border-box;
-    border-radius: 1px;
-  }
-
-  /*
-    Dirty spacing: highlight the margin-top gap above the block (the thing
-    you're editing), not the content box. Same positioning model as the
-    gap toolbar — no spacer section in the DOM.
-
-    Use ::before — ::after is the section-delete hit bridge
-    ([data-dev-section-deletable]::after). Sharing one pseudo collapsed the
-    gap outline into a small dashed box over the content.
-  */
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty {
-    position: relative;
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    width: min(var(--page-max-width), calc(100vw - 2 * var(--space-unit)));
-    bottom: 100%;
-    height: var(--space-group);
-    box-sizing: border-box;
-    border: var(--dev-edit-dash);
-    pointer-events: none;
-    z-index: 35;
-  }
-
-  .is-dev-mode
-    [data-dev-spacing-document].is-dev-spacing-dirty:is(
-      .project-block--centered,
-      .project-image-grid,
-      .project-image-carousel
-    )::before {
-    left: 50%;
-    transform: translateX(-50%);
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--related::before {
-    height: var(--space-related);
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::before {
-    height: var(--space-group);
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--section::before {
-    height: var(--space-section);
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::before {
-    height: var(--space-major);
-  }
-
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--none::before,
-  .is-dev-mode
-    .project-stack--flush
-    + [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--flush::before {
-    content: none;
-  }
-
-  .is-dev-mode
-    .project-stack--precede-related
-    + [data-dev-spacing-document].is-dev-spacing-dirty:not(.project-stack--related):not(
-      .project-stack--group
-    ):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none)::before {
-    height: var(--space-related);
-  }
-
-  html.is-section-reorder-dragging.is-dev-mode
-    [data-dev-spacing-document].is-section-lifted-session.is-dev-spacing-dirty::before {
-    content: none;
   }
 
   /* ── Section delete (DEV) ───────────────────────────────── */

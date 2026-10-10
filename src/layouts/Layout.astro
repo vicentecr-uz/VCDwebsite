@@ -365,11 +365,24 @@ const initialThemeColor = resolveToken('sys.color.srf');
           });
         });
         const imageCleanups = [];
+        const readinessRootReady = (root) => new Promise((resolve) => {
+          if (root.dataset.pageRevealReady === 'true') { resolve(); return; }
+          const ready = () => {
+            if (root.dataset.pageRevealReady !== 'true') return;
+            root.removeEventListener('vcd:page-reveal-ready', ready);
+            resolve();
+          };
+          root.addEventListener('vcd:page-reveal-ready', ready);
+          imageCleanups.push(() => root.removeEventListener('vcd:page-reveal-ready', ready));
+          ready();
+        });
         const imageReady = introLayoutReady.then(() => {
           if (overlay.dataset.vcdInitialReveal !== 'running') return;
           const images = readinessImages(Array.from(document.querySelectorAll('img')).filter(visible));
+          const readinessRoots = Array.from(document.querySelectorAll('[data-page-reveal-ready]')).filter(visible);
           images.forEach((image) => { image.loading = 'eager'; });
-          return Promise.all(images.map((image) => new Promise((resolve) => {
+          return Promise.all([
+            ...images.map((image) => new Promise((resolve) => {
             const finish = () => {
               let decoded = Promise.resolve();
               if (typeof image.decode === 'function' && image.naturalWidth > 0) {
@@ -382,7 +395,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
             imageCleanups.push(() => { image.removeEventListener('load', done); image.removeEventListener('error', done); });
             image.addEventListener('load', done, { once: true });
             image.addEventListener('error', done, { once: true });
-          }))).then(() => {
+            })),
+            ...readinessRoots.map(readinessRootReady),
+          ]).then(() => {
             if (overlay.dataset.vcdInitialReveal === 'running') mark('initial-thumbnails-ready');
           });
         });
@@ -654,6 +669,31 @@ const initialThemeColor = resolveToken('sys.color.srf');
               }
               emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
             })());
+          }
+          const readinessRoots = Array.from(document.querySelectorAll<HTMLElement>('[data-page-reveal-ready]')).filter(isInViewport);
+          for (const root of readinessRoots) {
+            waits.push(new Promise<void>((resolve) => {
+              if (root.dataset.pageRevealReady === 'true') { resolve(); return; }
+              let finished = false;
+              const done = () => {
+                if (finished || root.dataset.pageRevealReady !== 'true') return;
+                finished = true;
+                root.removeEventListener('vcd:page-reveal-ready', done);
+                signal.removeEventListener('abort', onAbort);
+                resolve();
+              };
+              const onAbort = () => {
+                if (finished) return;
+                finished = true;
+                root.removeEventListener('vcd:page-reveal-ready', done);
+                signal.removeEventListener('abort', onAbort);
+                resolve();
+              };
+              root.addEventListener('vcd:page-reveal-ready', done);
+              signal.addEventListener('abort', onAbort);
+              cleanups.push(() => { root.removeEventListener('vcd:page-reveal-ready', done); signal.removeEventListener('abort', onAbort); });
+              done();
+            }));
           }
           Promise.all(waits).then(() => settle('resources'), () => settle('resources'));
         });

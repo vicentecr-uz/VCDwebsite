@@ -533,6 +533,13 @@ const DROP_ANIMATION_SAMPLES = 32;
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
 export type ReorderController = {
+  /** Decide whether a host lift starts, resumes, or is blocked by this session. */
+  prepareLift: (
+    item: HTMLElement,
+    handle: HTMLElement,
+    pointerX: number,
+    pointerY: number,
+  ) => 'new' | 'resumed' | 'blocked';
   beginLift: (
     item: HTMLElement,
     handle: HTMLElement,
@@ -1319,9 +1326,28 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     item.style.removeProperty('transition');
   };
 
-  return {
+  const controller: ReorderController = {
+    prepareLift: (item, handle, pointerX, pointerY) => {
+      if (state.phase === 'idle') return 'new';
+      if (state.phase === 'lifted') return 'blocked';
+      if (host.getDragItem() === item) {
+        return controller.resumeLift(item, handle, pointerX, pointerY) ? 'resumed' : 'blocked';
+      }
+      return controller.settleNow() ? 'new' : 'blocked';
+    },
     beginLift: (item, handle, pointerX, pointerY, sourceIndex, options = {}) => {
       if (state.phase !== 'idle') return;
+
+      // A prior settle may have left engine-owned shadow/transition overrides
+      // behind. Retire its async tails before this lift lets the stylesheet
+      // paint the backdrop again.
+      dropRun += 1;
+      const backdropClass = host.classes.liftBackdrop;
+      const backdrop = backdropClass
+        ? item.querySelector<HTMLElement>(`:scope > .${backdropClass}`)
+        : null;
+      backdrop?.style.removeProperty('box-shadow');
+      backdrop?.style.removeProperty('transition');
 
       followPointer = options.followPointer !== false;
       const rect = item.getBoundingClientRect();
@@ -1601,4 +1627,5 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state = idleState();
     },
   };
+  return controller;
 };

@@ -28,6 +28,7 @@ import {
   isDerivativeToken,
 } from './image-derivatives.mjs';
 import { prunePublicOutput } from './public-site-output.mjs';
+import { injectPublishedDemoAssets, readPublishedDemoAssets } from './public-demo-assets.mjs';
 
 const SCAN_EXTENSIONS = new Set(['.html', '.css', '.js']);
 // Deliberately does NOT exclude ')' from the token body — filenames in this
@@ -177,6 +178,13 @@ export function mediaCollectorIntegration(mediaDirName = 'media') {
           `public output: retained ${output.retainedHtml.length} HTML page(s), `
           + `removed ${output.removedHtml.length}; removed ${output.removedAssets.length} generated asset(s)`,
         );
+        const demoAssets = await readPublishedDemoAssets({
+          distDir,
+          projectsDir: path.join(process.cwd(), 'src/content/projects'),
+          mediaDir,
+          retainedHtml: output.retainedHtml,
+        });
+        await injectPublishedDemoAssets(distDir, demoAssets, output.retainedHtml);
         await collectShippedAssets(distDir, mediaDir);
       },
     },

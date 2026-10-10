@@ -1,5 +1,8 @@
 ---
+import '../../styles/devOverlayFrame.css';
+import '../../styles/assetManager.css';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
+import CropFrameDemo from './demos/CropFrameDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
@@ -12,22 +15,27 @@ interface Props {
   documentKey?: string;
   sectionPath?: Array<string | number>;
   annotations?: unknown;
+  sample?: unknown;
 }
-const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations } = Astro.props;
+const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
+  ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
+  : undefined;
 ---
 
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
+    {['image-framing', 'gap-spacing'].includes(demo.id) && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <div class="project-interactive-demo__content">
-      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
+      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
-        sandbox="allow-scripts allow-same-origin"
+        sandbox={`allow-scripts allow-same-origin${demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
         referrerpolicy="no-referrer"
-        style={`height:${demo.height}rem`}
+        style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`}
       />}
     </div>
     {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
@@ -41,11 +49,31 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: var(--comp-demo-frame-container);
   }
 
+  .project-interactive-demo:has(vcd-crop-frame-demo) {
+    background: transparent;
+  }
+
+  .project-interactive-demo:has(vcd-crop-frame-demo)::after { display: none; }
+
   .project-interactive-demo__content {
     border-radius: inherit;
   }
 
+  .project-interactive-demo__mobile-notice { display: none; }
+
   @media (max-width: 40em) {
+    .project-interactive-demo__mobile-notice {
+      display: block;
+      position: absolute;
+      top: var(--space-unit);
+      inset-inline: var(--space-unit);
+      z-index: 1;
+      margin: 0;
+      text-align: center;
+      font: var(--dev-text-status);
+      color: var(--sys-color-on-srf-variant);
+      pointer-events: none;
+    }
     .project-interactive-demo {
       /* Negative margins expand a block's auto width into the page gutter.
          `100% + 2 * gutter` overshoots when the inherited gutter does not
@@ -61,6 +89,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       overflow-x: clip;
     }
   }
+
+  .project-interactive-demo:has(vcd-crop-frame-demo)::before { display: none; }
 
   .project-interactive-demo::after {
     content: '';
@@ -118,5 +148,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     width: 100%;
     border: 0;
     border-radius: inherit;
+    height: var(--demo-height);
+  }
+
+  @media (max-width: 40em) {
+    .project-interactive-demo__content iframe { height: var(--demo-narrow-height); }
   }
 </style>

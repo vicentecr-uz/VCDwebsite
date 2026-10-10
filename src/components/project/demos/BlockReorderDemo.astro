@@ -1,22 +1,49 @@
 ---
 import Button from '../../ui/Button.astro';
-import DevPanel from '../../ui/DevPanel.astro';
+import { sectionReorderHandleMarkup } from '../../../lib/sectionReorderChrome';
+import '../../../styles/sectionReorderChrome.css';
+import '../../../styles/project.css';
+import ProjectBodyText from '../ProjectBodyText.astro';
+import ProjectImage from '../ProjectImage.astro';
+import ProjectImageGrid from '../ProjectImageGrid.astro';
+import ProjectSectionTitle from '../ProjectSectionTitle.astro';
+
 ---
 
-<vcd-reorder-demo>
-  <DevPanel title="Block reorder" titleTag="h1" showLights={false} class="reorder-demo">
+<vcd-reorder-demo class="is-dev-mode">
+  <div class="reorder-demo__canvas">
     <div class="reorder-demo__list" data-reorder-demo-list>
-      {['Research', 'Sketch', 'Prototype', 'Refine'].map((title) => (
-        <article class="reorder-demo__block" data-reorder-demo-block data-title={title}>
-          <button class="reorder-demo__handle" type="button" data-reorder-demo-handle aria-label={`Move ${title}`} aria-pressed="false">
-            <span aria-hidden="true">{title}</span>
-            <span aria-hidden="true" class="reorder-demo__grip">↕</span>
-          </button>
-        </article>
-      ))}
+      <article class="reorder-demo__block reorder-demo__block--intro" data-reorder-demo-block data-dev-section-reorderable data-title="Inside the object">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder Inside the object', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <div class="reorder-demo__intro-copy">
+          <ProjectSectionTitle title="Inside the object" spacing="none" />
+          <ProjectBodyText paragraphs={['Every part has a purpose.']} spacing="none" />
+        </div>
+      </article>
+
+      <article class="reorder-demo__block reorder-demo__block--wide-image" data-reorder-demo-block data-dev-section-reorderable data-title="The whole picture">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder The whole picture', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <ProjectImage src="IMG_2480.jpeg" srcWidth={4032} srcHeight={3024} alt="Disassembled utility knife arranged on a gridded cutting mat" variants={{ desktop: { aspect: "3:1", cx: 0.5, cy: 0.58, w: 1 } }} mobileInset spacing="none" />
+      </article>
+
+      <article class="reorder-demo__block reorder-demo__block--grid" data-reorder-demo-block data-dev-section-reorderable data-title="Small details">
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: 'Drag to reorder Small details', title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <ProjectImageGrid
+          columns={2}
+          defaultAspectRatio="2:1"
+          spacing="none"
+          items={[
+            { src: 'IMG_2480.jpeg', alt: 'Close detail of the utility knife parts', variants: { desktop: { aspect: '2:1', cx: 0.3, cy: 0.63, w: 0.6 } }, mobileInset: true },
+            { src: 'IMG_2480.jpeg', alt: 'Close detail of the cutting mat and utility knife', variants: { desktop: { aspect: '2:1', cx: 0.7, cy: 0.35, w: 0.6 } }, mobileInset: true },
+          ]}
+        />
+      </article>
     </div>
     <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
-  </DevPanel>
+  </div>
   <div class="demo-controls">
     <Button label="Reset" type="button" data-reorder-demo-reset />
   </div>
@@ -25,7 +52,15 @@ import DevPanel from '../../ui/DevPanel.astro';
 <style>
   vcd-reorder-demo {
     display: block;
-    width: min(100%, 32em);
+    width: min(100%, 38em);
+    color: var(--sys-color-on-srf);
+  }
+
+  .reorder-demo__canvas {
+    padding: var(--space-unit) calc(var(--space-unit) * 3);
+    background: var(--sys-color-srf-container-low);
+    border: 1px solid var(--sys-color-srf-container);
+    border-radius: var(--radius-control-smooth);
   }
 
   .reorder-demo__list {
@@ -37,43 +72,25 @@ import DevPanel from '../../ui/DevPanel.astro';
 
   .reorder-demo__block {
     position: relative;
-    min-height: 4em;
+    min-height: 5.5em;
     overflow-anchor: none;
     color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf-container-low);
-    border: 1px solid var(--sys-color-srf-container);
-    border-radius: var(--radius-control-smooth);
   }
 
-  .reorder-demo__handle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    min-height: 4em;
-    padding: var(--space-unit);
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    touch-action: none;
-    background: transparent;
-    border: 0;
-    border-radius: inherit;
-    cursor: grab;
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle) {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translate(calc(-100% - 0.55em), -50%);
   }
 
-  .reorder-demo__handle:focus-visible {
-    outline: 2px solid currentColor;
-    outline-offset: -4px;
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:hover),
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:focus-visible),
+  vcd-reorder-demo.is-dev-mode [data-dev-section-reorderable] > :global(.dev-section-drag-handle:active) {
+    transform: translate(calc(-100% - 0.55em), -50%) scale(1.08);
   }
 
-  .reorder-demo__handle:active {
-    cursor: grabbing;
-  }
-
-  .reorder-demo__grip {
-    opacity: 0.55;
-    font-size: 1.25em;
+  .reorder-demo__intro-copy {
+    max-width: 100%;
   }
 
   .reorder-demo__status {
@@ -86,284 +103,22 @@ import DevPanel from '../../ui/DevPanel.astro';
     white-space: nowrap;
   }
 
-  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted) {
-    position: fixed;
-    z-index: 100;
-    margin: 0;
-  }
-
-  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
-    transform: scale(1.02);
-    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 18%);
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator) {
-    display: grid;
-    grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
-    margin: 0;
-    padding: 0;
-    overflow-anchor: none;
-    pointer-events: none;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator-body) {
-    grid-row: 2;
-    height: var(--gap-height, 0px);
-    box-sizing: border-box;
-    border: 1px solid var(--sys-color-srf-container);
-    background: var(--sys-color-srf-container-low);
-    border-radius: var(--radius-control-smooth);
-    opacity: 0;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__indicator-body.vcd-reorder-demo__fade-ghost) {
-    position: fixed;
-    z-index: 99;
-    margin: 0;
-    pointer-events: none;
-  }
-
-  :global(vcd-reorder-demo .vcd-reorder-demo__flip) {
-    will-change: transform;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
-      transform: none;
-    }
-  }
-
 </style>
 
 <script>
-  import { createReorderController } from '../../../scripts/sectionReorder';
+  import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
 
   class BlockReorderDemo extends HTMLElement {
-    private lifecycle?: AbortController;
-    private controller?: ReturnType<typeof createReorderController>;
-    private dragItem: HTMLElement | null = null;
-    private dragHandle: HTMLButtonElement | null = null;
-    private pointerId: number | null = null;
-    private originalNodes: ChildNode[] = [];
-    private liftNodes: ChildNode[] | null = null;
-    private generation = 0;
-    private syncFrame = 0;
-    private announceFrame = 0;
-    private syncResolve?: () => void;
-    private dropping = false;
+    private reorder?: ReturnType<typeof createDemoBlockReorder>;
 
     connectedCallback() {
-      this.lifecycle?.abort();
-      const lifecycle = new AbortController();
-      this.lifecycle = lifecycle;
-      const { signal } = lifecycle;
-      const list = this.querySelector<HTMLElement>('[data-reorder-demo-list]');
-      const resetButton = this.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]');
-      const status = this.querySelector<HTMLElement>('.reorder-demo__status');
-      if (!list || !resetButton || !status) return;
-      this.originalNodes = [...list.childNodes];
-
-      const items = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')]
-        .filter((item) => item !== this.dragItem);
-      const allItems = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
-      const announce = () => {
-        if (!this.dragItem) return;
-        const state = this.controller?.getState();
-        const position = state?.phase === 'lifted' ? state.targetIndex : allItems().indexOf(this.dragItem);
-        if (position >= 0) status.textContent = `${this.dragItem.dataset.title} · ${position + 1}`;
-      };
-      const makeController = () => createReorderController({
-        getItems: items,
-        getDropZone: () => list,
-        getDragItem: () => this.dragItem,
-        classes: {
-          indicator: 'vcd-reorder-demo__indicator',
-          indicatorBody: 'vcd-reorder-demo__indicator-body',
-          flipMoving: 'vcd-reorder-demo__flip',
-          lifted: 'vcd-reorder-demo__lifted',
-          fadeGhost: 'vcd-reorder-demo__fade-ghost',
-        },
-        measureLiftGaps: () => ({ top: '0px', bottom: '0px' }),
-        measureInsertGaps: () => ({ top: '0px', bottom: '0px', marginTop: '0px' }),
-        scrollTuning: { maxScrollSpeed: 0 }, // Fixture ceiling: no page auto-scroll; the full engine supports taller hosts.
-        onStatus: announce,
-      });
-      this.controller = makeController();
-
-      const releaseCapture = () => {
-        const handle = this.dragHandle;
-        const pointerId = this.pointerId;
-        this.pointerId = null;
-        if (handle && pointerId !== null && handle.hasPointerCapture(pointerId)) {
-          handle.releasePointerCapture(pointerId);
-        }
-      };
-      const cancelFrames = () => {
-        if (this.syncFrame) cancelAnimationFrame(this.syncFrame);
-        if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
-        this.syncFrame = 0;
-        this.announceFrame = 0;
-        this.syncResolve?.();
-        this.syncResolve = undefined;
-      };
-      const setPressed = (pressed: boolean) => {
-        allItems().forEach((item) => item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]')
-          ?.setAttribute('aria-pressed', String(pressed && item === this.dragItem)));
-      };
-      const restoreNodes = (nodes: ChildNode[]) => {
-        for (const node of nodes) list.append(node);
-      };
-      const reset = (nodes = this.originalNodes) => {
-        this.generation += 1;
-        this.dropping = false;
-        cancelFrames();
-        releaseCapture();
-        this.controller?.destroy();
-        this.controller = makeController();
-        restoreNodes(nodes);
-        this.dragItem = null;
-        this.dragHandle = null;
-        this.liftNodes = null;
-        setPressed(false);
-        status.textContent = '';
-      };
-      const finishDrop = async () => {
-        const controller = this.controller;
-        const generation = this.generation;
-        const handle = this.dragHandle;
-        if (this.dropping || !controller || !this.dragItem || controller.getState().phase !== 'lifted') return;
-        this.dropping = true;
-        await new Promise<void>((resolve) => {
-          this.syncResolve = resolve;
-          this.syncFrame = requestAnimationFrame(() => {
-            this.syncFrame = 0;
-            if (generation !== this.generation || controller !== this.controller || signal.aborted) {
-              resolve();
-              this.syncResolve = undefined;
-              return;
-            }
-            this.syncFrame = requestAnimationFrame(() => {
-              this.syncFrame = 0;
-              this.syncResolve = undefined;
-              resolve();
-            });
-          });
-        });
-        if (generation !== this.generation || controller !== this.controller || signal.aborted) return;
-        await controller.endDrop();
-        if (generation !== this.generation || controller !== this.controller || signal.aborted) return;
-        const committedItem = this.dragItem;
-        const position = committedItem ? allItems().indexOf(committedItem) : -1;
-        if (committedItem && position >= 0) status.textContent = `${committedItem.dataset.title} · ${position + 1}`;
-        releaseCapture();
-        this.dropping = false;
-        this.dragItem = null;
-        this.dragHandle = null;
-        this.liftNodes = null;
-        setPressed(false);
-        if (generation === this.generation && !signal.aborted) handle?.focus();
-      };
-      const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
-        if (this.controller?.isActive() || this.dragItem) return false;
-        const sourceIndex = items().indexOf(item);
-        this.liftNodes = [...list.childNodes];
-        this.dragItem = item;
-        this.dragHandle = handle;
-        this.generation += 1;
-        setPressed(true);
-        this.controller?.beginLift(item, handle, x, y, sourceIndex, { followPointer });
-        announce();
-        return true;
-      };
-      const dropOrPick = (item: HTMLElement, handle: HTMLButtonElement, event: KeyboardEvent) => {
-        event.preventDefault();
-        if (this.dragItem === item && this.controller?.getState().phase === 'lifted') {
-          void finishDrop();
-          return;
-        }
-        if (!this.dragItem) pickUp(item, handle, 0, 0, false);
-      };
-
-      for (const item of items()) {
-        const handle = item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]');
-        if (!handle) continue;
-        handle.addEventListener('pointerdown', (event) => {
-          if (event.button !== 0) return;
-          event.preventDefault();
-          if (!pickUp(item, handle, event.clientX, event.clientY)) return;
-          this.pointerId = event.pointerId;
-          handle.setPointerCapture(event.pointerId);
-        }, { signal });
-        handle.addEventListener('pointermove', (event) => {
-          if (event.pointerId !== this.pointerId || this.dragItem !== item) return;
-          this.controller?.setPointer(event.clientX, event.clientY);
-        }, { signal });
-        handle.addEventListener('pointerup', (event) => {
-          if (event.pointerId !== this.pointerId || this.dragItem !== item) return;
-          releaseCapture();
-          void finishDrop();
-        }, { signal });
-        handle.addEventListener('pointercancel', (event) => {
-          if (event.pointerId !== this.pointerId) return;
-          reset(this.liftNodes ?? this.originalNodes);
-        }, { signal });
-        handle.addEventListener('keydown', (event) => {
-          if (event.key === 'Escape') {
-            if (this.dragItem !== item || !this.controller?.isActive()) return;
-            event.preventDefault();
-            reset(this.liftNodes ?? this.originalNodes);
-            handle.focus();
-            return;
-          }
-          if (event.key === ' ' || event.key === 'Enter') {
-            dropOrPick(item, handle, event);
-            return;
-          }
-          if (this.dragItem !== item || this.controller?.getState().phase !== 'lifted') return;
-          const state = this.controller.getState();
-          const max = items().length;
-          const next = event.key === 'ArrowUp' ? state.targetIndex - 1
-            : event.key === 'ArrowDown' ? state.targetIndex + 1
-              : event.key === 'Home' ? 0 : event.key === 'End' ? max : null;
-          if (next === null) return;
-          event.preventDefault();
-          this.controller.setTargetIndex(next);
-          if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
-          const generation = this.generation;
-          this.announceFrame = requestAnimationFrame(() => {
-            this.announceFrame = 0;
-            if (generation === this.generation && this.controller?.isActive()) announce();
-          });
-        }, { signal });
-        handle.addEventListener('lostpointercapture', (event) => {
-          if (this.pointerId !== event.pointerId || !this.controller?.isActive()) return;
-          this.pointerId = null;
-          reset(this.liftNodes ?? this.originalNodes);
-        }, { signal });
-      }
-      resetButton.addEventListener('click', () => reset(), { signal });
+      this.reorder?.destroy();
+      this.reorder = createDemoBlockReorder(this, { scroll: false });
     }
 
     disconnectedCallback() {
-      this.generation += 1;
-      this.dropping = false;
-      if (this.syncFrame) cancelAnimationFrame(this.syncFrame);
-      if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
-      this.syncResolve?.();
-      this.syncResolve = undefined;
-      this.syncFrame = 0;
-      this.announceFrame = 0;
-      const handle = this.dragHandle;
-      const pointerId = this.pointerId;
-      this.pointerId = null;
-      if (handle && pointerId !== null && handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
-      this.lifecycle?.abort();
-      this.controller?.destroy();
-      this.controller = undefined;
-      this.dragItem = null;
-      this.dragHandle = null;
-      this.pointerId = null;
-      this.lifecycle = undefined;
+      this.reorder?.destroy();
+      this.reorder = undefined;
     }
   }
 

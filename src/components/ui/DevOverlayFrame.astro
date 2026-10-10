@@ -1,0 +1,100 @@
+---
+import '../../styles/dev-chrome.css';
+import '../../styles/devOverlayFrame.css';
+import minusIcon from 'lucide-static/icons/minus.svg?raw';
+import plusIcon from 'lucide-static/icons/plus.svg?raw';
+import xIcon from 'lucide-static/icons/x.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import DevPanelTitle from './DevPanelTitle.astro';
+
+interface Props {
+  title?: string;
+  titleSuffix?: string;
+  storageKey?: string;
+  defaultMinimized?: boolean;
+  showMinimize?: boolean;
+  panelKey?: string;
+  defaultHidden?: boolean;
+  layout?: 'portrait' | 'landscape';
+  embedded?: boolean;
+  [key: string]: any;
+}
+
+const {
+  title,
+  titleSuffix,
+  storageKey = 'default',
+  defaultMinimized = false,
+  showMinimize = true,
+  panelKey,
+  defaultHidden = false,
+  layout = 'portrait',
+  embedded = false,
+  ...rest
+} = Astro.props;
+
+const trafficLightIcon = (svg: string) => sizeIcon(svg, 10);
+const minimizeSvg = trafficLightIcon(minusIcon);
+const expandSvg = trafficLightIcon(plusIcon);
+const hideSvg = trafficLightIcon(xIcon);
+---
+
+<aside
+  class:list={[
+    'dev-overlay',
+    'dev-surface',
+    `dev-overlay--${layout}`,
+    embedded && 'dev-overlay--embedded',
+    embedded && !defaultHidden && 'is-dev-overlay-open',
+  ]}
+  data-storage-key={storageKey}
+  data-default-minimized={defaultMinimized ? 'true' : 'false'}
+  data-dev-panel-key={panelKey}
+  data-embedded={embedded ? 'true' : undefined}
+  hidden={defaultHidden ? true : undefined}
+  {...rest}
+  style={embedded ? 'position:relative;inset:auto;z-index:auto' : undefined}
+>
+  <div class="dev-overlay__head" data-drag-handle>
+    <DevPanelTitle panelKey={panelKey} suffix={titleSuffix} title={title} />
+    {
+      showMinimize && (
+        <div class="dev-overlay__lights" data-drag-ignore>
+          <button
+            type="button"
+            class="dev-overlay__light dev-overlay__light--minimize"
+            data-minimize-toggle
+            aria-label="Minimize"
+            title="Minimize"
+            aria-expanded="true"
+          >
+            <span class="dev-overlay__light-icon" data-light-glyph="minus" aria-hidden="true" set:html={minimizeSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="plus" aria-hidden="true" set:html={expandSvg} />
+          </button>
+          <button
+            type="button"
+            class="dev-overlay__light dev-overlay__light--hide"
+            data-hide-toggle
+            aria-label="Hide"
+            title="Hide"
+          >
+            <span class="dev-overlay__light-icon" aria-hidden="true" set:html={hideSvg} />
+          </button>
+        </div>
+      )
+    }
+  </div>
+  <div class="dev-overlay__body" data-overlay-body>
+    <slot />
+  </div>
+  <div class="dev-overlay__resize" data-resize-handles aria-hidden="true">
+    <span data-resize="n"></span>
+    <span data-resize="s"></span>
+    <span data-resize="e"></span>
+    <span data-resize="w"></span>
+    <span data-resize="ne"></span>
+    <span data-resize="nw"></span>
+    <span data-resize="se"></span>
+    <span data-resize="sw"></span>
+  </div>
+</aside>

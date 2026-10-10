@@ -1,8 +1,8 @@
 ---
 import '../styles/global.css';
 
-interface Props { title: string; captureAssets?: boolean }
-const { title, captureAssets = false } = Astro.props;
+interface Props { title: string; captureAssets?: boolean; scrolling?: boolean; authoring?: boolean }
+const { title, captureAssets = false, scrolling = false, authoring = false } = Astro.props;
 const connections = captureAssets
   ? "'self' https://fonts.googleapis.com https://fonts.gstatic.com"
   : "'none'";
@@ -12,7 +12,7 @@ const policy = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
-  `connect-src ${import.meta.env.DEV ? `${captureAssets ? connections : ''} ws:` : connections}`,
+  `connect-src ${import.meta.env.DEV ? `${captureAssets ? connections : authoring ? "'self'" : ''} ws:` : connections}`,
   "form-action 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -33,15 +33,25 @@ const policy = [
     <title>{title}</title>
   </head>
   <body>
-    <main class="demo-page"><slot /></main>
+    {scrolling ? <div class="demo-scroll-viewport">
+      <main class="demo-page demo-page--scrolling" data-page-viewport><slot /></main>
+    </div> : <main class="demo-page"><slot /></main>}
   </body>
 </html>
 
 <style>
   html, body {
+    --section-lift-background: var(--comp-demo-frame-container);
     height: 100%;
     min-height: 100%;
     background: var(--comp-demo-frame-container);
+  }
+
+  html:has(.demo-page--scrolling),
+  body:has(.demo-page--scrolling) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .demo-page {
@@ -55,6 +65,50 @@ const policy = [
 
   .demo-page :global(.dev-panel) {
     width: 100%;
+  }
+
+  .demo-scroll-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    /* A stationary containing block keeps fixed drag lifts in the content mask. */
+    transform: translateZ(0);
+    /* Keep the native scrollbar visible through the content veil at the far right. */
+    mask-image: linear-gradient(to bottom,
+      transparent 0.5rem,
+      rgb(0 0 0 / 0.04) 0.8rem,
+      rgb(0 0 0 / 0.18) 1.1rem,
+      rgb(0 0 0 / 0.5) 1.5rem,
+      rgb(0 0 0 / 0.82) 1.9rem,
+      rgb(0 0 0 / 0.96) 2.2rem,
+      black 2.5rem,
+      black calc(100% - 2.5rem),
+      rgb(0 0 0 / 0.96) calc(100% - 2.2rem),
+      rgb(0 0 0 / 0.82) calc(100% - 1.9rem),
+      rgb(0 0 0 / 0.5) calc(100% - 1.5rem),
+      rgb(0 0 0 / 0.18) calc(100% - 1.1rem),
+      rgb(0 0 0 / 0.04) calc(100% - 0.8rem),
+      transparent calc(100% - 0.5rem)),
+      linear-gradient(black, black);
+    mask-size: 100% 100%, 1.25rem 100%;
+    mask-position: center, right;
+    mask-repeat: no-repeat;
+  }
+
+  .demo-page--scrolling {
+    display: block;
+    height: 100%;
+    min-height: 0;
+    padding-block: calc(var(--space-unit) * 5);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-anchor: none;
+  }
+
+  .demo-page.demo-page--scrolling :global(.demo-controls) {
+    position: fixed;
+    z-index: 100;
+    bottom: 3rem;
   }
 
   .demo-page :global(.demo-controls) {

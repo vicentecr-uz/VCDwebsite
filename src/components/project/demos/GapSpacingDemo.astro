@@ -1,0 +1,162 @@
+---
+import Button from '../../ui/Button.astro';
+import SaveBar from '../../ui/SaveBar.astro';
+import ProjectImage from '../ProjectImage.astro';
+import ProjectBodyText from '../ProjectBodyText.astro';
+import ProjectSectionTitle from '../ProjectSectionTitle.astro';
+import { sectionReorderHandleMarkup } from '../../../lib/sectionReorderChrome';
+import { spacingButtonsHtml } from '../../../lib/gapSpacingControl';
+import DemoCursor from './DemoCursor.astro';
+import '../../../styles/project.css';
+import '../../../styles/gapSpacingControl.css';
+import '../../../styles/sectionReorderChrome.css';
+const blocks = [
+  { type: 'title', title: 'Made for a slower morning' },
+  { type: 'image', title: 'Teapot and mug' },
+  { type: 'text', title: 'The small details' },
+];
+const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
+---
+
+<vcd-gap-spacing-demo class="is-dev-mode" data-crop-demo>
+  <div class="gap-spacing-demo__column" data-reorder-demo-list>
+    {blocks.map((block) => (
+      <article class="gap-spacing-demo__block" data-reorder-demo-block data-demo-spacing data-dev-section-reorderable data-block-kind={block.type} data-title={block.title} style={block.type === 'image' ? '--demo-block-gap: var(--space-related)' : undefined}>
+        <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+        <div class="dev-section-drag-bridge" aria-hidden="true"></div>
+        <Fragment set:html={sectionReorderHandleMarkup({ label: `Drag to reorder ${block.title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+        <div class="dev-gap-toolbar" data-gap-toolbar>
+          <div class="dev-gap-toolbar__pill dev-surface" role="group" aria-label={`Space before ${block.title}`}>
+            <div class="dev-gap-toolbar__spacing" set:html={spacingButtonsHtml(false, false)}></div>
+          </div>
+        </div>
+        {block.type === 'title' && <ProjectSectionTitle title={block.title} spacing="none" />}
+        {block.type === 'image' && <ProjectImage kind="lead" src="Solo Teapot and Mug Side View.png" srcWidth={1920} srcHeight={1080} alt="A white teapot and matching mug" variants={{ desktop: pose, tablet: pose, mobile: pose }} mobileInset spacing="none" loading="eager" />}
+        {block.type === 'text' && <ProjectBodyText paragraphs={['A teapot and mug, made to sit comfortably together. A quiet shape, a generous handle, and enough room for the next cup.', 'Try moving the picture before the heading. Give the words a little more space, or bring a detail closer. The same pieces can tell a different story.']} spacing="none" />}
+      </article>
+    ))}
+  </div>
+  <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
+  <div class="block-demo-actions">
+    <SaveBar data-block-save-bar hidden>
+      <button type="button" data-block-revert disabled>Revert changes</button>
+      <button type="button" class="dev-text-actions__save" data-block-save disabled>Save</button>
+    </SaveBar>
+  </div>
+  <DemoCursor data-block-guide-cursor />
+  <div class="demo-controls gap-spacing-demo__reset-controls"><Button label="Reset" type="button" data-gap-reset data-reorder-demo-reset /></div>
+</vcd-gap-spacing-demo>
+
+<style>
+  vcd-gap-spacing-demo { display: block; width: min(100%, 38rem); margin-inline: auto; }
+  .gap-spacing-demo__column { padding-inline: calc(var(--space-unit) * 2); overflow-anchor: none; }
+  .gap-spacing-demo__block { position: relative; margin-top: var(--demo-block-gap, var(--space-group)); overflow-anchor: none; }
+  .gap-spacing-demo__block:first-child { margin-top: 0; }
+  .gap-spacing-demo__block:first-child > .dev-gap-toolbar { display: none; }
+  .dev-gap-toolbar {
+    position: absolute;
+    top: calc(var(--demo-block-gap, var(--space-group)) / -2);
+    left: 50%;
+    width: max-content;
+    z-index: 80;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .dev-gap-toolbar__pill { opacity: 0; pointer-events: none; transition: opacity 150ms ease; }
+  .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__pill,
+  .dev-gap-toolbar:focus-within > .dev-gap-toolbar__pill { opacity: 1; pointer-events: auto; }
+  .dev-gap-toolbar[data-relocating] > .dev-gap-toolbar__pill,
+  vcd-gap-spacing-demo[data-gap-suppressed] .dev-gap-toolbar__pill { opacity: 0; pointer-events: none; }
+  .gap-spacing-demo__block:has(> .dev-gap-toolbar.is-near-spacing),
+  .gap-spacing-demo__block:has(> .dev-gap-toolbar:focus-within) { z-index: 65; }
+  .gap-spacing-demo__block:focus-within > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
+  .gap-spacing-demo__block :global(.project-image) { margin: 0; }
+  vcd-gap-spacing-demo[data-reordering] :global(.dev-image-edit-trigger) { opacity: 0; pointer-events: none; }
+  .block-demo-actions { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; }
+  .gap-spacing-demo__reset-controls { position: fixed; left: var(--space-unit); right: auto; bottom: var(--space-unit); z-index: 100; }
+  .gap-spacing-demo__reset-controls :global(.dev-btn) { --dev-btn-hit-inset: 8px; }
+  .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  @media (pointer: coarse) {
+    .dev-gap-toolbar__pill { opacity: 1; pointer-events: auto; }
+    .gap-spacing-demo__block > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
+    .gap-spacing-demo__reset-controls :global(.dev-btn) { min-height: 44px; }
+  }
+</style>
+
+<script>
+  import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
+  import { createDemoBlockGuide } from '../../../lib/demoBlockGuide';
+  import { createDemoGapSpacing } from '../../../lib/demoGapSpacing';
+
+  class GapSpacingDemo extends HTMLElement {
+    private dispose?: () => void;
+    connectedCallback() {
+      this.dispose?.();
+      const life = new AbortController();
+      const { signal } = life;
+      const image = this.querySelector<HTMLElement>('.project-image')!;
+      let syncBar = () => {};
+      const gaps = createDemoGapSpacing(this, { onChange: () => syncBar() });
+      gaps.restore(['group', 'related', 'group']);
+      gaps.setSavedState(gaps.getState());
+      const trigger = this.ownerDocument.createElement('a');
+      trigger.href = '/image-framing';
+      trigger.target = '_top';
+      trigger.className = 'dev-image-edit-trigger';
+      trigger.textContent = 'Edit image';
+      image.classList.add('dev-image-edit-target');
+      image.append(trigger);
+      let guide: ReturnType<typeof createDemoBlockGuide>;
+      const reorder = createDemoBlockReorder(this, {
+        scroll: true,
+        onLift: () => { gaps.setSuppressed(true); this.toggleAttribute('data-reordering', true); syncBar(); },
+        onSettle: () => { gaps.setSuppressed(false); this.removeAttribute('data-reordering'); syncBar(); },
+      });
+      const viewport = this.closest<HTMLElement>('[data-page-viewport]')!;
+      const revertButton = this.querySelector<HTMLButtonElement>('[data-block-revert]')!;
+      const actionBar = this.querySelector<HTMLElement>('[data-block-save-bar]');
+      const saveButton = this.querySelector<HTMLButtonElement>('[data-block-save]')!;
+      const actionControls = this.querySelector<HTMLElement>('.block-demo-actions');
+      const resetControls = this.querySelector<HTMLElement>('.gap-spacing-demo__reset-controls');
+      const cursor = this.querySelector<HTMLElement>('[data-block-guide-cursor]')!;
+      const snapshot = () => ({ order: reorder.getOrder(), gaps: gaps.getState() });
+      const original = snapshot();
+      let saved = original;
+      syncBar = () => {
+        const state = snapshot();
+        const dirty = state.order.some((block, index) => block !== saved.order[index])
+          || JSON.stringify(state.gaps) !== JSON.stringify(saved.gaps);
+        if (actionBar) actionBar.hidden = !dirty;
+        revertButton.disabled = saveButton.disabled = !dirty || this.hasAttribute('data-reordering');
+      };
+      const restore = (state: typeof original) => {
+        reorder.restore(state.order); gaps.restore(state.gaps);
+        viewport.scrollTo({ top: 0, left: 0, behavior: 'instant' }); syncBar();
+      };
+      guide = createDemoBlockGuide({
+        root: this, cursor,
+        imageBlock: image.closest<HTMLElement>('[data-reorder-demo-block]')!,
+        textBlock: this.querySelector<HTMLElement>('[data-block-kind="text"]')!,
+        gaps, reorder, revertButton,
+      });
+      revertButton.addEventListener('click', () => restore(saved), { signal });
+      saveButton.addEventListener('click', () => { saved = snapshot(); gaps.setSavedState(saved.gaps); syncBar(); }, { signal });
+      const resetButton = this.querySelector('[data-gap-reset]');
+      resetButton?.addEventListener('click', () => {
+        guide.stop(); saved = original; gaps.setSavedState(original.gaps); restore(original); guide.play();
+      }, { signal });
+      if (actionControls) this.ownerDocument.body.append(actionControls);
+      if (resetControls) this.ownerDocument.body.append(resetControls);
+      this.ownerDocument.body.append(cursor);
+      this.dispose = () => {
+        if (actionControls) this.append(actionControls);
+        if (resetControls) this.append(resetControls);
+        this.append(cursor);
+        life.abort(); guide.destroy(); syncBar = () => {}; reorder.destroy(); gaps.destroy(); trigger.remove();
+        image.classList.remove('dev-image-edit-target');
+      };
+    }
+    disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
+  }
+  if (!customElements.get('vcd-gap-spacing-demo')) customElements.define('vcd-gap-spacing-demo', GapSpacingDemo);
+</script>

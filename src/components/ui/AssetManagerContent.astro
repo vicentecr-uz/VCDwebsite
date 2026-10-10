@@ -1,0 +1,47 @@
+---
+import '../../styles/assetManager.css';
+
+interface Props {
+  showFilters?: boolean;
+}
+
+const { showFilters = true } = Astro.props;
+---
+
+<div class="dev-asset-manager__body">
+  <aside class="dev-asset-manager__sidebar">
+    <p class="dev-asset-manager__sidebar-label">Projects</p>
+    <div class="dev-asset-manager__projects" data-asset-projects></div>
+    {showFilters && <>
+      <hr class="dev-asset-manager__divider" />
+      <p class="dev-asset-manager__sidebar-label">Filter</p>
+      <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill is-active" data-asset-filter="all">All</button>
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill" data-asset-filter="onPage">On page</button>
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill" data-asset-filter="library">Library only</button>
+      </div>
+    </>}
+  </aside>
+
+  <section class="dev-asset-manager__main">
+    <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
+    <div class="dev-asset-manager__grid" data-asset-grid></div>
+  </section>
+</div>
+
+<!--
+  Not in the signed master, which has no footer at all — insertion there is
+  drag-to-page + a cursor popup, which doesn't exist in source yet (see
+  Atlas/handoffs/260825-vcd-dev-chrome-source-followups.md §B). Until that
+  lands, this is the ONLY way DevImageDrop's "choose from library" and
+  ProjectImageCropTuner's "replace from library" can resolve — so it stays,
+  but only appears while a pick is actually in progress, not as permanent
+  browsing chrome.
+-->
+<div class="dev-asset-manager__footer" data-asset-footer hidden>
+  <p class="dev-asset-manager__count" data-asset-count></p>
+  <div class="dev-asset-manager__actions">
+    <button type="button" class="dev-btn dev-btn--ghost" data-asset-cancel>Cancel</button>
+    <button type="button" class="dev-btn dev-btn--filled" data-asset-select disabled>Select</button>
+  </div>
+</div>
