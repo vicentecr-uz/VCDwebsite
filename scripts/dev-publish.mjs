@@ -50,6 +50,7 @@ const RENDERING_PATHS = [
   'src/components/GalleryMediaInk.astro',
   'src/lib/project',
   'src/lib/projects.ts',
+  'src/components/Header.astro',
   'src/pages/index.astro',
   'src/components/home/HomeIntroController.astro',
   'src/scripts/homeIntro.ts',

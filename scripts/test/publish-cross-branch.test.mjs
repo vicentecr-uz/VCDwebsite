@@ -48,8 +48,11 @@ async function makeRepo() {
   await git('config', 'user.name', 'Publish Test');
 
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
+  await mkdir(path.join(work, 'src/content/settings'), { recursive: true });
   await mkdir(path.join(work, 'src/components/project'), { recursive: true });
   await writeFile(path.join(work, 'src/content/projects/tapico.json'), '{"title":"Tapico"}\n');
+  await writeFile(path.join(work, 'src/content/settings/header.json'), '{"menuLinks":[]}\n');
+  await writeFile(path.join(work, 'src/components/Header.astro'), '<header />\n');
   await writeFile(path.join(work, 'src/components/project/ProjectImage.astro'), '<img />\n');
   await writeFile(path.join(work, 'README.md'), 'engine\n');
   await git('add', '.');
@@ -189,6 +192,22 @@ await inRepo('uncommitted rendering change also blocks', async (repo) => {
   check('rendersContent true', status.rendersContent === true, status.renderingFiles.join(', '));
   const blocked = await publishContent({});
   check('blocked', blocked.ok === false && blocked.needsOverride === true, blocked.error);
+});
+
+await inRepo('header renderer change blocks publishing header settings', async (repo) => {
+  const rendererPath = 'src/components/Header.astro';
+  await repo.git('switch', '-c', 'feat/header-freshness');
+  await writeFile(path.join(repo.work, rendererPath), 'engine change\n');
+  await repo.git('add', rendererPath);
+  await repo.git('commit', '-m', 'engine: read header settings during dev SSR');
+  await writeFile(path.join(repo.work, 'src/content/settings/header.json'), '{"menuLinks":[{"label":"Physical"}]}\n');
+
+  const status = await publishStatus();
+  check('header renderer detected', status.renderingFiles.includes(rendererPath), status.renderingFiles.join(', '));
+  check('header settings publish blocked', status.canPublish === false);
+  const blocked = await publishContent({});
+  check('refuses without override', blocked.ok === false && blocked.needsOverride === true, blocked.error);
+  check('origin header settings unchanged', !(await contentOnOrigin(repo, 'src/content/settings/header.json')).includes('Physical'));
 });
 
 await inRepo('publishing twice from the same branch keeps working', async (repo) => {
