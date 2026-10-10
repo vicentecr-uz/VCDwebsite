@@ -195,17 +195,44 @@ test('annotation editor styles survive the native head swap', () => {
 });
 
 
-test('dev editor islands navigate persistently while unsupported islands remain document surfaces', () => {
+test('EditorSelect islands navigate persistently while unsupported islands remain document surfaces', () => {
   const win = fixture();
   const doc = new win.DOMParser().parseFromString(html('About'), 'text/html');
   const island = doc.createElement('astro-island');
   island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx');
   doc.body.append(island);
-  expect(supportsPersistentPage(doc as any)).toBe(false);
-  doc.body.setAttribute('data-dev-authoring', '');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.tsx?direct');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js?hash=1');
+  expect(supportsPersistentPage(doc as any)).toBe(true);
+  island.setAttribute('component-url', '/_astro/EditorSelect.a1_B-c9.js');
   expect(supportsPersistentPage(doc as any)).toBe(true);
   island.setAttribute('component-url', '/src/components/Unknown.tsx');
   expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/_astro/Unknown.MXJVIDIA.js');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/src/components/base-ui/EditorSelect.jsx');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.css');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  island.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js/other');
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+  const supported = island.cloneNode() as Element;
+  supported.setAttribute('component-url', '/_astro/EditorSelect.MXJVIDIA.js');
+  doc.body.append(supported);
+  expect(supportsPersistentPage(doc as any)).toBe(false);
+
+  const shadowDoc = new win.DOMParser().parseFromString(html('About'), 'text/html');
+  const shadow = shadowDoc.createElement('template');
+  shadow.setAttribute('shadowrootmode', 'open');
+  shadowDoc.body.append(shadow);
+  expect(supportsPersistentPage(shadowDoc as any)).toBe(false);
+  const shellDoc = new win.DOMParser().parseFromString(html('About'), 'text/html');
+  shellDoc.getElementById('site-wrapper')!.remove();
+  expect(supportsPersistentPage(shellDoc as any)).toBe(false);
 });
 
 test('dev readiness marker stays attached to the retained transition controller across pages', () => {
