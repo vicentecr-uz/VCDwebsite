@@ -1,0 +1,28 @@
+diff --git a/select/positioner/SelectPositioner.js b/select/positioner/SelectPositioner.js
+index 11d658df68b2b9822c968d09bee9753a2c7ead26..22b4f33917585aafb617125eb72190638a6ac89b 100644
+--- a/select/positioner/SelectPositioner.js
++++ b/select/positioner/SelectPositioner.js
+@@ -69,7 +69,8 @@ const SelectPositioner = exports.SelectPositioner = /*#__PURE__*/React.forwardRe
+   const scrollUpArrowRef = React.useRef(null);
+   const scrollDownArrowRef = React.useRef(null);
+   const [controlledAlignItemWithTrigger, setControlledAlignItemWithTrigger] = React.useState(alignItemWithTrigger);
+-  const alignItemWithTriggerActive = mounted && controlledAlignItemWithTrigger && openMethod !== 'touch';
++  // Keep selected-item alignment consistent across pointer and touch opens.
++  const alignItemWithTriggerActive = mounted && controlledAlignItemWithTrigger;
+   if (!mounted && controlledAlignItemWithTrigger !== alignItemWithTrigger) {
+     setControlledAlignItemWithTrigger(alignItemWithTrigger);
+   }
+diff --git a/select/positioner/SelectPositioner.mjs b/select/positioner/SelectPositioner.mjs
+index 420aa314e32a3a1ed660a1e78b7e0f5ba5371f8f..f0912634f7f924997ece1ab910ae35e7ff6e36c5 100644
+--- a/select/positioner/SelectPositioner.mjs
++++ b/select/positioner/SelectPositioner.mjs
+@@ -63,7 +63,8 @@ export const SelectPositioner = /*#__PURE__*/React.forwardRef(function SelectPos
+   const scrollUpArrowRef = React.useRef(null);
+   const scrollDownArrowRef = React.useRef(null);
+   const [controlledAlignItemWithTrigger, setControlledAlignItemWithTrigger] = React.useState(alignItemWithTrigger);
+-  const alignItemWithTriggerActive = mounted && controlledAlignItemWithTrigger && openMethod !== 'touch';
++  // Keep selected-item alignment consistent across pointer and touch opens.
++  const alignItemWithTriggerActive = mounted && controlledAlignItemWithTrigger;
+   if (!mounted && controlledAlignItemWithTrigger !== alignItemWithTrigger) {
+     setControlledAlignItemWithTrigger(alignItemWithTrigger);
+   }
