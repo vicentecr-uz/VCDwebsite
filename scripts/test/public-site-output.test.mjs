@@ -103,3 +103,21 @@ test('retains only technical external redirects and reachable internal aliases',
   assert.ok(result.removedHtml.includes('private-alias/index.html'));
   assert.ok(result.removedHtml.includes('bodyful/index.html'));
 });
+
+test('retains reachable Astro island component and renderer assets through their module graph', async () => {
+  const { root, put } = await fixture();
+  await put('index.html', '<a href="/editor/">Editor</a>');
+  await put('editor/index.html', '<astro-island component-url="/_astro/EditorSelect.js" renderer-url="/_astro/client.js" ssr></astro-island>');
+  await put('draft/index.html', '<astro-island component-url="/_astro/UnreachableIsland.js" renderer-url="/_astro/unreachable-client.js"></astro-island>');
+  await put('_astro/EditorSelect.js', 'import "./shared.js";');
+  await put('_astro/client.js', 'export const renderer = true;');
+  await put('_astro/shared.js', 'export const shared = true;');
+  await put('_astro/UnreachableIsland.js', 'export const draft = true;');
+  await put('_astro/unreachable-client.js', 'export const draftRenderer = true;');
+
+  const result = await prunePublicOutput(root, { site });
+
+  for (const asset of ['_astro/EditorSelect.js', '_astro/client.js', '_astro/shared.js']) assert.ok(result.retainedAssets.includes(asset), asset);
+  for (const asset of ['_astro/UnreachableIsland.js', '_astro/unreachable-client.js']) assert.ok(result.removedAssets.includes(asset), asset);
+  assert.ok(result.removedHtml.includes('draft/index.html'));
+});

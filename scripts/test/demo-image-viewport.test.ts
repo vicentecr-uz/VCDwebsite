@@ -46,6 +46,20 @@ test('resize measurements use the stable column and bypass transitions immediate
   h.controller.destroy(); h.restore();
 });
 
+test('selected viewports keep the proportional width and shared scaled height', () => {
+  const h = setup();
+  h.setWidth(500);
+  h.controller.setViewport('mobile');
+  expect(Number.parseFloat(h.shell.style.width)).toBeCloseTo(390 * (500 / 1024), 5);
+  expect(Number.parseFloat(h.shell.style.height)).toBeCloseTo(900 * (500 / 1024), 5);
+  expect(h.iframe.style.transform).toBe(`scale(${500 / 1024})`);
+  expect(h.root.dataset.cropPreviewViewport).toBe('mobile');
+  h.controller.setViewport('desktop');
+  expect(h.shell.style.width).toBe('500px');
+  expect(h.root.dataset.cropPreviewViewport).toBe('desktop');
+  h.controller.destroy(); h.restore();
+});
+
 test('reduced motion cancels the previous opacity animation and cleans up', () => {
   const h = setup(true);
   h.controller.setViewport('tablet');

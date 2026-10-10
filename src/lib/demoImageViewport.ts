@@ -18,6 +18,7 @@ export function createDemoImageViewport({ root, column, iframe }: Options) {
   });
   const render = () => {
     const width = widths[viewport];
+    root.dataset.cropPreviewViewport = viewport;
     shell.style.width = `${width * scale}px`;
     shell.style.height = `${900 * scale}px`;
     iframe.style.width = `${width}px`;
