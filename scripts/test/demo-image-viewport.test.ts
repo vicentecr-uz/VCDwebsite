@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createDemoImageViewport } from '../../src/lib/demoImageViewport';
 
-function setup(reduced = false, mobile = false) {
+function setup(reduced = false) {
   const win = new Window();
   const root = win.document.createElement('div');
   const column = win.document.createElement('div');
@@ -11,7 +11,6 @@ function setup(reduced = false, mobile = false) {
   root.innerHTML = '<button data-crop-viewport="desktop"></button><button data-crop-viewport="tablet"></button><button data-crop-viewport="mobile"></button>';
   shell.append(iframe); column.append(shell); root.append(column);
   let width = 500;
-  let mobileMatches = mobile;
   column.getBoundingClientRect = () => ({ width } as DOMRect);
   let resize!: () => void;
   (win as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver = class {
@@ -19,16 +18,13 @@ function setup(reduced = false, mobile = false) {
     observe() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
-  const mobileQuery = { matches: mobileMatches } as MediaQueryList;
-  (win as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = (query: string) => query.includes('prefers-reduced-motion')
-    ? ({ matches: reduced } as MediaQueryList)
-    : mobileQuery;
+  (win as unknown as { matchMedia: (query: string) => MediaQueryList }).matchMedia = () => ({ matches: reduced }) as MediaQueryList;
   const animations: Array<{ cancel(): void }> = [];
   iframe.animate = (() => { const animation = { cancel() { animations.splice(animations.indexOf(animation), 1); } }; animations.push(animation); return animation; }) as unknown as typeof iframe.animate;
   const previous = globalThis.ResizeObserver;
   globalThis.ResizeObserver = (win as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver;
   const controller = createDemoImageViewport({ root, column, iframe });
-  return { win, root, column, shell, iframe, controller, animations, setWidth(value: number) { width = value; resize(); }, setMobile(value: boolean) { mobileMatches = value; mobileQuery.matches = value; resize(); }, restore() { globalThis.ResizeObserver = previous; } };
+  return { win, root, column, shell, iframe, controller, animations, setWidth(value: number) { width = value; resize(); }, restore() { globalThis.ResizeObserver = previous; } };
 }
 
 test('initial selection and repeated viewport choices update aria state', () => {
@@ -50,26 +46,17 @@ test('resize measurements use the stable column and bypass transitions immediate
   h.controller.destroy(); h.restore();
 });
 
-test('mobile measurements fill the column for the selected viewport', () => {
-  const h = setup(false, true);
-  h.setWidth(430);
+test('selected viewports keep the proportional width and shared scaled height', () => {
+  const h = setup();
+  h.setWidth(500);
   h.controller.setViewport('mobile');
-  expect(h.shell.style.width).toBe('430px');
-  expect(h.iframe.style.transform).toBe(`scale(${430 / 390})`);
-  h.controller.setViewport('tablet');
-  expect(h.shell.style.width).toBe('430px');
-  expect(h.iframe.style.transform).toBe(`scale(${430 / 834})`);
-  h.controller.destroy(); h.restore();
-});
-
-test('resize measurements follow the live mobile breakpoint', () => {
-  const h = setup(false, true);
-  h.controller.setViewport('mobile');
-  expect(h.iframe.style.transform).toBe(`scale(${500 / 390})`);
-  h.setMobile(false);
+  expect(Number.parseFloat(h.shell.style.width)).toBeCloseTo(390 * (500 / 1024), 5);
+  expect(Number.parseFloat(h.shell.style.height)).toBeCloseTo(900 * (500 / 1024), 5);
   expect(h.iframe.style.transform).toBe(`scale(${500 / 1024})`);
-  h.setMobile(true);
-  expect(h.iframe.style.transform).toBe(`scale(${500 / 390})`);
+  expect(h.root.dataset.cropPreviewViewport).toBe('mobile');
+  h.controller.setViewport('desktop');
+  expect(h.shell.style.width).toBe('500px');
+  expect(h.root.dataset.cropPreviewViewport).toBe('desktop');
   h.controller.destroy(); h.restore();
 });
 

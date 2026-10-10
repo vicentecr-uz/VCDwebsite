@@ -11,27 +11,21 @@ export function createDemoImageViewport({ root, column, iframe }: Options) {
   let scale = 1;
   let fade: Animation | undefined;
   const reducedMotion = ownerWindow.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  const mobileViewport = ownerWindow.matchMedia?.('(max-width: 40em)');
   const syncButtons = () => root.querySelectorAll<HTMLElement>('[data-crop-viewport]').forEach((button) => {
     const selected = button.dataset.cropViewport === viewport;
     button.classList.toggle('is-active', selected);
     button.setAttribute('aria-pressed', String(selected));
   });
-  const measureScale = () => {
-    const width = widths[viewport];
-    return mobileViewport?.matches
-      ? column.getBoundingClientRect().width / width
-      : Math.min(1, column.getBoundingClientRect().width / widths.desktop);
-  };
   const render = () => {
     const width = widths[viewport];
+    root.dataset.cropPreviewViewport = viewport;
     shell.style.width = `${width * scale}px`;
     shell.style.height = `${900 * scale}px`;
     iframe.style.width = `${width}px`;
     iframe.style.transform = `scale(${scale})`;
   };
   const measure = () => {
-    scale = measureScale();
+    scale = Math.min(1, column.getBoundingClientRect().width / widths.desktop);
     const shellTransition = shell.style.transition;
     const iframeTransition = iframe.style.transition;
     shell.style.transition = 'none';
@@ -50,7 +44,6 @@ export function createDemoImageViewport({ root, column, iframe }: Options) {
       fade?.cancel();
       fade = iframe.animate?.([{ opacity: 0.65 }, { opacity: 1 }], { duration: 120, easing: 'ease' });
     }
-    scale = measureScale();
     render();
     syncButtons();
   };
