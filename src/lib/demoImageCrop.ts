@@ -1,5 +1,6 @@
 import { coverWidthFraction, IMAGE_VIEWPORTS, normalizeImageVariants, responsiveImageStyle, type ImageVariant, type ImageViewport } from './responsiveImage';
 import { createImageCropStage, cropResizeHeight, type CropResizeDirection } from './imageCropStage';
+import { createCropWheelPanGain } from './cropWheelPan';
 
 export interface DemoImageCropState {
   source: { src: string; width: number; height: number; alt: string };
@@ -114,6 +115,27 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   const constraint = controls?.querySelector<HTMLButtonElement>('[data-crop-constraint]');
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
   let syncingSelect = false;
+  let pointerFrame = 0;
+  let renderedAspect: string | undefined;
+  let renderedAspectValue: string | undefined;
+  let renderedLocked: boolean | undefined;
+  const cancelPointerRender = () => {
+    if (!pointerFrame) return;
+    win.cancelAnimationFrame(pointerFrame);
+    pointerFrame = 0;
+  };
+  const schedulePointerRender = () => {
+    if (pointerFrame) return;
+    pointerFrame = win.requestAnimationFrame(() => {
+      pointerFrame = 0;
+      render();
+    });
+  };
+  const flushPointerRender = () => {
+    if (!pointerFrame) return;
+    cancelPointerRender();
+    render();
+  };
   const applySource = () => {
     image.src = source.src; image.alt = source.alt; ghostImg.src = source.src;
     const previewImage = preview?.querySelector<HTMLImageElement>('[data-crop-image]');
@@ -124,6 +146,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   const minWidth = () => coverWidthFraction(aspect, sourceAspect) / 100;
   const maxWidth = () => coverWidthFraction(aspect, sourceAspect) / (locked ? 1 : 0.01);
   const render = () => {
+    cancelPointerRender();
     w = clamp(w, minWidth(), maxWidth());
     const h = contentHeight();
     const xReach = Math.max(1.5, w / 2);
@@ -137,11 +160,18 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       const colon = declaration.indexOf(':');
       host.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1));
     }
-    host.dataset.cropAspect = aspect;
-    host.closest<HTMLElement>('[data-crop-demo]')?.style.setProperty('--crop-demo-aspect', String(aspectValue()));
-    controls?.style.setProperty('--crop-demo-aspect', String(aspectValue()));
+    const nextAspectValue = String(aspectValue());
+    const aspectChanged = aspect !== renderedAspect;
+    const aspectValueChanged = nextAspectValue !== renderedAspectValue;
+    if (aspectChanged) host.dataset.cropAspect = aspect;
+    if (aspectChanged || aspectValueChanged) {
+      host.closest<HTMLElement>('[data-crop-demo]')?.style.setProperty('--crop-demo-aspect', nextAspectValue);
+      controls?.style.setProperty('--crop-demo-aspect', nextAspectValue);
+      if (preview) preview.style.aspectRatio = nextAspectValue;
+      renderedAspect = aspect;
+      renderedAspectValue = nextAspectValue;
+    }
     if (preview) {
-      preview.style.aspectRatio = String(aspectValue());
       preview.style.setProperty('--tuner-content-w', String(w));
       preview.style.setProperty('--tuner-content-cx', String(cx));
       preview.style.setProperty('--tuner-content-cy', String(cy));
@@ -149,12 +179,15 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     ghostImg.style.setProperty('--project-content-w', String(w));
     ghostImg.style.setProperty('--project-content-cx', String(cx));
     ghostImg.style.setProperty('--project-content-cy', String(cy));
-    constraint?.setAttribute('aria-pressed', String(locked));
-    constraint?.classList.toggle('is-locked', locked);
-    const label = constraint?.querySelector('[data-crop-constraint-state]');
-    if (label) label.textContent = locked ? 'Crop locked' : 'Crop unlocked';
-    const lockPath = constraint?.querySelector('path');
-    lockPath?.setAttribute('d', locked ? 'M7 11V7a5 5 0 0 1 10 0v4' : 'M7 11V7a5 5 0 0 1 9.9-1');
+    if (locked !== renderedLocked) {
+      constraint?.setAttribute('aria-pressed', String(locked));
+      constraint?.classList.toggle('is-locked', locked);
+      const label = constraint?.querySelector('[data-crop-constraint-state]');
+      if (label) label.textContent = locked ? 'Crop locked' : 'Crop unlocked';
+      const lockPath = constraint?.querySelector('path');
+      lockPath?.setAttribute('d', locked ? 'M7 11V7a5 5 0 0 1 10 0v4' : 'M7 11V7a5 5 0 0 1 9.9-1');
+      renderedLocked = locked;
+    }
     onChange?.();
   };
   const syncSelect = () => {
@@ -204,20 +237,22 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     let wheelFrame = 0;
     let wheelIdle = 0;
     let speed = 0;
+    const panGain = createCropWheelPanGain(160);
+    let lastWheelMode: boolean | null = null;
     let pending: { dx: number; dy: number; zoom: boolean; x: number; y: number; bounds: DOMRect } | undefined;
     const flushWheel = () => {
       wheelFrame = 0;
       if (!pending) return;
       const { dx, dy, zoom, x, y, bounds } = pending;
       pending = undefined;
-      speed += ((zoom ? Math.abs(dy) : Math.hypot(dx, dy)) - speed) * 0.32;
-      const t = Math.min(1, speed / 40);
-      const blend = t * t * (3 - 2 * t);
-      if (zoom) zoomAt(Math.exp(-dy * (0.00085 + (0.0022 - 0.00085) * blend)), x, y);
-      else {
-        const gain = 0.38 + (1 - 0.38) * blend;
-        cx += dx / bounds.width * w * gain;
-        cy += dy / bounds.height * contentHeight() * gain;
+      if (zoom) {
+        speed += (Math.abs(dy) - speed) * 0.32;
+        const t = Math.min(1, speed / 40);
+        const blend = t * t * (3 - 2 * t);
+        zoomAt(Math.exp(-dy * (0.00085 + (0.0022 - 0.00085) * blend)), x, y);
+      } else {
+        cx += dx / bounds.width * w;
+        cy += dy / bounds.height * contentHeight();
       }
       render();
     };
@@ -232,6 +267,8 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       wheelFrame = wheelIdle = 0;
       pending = undefined;
       speed = 0;
+      panGain.reset();
+      lastWheelMode = null;
     };
     releases.push(release);
     surface.addEventListener('pointerdown', (event) => {
@@ -269,11 +306,12 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
           cy = gesture.cy - (event.shiftKey && Math.abs(dx) >= Math.abs(dy) ? 0 : dy) / bounds.height * gesture.h;
         }
       }
-      render();
+      schedulePointerRender();
     }, { signal });
     const end = (event: PointerEvent) => {
       if (!pointers.has(event.pointerId)) return;
       const resized = Boolean(gesture?.direction);
+      flushPointerRender();
       release();
       if (resized) syncSelect();
     };
@@ -286,12 +324,28 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       if (!bounds.width || !bounds.height) return;
       event.preventDefault();
       const zoom = event.ctrlKey || (locked && w >= 0.9999 && contentHeight() >= 0.9999);
-      if (pending && pending.zoom !== zoom) flushWheel();
+      if (lastWheelMode !== null && lastWheelMode !== zoom) {
+        if (wheelFrame) {
+          win.cancelAnimationFrame(wheelFrame);
+          wheelFrame = 0;
+        }
+        flushWheel();
+        panGain.reset();
+      }
+      lastWheelMode = zoom;
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
-      pending = { dx: (pending?.dx ?? 0) + event.deltaX * unit, dy: (pending?.dy ?? 0) + event.deltaY * unit, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
+      const dx = event.deltaX * unit;
+      const dy = event.deltaY * unit;
+      const gain = zoom ? 1 : panGain.gainFor(dx, dy, event.timeStamp);
+      pending = { dx: (pending?.dx ?? 0) + dx * gain, dy: (pending?.dy ?? 0) + dy * gain, zoom, x: (event.clientX - bounds.left) / bounds.width, y: (event.clientY - bounds.top) / bounds.height, bounds };
       if (!wheelFrame) wheelFrame = win.requestAnimationFrame(flushWheel);
       if (wheelIdle) win.clearTimeout(wheelIdle);
-      wheelIdle = win.setTimeout(() => { speed = 0; wheelIdle = 0; }, 160);
+      wheelIdle = win.setTimeout(() => {
+        speed = 0;
+        panGain.reset();
+        lastWheelMode = null;
+        wheelIdle = 0;
+      }, 160);
     }, { signal, passive: false });
     surface.addEventListener('keydown', (event) => {
       if (!active) return;
@@ -319,6 +373,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   }, { signal });
   const setViewport = (next: ImageViewport) => {
     if (!variants || !viewports.includes(next)) return;
+    cancelPointerRender();
     releases.forEach((release) => release());
     viewport = next;
     loadPose(variants[viewport]);
@@ -330,6 +385,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   controls?.querySelector('[data-crop-fit]')?.addEventListener('click', () => { locked = false; cx = cy = 0.5; w = Math.max(1, aspectValue() / sourceAspect); render(); }, { signal });
   constraint?.addEventListener('click', () => { locked = !locked; render(); }, { signal });
   const resetCrop = () => {
+    cancelPointerRender();
     releases.forEach((release) => release());
     aspect = initialAspect;
     w = coverWidthFraction(aspect, sourceAspect) / 1.25;
@@ -349,6 +405,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   const getState = (): DemoImageCropState => cloneState({ source: { ...source }, crop: { aspect, cx, cy, w }, locked, ...(variants ? { variants } : {}) });
   const restore = (next: DemoImageCropState) => {
     if (!isValidState(next) || (next.variants !== undefined && !validVariants(next.variants))) return false;
+    cancelPointerRender();
     const nextVariants = validVariants(next.variants) ? Object.fromEntries(viewports.map((name) => [name, { ...next.variants![name] }])) as Record<ImageViewport, ImageVariant> : undefined;
     releases.forEach((release) => release());
     source = { ...next.source };
@@ -366,7 +423,10 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   controls?.querySelector('[data-crop-reset]')?.addEventListener('click', reset, { signal });
   const setActive = (next: boolean) => {
     active = next;
-    if (!active) releases.forEach((release) => release());
+    if (!active) {
+      cancelPointerRender();
+      releases.forEach((release) => release());
+    }
     stage.classList.toggle('is-visible', active);
     ghost.classList.toggle('is-visible', active);
     stage.style.pointerEvents = active ? '' : 'none';
@@ -376,6 +436,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
   applySource();
   render(); syncSelect(); setActive(active);
   return { reset, setSource, getState, restore, setViewport, getViewport, setActive, panBy, zoomBy, destroy() {
+    cancelPointerRender();
     releases.forEach((release) => release());
     lifecycle.abort();
     stage.remove(); ghost.remove();
