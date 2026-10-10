@@ -35,7 +35,7 @@ test('cancelling during the reveal prevents the delayed demo', async () => {
   let opens = 0;
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false });
   demo.start();
-  h.win.dispatchEvent(new h.win.Event('pointerdown', { bubbles: true }));
+  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
   h.win.dispatchEvent(new h.win.Event('vcd:initial-reveal-complete'));
   await settle();
   expect(opens).toBe(0);
@@ -52,7 +52,7 @@ test('intro dismissal starts the demo once and keeps its overlay hidden beforeha
   let opens = 0;
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false });
   demo.start();
-  h.win.dispatchEvent(new h.win.Event('pointerdown', { bubbles: true }));
+  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
   expect(h.doc.querySelector('.header-menu-demo-overlay')).toBeNull();
   h.doc.querySelector<HTMLElement>('[data-home-intro-surface]')!.hidden = true;
   h.win.dispatchEvent(new h.win.Event('vcd:home-intro-dismissed'));
@@ -117,6 +117,8 @@ test('mobile demo uses the finger path and closes only its opened menu', async (
   const keyframes: Keyframe[][] = [];
   const oldAnimate = h.win.HTMLElement.prototype.animate;
   const oldTimer = globalThis.setTimeout;
+  const oldRandom = Math.random;
+  Math.random = () => 0.75;
   h.win.HTMLElement.prototype.animate = function (frames: Keyframe[]) {
     keyframes.push(frames);
     return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
@@ -127,12 +129,14 @@ test('mobile demo uses the finger path and closes only its opened menu', async (
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opened++; h.setExpanded(true); h.trigger.dataset.menuOpen = 'true'; }, close: () => { closed++; }, isEditing: () => false });
   demo.start();
   await settle();
+  expect(keyframes.some((frames) => frames[0]?.transform === 'translate(648px, 432px)' && frames[1]?.transform === 'translate(150px, 35px)')).toBe(true);
   expect(opened).toBe(1);
   expect(closed).toBe(1);
   expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('scale(.88)')))).toBe(true);
   expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('translate(448px, 648px)')))).toBe(true);
   h.win.HTMLElement.prototype.animate = oldAnimate;
   globalThis.setTimeout = oldTimer;
+  Math.random = oldRandom;
   h.restore();
 });
 
@@ -166,10 +170,30 @@ test('cancelling while fonts are pending prevents a later run', async () => {
   let opens = 0;
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false });
   demo.start();
-  h.win.dispatchEvent(new h.win.Event('pointerdown', { bubbles: true }));
+  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
   resolveFonts();
   await settle();
   expect(opens).toBe(0);
+  h.restore();
+});
+
+test('passive pointer, wheel, scroll, and key events do not cancel pending readiness', async () => {
+  const h = harness();
+  let resolveFonts!: () => void;
+  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>((resolve) => { resolveFonts = resolve; }) }, configurable: true });
+  const oldAnimate = h.win.HTMLElement.prototype.animate;
+  const oldTimer = globalThis.setTimeout;
+  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
+  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
+  let opens = 0;
+  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false });
+  demo.start();
+  for (const type of ['pointermove', 'wheel', 'scroll', 'keydown']) h.win.dispatchEvent(new h.win.Event(type, { bubbles: true }));
+  resolveFonts();
+  await settle();
+  expect(opens).toBe(1);
+  h.win.HTMLElement.prototype.animate = oldAnimate;
+  globalThis.setTimeout = oldTimer;
   h.restore();
 });
 
@@ -189,7 +213,7 @@ test('cancelling a rejected animation does not reopen the demo', async () => {
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close: () => { closes++; }, isEditing: () => false });
   demo.start();
   await settle();
-  h.win.dispatchEvent(new h.win.Event('pointerdown', { bubbles: true }));
+  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
   rejectAnimation(new Error('cancelled'));
   await settle();
   expect(opens).toBe(1);
@@ -198,7 +222,7 @@ test('cancelling a rejected animation does not reopen the demo', async () => {
   h.restore();
 });
 
-test('a real pointerdown inside the trigger preserves the demo-owned menu', async () => {
+test('a real click inside the trigger preserves the demo-owned menu', async () => {
   const h = harness();
   const oldAnimate = h.win.HTMLElement.prototype.animate;
   const oldTimer = globalThis.setTimeout;
@@ -213,7 +237,7 @@ test('a real pointerdown inside the trigger preserves the demo-owned menu', asyn
   const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { h.trigger.dataset.menuOpen = 'true'; }, close: () => { closes++; }, isEditing: () => false });
   demo.start();
   await settle();
-  h.trigger.querySelector<HTMLElement>('.header-trigger__brand')!.dispatchEvent(new h.win.Event('pointerdown', { bubbles: true }));
+  h.trigger.querySelector<HTMLElement>('.header-trigger__brand')!.dispatchEvent(new h.win.Event('click', { bubbles: true }));
   expect(closes).toBe(0);
   h.win.HTMLElement.prototype.animate = oldAnimate;
   globalThis.setTimeout = oldTimer;

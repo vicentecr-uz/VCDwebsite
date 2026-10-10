@@ -36,11 +36,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   const clearTimer = () => { if (timer) clearTimeout(timer); timer = undefined; };
   const cancelAnimations = () => { animations.splice(0).forEach((animation) => animation.cancel()); };
   const removeListeners = () => {
-    window.removeEventListener('pointerdown', cancelFromUser, true);
-    window.removeEventListener('pointermove', cancelFromUser, true);
-    window.removeEventListener('wheel', cancelFromUser, true);
-    window.removeEventListener('scroll', cancelFromUser, true);
-    window.removeEventListener('keydown', cancelFromUser, true);
+    window.removeEventListener('click', cancelFromUser, true);
     window.removeEventListener('resize', cancelFromUser, true);
     window.removeEventListener('pagehide', cancelFromUser, true);
     window.removeEventListener('vcd:dev-mode-change', cancelFromEdit as EventListener);
@@ -70,8 +66,8 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   };
   function cancelFromUser(event?: Event) {
     if (!lifecycleActive) return;
-    if (introVisible() && event && ['pointerdown', 'pointermove', 'wheel', 'scroll', 'keydown'].includes(event.type)) return;
-    const preserveMenu = Boolean(event && ['pointerdown', 'pointermove', 'keydown'].includes(event.type) && event.target instanceof Node && trigger.contains(event.target));
+    if (introVisible() && event?.type === 'click') return;
+    const preserveMenu = Boolean(event?.type === 'click' && event.target instanceof Node && trigger.contains(event.target));
     cleanup(true, preserveMenu);
   }
   function cancelFromVisibility() { if (document.visibilityState !== 'visible') cancelFromUser(); }
@@ -79,11 +75,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     if ((event as CustomEvent<{ active?: boolean }>).detail?.active) cancelFromUser();
   }
   const addListeners = () => {
-    window.addEventListener('pointerdown', cancelFromUser, true);
-    window.addEventListener('pointermove', cancelFromUser, true);
-    window.addEventListener('wheel', cancelFromUser, true);
-    window.addEventListener('scroll', cancelFromUser, true);
-    window.addEventListener('keydown', cancelFromUser, true);
+    window.addEventListener('click', cancelFromUser, true);
     window.addEventListener('resize', cancelFromUser, true);
     window.addEventListener('pagehide', cancelFromUser, true);
     window.addEventListener('vcd:dev-mode-change', cancelFromEdit as EventListener);
@@ -155,8 +147,14 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
       if (menuOwned) close(true); menuOwned = false;
       await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' }, currentToken);
     } else if (mobileMq.matches) {
-      pointer.style.transform = `translate(${start.x}px, ${start.y}px)`;
-      await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], { duration: 180, fill: 'forwards' }, currentToken);
+      const entrance = {
+        x: window.innerWidth * (0.5 + (Math.random() - 0.5) * 0.16),
+        y: window.innerHeight * (0.5 + (Math.random() - 0.5) * 0.16),
+      };
+      pointer.style.transform = `translate(${entrance.x}px, ${entrance.y}px)`;
+      await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], { duration: 240, fill: 'forwards' }, currentToken);
+      if (currentToken !== token) return;
+      await move(entrance, start, 600, currentToken);
       if (currentToken !== token) return;
       await animate(pointer, [{ transform: `translate(${start.x}px, ${start.y}px) scale(.88)` }], { duration: 120, fill: 'forwards' }, currentToken);
       if (currentToken !== token) return;
