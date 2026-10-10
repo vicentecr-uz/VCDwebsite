@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { requestVpsAgent } from './vps-agent.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -73,19 +74,7 @@ const RENDERING_PATHS = [
   'src/lib/inlineVideo.ts',
 ];
 
-/**
- * Commit subjects are written by a local model via Ollama — no API key, no cost,
- * no network. `gemma3:4b` was picked by benchmark: 1b hallucinated page names
- * (invented "John Doe", misspelled "Tapico"), which is disqualifying for text
- * that lands in permanent git history unattended. See Atlas learnings.md →
- * "Small-model benchmark for one-line commit subjects".
- *
- * Ollama runs as a login service (`brew services start ollama`). If it is not
- * running, publishing still works — see generateMessage().
- */
-const MESSAGE_MODEL = 'gemma3:4b';
-const OLLAMA_URL = 'http://localhost:11434/api/generate';
-/** Cold start is ~6s once the 5-minute keep-alive lapses; warm is ~1s. */
+/** The VPS names subjects so the Mac does not need a resident local model. */
 const MESSAGE_TIMEOUT_MS = 20_000;
 
 /** Raw stdout — porcelain output must not be trimmed, its first column is a space. */
@@ -414,23 +403,6 @@ function fallbackMessage(manifest, files) {
   return `content: update ${where}${suffix}`;
 }
 
-/**
- * Tuned against gemma3:4b over five sample manifests. Two things are load-bearing
- * and should not be "tidied": naming the banned verb forms explicitly (without it
- * the model writes "Refines …" for every subject), and the no-invention rule.
- * Do NOT add a few-shot example — at this model size an "Example input:" block
- * makes it echo the manifest back verbatim instead of writing a subject.
- */
-const SYSTEM_PROMPT = [
-  'Write a git commit subject for edits made to a page on a design portfolio website.',
-  'Do not repeat or reformat the input. Write one original line, under 60 characters.',
-  'Begin with a plain imperative verb (Update, Revise, Retune, Reorder, Rewrite, Replace)',
-  '— not "Refines" or "Updated".',
-  'Use only names and facts present in the input; never invent any.',
-  'Describe edits the way a designer would, never as field paths or code.',
-  'No final period, no quotes.',
-].join('\n');
-
 /** Sanitize whatever the model returned down to a single usable subject line. */
 function normalizeSubject(raw) {
   const first = lines(raw)[0];
@@ -441,34 +413,24 @@ function normalizeSubject(raw) {
   return prefixed.slice(0, 100);
 }
 
-/**
- * Ask the local model for a subject line. Optional by design: if Ollama is not
- * running, the model is missing, or the call is slow, publishing still happens
- * with the deterministic message. Never let the message generator block a
- * publish — a commit that lands with a plainer subject beats one that does not
- * land at all.
- */
-async function generateMessage(manifest, files) {
+/** Ask the VPS helper for a subject, falling back if any part of the request fails. */
+export async function generateMessage(manifest, files, env = {}, base = 'HEAD') {
   const fallback = fallbackMessage(manifest, files);
 
   try {
-    const response = await fetch(OLLAMA_URL, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(MESSAGE_TIMEOUT_MS),
-      body: JSON.stringify({
-        model: MESSAGE_MODEL,
-        system: SYSTEM_PROMPT,
-        prompt: describeManifest(manifest, files),
-        stream: false,
-        options: { temperature: 0.2, num_predict: 40 },
-      }),
-    });
-    if (!response.ok) return { message: fallback, generated: false };
-    const payload = await response.json();
-    return { message: normalizeSubject(payload.response) || fallback, generated: true };
+    const diff = (await gitWithEnv(
+      env,
+      'diff', '--cached', '--no-ext-diff', '--no-textconv', base, '--', ...CONTENT_PATHS,
+    )).slice(0, 24_000); // Keep the prompt bounded at 24,000 chars; raise only with a remote input limit change.
+    const payload = await requestVpsAgent({
+      task: 'subject',
+      summary: describeManifest(manifest, files),
+      diff,
+    }, { timeout: MESSAGE_TIMEOUT_MS });
+    const message = normalizeSubject(payload?.subject);
+    return message ? { message, generated: true } : { message: fallback, generated: false };
   } catch {
-    // Daemon down, model not pulled, or timed out — the fallback is fine.
+    // SSH, helper, model, malformed output, and timeout failures all use fallback.
     return { message: fallback, generated: false };
   }
 }
@@ -589,7 +551,7 @@ async function publishFromBranch(manifest, files) {
       return { ok: false, error: 'No content changes to publish.' };
     }
 
-    const { message, generated } = await generateMessage(manifest, files);
+    const { message, generated } = await generateMessage(manifest, files, env, target);
     const commit = await gitWithEnv(env, 'commit-tree', tree, '-p', target, '-m', message);
 
     try {

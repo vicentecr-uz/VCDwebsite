@@ -39,13 +39,15 @@ test('enumerates only reached public raster usages and saves with a source CAS',
       if (value.includes('/images/hero.png')) return response(image, 'image/png');
       return response('', 'text/html', 404);
     };
-    const modelFetch = async (_url, request) => {
-      const payload = JSON.parse(request.body);
-      assert.equal(payload.model, 'gemma3:4b');
-      return response(JSON.stringify({ message: { content: 'A person holding a camera.' } }), 'application/json');
+    const requestAgent = async (payload, options) => {
+      assert.equal(payload.task, 'image');
+      assert.equal(typeof payload.image, 'string');
+      assert.ok(payload.image.length > 0);
+      assert.equal(options.timeout, 90_000);
+      return { description: 'A person holding a camera.', provider: 'openai-codex', model: 'gpt-6-luna' };
     };
     await writeFile(path.join(root, 'hero.png'), image);
-    const service = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home', 'private'], mediaDir: root, cacheFile: path.join(root, 'cache.json'), readDocument, writeDocument, fetchImpl, modelFetch });
+    const service = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home', 'private'], mediaDir: root, cacheFile: path.join(root, 'cache.json'), readDocument, writeDocument, fetchImpl, requestAgent });
     await service.refresh();
     const rows = service.rows();
     assert.equal(rows.length, 2);
@@ -72,7 +74,7 @@ test('rejects a public source mismatch before model inference', async () => {
     const fetchImpl = async (url) => String(url) === 'https://example.test/'
       ? response('<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>')
       : response('different', 'image/png');
-    const service = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: root, cacheFile: path.join(root, 'cache.json'), readDocument: async () => structuredClone(docs.home), fetchImpl, modelFetch: async () => { modelCalls += 1; return response('{}', 'application/json'); } });
+    const service = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: root, cacheFile: path.join(root, 'cache.json'), readDocument: async () => structuredClone(docs.home), fetchImpl, requestAgent: async () => { modelCalls += 1; return {}; } });
     await writeFile(path.join(root, 'hero.png'), 'local');
     await service.check();
     assert.equal(modelCalls, 0);
@@ -97,14 +99,15 @@ async function imageFixture({ docs, html = '<main></main>', modelContents = ['A 
     if (match) return response(image, 'image/png');
     return response('', 'text/html', 404);
   };
-  const modelFetch = async () => {
+  const requestAgent = async () => {
     const content = modelContents[Math.min(modelCalls, modelContents.length - 1)];
     modelCalls += 1;
-    return response(JSON.stringify({ message: { content } }), 'application/json', modelStatus);
+    if (modelStatus !== 200) throw new Error('The VPS vision agent failed.');
+    return { description: content, provider: 'openai-codex', model: 'gpt-6-luna' };
   };
   const service = createImageDescriptionsService({
     site: 'https://example.test', documentKeys: Object.keys(docs), mediaDir: root,
-    cacheFile: path.join(root, 'cache.json'), readDocument, writeDocument, fetchImpl, modelFetch,
+    cacheFile: path.join(root, 'cache.json'), readDocument, writeDocument, fetchImpl, requestAgent,
   });
   return { root, image, html, service, docs, get modelCalls() { return modelCalls; }, get writes() { return writes; } };
 }
@@ -220,7 +223,7 @@ test('caches failed generation, supports explicit retry, and restores cache in a
     assert.equal(fixture.modelCalls, 2);
     assert.equal(fixture.service.rows()[0].description, 'A restored subject.');
     let secondModelCalls = 0;
-    const second = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'cache.json'), readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response(fixture.html) : response(fixture.image, 'image/png'), modelFetch: async () => { secondModelCalls += 1; throw new Error('cached ready must not regenerate'); } });
+    const second = createImageDescriptionsService({ site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'cache.json'), readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response(fixture.html) : response(fixture.image, 'image/png'), requestAgent: async () => { secondModelCalls += 1; throw new Error('cached ready must not regenerate'); } });
     await second.check();
     assert.equal(secondModelCalls, 0);
     assert.equal(second.rows()[0].status, 'Ready');
@@ -286,7 +289,7 @@ test('discards a deferred proposal when source alt or node identity changes', as
     site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'deferred-cache.json'),
     readDocument: async () => structuredClone(fixture.docs.home), writeDocument: async () => { throw new Error('must not write'); },
     fetchImpl: async (url) => String(url) === 'https://example.test/' ? response('<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>') : response(fixture.image, 'image/png'),
-    modelFetch: async () => { await deferred; return response(JSON.stringify({ message: { content: 'Stale proposal.' } }), 'application/json'); },
+    requestAgent: async () => { await deferred; return { description: 'Stale proposal.' }; },
   });
   try {
     const checking = service.check();
@@ -311,7 +314,7 @@ test('discards a deferred failure when the node is deleted', async () => {
   const service = createImageDescriptionsService({
     site: 'https://example.test', documentKeys: ['home'], mediaDir: fixture.root, cacheFile: path.join(fixture.root, 'deleted-cache.json'),
     readDocument: async () => structuredClone(fixture.docs.home), fetchImpl: async (url) => String(url) === 'https://example.test/' ? response('<section id="hero"><img data-image-original="/images/hero.png" alt=""></section>') : response(fixture.image, 'image/png'),
-    modelFetch: async () => { await new Promise((resolve) => { release = resolve; }); throw new Error('Stale failure.'); },
+    requestAgent: async () => { await new Promise((resolve) => { release = resolve; }); throw new Error('Stale failure.'); },
   });
   try {
     const checking = service.check();
