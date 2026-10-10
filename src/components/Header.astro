@@ -15,6 +15,7 @@ import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw
 import settingsIcon from 'lucide-static/icons/settings.svg?raw';
 import Button from './ui/Button.astro';
 import TextField from './ui/TextField.astro';
+import { sizeIcon } from '../lib/icons';
 
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
@@ -113,7 +114,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {menuLinks.map((link, index) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -122,11 +123,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label" {...menuLabelEditAttrs(menuLinks.indexOf(link))}>{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
                 </a>
                 {showDevLinkControls && (
-                  <Button class="header-menu__edit-link" emphasis="ghost" label="Edit link" aria-label={`Edit ${link.label} link`} data-dev-header-link-trigger data-menu-index={menuLinks.indexOf(link)}>
-                    <span slot="icon" set:html={settingsIcon}></span>
+                  <Button class="header-menu__edit-link" emphasis="ghost" label="" aria-label={`Edit ${link.label} URL`} data-dev-header-link-trigger data-menu-index={index}>
+                    <span slot="icon" set:html={sizeIcon(settingsIcon, 16)}></span>
                   </Button>
                 )}
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
@@ -153,7 +154,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
               </a>
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {menuLinks.map((link, index) => (
               <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
                 <a
                   href={link.href}
@@ -162,11 +163,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                   aria-current={link.isCurrent ? 'page' : undefined}
                   data-current-page={link.isCurrent ? '' : undefined}
                 >
-                  <span class="header-menu__link-label" {...menuLabelEditAttrs(menuLinks.indexOf(link))}>{link.label}</span>
+                  <span class="header-menu__link-label" {...menuLabelEditAttrs(index)}>{link.label}</span>
                 </a>
                 {showDevLinkControls && (
-                  <Button class="header-menu__edit-link" emphasis="ghost" label="Edit link" aria-label={`Edit ${link.label} link`} data-dev-header-link-trigger data-menu-index={menuLinks.indexOf(link)}>
-                    <span slot="icon" set:html={settingsIcon}></span>
+                  <Button class="header-menu__edit-link" emphasis="ghost" label="" aria-label={`Edit ${link.label} URL`} data-dev-header-link-trigger data-menu-index={index}>
+                    <span slot="icon" set:html={sizeIcon(settingsIcon, 16)}></span>
                   </Button>
                 )}
                 <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
@@ -181,7 +182,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </header>
   {showDevLinkControls && (
     <div class="header-link-editor dev-panel dev-surface" data-dev-header-link-editor popover="manual" hidden>
-      <TextField label="Link URL" hideLabel prefix="vicentecr.uz" data-dev-header-link-input autocomplete="off" spellcheck="false" />
+      <TextField label="Link URL" hideLabel prefix="vicentecr.uz" data-dev-header-link-input inputmode="url" autocomplete="off" spellcheck="false" />
       <p class="header-link-editor__error" data-dev-header-link-error aria-live="polite"></p>
     </div>
   )}
@@ -1034,13 +1035,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     trigger.addEventListener(
       'click',
       (event) => {
-        if (isDevEditing() && trigger.classList.contains('header-trigger--start')) {
+        if (isDevEditing()) {
           const target = event.target as Element | null;
-          if (target?.closest('.header-menu__link-label')) {
+          if (target?.closest('.header-menu__link')) {
             event.preventDefault();
             return;
           }
-          if (target?.closest('.header-trigger__brand-link')) {
+          if (trigger.classList.contains('header-trigger--start') && target?.closest('.header-trigger__brand-link')) {
             event.preventDefault();
             if (!isOpen()) openMenu(event);
             return;
@@ -1068,13 +1069,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     trigger.addEventListener('keydown', (event) => {
       if (!isDevEditing() || !trigger.classList.contains('header-trigger--start')) return;
       const target = event.target as Element | null;
+      if (target?.closest('[contenteditable]')) return;
       if (!target?.closest('.header-trigger__brand-link') || !['Enter', ' '].includes(event.key)) return;
       event.preventDefault();
       if (!isOpen()) openMenu(event);
     });
+    trigger.addEventListener('input', () => {
+      if (isDevEditing()) document.querySelectorAll<HTMLElement>('.header-trigger').forEach(syncMenuSurfaceInlineSize);
+    });
 
     document.addEventListener('click', (event) => {
       if (!isTapMode() || !isOpen()) return;
+      if (document.documentElement.hasAttribute('data-dev-header-link-editor-open')) return;
       if (trigger.contains(event.target as Node | null)) return;
 
       const active = document.activeElement;
@@ -1083,7 +1089,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !isOpen()) return;
+      if (event.defaultPrevented || event.key !== 'Escape' || !isOpen()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
       closeMenu();
@@ -1097,6 +1103,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   let linkEditorIndex: number | null = null;
   let linkEditorOriginal = '';
   let linkEditorSaving = false;
+  let linkEditorTrigger: HTMLElement | null = null;
 
   const positionLinkEditor = (button: HTMLElement) => {
     if (!linkEditor) return;
@@ -1113,6 +1120,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     linkEditor.hidden = true;
     delete document.documentElement.dataset.devHeaderLinkEditorOpen;
     linkEditorIndex = null;
+    linkEditorTrigger = null;
     linkEditorError && (linkEditorError.textContent = '');
   };
   const updateHeaderMenuLink = (index: number, href: string) => {
@@ -1137,6 +1145,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       closeLinkEditor();
       return true;
     }
+    const index = linkEditorIndex;
     linkEditorSaving = true;
     linkEditorInput.disabled = true;
     if (linkEditorError) linkEditorError.textContent = '';
@@ -1144,11 +1153,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       const response = await fetch('/api/content-text', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ changes: [{ document: 'header-settings', path: ['menuLinks', linkEditorIndex, 'href'], value: normalized }] }),
+        body: JSON.stringify({ changes: [{ document: 'header-settings', path: ['menuLinks', index, 'href'], value: normalized }] }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'Could not save this link.');
-      updateHeaderMenuLink(linkEditorIndex, normalized);
+      updateHeaderMenuLink(index, normalized);
       linkEditorSaving = false;
       closeLinkEditor(true);
       return true;
@@ -1161,12 +1170,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }
   };
   const openLinkEditor = (button: HTMLElement) => {
-    if (!linkEditor || !linkEditorInput) return;
+    if (!linkEditor || !linkEditorInput || linkEditorSaving) return;
     const index = Number(button.dataset.menuIndex);
     if (!Number.isInteger(index)) return;
     const link = button.closest('.header-menu__item')?.querySelector<HTMLAnchorElement>('.header-menu__link');
     if (!link) return;
     linkEditorIndex = index;
+    linkEditorTrigger = button;
     linkEditorOriginal = link.getAttribute('href') || '';
     linkEditorInput.value = linkEditorOriginal;
     if (linkEditorPrefix) linkEditorPrefix.hidden = !/^[/#]/.test(linkEditorOriginal);
@@ -1206,6 +1216,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         void saveLinkEditor();
       } else if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         closeLinkEditor();
       }
     });
@@ -1215,15 +1226,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       void saveLinkEditor();
     }, true);
     window.addEventListener('resize', () => {
-      if (!linkEditor.hidden) {
-        const trigger = document.querySelector<HTMLElement>(`[data-menu-index="${linkEditorIndex}"]`);
-        if (trigger) positionLinkEditor(trigger);
-      }
+      if (!linkEditor.hidden && linkEditorTrigger) positionLinkEditor(linkEditorTrigger);
     });
     window.addEventListener('vcd:dev-mode-change', (event) => {
-      if (!(event as CustomEvent<{ active?: boolean }>).detail?.active) closeLinkEditor();
+      if (!(event as CustomEvent<{ active?: boolean }>).detail?.active) closeLinkEditor(true);
     });
-    document.addEventListener('header:navigation-start', closeLinkEditor);
+    document.addEventListener('header:navigation-start', () => closeLinkEditor(true));
   }
 
   // Switching between hover and tap (rotation, devtools emulation, external
@@ -1606,8 +1614,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
       const syncStartBrandForEdit = (active: boolean) => {
         if (!startBrand) return;
-        if (active) startBrand.removeAttribute('href');
-        else if (startBrandHref) startBrand.setAttribute('href', startBrandHref);
+        if (active) {
+          startBrand.removeAttribute('href');
+          startBrand.setAttribute('tabindex', '0');
+          startBrand.setAttribute('role', 'button');
+          startBrand.setAttribute('aria-label', 'Open menu');
+        } else {
+          if (startBrandHref) startBrand.setAttribute('href', startBrandHref);
+          startBrand.removeAttribute('tabindex');
+          startBrand.removeAttribute('role');
+          startBrand.setAttribute('aria-label', 'Home');
+        }
       };
       syncStartBrandForEdit(isDevEditing());
       window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
@@ -2025,7 +2042,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const reconcileCurrentPageMenu = (path = window.location.pathname) => {
     const normalizedPath = path.replace(/\/+$/, '') || '/';
     document.querySelectorAll<HTMLAnchorElement>('.header-menu__link').forEach((link) => {
-      const current = (new URL(link.href, window.location.href).pathname.replace(/\/+$/, '') || '/') === normalizedPath;
+      const url = new URL(link.href, window.location.href);
+      const current = url.origin === window.location.origin && (url.pathname.replace(/\/+$/, '') || '/') === normalizedPath;
       link.toggleAttribute('data-current-page', current);
       if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
       const item = link.closest<HTMLElement>('.header-menu__item');
@@ -2046,7 +2064,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     suppressNextCurrentPageClick = false;
     const path = (event as CustomEvent<{ url: URL }>).detail.url.pathname.replace(/\/+$/, '') || '/';
     document.querySelectorAll<HTMLAnchorElement>('.header-menu__link').forEach((link) => {
-      const current = (new URL(link.href).pathname.replace(/\/+$/, '') || '/') === path;
+      const url = new URL(link.href);
+      const current = url.origin === (event as CustomEvent<{ url: URL }>).detail.url.origin && (url.pathname.replace(/\/+$/, '') || '/') === path;
       link.toggleAttribute('data-current-page', current);
       if (current) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
       const item = link.closest<HTMLElement>('.header-menu__item');
@@ -2508,18 +2527,34 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-menu__edit-link {
     display: none;
-    margin-inline-start: 0.35em;
-    padding: 0.15em;
-    vertical-align: middle;
+    position: absolute;
+    inset-inline-end: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    --dev-control-height: 24px;
+    padding: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  :global(html.is-dev-mode) .header-menu__item {
+    position: relative;
+    padding-inline-end: 2rem;
+  }
+
+  :global(html.is-dev-mode) .header-menu__edit-link {
+    display: inline-flex;
   }
 
   :global(html.is-dev-mode) .header-menu__item:hover .header-menu__edit-link,
   :global(html.is-dev-mode) .header-menu__item:focus-within .header-menu__edit-link {
-    display: inline-flex;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   @media (hover: none), (pointer: coarse) {
-    :global(html.is-dev-mode) .header-menu__edit-link { display: inline-flex; }
+    :global(html.is-dev-mode) .header-menu__edit-link { opacity: 1; pointer-events: auto; }
   }
 
   .header-link-editor {
@@ -2530,6 +2565,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     z-index: 300;
     width: min(20rem, calc(100vw - 2rem));
     padding: var(--dev-panel-pad);
+    opacity: 0;
+    transition: opacity 0.15s ease, display 0.15s allow-discrete, overlay 0.15s allow-discrete;
+  }
+
+  .header-link-editor:popover-open { opacity: 1; }
+
+  @starting-style {
+    .header-link-editor:popover-open { opacity: 0; }
   }
 
   .header-link-editor__error {

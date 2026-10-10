@@ -75,7 +75,7 @@ function setup(markup = '<p>Before</p><p>After</p>', editing = true, withHistory
     Object.assign(env, new Function('env', `with(env) { ${valueScript} }`)({
       ...env, PARAGRAPH_PLACEHOLDER_ATTRIBUTE, readParagraphsValue, readPlainDomText,
     }), {
-      textStates: [state], spacingStates: [], textHistoryValues: new WeakMap(),
+      textStates: env.textStates, spacingStates: [], textHistoryValues: new WeakMap(),
       historyReady: true, historyCaptureQueued: false, suppressHistory: false, actionsBusy: false,
     });
     const captureStart = source.indexOf('    const captureFieldHistory =');
@@ -126,6 +126,24 @@ test('shared mapped text fields mirror input across duplicate menu instances', (
   f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
   f.element.textContent = 'Physical';
   f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+  expect(f.mirror?.textContent).toBe('Physical');
+});
+
+test('shared text undo restores both copies as one typing group and retains the edited field', async () => {
+  const f = setup('<p>Work</p>', true, true, true);
+  f.element.focus();
+  f.element.textContent = 'Phys';
+  f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+  await Promise.resolve();
+  f.element.textContent = 'Physical';
+  f.element.dispatchEvent(new f.window.Event('input', { bubbles: true }));
+  await Promise.resolve();
+  await f.history.undo();
+  expect(f.element.textContent).toBe('Work');
+  expect(f.mirror?.textContent).toBe('Work');
+  expect(f.document.activeElement).toBe(f.element);
+  await f.history.redo();
+  expect(f.element.textContent).toBe('Physical');
   expect(f.mirror?.textContent).toBe('Physical');
 });
 
