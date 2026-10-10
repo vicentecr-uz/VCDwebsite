@@ -2,6 +2,7 @@
 import '../../styles/devOverlayFrame.css';
 import '../../styles/assetManager.css';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
+import CropFrameDemo from './demos/CropFrameDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
@@ -14,17 +15,21 @@ interface Props {
   documentKey?: string;
   sectionPath?: Array<string | number>;
   annotations?: unknown;
+  sample?: unknown;
 }
-const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations } = Astro.props;
+const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
+  ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
+  : undefined;
 ---
 
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {['image-framing', 'gap-spacing'].includes(demo.id) && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <div class="project-interactive-demo__content">
-      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
+      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
@@ -43,6 +48,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     border-radius: var(--radius-control-smooth);
     background: var(--comp-demo-frame-container);
   }
+
+  .project-interactive-demo:has(vcd-crop-frame-demo) {
+    background: transparent;
+  }
+
+  .project-interactive-demo:has(vcd-crop-frame-demo)::after { display: none; }
 
   .project-interactive-demo__content {
     border-radius: inherit;
@@ -78,6 +89,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       overflow-x: clip;
     }
   }
+
+  .project-interactive-demo:has(vcd-crop-frame-demo)::before { display: none; }
 
   .project-interactive-demo::after {
     content: '';

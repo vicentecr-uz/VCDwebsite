@@ -9,15 +9,19 @@ import Button from '../../ui/Button.astro';
 import PanelActions from '../../ui/PanelActions.astro';
 import AssetManagerContent from '../../ui/AssetManagerContent.astro';
 import ProjectImage from '../ProjectImage.astro';
+import ViewportSelector from '../../ui/ViewportSelector.astro';
 import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
 import { projectImageTier } from '../../../lib/images';
 import type { DemoAssetProject } from '../../../lib/demoAssetPicker';
+import { readPublishedDemoAssets } from '../../../../scripts/public-demo-assets.mjs';
+import path from 'node:path';
 interface Props {
   sample?: unknown;
   catalog?: DemoAssetProject[];
   authoring?: { documentKey: string; path: Array<string | number>; sectionId: string };
+  canvasOnly?: boolean;
 }
-const { sample: suppliedSample, catalog = [], authoring } = Astro.props;
+const { sample: suppliedSample, catalog: suppliedCatalog, authoring, canvasOnly = false } = Astro.props;
 const fallbackPose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
 const fallback = { src: 'Good Home Tools Range Landscape 5.jpg', srcWidth: 7244, srcHeight: 5433, variants: { desktop: fallbackPose } };
 const candidate = suppliedSample as typeof fallback | undefined;
@@ -29,15 +33,23 @@ const variants = normalizeImageVariants(sample.variants as ImageVariants, '4:3',
 const pose = variants.desktop;
 const cropHeight = pose.w * (sample.srcWidth / sample.srcHeight) / (aspectRatioNumber(pose.aspect) ?? sample.srcWidth / sample.srcHeight);
 const locked = pose.cx >= pose.w / 2 && pose.cx <= 1 - pose.w / 2 && pose.cy >= cropHeight / 2 && pose.cy <= 1 - cropHeight / 2;
-const initialState = { source: { src: imageSrc, width: sample.srcWidth, height: sample.srcHeight, alt: imageAlt }, crop: pose, locked };
+const initialState = { source: { src: imageSrc, width: sample.srcWidth, height: sample.srcHeight, alt: imageAlt }, crop: pose, variants, locked };
 const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: sampleSrc } : undefined;
+const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await readPublishedDemoAssets({
+  distDir: path.join(process.cwd(), 'dist'),
+  projectsDir: path.join(process.cwd(), 'src/content/projects'),
+  mediaDir: path.join(process.cwd(), 'media'),
+}) : []);
 ---
 
-<vcd-crop-frame-demo data-crop-demo data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
+{canvasOnly ? <div class="crop-frame-demo__canvas crop-frame-demo__canvas--only" data-crop-demo>
+  <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
+</div> : <vcd-crop-frame-demo data-crop-demo data-initial-state={JSON.stringify(initialState)} data-authoring={authoringConfig ? JSON.stringify(authoringConfig) : undefined}>
   <div class="crop-frame-demo__layout">
     <div class="crop-frame-demo__panel">
       <DevOverlayFrame title="Image" embedded data-crop-panel>
         <div class="tapico-crop-tuner">
+          <ViewportSelector dataAttr="data-crop-viewport" />
           <ImageCropControls imageSrc={imageSrc} aspect={variants.desktop.aspect} />
           <ImageReplaceControls dropLabel="Drag and drop here" />
           <PanelActions>
@@ -55,27 +67,31 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
         </div>
       </DevOverlayFrame>
     </div>
-    <div class="crop-frame-demo__canvas">
-      <ProjectImage kind="lead" src={sampleSrc} srcWidth={sample.srcWidth} srcHeight={sample.srcHeight} variants={variants} spacing="none" loading="eager" alt={imageAlt} />
+    <div class="crop-frame-demo__preview-column">
+      <div class="crop-frame-demo__preview-shell"><iframe title="Image framing canvas" src="/preview/image-framing-canvas" loading="eager" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" style="height:900px" /></div>
     </div>
   </div>
   <DevOverlayFrame title="Asset manager" layout="landscape" defaultHidden data-demo-asset-picker role="dialog" aria-label="Asset manager">
     <AssetManagerContent showFilters={false} />
   </DevOverlayFrame>
   <script is:inline type="application/json" data-published-demo-assets set:html={JSON.stringify(catalog).replace(/</g, '\\u003c')} />
-</vcd-crop-frame-demo>
+</vcd-crop-frame-demo>}
 
 <style>
-  :global(html:has(vcd-crop-frame-demo)), :global(body:has(vcd-crop-frame-demo)) { overflow: hidden; }
-  vcd-crop-frame-demo { display: block; width: min(100%, 58rem); align-self: start; }
-  .crop-frame-demo__layout { display: grid; grid-template-columns: minmax(16rem, 20rem) minmax(0, 1fr); align-items: start; gap: calc(var(--space-unit) * 2); }
+  vcd-crop-frame-demo { display: block; width: min(72rem, calc(100vw - 2rem)); margin-inline: calc((100% - min(72rem, calc(100vw - 2rem))) / 2); align-self: start; }
+  .crop-frame-demo__layout { display: grid; grid-template-columns: 20rem minmax(0, 1fr); align-items: start; gap: calc(var(--space-unit) * 2); }
   .crop-frame-demo__panel { width: min(100%, 20rem); z-index: 1; }
   .crop-frame-demo__panel :global(.dev-overlay) { width: 100%; max-height: none; }
   .crop-frame-demo__panel :global(.dev-overlay__head) { cursor: default; }
   .crop-frame-demo__panel :global(.dev-overlay__resize) { display: none; }
-  .crop-frame-demo__canvas { width: min(100%, 28rem, calc(22rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; padding: var(--space-unit); z-index: 0; }
+  .crop-frame-demo__preview-column { min-width: 0; display: grid; place-items: center; }
+  .crop-frame-demo__preview-shell { position: relative; width: 100%; height: 900px; overflow: hidden; background: var(--comp-demo-frame-container); border-radius: var(--radius-control-smooth); transition: width 280ms cubic-bezier(.645,.045,.355,1), height 280ms cubic-bezier(.645,.045,.355,1); }
+  .crop-frame-demo__preview-shell::after { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent), inset 0 0 0 1px var(--sys-color-surface-outline); }
+  :global(:root[data-theme='dark']) .crop-frame-demo__preview-shell::after { box-shadow: inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent), inset 0 0 0 1px var(--sys-color-surface-outline); }
+  .crop-frame-demo__preview-shell iframe { display: block; width: 1024px; height: 900px; border: 0; transform-origin: top left; transition: width 280ms cubic-bezier(.645,.045,.355,1), opacity 160ms ease; }
+  .crop-frame-demo__canvas { width: min(100%, 48rem, calc(38rem * var(--crop-demo-aspect, 1))); height: 100%; min-height: 0; display: grid; place-items: center; margin-inline: auto; }
+  .crop-frame-demo__canvas :global(.project-image) { width: 100%; margin: 0; }
   .crop-frame-demo__panel :global(.tapico-crop-tuner__preview) { width: min(100%, calc(14rem * var(--crop-demo-aspect, 1.333333))); margin-inline: auto; }
-  .crop-frame-demo__canvas :global(.project-image) { margin: 0; }
   .crop-frame-demo__canvas :global(.project-image.dev-crop-stage-host) { overflow: visible; }
   .crop-frame-demo__canvas :global(.dev-crop-stage:focus-visible:not(.is-dragging):not(.is-resizing)) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
   .crop-demo-save { display: grid; place-items: center; }
@@ -90,7 +106,11 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
     .crop-demo-save > span { filter: none; }
     .crop-demo-save :global(rect) { animation: none; opacity: 1; }
   }
-  @media (max-width: 40em) { .crop-frame-demo__layout { grid-template-columns: 1fr; } .crop-frame-demo__canvas { order: -1; } .crop-frame-demo__panel { width: min(100%, 22rem); margin-inline: auto; } }
+  @media (max-width: 56em) { .crop-frame-demo__layout { grid-template-columns: 1fr; } .crop-frame-demo__preview-column { order: -1; } .crop-frame-demo__panel { width: min(100%, 22rem); margin-inline: auto; } }
+  @media (prefers-reduced-motion: reduce) {
+    .crop-frame-demo__preview-shell { transition-duration: 0ms; }
+    .crop-frame-demo__preview-shell iframe { transition: opacity 120ms ease; }
+  }
 </style>
 
 <script>
@@ -98,32 +118,62 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
   import { createDemoImageReplacement } from '../../../lib/demoImageReplacement';
   import { createDevPanelCollapse } from '../../../lib/devPanelCollapse';
   import { createDemoAssetPicker } from '../../../lib/demoAssetPicker';
+  import { createDemoImageViewport } from '../../../lib/demoImageViewport';
   class CropFrameDemo extends HTMLElement {
     private dispose?: () => void;
     connectedCallback() {
       this.dispose?.();
-      const host = this.querySelector<HTMLElement>('.project-image');
       const panel = this.querySelector<HTMLElement>('[data-crop-panel]');
+      const iframe = this.querySelector<HTMLIFrameElement>('.crop-frame-demo__preview-shell iframe');
+      const previewColumn = this.querySelector<HTMLElement>('.crop-frame-demo__preview-column');
       const assetPanel = this.querySelector<HTMLElement>('[data-demo-asset-picker]');
       const assetOpener = panel?.querySelector<HTMLElement>('[data-crop-replace-assets]');
-      if (!host || !panel || !assetPanel || !assetOpener) return;
+      if (!panel || !iframe || !previewColumn || !assetPanel || !assetOpener) return;
       const lifecycle = new AbortController();
       const { signal } = lifecycle;
       const initialState = this.dataset.initialState ? JSON.parse(this.dataset.initialState) : undefined;
-      const crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
+      let crop: ReturnType<typeof createDemoImageCrop> | undefined;
+      let host: HTMLElement | undefined;
+      let authoringGeneration = 0;
+      const viewport = createDemoImageViewport({ root: this, column: previewColumn, iframe });
+      panel.inert = true;
       const catalog = JSON.parse(this.querySelector('[data-published-demo-assets]')?.textContent || '[]');
       const picker = createDemoAssetPicker(assetPanel, catalog, assetOpener);
-      let replacement = { reset: () => crop.reset(), destroy() {} };
-      if (import.meta.env.DEV && this.dataset.authoring) {
-        void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
-          if (!signal.aborted) replacement = createCropDemoAuthoring(panel, crop, { ...JSON.parse(this.dataset.authoring!), chooseAsset: picker.open });
-        }).catch(() => {
-          if (signal.aborted) return;
-          const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
-          if (status) { status.textContent = 'Could not load image controls. Reload the page to try again.'; status.hidden = false; }
-        });
-      } else replacement = createDemoImageReplacement(panel, crop, { chooseAsset: picker.open });
+      let replacement = { reset: () => crop?.reset(), destroy() {} };
       const collapse = createDevPanelCollapse(panel);
+      const ready = () => {
+        if (signal.aborted) return;
+        const frameDocument = iframe?.contentDocument;
+        const nextHost = frameDocument?.querySelector<HTMLElement>('.project-image');
+        if (!nextHost) return;
+        if (nextHost === host) return;
+        const previousState = crop?.getState();
+        const nextGeneration = ++authoringGeneration;
+        replacement.destroy();
+        crop?.destroy();
+        host = nextHost;
+        crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
+        if (previousState) crop.restore(previousState);
+        if (viewport) crop.setViewport(viewport.getViewport());
+        panel.inert = false;
+        const localCrop = crop;
+        if (import.meta.env.DEV && this.dataset.authoring) {
+          void import('../../../lib/cropDemoAuthoring').then(({ createCropDemoAuthoring }) => {
+            if (!signal.aborted && authoringGeneration === nextGeneration && crop === localCrop) replacement = createCropDemoAuthoring(panel, localCrop, { ...JSON.parse(this.dataset.authoring!), chooseAsset: picker.open });
+          }).catch(() => {
+            if (signal.aborted || authoringGeneration !== nextGeneration || crop !== localCrop) return;
+            const status = panel.querySelector<HTMLElement>('[data-image-replacement-status]');
+            if (status) { status.textContent = 'Could not load image controls. Reload the page to try again.'; status.hidden = false; }
+          });
+        } else if (crop) replacement = createDemoImageReplacement(panel, crop, { chooseAsset: picker.open });
+      };
+      iframe.addEventListener('load', ready, { signal });
+      if (iframe.contentDocument?.readyState === 'complete') ready();
+      this.querySelectorAll<HTMLElement>('[data-crop-viewport]').forEach((button) => button.addEventListener('click', () => {
+        const next = button.dataset.cropViewport as 'desktop' | 'tablet' | 'mobile' | undefined;
+        if (!crop || !next) return;
+        crop.setViewport(next); viewport?.setViewport(next);
+      }, { signal }));
       let restoreTimer = 0;
       const show = () => {
         window.clearTimeout(restoreTimer);
@@ -131,13 +181,13 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
         if (panel.classList.contains('is-minimized')) collapse.set(false, false);
         panel.inert = false;
         panel.classList.add('is-dev-overlay-open');
-        crop.setActive(true);
+        crop?.setActive(true);
       };
       const hide = () => {
         window.clearTimeout(restoreTimer);
         panel.inert = true;
         panel.classList.remove('is-dev-overlay-open');
-        crop.setActive(false);
+        crop?.setActive(false);
         restoreTimer = window.setTimeout(show, 2000);
       };
       panel.querySelector('[data-minimize-toggle]')?.addEventListener('click', () => collapse.set(!panel.classList.contains('is-minimized')), { signal });
@@ -149,7 +199,8 @@ const authoringConfig = import.meta.env.DEV && authoring ? { ...authoring, src: 
         collapse.destroy();
         replacement.destroy();
         picker.destroy();
-        crop.destroy();
+        crop?.destroy();
+        viewport?.destroy();
       };
     }
     disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }

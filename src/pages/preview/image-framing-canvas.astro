@@ -1,0 +1,14 @@
+---
+import DemoLayout from '../../layouts/DemoLayout.astro';
+import Demo from '../../components/project/demos/CropFrameDemo.astro';
+import { loadProjectBySlug } from '../../lib/projects';
+const project = loadProjectBySlug('image-framing');
+const sample = project?.sections.find((section) => section.id === 'demo-image-framing')?.sample;
+---
+
+<DemoLayout title="Image framing canvas"><Demo sample={sample} canvasOnly /></DemoLayout>
+
+<style>
+  :global(html:has([data-crop-demo])), :global(body:has([data-crop-demo])) { overflow: hidden; }
+  :global(.demo-page:has(.crop-frame-demo__canvas--only)) { height: 100%; min-height: 0; padding: 2rem; }
+</style>

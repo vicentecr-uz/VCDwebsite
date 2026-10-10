@@ -57,6 +57,28 @@ for (const demo of CRAFT_DEMOS) {
     assert.equal(text(headerElements[0]).trim(), demo.id === 'image-framing' ? 'Image' : demo.title);
   }
   if (demo.id === 'image-framing') {
+    assert.deepEqual(
+      panelNodes.filter((node) => attr(node, 'data-crop-viewport') !== undefined).map((node) => attr(node, 'data-crop-viewport')),
+      ['desktop', 'tablet', 'mobile'],
+      'image panel: desktop, tablet and mobile viewport controls',
+    );
+    const canvasFrame = nodes.find((node) => node.tagName === 'iframe' && attr(node, 'src') === '/preview/image-framing-canvas');
+    assert.ok(canvasFrame, 'image panel: nested canvas iframe');
+    const canvasHtml = await readFile(path.join(dist, 'preview', 'image-framing-canvas', 'index.html'), 'utf8');
+    const canvasNodes = allNodes(parseHtml(canvasHtml));
+    assert.ok(canvasNodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('project-image')), 'image canvas: ProjectImage output');
+    assert.equal(canvasNodes.some((node) => node.tagName === 'iframe'), false, 'image canvas: no nested iframe');
+    assert.equal(canvasNodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('dev-overlay') || attr(node, 'data-crop-panel') !== undefined || attr(node, 'data-demo-asset-picker') !== undefined), false, 'image canvas: no panel or authoring UI');
+    const canvasPolicy = canvasNodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
+    assert.match(attr(canvasPolicy, 'content'), /connect-src 'none'/, 'image canvas: no production fetch/WebSocket access');
+    assert.match(attr(canvasPolicy, 'content'), /form-action 'none'/, 'image canvas: no form submission');
+    assert.doesNotMatch(canvasHtml, /\/api\/|localStorage|sessionStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, 'image canvas: no authoring APIs or storage');
+    for (const script of canvasNodes.filter((node) => node.tagName === 'script' && attr(node, 'type') === 'module')) {
+      const src = attr(script, 'src');
+      const source = src ? `import ${JSON.stringify(src)};` : text(script);
+      assert.doesNotMatch(withoutRendererEvents(source), /\/api\/|localStorage|sessionStorage|vcd:dev-/);
+      await scriptGraph(source);
+    }
     assert.ok(panelNodes.some((node) => attr(node, 'data-minimize-toggle') !== undefined), 'image panel: real minimize control');
     assert.ok(panelNodes.some((node) => attr(node, 'data-hide-toggle') !== undefined), 'image panel: real close control');
     assert.ok(panelNodes.some((node) => attr(node, 'data-crop-replace-file') !== undefined), 'image panel: local file replacement');

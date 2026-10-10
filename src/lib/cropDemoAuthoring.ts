@@ -134,7 +134,7 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
       const response = await win.fetch('/api/image-crop', {
         method: 'POST', signal, headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ document: options.documentKey, path: options.path, target: { sectionId: options.sectionId }, src: name,
-          variants: { desktop: state.crop, tablet: state.crop, mobile: state.crop } }),
+          variants: state.variants ?? { desktop: state.crop, tablet: state.crop, mobile: state.crop } }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save the image.');
