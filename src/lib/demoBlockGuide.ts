@@ -21,11 +21,12 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   const { signal } = lifecycle;
   const reducedMotion = win.matchMedia('(prefers-reduced-motion: reduce)');
   const restingScale = 1.15;
-  const pressedScale = 0.7;
+  const pressedScale = 0.95;
   let generation = 0;
   let frame: number | null = null;
   let timer: ReturnType<typeof win.setTimeout> | undefined;
   let lifting = false;
+  let dropStarted = false;
   let active = false;
   let destroyed = false;
   let autoStarted = false;
@@ -34,8 +35,20 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
 
   cursor.setAttribute('aria-hidden', 'true');
 
+  const cursorMode = (point: Point): 'arrow' | 'pointer' | 'grab' | 'grabbing' => {
+    if (lifting && !dropStarted) return 'grabbing';
+    const hit = document.elementFromPoint?.(point.x, point.y);
+    if (!hit || !win.getComputedStyle) return 'arrow';
+    const cssCursor = win.getComputedStyle(hit).cursor;
+    if (cssCursor === 'pointer') return 'pointer';
+    if (cssCursor === 'grab') return 'grab';
+    if (cssCursor === 'grabbing') return 'grabbing';
+    return 'arrow';
+  };
   const paint = () => {
     cursor.style.opacity = String(cursorState.opacity);
+    const mode = cursorMode(cursorState);
+    cursor.dataset.cursorState = mode;
     cursor.style.transform = `translate(${cursorState.x}px, ${cursorState.y}px) scale(${cursorState.scale})`;
   };
   const stopFrame = () => { if (frame !== null) win.cancelAnimationFrame(frame); frame = null; };
@@ -56,6 +69,14 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   const clampToViewport = (point: Point): Point => {
     const box = viewport();
     return { x: Math.min(box.right - 24, Math.max(box.left + 8, point.x)), y: Math.min(box.bottom - 64, Math.max(box.top + 64, point.y)) };
+  };
+  const gutterEntry = (gap: Point): Point => {
+    const box = viewport();
+    const image = imageBlock.getBoundingClientRect();
+    return {
+      x: Math.min(box.right - 16, Math.max(box.left + 16, (box.left + image.left) / 2)),
+      y: Math.min(box.bottom - 64, Math.max(box.top + 64, gap.y + 64)),
+    };
   };
   const smootherstep = (progress: number) => {
     const t = Math.min(1, Math.max(0, progress));
@@ -130,6 +151,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
     stopTimer();
     if (lifting) reorder.cancel();
     lifting = false;
+    dropStarted = false;
     gaps.hide();
     imageBlock.classList.remove('is-dev-section-controls-visible');
     cursorState.opacity = 0;
@@ -159,7 +181,7 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
         return;
       }
       if (!await wait(600, token)) return;
-      const startOffset = { x: start.x + 24, y: start.y - 24 };
+      const startOffset = gutterEntry(start);
       cursorState = { ...startOffset, scale: restingScale, opacity: 0 };
       paint();
       if (!await move(center(pill), token, 1)) return;
@@ -203,12 +225,14 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
 
   const finishDrag = async (token: number) => {
     if (!alive(token)) return;
+    dropStarted = true;
     const [released] = await Promise.all([
       animate({ scale: restingScale }, 120, token),
       reorder.guideDrop(),
     ]);
     if (!alive(token) || !released) return;
     lifting = false;
+    dropStarted = false;
     imageBlock.classList.remove('is-dev-section-controls-visible');
     if (!await wait(300, token)) return;
     if (!await tap(center(revertButton), () => revertButton.click(), token, 160)) return;

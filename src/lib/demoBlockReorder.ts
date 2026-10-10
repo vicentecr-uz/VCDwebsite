@@ -46,9 +46,7 @@ export function createDemoBlockReorder(
   let pointerId: number | null = null;
   let liftNodes: ChildNode[] | null = null;
   let generation = 0;
-  let syncFrame = 0;
   let announceFrame = 0;
-  let syncResolve: (() => void) | undefined;
   let dropping = false;
   let destroyed = false;
 
@@ -110,12 +108,8 @@ export function createDemoBlockReorder(
     }
   };
   const cancelFrames = () => {
-    if (syncFrame) cancelAnimationFrame(syncFrame);
     if (announceFrame) cancelAnimationFrame(announceFrame);
-    syncFrame = 0;
     announceFrame = 0;
-    syncResolve?.();
-    syncResolve = undefined;
   };
   const setPressed = (pressed: boolean) => {
     allItems().forEach((item) => {
@@ -150,23 +144,6 @@ export function createDemoBlockReorder(
     const handle = dragHandle;
     if (dropping || !activeController || !dragItem || activeController.getState().phase !== 'lifted') return;
     dropping = true;
-    await new Promise<void>((resolve) => {
-      syncResolve = resolve;
-      syncFrame = requestAnimationFrame(() => {
-        syncFrame = 0;
-        if (activeGeneration !== generation || activeController !== controller || signal.aborted) {
-          resolve();
-          syncResolve = undefined;
-          return;
-        }
-        syncFrame = requestAnimationFrame(() => {
-          syncFrame = 0;
-          syncResolve = undefined;
-          resolve();
-        });
-      });
-    });
-    if (activeGeneration !== generation || activeController !== controller || signal.aborted) return;
     await activeController.endDrop();
     if (activeGeneration !== generation || activeController !== controller || signal.aborted) return;
     const committedItem = dragItem;
@@ -181,6 +158,28 @@ export function createDemoBlockReorder(
     if (focus && activeGeneration === generation && !signal.aborted) handle?.focus();
   };
   const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
+    const phase = controller?.getState().phase;
+    if (phase === 'lifted') return false;
+    if (phase === 'dropping') {
+      const previous = dragItem;
+      if (!previous) return false;
+      if (item === previous) {
+        if (!controller?.resumeLift(item, handle, x, y)) return false;
+        generation += 1;
+        dropping = false;
+        dragHandle = handle;
+        setPressed(true);
+        announce();
+        return true;
+      }
+      if (!controller?.settleNow()) return false;
+      generation += 1;
+      dropping = false;
+      setPressed(false);
+      dragItem = null;
+      dragHandle = null;
+      liftNodes = null;
+    }
     if (controller?.isActive() || dragItem) return false;
     const sourceIndex = items().indexOf(item);
     liftNodes = [...list.childNodes];
