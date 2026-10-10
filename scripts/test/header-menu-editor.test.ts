@@ -5,7 +5,8 @@ import { normalizeHref } from '../../src/lib/normalizeHref.mjs';
 
 const source = readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
 const start = source.indexOf('  const linkEditor =');
-const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, source.indexOf('  // Switching between hover and tap', start)));
+const scriptEnd = source.indexOf('\n  }\n\n  // Switching between hover and tap', start);
+const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, scriptEnd));
 const settle = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 function fixture(ok = true) {
