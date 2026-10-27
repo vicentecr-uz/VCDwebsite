@@ -4,7 +4,11 @@ import { createDemoImageReplacement, type DemoImageReplacementAsset } from '../.
 import type { DemoImageCropState } from '../../src/lib/demoImageCrop';
 
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
-const state = (src = '/original.webp'): DemoImageCropState => ({ source: { src, width: 1200, height: 900, alt: 'Original' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true });
+const state = (src = '/original.webp'): DemoImageCropState => ({ source: { src, width: 1200, height: 900, alt: 'Original' }, crop: { aspect: '3:2', cx: 0.31, cy: 0.68, w: 0.57 }, locked: false, variants: {
+  desktop: { aspect: '3:2', cx: 0.31, cy: 0.68, w: 0.57 },
+  tablet: { aspect: '4:3', cx: 0.62, cy: 0.27, w: 0.49 },
+  mobile: { aspect: '1:1', cx: 0.74, cy: 0.41, w: 0.38 },
+} });
 
 function setup() {
   const win = new Window({ url: 'http://localhost/' });
@@ -72,7 +76,17 @@ test('newest overlapping decode wins and stale pending URLs are revoked', async 
   const h = setup(); h.pickFile('a.png'); h.pickFile('b.png'); await new Promise((resolve) => setTimeout(resolve, 0)); expect(h.sources).toHaveLength(1); expect(h.sources[0].alt).toBe('b.png'); expect(h.live.size).toBe(1); h.handle.destroy();
 });
 
-test('reset cancels pending work and resets the current image crop; destroy revokes unique blobs', async () => {
-  const h = setup(); h.pickFile('a.png'); h.handle.reset(); await new Promise((resolve) => setTimeout(resolve, 0)); expect(h.sources).toHaveLength(1); expect(h.live.size).toBe(0);
+test('reset cancels pending work and restores first-load state; destroy revokes unique blobs', async () => {
+  const h = setup(); const initial = h.crop.getState(); h.pickFile('a.png'); h.handle.reset(); await new Promise((resolve) => setTimeout(resolve, 0)); expect(h.crop.getState()).toEqual(initial); expect(h.sources).toHaveLength(0); expect(h.live.size).toBe(0);
   h.pickFile('b.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.button('demo-author-save').click(); h.handle.destroy(); expect(h.live.size).toBe(0); expect(new Set(h.revoked).size).toBe(h.revoked.length);
+});
+
+test('reset clears an unsaved current blob while revert still restores the saved blob', async () => {
+  const h = setup(); const initial = h.crop.getState();
+  h.pickFile('saved.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.button('demo-author-save').click(); const saved = h.crop.getState();
+  h.pickFile('unsaved.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.handle.reset(); expect(h.crop.getState()).toEqual(initial); expect(h.live.size).toBe(1);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); expect(h.live.size).toBe(1);
+  h.handle.reset(); expect(h.crop.getState()).toEqual(initial); h.handle.reset(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); expect(h.live.size).toBe(1);
+  h.handle.destroy(); expect(h.live.size).toBe(0); expect(new Set(h.revoked).size).toBe(h.revoked.length);
 });

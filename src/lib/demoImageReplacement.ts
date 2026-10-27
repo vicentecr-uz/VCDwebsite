@@ -23,7 +23,8 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
   let currentUrl: string | undefined;
   let savedUrl: string | undefined;
   let pendingUrl: string | undefined;
-  let savedState = crop.getState();
+  const initialState = crop.getState();
+  let savedState = initialState;
   let destroyed = false;
   const release = (url: string | undefined) => { if (url) urlApi.revokeObjectURL(url); };
   const message = (value: string) => { if (status) { status.textContent = value; status.hidden = !value; } };
@@ -75,8 +76,11 @@ export function createDemoImageReplacement(root: HTMLElement, crop: DemoImageRep
     generation += 1;
     release(pendingUrl);
     pendingUrl = undefined;
-    const state = crop.getState();
-    crop.setSource(state.source);
+    const previous = currentUrl;
+    if (crop.restore(initialState)) {
+      currentUrl = undefined;
+      if (previous && previous !== savedUrl) release(previous);
+    }
     saveFeedback.reset();
     message('');
   };
