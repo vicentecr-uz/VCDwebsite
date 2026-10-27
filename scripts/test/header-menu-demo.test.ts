@@ -1,377 +1,310 @@
-import { expect, test } from 'bun:test';
+import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createHeaderMenuDemo } from '../../src/lib/headerMenuDemo';
 
-const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
+type Trace = { node: Element; frames: Keyframe[]; duration: number; easing: string; start: number; startTime: number | null; cancelled: boolean };
+const restores: Array<() => void> = [];
+const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
+afterEach(() => { restores.splice(0).reverse().forEach(restore => restore()); });
 
-function harness({ reveal = false, intro = true, gallery = true, mobile = false, reduced = false } = {}) {
+function fixture({ mobile = false, reduced = false, intro = true, gallery = true, reveal = false } = {}) {
   const win = new Window({ url: 'http://localhost:4323/' });
   const doc = win.document;
-  const media = { matches: mobile, addEventListener() {}, removeEventListener() {} };
-  const reduce = { matches: reduced, addEventListener() {}, removeEventListener() {} };
+  let now = 0, nextId = 0, editing = false, hovered = false;
+  const jobs = new Map<number, { at: number; fn: () => void }>();
+  const traces: Trace[] = [];
+  const menu: Array<{ open: boolean; time: number }> = [];
+  const samples: Array<{ expected: string; actual: string | undefined }> = [];
+  let hitOverride: Element | undefined;
+  const schedule = (fn: () => void, delay: number) => {
+    const id = ++nextId;
+    jobs.set(id, { at: now + delay, fn });
+    return id;
+  };
+  win.setTimeout = ((fn: () => void, delay = 0) => schedule(fn, Number(delay))) as typeof win.setTimeout;
+  win.clearTimeout = ((id: number) => { jobs.delete(Number(id)); }) as typeof win.clearTimeout;
+  win.requestAnimationFrame = callback => schedule(() => callback(now), 16);
+  win.cancelAnimationFrame = id => { jobs.delete(id); };
+  Object.defineProperty(win.performance, 'now', { value: () => now });
+  Object.defineProperty(win, 'innerWidth', { value: 1200 });
+  Object.defineProperty(win, 'innerHeight', { value: 800 });
+  Object.defineProperty(doc, 'hidden', { value: false, configurable: true });
+  const media = Object.assign(new win.EventTarget(), { matches: mobile });
+  const reduce = Object.assign(new win.EventTarget(), { matches: reduced });
   win.matchMedia = ((query: string) => query.includes('40em') ? media : reduce) as typeof win.matchMedia;
-  Object.defineProperty(win, 'innerWidth', { value: 1200, configurable: true });
-  Object.defineProperty(win, 'innerHeight', { value: 800, configurable: true });
-  doc.body.innerHTML = `${reveal ? '<div data-vcd-initial-reveal="running"></div>' : ''}${intro ? '<div data-home-intro-surface></div>' : ''}${gallery ? '<div class="project-grid"></div>' : ''}<div class="header-trigger header-trigger--start"><div class="header-trigger__brand"></div><div class="header-trigger__panel"><div class="header-menu"></div></div></div>`;
-  const trigger = doc.querySelector<HTMLElement>('.header-trigger')!;
-  trigger.dataset.menuOpen = '';
-  trigger.querySelector<HTMLElement>('.header-trigger__brand')!.getBoundingClientRect = () => ({ left: 100, top: 20, width: 100, height: 30, right: 200, bottom: 50 } as DOMRect);
-  let expanded = false;
-  trigger.querySelector<HTMLElement>('.header-trigger__panel')!.getBoundingClientRect = () => (expanded
-    ? { left: 80, top: 10, width: 320, height: 590, right: 400, bottom: 600 }
-    : { left: 80, top: 10, width: 240, height: 180, right: 320, bottom: 190 }) as DOMRect;
+  doc.body.innerHTML = (intro ? '<div data-home-intro-surface data-state="active"></div>' : '')
+    + (gallery ? '<div class="project-grid"></div>' : '')
+    + (reveal ? '<div data-vcd-initial-reveal="running"></div>' : '')
+    + '<div class="site-header__row" style="cursor:auto"><div class="header-trigger header-trigger--start"><div class="header-trigger__panel" style="cursor:auto"><div class="header-trigger__brand" tabindex="-1" style="cursor:default"></div></div></div><div class="header-trigger--end"><div class="header-trigger__panel"></div></div></div><a class="gallery-link" style="cursor:pointer"></a><div class="occluder" style="cursor:grab"></div>';
+  const row = doc.querySelector<HTMLElement>('.site-header__row')!;
+  const trigger = doc.querySelector<HTMLElement>('.header-trigger--start')!;
+  const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel')!;
+  const brand = trigger.querySelector<HTMLElement>('.header-trigger__brand')!;
+  const rect = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom, width: right - left, height: bottom - top } as DOMRect);
+  row.getBoundingClientRect = () => rect(80, 20, 1120, 50);
+  brand.getBoundingClientRect = () => rect(100, 20, 200, 50);
+  panel.getBoundingClientRect = () => trigger.dataset.menuOpen === 'true' ? rect(80, 10, 400, 600) : rect(80, 10, 320, 190);
+  row.querySelector<HTMLElement>('.header-trigger--end .header-trigger__panel')!.getBoundingClientRect = () => rect(1000, 10, 1120, 190);
+  const matches = trigger.matches.bind(trigger);
+  trigger.matches = selector => selector === ':hover' ? hovered : matches(selector);
   const template = doc.createElement('template');
-  template.innerHTML = '<div class="header-menu-demo-overlay"><span data-header-menu-demo-cursor></span><div class="hint-pointer" data-header-menu-demo-finger><span class="hint-finger"></span></div></div>';
-  const opened: string[] = [];
-  const originalWindow = globalThis.window;
-  const originalDocument = globalThis.document;
-  const originalNode = globalThis.Node;
+  template.innerHTML = '<div data-header-menu-demo-scene><div data-header-menu-demo-veil hidden><svg><g data-header-menu-demo-position><circle data-header-menu-demo-iris r="100"></circle></g></svg></div><div data-header-menu-demo-cursor-layer><span data-header-menu-demo-cursor></span><div data-header-menu-demo-finger></div></div></div>';
+  const previous = { window: globalThis.window, document: globalThis.document, Node: globalThis.Node };
   Object.assign(globalThis, { window: win, document: doc, Node: win.Node });
-  return { win, doc, trigger, template, opened, setExpanded: (value: boolean) => { expanded = value; }, restore() { Object.assign(globalThis, { window: originalWindow, document: originalDocument, Node: originalNode }); } };
-}
-
-const dismissIntro = (h: ReturnType<typeof harness>) => {
-  const intro = h.doc.querySelector<HTMLElement>('[data-home-intro-surface]');
-  if (!intro) return;
-  intro.hidden = true;
-  intro.dataset.state = 'dismissed';
-  h.win.dispatchEvent(new h.win.Event('vcd:home-intro-dismissed'));
-};
-
-test('cancelling during the reveal prevents the delayed demo', async () => {
-  const h = harness({ reveal: true });
-  let opens = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
-  h.win.dispatchEvent(new h.win.Event('vcd:initial-reveal-complete'));
-  await settle();
-  expect(opens).toBe(0);
-  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
-  h.restore();
-});
-
-test('intro dismissal starts the demo once and keeps its overlay hidden beforehand', async () => {
-  const h = harness({ intro: true });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false });
-  demo.start();
-  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
-  expect(h.doc.querySelector('.header-menu-demo-overlay')).toBeNull();
-  dismissIntro(h);
-  await settle();
-  expect(opens).toBe(1);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
-});
-
-test('the seen marker prevents a second controller in the same session', async () => {
-  const h = harness();
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  const options = { trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false };
-  createHeaderMenuDemo(options).start();
-  dismissIntro(h);
-  await settle();
-  createHeaderMenuDemo(options).start();
-  await settle();
-  expect(opens).toBe(1);
-  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBe('true');
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
-});
-
-test('desktop demo uses a composited travel and owns the real menu lifecycle', async () => {
-  const h = harness();
-  const keyframes: Keyframe[][] = [];
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function (frames: Keyframe[]) {
-    keyframes.push(frames);
-    return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
+  const oldAnimate = win.Element.prototype.animate;
+  win.Element.prototype.animate = function(frames: Keyframe[], options: KeyframeAnimationOptions) {
+    const duration = Number(options.duration);
+    expect(Number.isFinite(duration) && duration > 0).toBe(true);
+    const trace: Trace = { node: this, frames, duration, easing: String(options.easing), start: now, startTime: now, cancelled: false };
+    traces.push(trace);
+    let reject!: (error: Error) => void;
+    let timer: number;
+    const finished = new Promise<void>((resolve, fail) => { reject = fail; timer = schedule(resolve, duration); });
+    return {
+      ready: Promise.resolve(), finished,
+      get startTime() { return trace.startTime; },
+      set startTime(value: number | null) { trace.startTime = value; },
+      cancel() { trace.cancelled = true; jobs.delete(timer); reject(new Error('cancelled')); },
+    } as Animation;
   };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opened = 0;
-  let closed = 0;
+  const oldRect = win.HTMLElement.prototype.getBoundingClientRect;
+  const at = (transform: unknown) => {
+    const match = String(transform).match(/translate\(([-.\d]+)px, ([-.\d]+)px\)/)!;
+    return { x: Number(match[1]), y: Number(match[2]) };
+  };
+  win.HTMLElement.prototype.getBoundingClientRect = function() {
+    if (!this.matches('[data-header-menu-demo-cursor], [data-header-menu-demo-finger]')) return oldRect.call(this);
+    const movement = traces.findLast(trace => trace.node === this && !trace.cancelled && trace.frames[0].transform);
+    let p = at(this.style.transform);
+    if (movement) {
+      const progress = Math.max(0, Math.min(1, (now - Number(movement.startTime)) / movement.duration));
+      const segment = progress * (movement.frames.length - 1);
+      const i = Math.min(movement.frames.length - 2, Math.floor(segment));
+      const a = at(movement.frames[i].transform), b = at(movement.frames[i + 1].transform), t = segment - i;
+      p = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    return rect(p.x, p.y, p.x + 24, p.y + 24);
+  };
+  doc.elementFromPoint = (x, y) => {
+    const contains = (element: HTMLElement) => { const r = element.getBoundingClientRect(); return x >= r.left && x < r.right && y >= r.top && y < r.bottom; };
+    const hit = hitOverride ?? (contains(brand) ? brand : contains(panel) ? panel : contains(row) ? row : x >= 340 && y > 100 ? doc.querySelector('.gallery-link')! : doc.body);
+    const cursor = win.getComputedStyle(hit).cursor;
+    const expected = ['pointer', 'grab', 'grabbing'].includes(cursor) ? cursor : 'arrow';
+    const pointer = doc.querySelector<HTMLElement>('[data-header-menu-demo-cursor]');
+    if (pointer) void Promise.resolve().then(() => samples.push({ expected, actual: pointer.dataset.cursorState }));
+    return hit;
+  };
   const demo = createHeaderMenuDemo({
-    trigger: h.trigger,
-    template: h.template,
-    open: () => { opened++; h.trigger.dataset.menuOpen = 'true'; },
-    close: () => { closed++; },
-    isEditing: () => false,
+    trigger, template, isEditing: () => editing,
+    open() { trigger.dataset.menuOpen = 'true'; menu.push({ open: true, time: now }); },
+    close() { delete trigger.dataset.menuOpen; menu.push({ open: false, time: now }); },
   });
-  demo.start();
-  dismissIntro(h);
-  await settle();
-  expect(opened).toBe(1);
-  expect(closed).toBe(1);
-  expect(keyframes.some((frames) => String(frames[0]?.transform).includes('translate'))).toBe(true);
-  expect(keyframes.some((frames) => frames[0]?.opacity === 0 && frames[1]?.opacity === 1)).toBe(true);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
-});
-
-test('mobile demo uses the finger path and closes only its opened menu', async () => {
-  const h = harness({ mobile: true });
-  const keyframes: Keyframe[][] = [];
-  const options: KeyframeAnimationOptions[] = [];
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  const oldRandom = Math.random;
-  Math.random = () => 0.75;
-  h.win.HTMLElement.prototype.animate = function (frames: Keyframe[], animationOptions: KeyframeAnimationOptions) {
-    keyframes.push(frames);
-    options.push(animationOptions);
-    return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
+  const advance = async (duration: number) => {
+    const until = now + duration;
+    await settle();
+    for (let guard = 0; guard < 20000; guard++) {
+      const next = [...jobs].filter(([, job]) => job.at <= until).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+      if (!next) break;
+      jobs.delete(next[0]); now = next[1].at; next[1].fn(); await settle();
+    }
+    now = until;
+    await settle();
   };
-  const delays: number[] = [];
-  globalThis.setTimeout = ((callback: TimerHandler, delay?: number) => { delays.push(delay ?? 0); if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opened = 0;
-  let closed = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opened++; h.setExpanded(true); h.trigger.dataset.menuOpen = 'true'; }, close: () => { closed++; }, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  await settle();
-  expect(keyframes.some((frames) => frames[0]?.transform === 'translate(648px, 432px)' && frames[1]?.transform === 'translate(150px, 35px)')).toBe(true);
-  expect(opened).toBe(1);
-  expect(closed).toBe(1);
-  expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('scale(.88)')))).toBe(true);
-  expect(keyframes.some((frames) => frames.some((frame) => String(frame.transform).includes('translate(448px, 648px)')))).toBe(true);
-  expect(delays).toContain(150);
-  expect(options.filter((option) => option.easing === 'cubic-bezier(.645,.045,.355,1)')).toHaveLength(2);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  Math.random = oldRandom;
-  h.restore();
-});
-
-test('reduced motion indicates the target without travel or scale', async () => {
-  const h = harness({ reduced: true });
-  const keyframes: Keyframe[][] = [];
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function (frames: Keyframe[]) {
-    keyframes.push(frames);
-    return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
+  const dismiss = (phase: 'dismissing' | 'dismissed') => {
+    const surface = doc.querySelector<HTMLElement>('[data-home-intro-surface]')!;
+    surface.dataset.state = phase; surface.hidden = phase === 'dismissed';
+    win.dispatchEvent(new win.Event('vcd:home-intro-' + phase));
   };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opened = 0;
-  let closed = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opened++; h.trigger.dataset.menuOpen = 'true'; }, close: () => { closed++; }, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  await settle();
-  expect(opened).toBe(1);
-  expect(closed).toBe(1);
-  expect(keyframes.every((frames) => !frames.some((frame) => String(frame.transform).includes('scale')))).toBe(true);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+  restores.push(() => {
+    demo.cancel();
+    win.Element.prototype.animate = oldAnimate;
+    win.HTMLElement.prototype.getBoundingClientRect = oldRect;
+    Object.assign(globalThis, previous);
+  });
+  return { win, doc, demo, trigger, panel, brand, traces, menu, samples, advance, dismiss, at, media, reduce,
+    hit(element: Element) { hitOverride = element; },
+    edit(value: boolean) { editing = value; },
+    hover(value: boolean) { hovered = value; },
+    get now() { return now; },
+  };
+}
+const entry = (h: ReturnType<typeof fixture>, selector: string, duration?: number) =>
+  h.traces.find(trace => trace.node.matches(selector) && (duration === undefined || trace.duration === duration))!;
+
+test('waits for real intro interaction, anchors to exit start, and runs once per session', async () => {
+  const h = fixture(); h.demo.start(); h.demo.start();
+  await h.advance(5000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(800);
+  expect(entry(h, '[data-header-menu-demo-iris]').start).toBe(5950);
+  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBe('true');
+  await h.advance(5000);
+  const count = h.traces.length;
+  h.demo.start(); h.dismiss('dismissing'); h.dismiss('dismissed'); await h.advance(6000);
+  expect(h.traces).toHaveLength(count);
 });
 
-test('cancelling while fonts are pending prevents a later run', async () => {
-  const h = harness();
+test('dismissed fallback supports entering Home after a direct project visit', async () => {
+  const h = fixture({ intro: false, gallery: false }); h.demo.start();
+  h.win.dispatchEvent(new h.win.Event('vcd:home-intro-dismissed')); await h.advance(2000);
+  expect(h.traces).toHaveLength(0);
+  h.doc.body.insertAdjacentHTML('beforeend', '<div data-home-intro-surface></div><div class="project-grid"></div>');
+  h.dismiss('dismissed'); await h.advance(800);
+  expect(entry(h, '[data-header-menu-demo-iris]').start).toBe(2800);
+});
+
+test('intro events outside Home and an already seen session do not arm', async () => {
+  const h = fixture({ gallery: false }); h.demo.start(); h.dismiss('dismissing'); h.dismiss('dismissed'); await h.advance(6000);
+  expect(h.traces).toHaveLength(0);
+  const seen = fixture(); seen.win.sessionStorage.setItem('vcd:header-menu-demo-seen', 'true'); seen.demo.start(); seen.dismiss('dismissing'); await seen.advance(6000);
+  expect(seen.traces).toHaveLength(0);
+});
+
+test('desktop timings match the approved settings and fade overlaps departure', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(4200);
+  const iris = entry(h, '[data-header-menu-demo-iris]');
+  const veil = entry(h, '[data-header-menu-demo-veil]');
+  const fadeIn = entry(h, '[data-header-menu-demo-cursor]', 500);
+  const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames.length === 61);
+  const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
+  expect([iris.start, iris.duration, iris.easing]).toEqual([950, 800, 'cubic-bezier(.23,1,.32,1)']);
+  expect([veil.start, veil.duration, veil.easing]).toEqual([2375, 500, 'cubic-bezier(.23,1,.32,1)']);
+  expect([fadeIn.start, fadeIn.duration]).toEqual([1825, 500]);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2575, 500], [4075, 450]]);
+  expect([fadeOut.start, fadeOut.duration, fadeOut.easing]).toEqual([4250, 100, 'cubic-bezier(.23,1,.32,1)']);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 368, y: 238 });
+  expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 700, y: 35 });
+  expect(h.menu.filter(event => event.open)).toHaveLength(1);
+  expect(h.menu.find(event => !event.open)!.time).toBeLessThan(4525);
+  await h.advance(175);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
+test('cursor and cutout share keyframes and start times; travel has smooth asymmetric endpoints', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(4500);
+  const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames.length === 61);
+  for (const move of moves) {
+    const focus = h.traces.find(trace => trace.node.matches('[data-header-menu-demo-position]') && trace.start === move.start)!;
+    expect(focus.frames).toEqual(move.frames); expect(focus.startTime).toBe(move.startTime); expect(focus.duration).toBe(move.duration);
+    expect(move.easing).toBe('linear');
+    const p = move.frames.map(frame => h.at(frame.transform));
+    const steps = p.slice(1).map((point, i) => Math.hypot(point.x - p[i].x, point.y - p[i].y));
+    expect(steps[0]).toBeLessThan(Math.max(...steps) * .06);
+    expect(steps.at(-1)!).toBeLessThan(Math.max(...steps) * .06);
+    expect(steps[0]).toBeGreaterThan(steps.at(-1)! * 1.8);
+  }
+});
+
+test('the rendered hotspot drives CSS glyphs, including a non-clickable Home wordmark and occlusion', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(3050);
+  const pointer = h.doc.querySelector<HTMLElement>('[data-header-menu-demo-cursor]')!;
+  expect(pointer.dataset.cursorState).toBe('arrow');
+  h.brand.style.cursor = 'pointer'; await h.advance(32); expect(pointer.dataset.cursorState).toBe('pointer');
+  h.hit(h.doc.querySelector('.occluder')!); await h.advance(32); expect(pointer.dataset.cursorState).toBe('grab');
+  expect(h.samples.length).toBeGreaterThan(20);
+  expect(h.samples.every(sample => sample.expected === sample.actual)).toBe(true);
+});
+
+test('mobile keeps tap/release cleanup alive after the cursor has faded out', async () => {
+  const h = fixture({ mobile: true }); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(4400);
+  const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
+  const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-finger]') && trace.frames.length === 61);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2315, 600], [4155, 450]]);
+  expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 600, y: 400 });
+  expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 448, y: 648 });
+  expect([fadeOut.start, fadeOut.duration]).toEqual([4450, 100]);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4725 });
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  await h.advance(120); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
+test('reduced motion retains opacity durations and cannot resurrect the final outer fade', async () => {
+  const h = fixture({ reduced: true }); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(3550);
+  expect(h.traces.every(trace => trace.frames.every(frame => frame.transform === undefined))).toBe(true);
+  const veilIn = entry(h, '[data-header-menu-demo-veil]', 800);
+  const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
+  expect(veilIn.start).toBe(950);
+  expect([fadeOut.start, fadeOut.duration]).toEqual([3580, 100]);
+  expect(h.doc.querySelector('[data-header-menu-demo-iris]')!.getAttribute('style')).toContain('scale(1)');
+  await h.advance(155);
+  const reappearance = h.traces.findLast(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames[0].opacity === 0)!;
+  expect(reappearance.start + reappearance.duration).toBe(3855);
+  expect(fadeOut.node.contains(reappearance.node)).toBe(true);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
+test('fonts and initial reveal waits cancel without later resurrection', async () => {
+  const h = fixture();
   let resolveFonts!: () => void;
-  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>((resolve) => { resolveFonts = resolve; }) }, configurable: true });
-  let opens = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
-  resolveFonts();
-  await settle();
-  expect(opens).toBe(0);
-  h.restore();
+  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>(resolve => { resolveFonts = resolve; }) } });
+  h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed');
+  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true })); resolveFonts(); await h.advance(6000);
+  expect(h.traces).toHaveLength(0); expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
+  const reveal = fixture({ reveal: true }); reveal.demo.start(); reveal.dismiss('dismissing'); await reveal.advance(150); reveal.dismiss('dismissed');
+  reveal.win.dispatchEvent(new reveal.win.Event('resize')); reveal.win.dispatchEvent(new reveal.win.Event('vcd:initial-reveal-complete')); await reveal.advance(6000);
+  expect(reveal.traces).toHaveLength(0);
 });
 
-test('passive pointer, wheel, scroll, and key events do not cancel pending readiness', async () => {
-  const h = harness();
+test('intro interaction and passive events do not cancel pending readiness', async () => {
+  const h = fixture();
   let resolveFonts!: () => void;
-  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>((resolve) => { resolveFonts = resolve; }) }, configurable: true });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  for (const type of ['pointermove', 'wheel', 'scroll', 'keydown']) h.win.dispatchEvent(new h.win.Event(type, { bubbles: true }));
-  resolveFonts();
-  await settle();
-  expect(opens).toBe(1);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>(resolve => { resolveFonts = resolve; }) } });
+  h.demo.start(); h.dismiss('dismissing');
+  for (const type of ['click', 'pointermove', 'wheel', 'scroll', 'keydown']) h.win.dispatchEvent(new h.win.Event(type, { bubbles: true }));
+  await h.advance(150); h.dismiss('dismissed'); resolveFonts(); await h.advance(800);
+  expect(entry(h, '[data-header-menu-demo-iris]').start).toBe(950);
 });
 
-test('cancelling a rejected animation does not reopen the demo', async () => {
-  const h = harness();
-  const oldTimer = globalThis.setTimeout;
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let rejectAnimation!: (reason?: unknown) => void;
-  let animationCalls = 0;
-  h.win.HTMLElement.prototype.animate = function () {
-    animationCalls++;
-    if (animationCalls <= 2) return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
-    return { finished: new Promise<void>((_resolve, reject) => { rejectAnimation = reject; }), cancel() {} } as unknown as Animation;
-  };
-  let opens = 0;
-  let closes = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close: () => { closes++; }, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  await settle();
-  h.win.dispatchEvent(new h.win.Event('click', { bubbles: true }));
-  rejectAnimation(new Error('cancelled'));
-  await settle();
-  expect(opens).toBe(1);
-  expect(closes).toBe(1);
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+test('late font readiness shifts the sequence together instead of compressing its timings', async () => {
+  const h = fixture();
+  let resolveFonts!: () => void;
+  Object.defineProperty(h.doc, 'fonts', { value: { ready: new Promise<void>(resolve => { resolveFonts = resolve; }) } });
+  h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(2000);
+  resolveFonts(); await h.advance(1200);
+  const iris = entry(h, '[data-header-menu-demo-iris]');
+  const cursor = entry(h, '[data-header-menu-demo-cursor]', 500);
+  expect(iris.start).toBe(2182);
+  expect(cursor.start - iris.start).toBe(875);
 });
 
-test('a real click inside the trigger preserves the demo-owned menu', async () => {
-  const h = harness();
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  let animationCalls = 0;
-  h.win.HTMLElement.prototype.animate = function () {
-    animationCalls++;
-    if (animationCalls <= 2) return { finished: Promise.resolve(), cancel() {} } as unknown as Animation;
-    return { finished: new Promise<void>(() => {}), cancel() {} } as unknown as Animation;
-  };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let closes = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { h.trigger.dataset.menuOpen = 'true'; }, close: () => { closes++; }, isEditing: () => false });
-  demo.start();
-  dismissIntro(h);
-  await settle();
-  h.trigger.querySelector<HTMLElement>('.header-trigger__brand')!.dispatchEvent(new h.win.Event('click', { bubbles: true }));
-  expect(closes).toBe(0);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+test('navigation title readiness is checked at the visual cue rather than during intro exit', async () => {
+  const h = fixture(); h.trigger.dataset.headerTitlePending = '';
+  h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(350);
+  delete h.trigger.dataset.headerTitlePending;
+  await h.advance(450);
+  expect(entry(h, '[data-header-menu-demo-iris]').start).toBe(950);
 });
 
-test('an absent intro never arms the demo', async () => {
-  const h = harness({ intro: false });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false }).start();
-  await settle();
-  expect(opens).toBe(0);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+test('cancellation during animation removes the scene and all later menu work', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(1000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  h.demo.cancel(); await h.advance(6000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  expect(h.menu).toHaveLength(0); expect(h.traces.every(trace => trace.cancelled)).toBe(true);
 });
 
-test('an already-dismissed intro does not replay the demo', async () => {
-  const h = harness();
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  const intro = h.doc.querySelector<HTMLElement>('[data-home-intro-surface]')!;
-  intro.hidden = true;
-  intro.dataset.state = 'dismissed';
-  let opens = 0;
-  createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false }).start();
-  await settle();
-  expect(opens).toBe(0);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+test('a real click inside the menu preserves it while cancelling the guide', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(3050);
+  expect(h.trigger.dataset.menuOpen).toBe('true');
+  h.brand.dispatchEvent(new h.win.MouseEvent('click', { bubbles: true })); await h.advance(6000);
+  expect(h.trigger.dataset.menuOpen).toBe('true');
+  expect(h.menu.filter(event => !event.open)).toHaveLength(0);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
-test('cancelling while idle disposes the dismissal listener', async () => {
-  const h = harness();
-  let opens = 0;
-  const demo = createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false });
-  demo.start();
-  demo.cancel();
-  dismissIntro(h);
-  await settle();
-  expect(opens).toBe(0);
-  h.restore();
-});
-
-test('a direct project entry can arm after the intro and gallery arrive', async () => {
-  const h = harness({ intro: false, gallery: false });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false }).start();
-  const intro = h.doc.createElement('div');
-  intro.dataset.homeIntroSurface = '';
-  intro.hidden = true;
-  intro.dataset.state = 'dismissed';
-  h.doc.body.append(intro);
-  const grid = h.doc.createElement('div');
-  grid.className = 'project-grid';
-  h.doc.body.append(grid);
-  h.win.dispatchEvent(new h.win.Event('vcd:home-intro-dismissed'));
-  await settle();
-  expect(opens).toBe(1);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
-});
-
-test('an intro event outside the gallery stays idle until navigation reaches the gallery', async () => {
-  const h = harness({ gallery: false });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; }, close() {}, isEditing: () => false }).start();
-  dismissIntro(h);
-  await settle();
-  expect(opens).toBe(0);
-  const grid = h.doc.createElement('div');
-  grid.className = 'project-grid';
-  h.doc.body.append(grid);
-  h.win.dispatchEvent(new h.win.Event('vcd:home-intro-dismissed'));
-  await settle();
-  expect(opens).toBe(1);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
-});
-
-test('gallery dismissal waits for the initial reveal before scheduling', async () => {
-  const h = harness({ reveal: true });
-  const oldAnimate = h.win.HTMLElement.prototype.animate;
-  const oldTimer = globalThis.setTimeout;
-  h.win.HTMLElement.prototype.animate = function () { return { finished: Promise.resolve(), cancel() {} } as unknown as Animation; };
-  globalThis.setTimeout = ((callback: TimerHandler) => { if (typeof callback === 'function') callback(); return 1 as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
-  let opens = 0;
-  createHeaderMenuDemo({ trigger: h.trigger, template: h.template, open: () => { opens++; h.trigger.dataset.menuOpen = 'true'; }, close() {}, isEditing: () => false }).start();
-  dismissIntro(h);
-  await settle();
-  expect(opens).toBe(0);
-  h.doc.querySelector<HTMLElement>('[data-vcd-initial-reveal]')!.dataset.vcdInitialReveal = 'complete';
-  h.win.dispatchEvent(new h.win.Event('vcd:initial-reveal-complete'));
-  await settle();
-  expect(opens).toBe(1);
-  h.win.HTMLElement.prototype.animate = oldAnimate;
-  globalThis.setTimeout = oldTimer;
-  h.restore();
+test('editing, visibility, hover, focus, pending title, and an already open menu prevent the hint', async () => {
+  for (const guard of ['edit', 'hidden', 'hover', 'focus', 'title', 'menu']) {
+    const h = fixture();
+    if (guard === 'edit') h.edit(true);
+    if (guard === 'hidden') Object.defineProperty(h.doc, 'hidden', { value: true });
+    if (guard === 'hover') h.hover(true);
+    if (guard === 'focus') h.brand.focus();
+    if (guard === 'title') h.trigger.dataset.headerTitlePending = '';
+    if (guard === 'menu') h.trigger.dataset.menuOpen = 'true';
+    h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(6000);
+    expect(h.traces).toHaveLength(0);
+    expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
+  }
 });

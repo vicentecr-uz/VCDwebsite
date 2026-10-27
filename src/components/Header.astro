@@ -12,6 +12,7 @@ interface Props {
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import staticHeaderSettings from '../content/settings/header.json';
+import menuDemoConfig from '../lib/headerMenuDemoConfig.json';
 import type { SvgComponent } from 'astro/types';
 import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw';
 import settingsIcon from 'lucide-static/icons/settings.svg?raw';
@@ -74,6 +75,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     ['/digital', '/play'].includes(link.href.replace(/\/+$/, '')) ? 'Digital' : link.href.replace(/\/+$/, '') === '/about' ? headerSettings.siteTitle : undefined,
   isCurrent: (link.href.replace(/\/+$/, '') || '/') === currentPath,
 }));
+const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
+  const fraction = index / 32;
+  const shade = 100 * (1 - Math.cos(Math.PI * fraction)) / 2;
+  return {
+    offset: (menuDemoConfig.radius + menuDemoConfig.feather * fraction) / (menuDemoConfig.radius + menuDemoConfig.feather),
+    color: `rgb(${shade}% ${shade}% ${shade}%)`,
+  };
+});
 ---
 
 {navMenu ? (
@@ -195,9 +204,28 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     </div>
   )}
   <template data-header-menu-demo>
-    <div class="header-menu-demo-overlay hint is-visible" aria-hidden="true">
-      <DemoCursor data-header-menu-demo-cursor />
-      <div class="hint-pointer" data-header-menu-demo-finger><span class="hint-finger"></span></div>
+    <div class="header-menu-demo-scene" data-header-menu-demo-scene aria-hidden="true">
+      <div class="header-menu-demo-veil" data-header-menu-demo-veil hidden>
+        <svg width="100%" height="100%" aria-hidden="true">
+          <defs>
+            <radialGradient id="header-menu-demo-feather" color-interpolation="sRGB">
+              <stop offset="0" stop-color="#000" />
+              {menuDemoFeatherStops.map(({ offset, color }) => <stop offset={offset} stop-color={color} />)}
+            </radialGradient>
+            <mask id="header-menu-demo-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%" style="mask-type: luminance">
+              <rect width="100%" height="100%" fill="#fff" />
+              <g data-header-menu-demo-position>
+                <circle data-header-menu-demo-iris cx="0" cy="0" r={menuDemoConfig.radius + menuDemoConfig.feather} fill="url(#header-menu-demo-feather)" />
+              </g>
+            </mask>
+          </defs>
+          <rect class="header-menu-demo-fill" width="100%" height="100%" opacity={menuDemoConfig.opacity} mask="url(#header-menu-demo-mask)" />
+        </svg>
+      </div>
+      <div class="header-menu-demo-overlay hint is-visible" data-header-menu-demo-cursor-layer>
+        <DemoCursor data-header-menu-demo-cursor />
+        <div class="hint-pointer" data-header-menu-demo-finger><span class="hint-finger"></span></div>
+      </div>
     </div>
   </template>
   </div>
@@ -2616,6 +2644,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     opacity: 0;
     transition: opacity 0.15s ease, display 0.15s allow-discrete, overlay 0.15s allow-discrete;
   }
+
+  .header-menu-demo-scene { pointer-events: none; }
+  .header-menu-demo-veil { position: fixed; inset: 0; z-index: 199; pointer-events: none; overflow: hidden; }
+  .header-menu-demo-veil svg { display: block; width: 100%; height: 100%; }
+  [data-header-menu-demo-position], [data-header-menu-demo-iris] { transform-box: view-box; transform-origin: 0 0; }
+  .header-menu-demo-fill { fill: var(--sys-color-srf); }
 
   .header-menu-demo-overlay {
     position: fixed;
