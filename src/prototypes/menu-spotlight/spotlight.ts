@@ -1,6 +1,7 @@
 import { createDevPanelDrag } from '../../lib/devPanelDrag';
 import { createHomeRevealController } from '../../lib/homeReveal';
 import homeRevealConfig from '../../lib/homeRevealConfig.json';
+import { setIntroFoldOffsets } from '../../lib/safeVh';
 
 type Config = {
   radius: number;
@@ -29,7 +30,8 @@ const numericKeys = [
 ] as const;
 const storageKey = 'vcd:menu-spotlight';
 const hintDelayAfterIntro = 1200;
-const introLead = homeRevealConfig.intro.durationMs + hintDelayAfterIntro;
+const introHold = 1000;
+const introLead = homeRevealConfig.intro.durationMs + introHold + hintDelayAfterIntro;
 
 function mountSpotlight(root: HTMLElement) {
   const veil = root.querySelector<HTMLElement>('[data-spotlight-veil]')!;
@@ -273,7 +275,8 @@ function mountSpotlight(root: HTMLElement) {
       introClone.inert = true;
       introClone.setAttribute('aria-hidden', 'true');
       introClone.style.pointerEvents = 'none';
-      document.body.append(introClone);
+      home.parentElement!.append(introClone);
+      setIntroFoldOffsets(introClone);
     }
     return introClone;
   }
@@ -295,6 +298,7 @@ function mountSpotlight(root: HTMLElement) {
     revealScene = reveal;
     await reveal.prepare();
     if (runSignal.aborted || !await frame(runSignal)) return false;
+    if (!await wait(introHold / snapshot.speed, runSignal)) return false;
     intro.dataset.state = 'dismissing';
     if (!await wait(exitDuration, runSignal)) return false;
     intro.dataset.state = 'dismissed';
