@@ -1,0 +1,32 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import Footer from '../../components/Footer.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import SpotlightHarness from '../../prototypes/menu-spotlight/SpotlightHarness.astro';
+import { loadPageDocument } from '../../lib/projects';
+import { pageColumnStyle } from '../../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
+
+const homePage = loadPageDocument('home');
+---
+
+<Layout title="Menu spotlight prototype" columnStyle={pageColumnStyle(homePage.sections)}>
+  <meta name="robots" content="noindex, nofollow" />
+  <div class="spotlight-page">
+    <Header navMenu wordmarkAsH1 />
+    <main id="main-content" class="listing-main" style="flex: 1;">
+      <div data-dev-project-drop-zone data-page-document="home">
+        <ProjectSections documentKey="home" sections={homePage.sections} introHeight={homePage.introHeight} />
+        <div class:list={[projectStackClass(homePage.trailingSpacing ?? 'none')]} {...(spacingDevAttrs('home', ['sections', homePage.sections.length], homePage.trailingSpacing ?? 'none', { writePath: ['trailingSpacing'] }) ?? {})} />
+      </div>
+    </main>
+    <Footer />
+  </div>
+  <SpotlightHarness />
+</Layout>
+
+<style>
+  .spotlight-page { min-height: 100dvh; display: flex; flex-direction: column; }
+  .listing-main { padding: 0; }
+</style>
