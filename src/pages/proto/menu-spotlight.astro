@@ -17,6 +17,22 @@ const introPage = loadPageDocument('home-intro');
   <meta name="robots" content="noindex, nofollow" />
   <div class="spotlight-page">
     <Header navMenu wordmarkAsH1 />
+    <script is:inline>
+      {
+        // Keep this isolated prototype's header semantics aligned with Home.
+        const header = document.querySelector('.spotlight-page .site-header');
+        header.querySelector('.header-trigger--start').classList.add('header-trigger--home');
+        header.querySelectorAll('.header-trigger__brand-link').forEach((link) => link.removeAttribute('href'));
+        header.querySelectorAll('.header-menu__link').forEach((link) => {
+          const path = new URL(link.getAttribute('href'), window.location.href).pathname.replace(/\/+$/, '') || '/';
+          const current = path === '/';
+          link.toggleAttribute('data-current-page', current);
+          if (current) link.setAttribute('aria-current', 'page');
+          else link.removeAttribute('aria-current');
+          link.closest('.header-menu__item').classList.toggle('header-menu__item--current-page', current);
+        });
+      }
+    </script>
     <main id="main-content" class="listing-main" style="flex: 1;">
       <div data-dev-project-drop-zone data-page-document="home">
         <ProjectSections documentKey="home" sections={homePage.sections} introHeight={homePage.introHeight} />
