@@ -17,19 +17,24 @@ type Config = {
   cursorWait: number;
   cursorBias: number;
   cursorBend: number;
-  easing: string;
+  scaleEasing: string;
+  exitEasing: string;
+  cursorEasing: string;
   speed: number;
 };
 type PreviewState = 'start' | 'settled' | 'menu' | 'end';
+const cursorFadeEasing = 'cubic-bezier(.215,.61,.355,1)';
 const defaults: Config = {
   radius: 140, feather: 80, featherMode: 'proportional', opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
-  cursorWait: 600, cursorBias: .2, cursorBend: 8, easing: 'cubic-bezier(.215,.61,.355,1)', speed: 1,
+  cursorWait: 600, cursorBias: .2, cursorBend: 8, scaleEasing: cursorFadeEasing,
+  exitEasing: cursorFadeEasing, cursorEasing: 'current', speed: 1,
 };
 const numericKeys = [
   'radius', 'feather', 'opacity', 'startDelay', 'circleIn', 'veilHold',
   'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorBias', 'cursorBend',
 ] as const;
+const easingKeys = ['scaleEasing', 'exitEasing', 'cursorEasing'] as const;
 const storageKey = 'vcd:menu-spotlight';
 const hintDelayAfterIntro = 1200;
 const introHold = 1000;
@@ -47,7 +52,8 @@ function mountSpotlight(root: HTMLElement) {
   const template = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]')!;
   const trigger = document.querySelector<HTMLElement>('.header-trigger--start')!;
   const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')];
-  const easingSelect = root.querySelector<HTMLSelectElement>('[data-control="easing"]')!;
+  const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-tab]')];
+  const tabPanels = [...root.querySelectorAll<HTMLElement>('[data-spotlight-tab-panel]')];
   const settings = root.querySelector<HTMLTextAreaElement>('[data-settings-output]')!;
   const copyButton = root.querySelector<HTMLButtonElement>('[data-copy-settings]')!;
   const disclosure = root.querySelector<HTMLDetailsElement>('[data-spotlight-controls]')!;
@@ -78,7 +84,11 @@ function mountSpotlight(root: HTMLElement) {
       const step = Number(input.step);
       next[key] = Math.max(min, Math.min(Number(input.max), min + Math.round((value - min) / step) * step));
     }
-    if ([...easingSelect.options].some(option => option.value === raw.easing)) next.easing = String(raw.easing);
+    for (const key of easingKeys) {
+      const select = root.querySelector<HTMLSelectElement>(`[data-control="${key}"]`)!;
+      const value = raw[key] ?? (key === 'cursorEasing' ? undefined : raw.easing);
+      if ([...select.options].some(option => option.value === value)) next[key] = String(value);
+    }
     if ([1, .5, .25].includes(Number(raw.speed))) next.speed = Number(raw.speed);
     if (raw.featherMode === 'fixed' || raw.featherMode === 'proportional') next.featherMode = raw.featherMode;
     return next;
@@ -105,6 +115,7 @@ function mountSpotlight(root: HTMLElement) {
     for (const control of controls) {
       const key = control.dataset.control as keyof Config;
       control.value = String(config[key]);
+      if (key === 'cursorBias') (control as HTMLInputElement).disabled = config.cursorEasing !== 'current';
       const output = root.querySelector<HTMLOutputElement>(`[data-value="${key}"]`);
       if (!output) continue;
       output.textContent = key === 'opacity' || key === 'cursorBias' ? `${Math.round(Number(config[key]) * 100)}%`
@@ -113,7 +124,6 @@ function mountSpotlight(root: HTMLElement) {
     for (const key of numericKeys) {
       root.style.setProperty(`--spotlight-${key}`, String(config[key]));
     }
-    root.style.setProperty('--spotlight-easing', config.easing);
     root.style.setProperty('--spotlight-speed', String(config.speed));
     featherModes.forEach(input => { input.checked = input.value === config.featherMode; });
     updateMask(1);
@@ -406,6 +416,7 @@ function mountSpotlight(root: HTMLElement) {
       pointer.style.transform = transform(entrance);
       if (mobile) pointer.dataset.cursorState = 'arrow';
       const move = (from: typeof entrance, to: typeof entrance, duration: number) => {
+        const currentMotion = snapshot.cursorEasing === 'current';
         const dx = to.x - from.x;
         const dy = to.y - from.y;
         const distance = Math.hypot(dx, dy);
@@ -416,7 +427,7 @@ function mountSpotlight(root: HTMLElement) {
         const frames = Array.from({ length: 61 }, (_, index) => {
           const time = index / 60;
           const biasedTime = time + snapshot.cursorBias * time * (1 - time);
-          const progress = biasedTime ** 2 * (3 - 2 * biasedTime);
+          const progress = currentMotion ? biasedTime ** 2 * (3 - 2 * biasedTime) : time;
           const bow = 4 * (1 - progress) * progress * bend;
           const at = index === 0 ? from : index === 60 ? to : {
             x: from.x + dx * progress + normal.x * bow,
@@ -424,7 +435,7 @@ function mountSpotlight(root: HTMLElement) {
           };
           return { offset: time, transform: transform(at) };
         });
-        return animate([pointer, position], frames, ms(duration), 'linear', runSignal);
+        return animate([pointer, position], frames, ms(duration), currentMotion ? 'linear' : snapshot.cursorEasing, runSignal);
       };
       const press = (at: typeof entrance, fromScale: number, toScale: number) => animate(pointer,
         [{ transform: transform(at, fromScale) }, { transform: transform(at, toScale) }], ms(120), 'ease-out', runSignal);
@@ -445,24 +456,24 @@ function mountSpotlight(root: HTMLElement) {
         if (!await wait(ms(t.circleStart), runSignal)) return;
         veil.hidden = false;
         const entered = reduced
-          ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.easing, runSignal)
-          : await animate(iris, [{ transform: irisTransform(fullScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.easing, runSignal,
+          ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.scaleEasing, runSignal)
+          : await animate(iris, [{ transform: irisTransform(fullScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.scaleEasing, runSignal,
             snapshot.featherMode === 'fixed' ? progress => updateMask(fullScale + (1 - fullScale) * progress) : undefined);
         if (!entered || !await wait(ms(t.veilOutStart - t.circleEnd), runSignal)) return;
-        const exited = await animate(veil, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.circleOut), snapshot.easing, runSignal);
+        const exited = await animate(veil, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.circleOut), snapshot.exitEasing, runSignal);
         if (exited) veil.hidden = true;
       };
       const playCursor = async () => {
         if (!await wait(ms(t.cursorFadeStart), runSignal)) return;
         if (!mobile) trackDesktopCursor();
-        if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(t.cursorFadeDuration), snapshot.easing, runSignal)) return;
+        if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(t.cursorFadeDuration), cursorFadeEasing, runSignal)) return;
         if (!await wait(ms(snapshot.cursorWait), runSignal)) return;
         if (reduced) {
-          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), cursorFadeEasing, runSignal)) return;
           pointer.style.transform = transform(start);
           position.style.transform = transform(start);
           if (!mobile) sampleDesktopCursor();
-          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), cursorFadeEasing, runSignal)) return;
         } else {
           hoverActive = !mobile;
           if (!await move(entrance, start, mobile ? 600 : 500)) return;
@@ -475,11 +486,11 @@ function mountSpotlight(root: HTMLElement) {
         if (!await wait(ms(1000), runSignal)) return;
         const away = outsidePoint();
         if (reduced) {
-          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), cursorFadeEasing, runSignal)) return;
           pointer.style.transform = transform(away);
           position.style.transform = transform(away);
           if (!mobile) sampleDesktopCursor();
-          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), cursorFadeEasing, runSignal)) return;
         } else {
           if (!await move(start, away, 450)) return;
           if (!mobile) sampleDesktopCursor();
@@ -490,7 +501,7 @@ function mountSpotlight(root: HTMLElement) {
         const frames: Keyframe[] = mobile && !reduced
           ? [{ opacity: 1, transform: transform(away, .88) }, { opacity: 0, transform: transform(away) }]
           : [{ opacity: 1 }, { opacity: 0 }];
-        if (await animate(pointer, frames, ms(200), snapshot.easing, runSignal)) {
+        if (await animate(pointer, frames, ms(200), cursorFadeEasing, runSignal)) {
           clone?.remove();
           clone = undefined;
         }
@@ -506,13 +517,35 @@ function mountSpotlight(root: HTMLElement) {
   for (const control of controls) {
     control.addEventListener('input', () => {
       const raw: Record<string, unknown> = { ...config };
-      raw[control.dataset.control!] = control === easingSelect ? control.value : Number(control.value);
+      raw[control.dataset.control!] = control.tagName === 'SELECT' ? control.value : Number(control.value);
       config = normalize(raw);
       if (control.dataset.control === 'radius' && !heldState) stop();
       applyConfig();
       try { localStorage.setItem(storageKey, JSON.stringify(config)); } catch { /* Storage is optional. */ }
     }, { signal });
   }
+  const selectTab = (selected: HTMLButtonElement, focus = false) => {
+    tabs.forEach(tab => {
+      const active = tab === selected;
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    tabPanels.forEach(panel => { panel.hidden = panel.dataset.spotlightTabPanel !== selected.dataset.spotlightTab; });
+    if (focus) selected.focus();
+  };
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => selectTab(tab), { signal });
+    tab.addEventListener('focus', () => selectTab(tab), { signal });
+    tab.addEventListener('keydown', event => {
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : undefined;
+      if (next === undefined) return;
+      event.preventDefault();
+      selectTab(tabs[next], true);
+    }, { signal });
+  });
   stateButtons.forEach(button => button.addEventListener('click', () => {
     holdState(button.dataset.spotlightState as PreviewState);
   }, { signal }));
