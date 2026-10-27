@@ -31,11 +31,12 @@ const numericKeys = [
 const storageKey = 'vcd:menu-spotlight';
 const hintDelayAfterIntro = 1200;
 const introHold = 1000;
-const introLead = homeRevealConfig.intro.durationMs + introHold + hintDelayAfterIntro;
+const hintAnchor = homeRevealConfig.intro.durationMs + hintDelayAfterIntro;
 
 function mountSpotlight(root: HTMLElement) {
   const veil = root.querySelector<HTMLElement>('[data-spotlight-veil]')!;
   const iris = root.querySelector<SVGCircleElement>('[data-spotlight-iris]')!;
+  const position = root.querySelector<SVGGElement>('[data-spotlight-position]')!;
   const gradientStops = [...root.querySelectorAll<SVGStopElement>('[data-spotlight-stop]')];
   const featherModes = [...root.querySelectorAll<HTMLInputElement>('[data-feather-mode]')];
   const stateButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-state]')];
@@ -87,13 +88,14 @@ function mountSpotlight(root: HTMLElement) {
   } catch { /* Storage is optional. */ }
 
   function timings(snapshot: Config) {
-    const circleEnd = snapshot.startDelay + snapshot.circleIn;
+    const circleStart = Math.max(0, hintAnchor + snapshot.startDelay);
+    const circleEnd = circleStart + snapshot.circleIn;
     const cursorFadeStart = Math.max(0, circleEnd + snapshot.cursorOffset);
     const cursorFadeDuration = reducedMq.matches ? 180 : mobileMq.matches ? 240 : 500;
     const cursorVisible = cursorFadeStart + cursorFadeDuration;
     const demoStart = cursorVisible + snapshot.cursorWait;
     const veilOutStart = Math.max(circleEnd + snapshot.veilHold, demoStart + snapshot.exitOffset);
-    return { circleEnd, cursorFadeStart, cursorFadeDuration, cursorVisible, demoStart, veilOutStart };
+    return { circleStart, circleEnd, cursorFadeStart, cursorFadeDuration, cursorVisible, demoStart, veilOutStart };
   }
 
   function applyConfig() {
@@ -115,10 +117,10 @@ function mountSpotlight(root: HTMLElement) {
     veil.style.setProperty('--spotlight-opacity', String(config.opacity));
     const t = timings(config);
     const anchors = {
-      circleEnd: (introLead + t.circleEnd) / config.speed,
-      cursorVisible: (introLead + t.cursorVisible) / config.speed,
-      demoStart: (introLead + t.demoStart) / config.speed,
-      veilOutStart: (introLead + t.veilOutStart) / config.speed,
+      circleEnd: (introHold + t.circleEnd) / config.speed,
+      cursorVisible: (introHold + t.cursorVisible) / config.speed,
+      demoStart: (introHold + t.demoStart) / config.speed,
+      veilOutStart: (introHold + t.veilOutStart) / config.speed,
     };
     for (const [key, value] of Object.entries(anchors)) {
       root.querySelector<HTMLElement>(`[data-anchor="${key}"]`)!.textContent = `${Math.round(value)} ms`;
@@ -188,10 +190,14 @@ function mountSpotlight(root: HTMLElement) {
     });
   }
 
-  async function animate(element: HTMLElement | SVGElement, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal, onProgress?: (progress: number) => void) {
+  async function animate(element: HTMLElement | SVGElement | Array<HTMLElement | SVGElement>, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal, onProgress?: (progress: number) => void) {
     if (runSignal.aborted) return false;
-    const animation = element.animate(frames, { duration, easing, fill: 'forwards' });
-    animations.add(animation);
+    const targets = Array.isArray(element) ? element : [element];
+    const running = targets.map(target => target.animate(frames, { duration, easing, fill: 'forwards' }));
+    running.forEach(animation => animations.add(animation));
+    const animation = running[0];
+    const finished = Promise.all(running.map(item => item.finished));
+    void finished.catch(() => undefined);
     let sampleFrame: number | undefined;
     if (onProgress) {
       const sample = () => {
@@ -204,7 +210,12 @@ function mountSpotlight(root: HTMLElement) {
       sampleFrame = window.requestAnimationFrame(sample);
     }
     try {
-      await animation.finished;
+      if (running.length > 1) {
+        await Promise.all(running.map(item => item.ready));
+        if (runSignal.aborted) return false;
+        running.slice(1).forEach(item => { item.startTime = animation.startTime; });
+      }
+      await finished;
       if (!runSignal.aborted) onProgress?.(1);
       return !runSignal.aborted;
     } catch (error) {
@@ -281,8 +292,7 @@ function mountSpotlight(root: HTMLElement) {
     return introClone;
   }
 
-  async function playIntro(snapshot: Config, runSignal: AbortSignal) {
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  async function prepareIntro(snapshot: Config, runSignal: AbortSignal) {
     const intro = createIntro();
     const exitDuration = homeRevealConfig.intro.durationMs / snapshot.speed;
     intro.style.setProperty('--home-intro-exit-duration', `${exitDuration}ms`);
@@ -298,13 +308,19 @@ function mountSpotlight(root: HTMLElement) {
     revealScene = reveal;
     await reveal.prepare();
     if (runSignal.aborted || !await frame(runSignal)) return false;
-    if (!await wait(introHold / snapshot.speed, runSignal)) return false;
+    return wait(introHold / snapshot.speed, runSignal);
+  }
+
+  async function dismissIntro(snapshot: Config, runSignal: AbortSignal) {
+    if (runSignal.aborted) return false;
+    const intro = introClone!;
+    const reveal = revealScene!;
     intro.dataset.state = 'dismissing';
-    if (!await wait(exitDuration, runSignal)) return false;
+    if (!await wait(homeRevealConfig.intro.durationMs / snapshot.speed, runSignal)) return false;
     intro.dataset.state = 'dismissed';
     intro.hidden = true;
     reveal.run();
-    return wait(hintDelayAfterIntro / snapshot.speed, runSignal);
+    return true;
   }
 
   function renderHeldState() {
@@ -312,7 +328,8 @@ function mountSpotlight(root: HTMLElement) {
     const shown = heldState === 'settled' || heldState === 'menu';
     veil.hidden = !shown;
     veil.style.opacity = '1';
-    iris.style.transform = transform(heldEntrance, shown ? 1 : coveringScale(heldEntrance, config.radius));
+    iris.style.transform = `scale(${shown ? 1 : coveringScale(heldEntrance, config.radius)})`;
+    position.style.transform = transform(heldEntrance);
     if (heldState === 'start') createIntro();
     if (!shown) return;
     const pointer = createPointer(mobileMq.matches);
@@ -321,6 +338,7 @@ function mountSpotlight(root: HTMLElement) {
       : heldEntrance;
     pointer.style.opacity = '1';
     pointer.style.transform = transform(target);
+    position.style.transform = transform(target);
     pointer.dataset.cursorState = heldState === 'menu' && !mobileMq.matches ? 'pointer' : 'arrow';
   }
 
@@ -348,26 +366,38 @@ function mountSpotlight(root: HTMLElement) {
       if (trigger.dataset.menuOpen === 'true') return;
       if (mobileMq.matches) disclosure.open = false;
       const snapshot = { ...config };
-      if (!await playIntro(snapshot, runSignal)) return;
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      const start = point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger);
+      const entrance = entrancePoint();
+      if (!await prepareIntro(snapshot, runSignal)) return;
       const t = timings(snapshot);
       const ms = (duration: number) => duration / snapshot.speed;
       const mobile = mobileMq.matches;
       const reduced = reducedMq.matches;
-      const start = point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger);
-      const entrance = entrancePoint();
       const fullScale = coveringScale(entrance, snapshot.radius);
-      const irisTransform = (scale: number) => transform(entrance, scale);
+      const irisTransform = (scale: number) => `scale(${scale})`;
       iris.style.transform = irisTransform(reduced ? 1 : fullScale);
+      position.style.transform = transform(entrance);
       veil.style.opacity = reduced ? '0' : '1';
       const pointer = createPointer(mobile);
       pointer.style.opacity = '0';
       pointer.style.transform = transform(entrance);
       pointer.dataset.cursorState = 'arrow';
-      const motionEase = mobile ? 'cubic-bezier(.645,.045,.355,1)' : 'cubic-bezier(.22,1,.36,1)';
-      const move = (from: typeof entrance, to: typeof entrance, duration: number) => animate(pointer,
-        [{ transform: transform(from) }, { transform: transform(to) }], ms(duration), motionEase, runSignal);
-      const press = (at: typeof entrance, scale: number) => animate(pointer,
-        [{ transform: transform(at, scale) }], ms(120), 'ease-out', runSignal);
+      const move = (from: typeof entrance, to: typeof entrance, duration: number) => {
+        // Minimum-jerk progress starts and lands with zero velocity and acceleration.
+        const frames = Array.from({ length: 61 }, (_, index) => {
+          const time = index / 60;
+          const progress = time ** 3 * (10 - 15 * time + 6 * time ** 2);
+          const at = index === 0 ? from : index === 60 ? to : {
+            x: from.x + (to.x - from.x) * progress,
+            y: from.y + (to.y - from.y) * progress,
+          };
+          return { offset: time, transform: transform(at) };
+        });
+        return animate([pointer, position], frames, ms(duration), 'linear', runSignal);
+      };
+      const press = (at: typeof entrance, fromScale: number, toScale: number) => animate(pointer,
+        [{ transform: transform(at, fromScale) }, { transform: transform(at, toScale) }], ms(120), 'ease-out', runSignal);
       const openMenu = () => {
         if (runSignal.aborted || trigger.dataset.menuOpen === 'true') return false;
         document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: 'start' } }));
@@ -376,7 +406,7 @@ function mountSpotlight(root: HTMLElement) {
       };
 
       const playVeil = async () => {
-        if (!await wait(ms(snapshot.startDelay), runSignal)) return;
+        if (!await wait(ms(t.circleStart), runSignal)) return;
         veil.hidden = false;
         const entered = reduced
           ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.easing, runSignal)
@@ -393,25 +423,27 @@ function mountSpotlight(root: HTMLElement) {
         if (reduced) {
           if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
           pointer.style.transform = transform(start);
+          position.style.transform = transform(start);
           if (!mobile) pointer.dataset.cursorState = 'pointer';
           if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
         } else {
           if (!await move(entrance, start, mobile ? 600 : 500)) return;
-          if (mobile && !await press(start, .88)) return;
+          if (mobile && !await press(start, 1, .88)) return;
           if (!mobile) pointer.dataset.cursorState = 'pointer';
         }
         if (!openMenu()) return;
-        if (mobile && !reduced && !await press(start, 1)) return;
+        if (mobile && !reduced && !await press(start, .88, 1)) return;
         if (!await wait(ms(1000), runSignal)) return;
         const away = outsidePoint();
         pointer.dataset.cursorState = 'arrow';
         if (reduced) {
           if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
           pointer.style.transform = transform(away);
+          position.style.transform = transform(away);
           if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
         } else {
           if (!await move(start, away, 450)) return;
-          if (mobile && !await press(away, .88)) return;
+          if (mobile && !await press(away, 1, .88)) return;
         }
         closeMenu();
         const frames: Keyframe[] = mobile && !reduced
@@ -422,7 +454,7 @@ function mountSpotlight(root: HTMLElement) {
           clone = undefined;
         }
       };
-      await Promise.all([playVeil(), playCursor()]);
+      await Promise.all([dismissIntro(snapshot, runSignal), playVeil(), playCursor()]);
     } catch (error) {
       if (!runSignal.aborted) console.error('Menu spotlight prototype failed.', error);
     } finally {
