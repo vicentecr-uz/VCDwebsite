@@ -76,7 +76,7 @@ test('newest overlapping decode wins and stale pending URLs are revoked', async 
   const h = setup(); h.pickFile('a.png'); h.pickFile('b.png'); await new Promise((resolve) => setTimeout(resolve, 0)); expect(h.sources).toHaveLength(1); expect(h.sources[0].alt).toBe('b.png'); expect(h.live.size).toBe(1); h.handle.destroy();
 });
 
-test('reset restores the first-load state, preserves saved blob for revert, and destroy revokes unique blobs', async () => {
+test('reset cancels pending work and restores first-load state; destroy revokes unique blobs', async () => {
   const h = setup(); const initial = h.crop.getState(); h.pickFile('a.png'); h.handle.reset(); await new Promise((resolve) => setTimeout(resolve, 0)); expect(h.crop.getState()).toEqual(initial); expect(h.sources).toHaveLength(0); expect(h.live.size).toBe(0);
   h.pickFile('b.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.button('demo-author-save').click(); h.handle.destroy(); expect(h.live.size).toBe(0); expect(new Set(h.revoked).size).toBe(h.revoked.length);
 });
@@ -85,5 +85,8 @@ test('reset clears an unsaved current blob while revert still restores the saved
   const h = setup(); const initial = h.crop.getState();
   h.pickFile('saved.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.button('demo-author-save').click(); const saved = h.crop.getState();
   h.pickFile('unsaved.png'); await new Promise((resolve) => setTimeout(resolve, 0)); h.handle.reset(); expect(h.crop.getState()).toEqual(initial); expect(h.live.size).toBe(1);
-  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); expect(h.live.size).toBe(1); h.handle.destroy();
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); expect(h.live.size).toBe(1);
+  h.handle.reset(); expect(h.crop.getState()).toEqual(initial); h.handle.reset(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); expect(h.live.size).toBe(1);
+  h.handle.destroy(); expect(h.live.size).toBe(0); expect(new Set(h.revoked).size).toBe(h.revoked.length);
 });
