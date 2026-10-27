@@ -27,7 +27,8 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
   const saveFeedback = createDemoSaveFeedback(saveButton);
   let generation = 0;
   let sourceName = options.src;
-  let savedState = crop.getState();
+  const initialState = crop.getState();
+  let savedState = initialState;
   let savedName = sourceName;
   const current = (token: number) => !signal.aborted && token === generation;
   const message = (value: string, token = generation) => {
@@ -111,7 +112,8 @@ export function createCropDemoAuthoring(root: HTMLElement, crop: CropAdapter, op
   const reset = () => {
     generation += 1;
     saveFeedback.reset();
-    crop.setSource(crop.getState().source);
+    crop.restore(initialState);
+    sourceName = options.src;
     message('');
   };
   root.querySelector('[data-demo-author-reset]')?.addEventListener('click', reset, { signal });
