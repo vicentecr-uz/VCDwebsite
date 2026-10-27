@@ -35,6 +35,9 @@ const easingOptions = [
 ---
 
 <div data-menu-spotlight-harness>
+  <script is:inline>
+    document.currentScript.parentElement.toggleAttribute('data-clean-preview', new URLSearchParams(window.location.search).get('preview') === '1');
+  </script>
   <div class="spotlight-veil" data-spotlight-veil aria-hidden="true" hidden>
     <svg class="spotlight-surface" width="100%" height="100%" aria-hidden="true">
       <defs>
@@ -96,6 +99,7 @@ const easingOptions = [
           <div><dt>Veil out starts</dt><dd data-anchor="veilOutStart">0 ms</dd></div>
         </dl>
         <button type="button" data-copy-settings>Copy settings</button>
+        <a class="spotlight-clean-preview" data-clean-preview-link href="?v=1&preview=1" target="_blank" rel="noopener">Clean preview</a>
         <textarea readonly rows="3" data-settings-output aria-label="Spotlight settings" spellcheck="false"></textarea>
       </div>
       <div class="spotlight-control-list" id="spotlight-panel-easing" role="tabpanel" aria-labelledby="spotlight-tab-easing" data-spotlight-tab-panel="easing" hidden>
@@ -201,11 +205,13 @@ const easingOptions = [
     padding: 0 8px; border: 1px solid rgba(255, 255, 255, .24); border-radius: 6px; background: #262626; color: #fff;
   }
   .spotlight-control-list output, .spotlight-anchors dd { color: rgba(255, 255, 255, .75); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .spotlight-control-list button, .spotlight-states button {
+  .spotlight-control-list button, .spotlight-control-list .spotlight-clean-preview, .spotlight-states button {
     min-height: 44px; border: 1px solid rgba(255, 255, 255, .24); border-radius: 6px; background: transparent;
     color: #fff; font: inherit; cursor: pointer; touch-action: manipulation;
   }
-  .spotlight-control-list button:active, .spotlight-states button:active { background: rgba(255, 255, 255, .12); }
+  .spotlight-control-list button:active, .spotlight-clean-preview:active, .spotlight-states button:active { background: rgba(255, 255, 255, .12); }
+  .spotlight-clean-preview { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+  [data-clean-preview] > :is(.spotlight-controls, .proto-picker) { display: none; }
   .spotlight-controls :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
   .spotlight-control-list textarea {
     padding: 8px; resize: vertical; border: 1px solid rgba(255, 255, 255, .24); border-radius: 6px;
