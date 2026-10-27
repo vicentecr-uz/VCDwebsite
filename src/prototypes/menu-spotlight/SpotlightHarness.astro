@@ -15,10 +15,32 @@ const sliders = [
 
 <div data-menu-spotlight-harness>
   <div class="spotlight-veil" data-spotlight-veil aria-hidden="true" hidden>
-    <div class="spotlight-iris" data-spotlight-iris></div>
+    <svg class="spotlight-surface" width="100%" height="100%" aria-hidden="true">
+      <defs>
+        <radialGradient id="menu-spotlight-feather" color-interpolation="sRGB">
+          <stop offset="0" stop-color="#000" />
+          <stop data-spotlight-stop="0" offset="0" stop-color="#000" />
+          <stop data-spotlight-stop=".25" offset=".25" stop-color="#282828" />
+          <stop data-spotlight-stop=".5" offset=".5" stop-color="#808080" />
+          <stop data-spotlight-stop=".75" offset=".75" stop-color="#d7d7d7" />
+          <stop data-spotlight-stop="1" offset="1" stop-color="#fff" />
+        </radialGradient>
+        <mask id="menu-spotlight-mask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="100%" height="100%" style="mask-type: luminance">
+          <rect width="100%" height="100%" fill="#fff" />
+          <circle class="spotlight-iris" data-spotlight-iris cx="0" cy="0" r="220" fill="url(#menu-spotlight-feather)" />
+        </mask>
+      </defs>
+      <rect class="spotlight-fill" width="100%" height="100%" mask="url(#menu-spotlight-mask)" />
+    </svg>
   </div>
   <aside class="spotlight-controls" data-spotlight-panel data-dev-panel-draggable aria-label="Spotlight controls">
     <header data-drag-handle><span>Spotlight</span><span aria-hidden="true">⠿</span></header>
+    <div class="spotlight-states" role="group" aria-label="Hold demo state">
+      <button type="button" data-spotlight-state="start" aria-pressed="false">Start</button>
+      <button type="button" data-spotlight-state="settled" aria-pressed="false">Spotlight settled</button>
+      <button type="button" data-spotlight-state="menu" aria-pressed="false">Menu open</button>
+      <button type="button" data-spotlight-state="end" aria-pressed="false">End</button>
+    </div>
     <details open data-spotlight-controls>
       <summary>Controls</summary>
       <div class="spotlight-control-list">
@@ -78,21 +100,11 @@ const sliders = [
     overflow: hidden;
   }
 
-  .spotlight-iris {
-    position: absolute;
-    aspect-ratio: 1;
-    background: var(--sys-color-srf);
-    opacity: var(--spotlight-opacity, .8);
-    transform-origin: center;
-    --spotlight-mask: radial-gradient(circle,
-      transparent 0 var(--spotlight-radius, 140px),
-      rgb(0 0 0 / .156) calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px) * .25),
-      rgb(0 0 0 / .5) calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px) * .5),
-      rgb(0 0 0 / .844) calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px) * .75),
-      #000 calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px)));
-    -webkit-mask-image: var(--spotlight-mask);
-    mask-image: var(--spotlight-mask);
-  }
+  .spotlight-surface { display: block; width: 100%; height: 100%; }
+  [data-spotlight-iris] { transform-box: view-box; transform-origin: 0 0; }
+  .spotlight-fill { fill: var(--sys-color-srf); opacity: var(--spotlight-opacity, .8); }
+  .spotlight-states { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 8px; }
+  .spotlight-states button[aria-pressed="true"] { border-color: rgba(255, 255, 255, .72); background: rgba(255, 255, 255, .16); }
 
   .spotlight-controls {
     position: fixed;
@@ -125,7 +137,7 @@ const sliders = [
   .spotlight-control-list {
     display: grid;
     gap: 12px;
-    max-height: calc(var(--vh-safe, 1svh) * 100 - 212px);
+    max-height: calc(var(--vh-safe, 1svh) * 100 - 312px);
     overflow: auto;
     padding: 0 16px 16px;
     border-radius: 0 0 12px 12px;
