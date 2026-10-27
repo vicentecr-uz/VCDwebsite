@@ -1,8 +1,11 @@
 import { createDevPanelDrag } from '../../lib/devPanelDrag';
+import { createHomeRevealController } from '../../lib/homeReveal';
+import homeRevealConfig from '../../lib/homeRevealConfig.json';
 
 type Config = {
   radius: number;
   feather: number;
+  featherMode: 'fixed' | 'proportional';
   opacity: number;
   startDelay: number;
   circleIn: number;
@@ -16,7 +19,7 @@ type Config = {
 };
 type PreviewState = 'start' | 'settled' | 'menu' | 'end';
 const defaults: Config = {
-  radius: 140, feather: 80, opacity: .8, startDelay: 0, circleIn: 700,
+  radius: 140, feather: 80, featherMode: 'proportional', opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
   cursorWait: 600, easing: 'cubic-bezier(.215,.61,.355,1)', speed: 1,
 };
@@ -25,12 +28,17 @@ const numericKeys = [
   'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait',
 ] as const;
 const storageKey = 'vcd:menu-spotlight';
+const hintDelayAfterIntro = 1200;
+const introLead = homeRevealConfig.intro.durationMs + hintDelayAfterIntro;
 
 function mountSpotlight(root: HTMLElement) {
   const veil = root.querySelector<HTMLElement>('[data-spotlight-veil]')!;
   const iris = root.querySelector<SVGCircleElement>('[data-spotlight-iris]')!;
   const gradientStops = [...root.querySelectorAll<SVGStopElement>('[data-spotlight-stop]')];
+  const featherModes = [...root.querySelectorAll<HTMLInputElement>('[data-feather-mode]')];
   const stateButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-state]')];
+  const introTemplate = document.querySelector<HTMLTemplateElement>('[data-spotlight-home-intro]')!;
+  const home = document.querySelector<HTMLElement>('.spotlight-page')!;
   const template = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]')!;
   const trigger = document.querySelector<HTMLElement>('.header-trigger--start')!;
   const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')];
@@ -50,6 +58,8 @@ function mountSpotlight(root: HTMLElement) {
   let menuOwned = false;
   let heldState: PreviewState | null = null;
   let heldEntrance: { x: number; y: number } | undefined;
+  let introClone: HTMLElement | undefined;
+  let revealScene: ReturnType<typeof createHomeRevealController> | undefined;
   const animations = new Set<Animation>();
 
   function normalize(raw: Record<string, unknown>): Config {
@@ -64,6 +74,7 @@ function mountSpotlight(root: HTMLElement) {
     }
     if ([...easingSelect.options].some(option => option.value === raw.easing)) next.easing = String(raw.easing);
     if ([1, .5, .25].includes(Number(raw.speed))) next.speed = Number(raw.speed);
+    if (raw.featherMode === 'fixed' || raw.featherMode === 'proportional') next.featherMode = raw.featherMode;
     return next;
   }
 
@@ -97,24 +108,30 @@ function mountSpotlight(root: HTMLElement) {
     }
     root.style.setProperty('--spotlight-easing', config.easing);
     root.style.setProperty('--spotlight-speed', String(config.speed));
-    const outerRadius = config.radius + config.feather;
-    iris.setAttribute('r', String(outerRadius));
-    for (const stop of gradientStops) {
-      stop.setAttribute('offset', String((config.radius + config.feather * Number(stop.dataset.spotlightStop)) / outerRadius));
-    }
+    featherModes.forEach(input => { input.checked = input.value === config.featherMode; });
+    updateMask(1);
     veil.style.setProperty('--spotlight-opacity', String(config.opacity));
     const t = timings(config);
     const anchors = {
-      circleEnd: t.circleEnd / config.speed,
-      cursorVisible: t.cursorVisible / config.speed,
-      demoStart: t.demoStart / config.speed,
-      veilOutStart: t.veilOutStart / config.speed,
+      circleEnd: (introLead + t.circleEnd) / config.speed,
+      cursorVisible: (introLead + t.cursorVisible) / config.speed,
+      demoStart: (introLead + t.demoStart) / config.speed,
+      veilOutStart: (introLead + t.veilOutStart) / config.speed,
     };
     for (const [key, value] of Object.entries(anchors)) {
       root.querySelector<HTMLElement>(`[data-anchor="${key}"]`)!.textContent = `${Math.round(value)} ms`;
     }
     settings.value = JSON.stringify({ ...config, timelineMs: anchors }, null, 2);
     if (heldState) renderHeldState();
+  }
+
+  function updateMask(scale: number) {
+    const feather = config.feather / (config.featherMode === 'fixed' ? scale : 1);
+    const outerRadius = config.radius + feather;
+    iris.setAttribute('r', String(outerRadius));
+    for (const stop of gradientStops) {
+      stop.setAttribute('offset', String((config.radius + feather * Number(stop.dataset.spotlightStop)) / outerRadius));
+    }
   }
 
   function closeMenu() {
@@ -132,6 +149,11 @@ function mountSpotlight(root: HTMLElement) {
     clone = undefined;
     veil.hidden = true;
     closeMenu();
+    revealScene?.destroy();
+    revealScene = undefined;
+    introClone?.remove();
+    introClone = undefined;
+    updateMask(1);
     heldState = null;
     heldEntrance = undefined;
     delete root.dataset.spotlightState;
@@ -164,16 +186,30 @@ function mountSpotlight(root: HTMLElement) {
     });
   }
 
-  async function animate(element: HTMLElement | SVGElement, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal) {
+  async function animate(element: HTMLElement | SVGElement, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal, onProgress?: (progress: number) => void) {
     if (runSignal.aborted) return false;
     const animation = element.animate(frames, { duration, easing, fill: 'forwards' });
     animations.add(animation);
+    let sampleFrame: number | undefined;
+    if (onProgress) {
+      const sample = () => {
+        if (runSignal.aborted) return;
+        const progress = animation.effect?.getComputedTiming().progress;
+        if (progress != null) onProgress(progress);
+        sampleFrame = window.requestAnimationFrame(sample);
+      };
+      onProgress(0);
+      sampleFrame = window.requestAnimationFrame(sample);
+    }
     try {
       await animation.finished;
+      if (!runSignal.aborted) onProgress?.(1);
       return !runSignal.aborted;
     } catch (error) {
       if (!runSignal.aborted) throw error;
       return false;
+    } finally {
+      if (sampleFrame !== undefined) window.cancelAnimationFrame(sampleFrame);
     }
   }
 
@@ -228,12 +264,52 @@ function mountSpotlight(root: HTMLElement) {
     return pointer;
   }
 
+  function createIntro() {
+    if (!introClone) {
+      introClone = introTemplate.content.firstElementChild!.cloneNode(true) as HTMLElement;
+      introClone.dataset.spotlightIntroClone = '';
+      introClone.dataset.state = 'active';
+      introClone.hidden = false;
+      introClone.inert = true;
+      introClone.setAttribute('aria-hidden', 'true');
+      introClone.style.pointerEvents = 'none';
+      document.body.append(introClone);
+    }
+    return introClone;
+  }
+
+  async function playIntro(snapshot: Config, runSignal: AbortSignal) {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const intro = createIntro();
+    const exitDuration = homeRevealConfig.intro.durationMs / snapshot.speed;
+    intro.style.setProperty('--home-intro-exit-duration', `${exitDuration}ms`);
+    const reveal = createHomeRevealController(home, window, {
+      ...homeRevealConfig,
+      entrance: {
+        ...homeRevealConfig.entrance,
+        durationMs: homeRevealConfig.entrance.durationMs / snapshot.speed,
+        totalStaggerMs: homeRevealConfig.entrance.totalStaggerMs / snapshot.speed,
+        headerLeadMs: homeRevealConfig.entrance.headerLeadMs / snapshot.speed,
+      },
+    });
+    revealScene = reveal;
+    await reveal.prepare();
+    if (runSignal.aborted || !await frame(runSignal)) return false;
+    intro.dataset.state = 'dismissing';
+    if (!await wait(exitDuration, runSignal)) return false;
+    intro.dataset.state = 'dismissed';
+    intro.hidden = true;
+    reveal.run();
+    return wait(hintDelayAfterIntro / snapshot.speed, runSignal);
+  }
+
   function renderHeldState() {
     if (!heldState || !heldEntrance) return;
     const shown = heldState === 'settled' || heldState === 'menu';
     veil.hidden = !shown;
     veil.style.opacity = '1';
     iris.style.transform = transform(heldEntrance, shown ? 1 : coveringScale(heldEntrance, config.radius));
+    if (heldState === 'start') createIntro();
     if (!shown) return;
     const pointer = createPointer(mobileMq.matches);
     const target = heldState === 'menu'
@@ -268,6 +344,7 @@ function mountSpotlight(root: HTMLElement) {
       if (trigger.dataset.menuOpen === 'true') return;
       if (mobileMq.matches) disclosure.open = false;
       const snapshot = { ...config };
+      if (!await playIntro(snapshot, runSignal)) return;
       const t = timings(snapshot);
       const ms = (duration: number) => duration / snapshot.speed;
       const mobile = mobileMq.matches;
@@ -299,11 +376,10 @@ function mountSpotlight(root: HTMLElement) {
         veil.hidden = false;
         const entered = reduced
           ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.easing, runSignal)
-          : await animate(iris, [{ transform: irisTransform(fullScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.easing, runSignal);
+          : await animate(iris, [{ transform: irisTransform(fullScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.easing, runSignal,
+            snapshot.featherMode === 'fixed' ? progress => updateMask(fullScale + (1 - fullScale) * progress) : undefined);
         if (!entered || !await wait(ms(t.veilOutStart - t.circleEnd), runSignal)) return;
-        const exited = reduced
-          ? await animate(veil, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.circleOut), snapshot.easing, runSignal)
-          : await animate(iris, [{ transform: irisTransform(1) }, { transform: irisTransform(fullScale) }], ms(snapshot.circleOut), snapshot.easing, runSignal);
+        const exited = await animate(veil, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.circleOut), snapshot.easing, runSignal);
         if (exited) veil.hidden = true;
       };
       const playCursor = async () => {
@@ -362,6 +438,13 @@ function mountSpotlight(root: HTMLElement) {
   }
   stateButtons.forEach(button => button.addEventListener('click', () => {
     holdState(button.dataset.spotlightState as PreviewState);
+  }, { signal }));
+  featherModes.forEach(input => input.addEventListener('change', () => {
+    if (!input.checked) return;
+    config.featherMode = input.value === 'fixed' ? 'fixed' : 'proportional';
+    if (!heldState) stop();
+    applyConfig();
+    try { localStorage.setItem(storageKey, JSON.stringify(config)); } catch { /* Storage is optional. */ }
   }, { signal }));
   copyButton.addEventListener('click', async () => {
     try {
