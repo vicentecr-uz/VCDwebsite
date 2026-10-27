@@ -28,20 +28,27 @@ function setup(initial = original()) {
 }
 const asset = (src: string): DemoImageReplacementAsset => ({ src, filename: src.split('/').pop()!, url: `/images/${src}.preview.webp`, thumb: `/images/${src}.thumb.webp` });
 
-test('asset choice displays preview; normal save uses the original filename and reset restores the initial state', async () => {
+test('asset choice previews separately; normal save keeps its filename and reset restores the original target', async () => {
   const h = setup(); h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('folder/foo bar.jpg')); await tick(); h.images[0].complete(); await tick(); expect(h.images[0].src).toBe('/images/folder/foo bar.jpg.preview.webp');
   const initial = original();
-  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial); h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'original.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } }); expect(h.status()).toBe(''); expect(h.written).toBe(1); h.handle.destroy();
+  h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'folder/foo bar.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } });
+  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial); h.button('demo-author-save').click(); await tick(); expect(h.requests[1].body).toMatchObject({ src: 'original.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' }, variants: initial.variants }); expect(h.status()).toBe(''); expect(h.written).toBe(2); h.handle.destroy();
 });
 
 test('reset and revert use independent initial and saved baselines', async () => {
   const h = setup(); const initial = h.crop.getState();
-  h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('saved.jpg')); await tick(); h.images[0].complete(); await tick();
-  h.button('demo-author-save').click(); await tick(); const saved = h.crop.getState();
-  h.button('crop-replace-assets').click(); h.picks[1].resolve(asset('later.jpg')); await tick(); h.images[1].complete(); await tick();
-  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(initial);
+  const firstEdit = structuredClone(initial); firstEdit.locked = true; firstEdit.crop = { aspect: '2:1', cx: 0.19, cy: 0.77, w: 0.44 }; firstEdit.variants = {
+    desktop: { aspect: '2:1', cx: 0.19, cy: 0.77, w: 0.44 },
+    tablet: { aspect: '5:4', cx: 0.56, cy: 0.22, w: 0.51 },
+    mobile: { aspect: '9:16', cx: 0.83, cy: 0.63, w: 0.29 },
+  };
+  h.crop.restore(firstEdit); h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.crop.restore(firstEdit); h.button('demo-author-save').click(); await tick(); const saved = h.crop.getState();
+  const laterEdit = structuredClone(saved); laterEdit.locked = false; laterEdit.variants!.mobile.cx = 0.12; h.crop.restore(laterEdit);
   h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved);
-  h.button('demo-author-reset').click(); h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial); h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved);
   h.handle.destroy();
 });
 
