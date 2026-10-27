@@ -15,6 +15,8 @@ type Config = {
   exitOffset: number;
   cursorOffset: number;
   cursorWait: number;
+  cursorBias: number;
+  cursorBend: number;
   easing: string;
   speed: number;
 };
@@ -22,11 +24,11 @@ type PreviewState = 'start' | 'settled' | 'menu' | 'end';
 const defaults: Config = {
   radius: 140, feather: 80, featherMode: 'proportional', opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
-  cursorWait: 600, easing: 'cubic-bezier(.215,.61,.355,1)', speed: 1,
+  cursorWait: 600, cursorBias: .2, cursorBend: 8, easing: 'cubic-bezier(.215,.61,.355,1)', speed: 1,
 };
 const numericKeys = [
   'radius', 'feather', 'opacity', 'startDelay', 'circleIn', 'veilHold',
-  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait',
+  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorBias', 'cursorBend',
 ] as const;
 const storageKey = 'vcd:menu-spotlight';
 const hintDelayAfterIntro = 1200;
@@ -63,6 +65,7 @@ function mountSpotlight(root: HTMLElement) {
   let heldEntrance: { x: number; y: number } | undefined;
   let introClone: HTMLElement | undefined;
   let revealScene: ReturnType<typeof createHomeRevealController> | undefined;
+  let cursorFrame: number | undefined;
   const animations = new Set<Animation>();
 
   function normalize(raw: Record<string, unknown>): Config {
@@ -104,8 +107,8 @@ function mountSpotlight(root: HTMLElement) {
       control.value = String(config[key]);
       const output = root.querySelector<HTMLOutputElement>(`[data-value="${key}"]`);
       if (!output) continue;
-      output.textContent = key === 'opacity' ? `${Math.round(config.opacity * 100)}%`
-        : `${config[key]} ${key === 'radius' || key === 'feather' ? 'px' : 'ms'}`;
+      output.textContent = key === 'opacity' || key === 'cursorBias' ? `${Math.round(Number(config[key]) * 100)}%`
+        : `${config[key]} ${key === 'radius' || key === 'feather' || key === 'cursorBend' ? 'px' : 'ms'}`;
     }
     for (const key of numericKeys) {
       root.style.setProperty(`--spotlight-${key}`, String(config[key]));
@@ -144,11 +147,29 @@ function mountSpotlight(root: HTMLElement) {
     document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: null } }));
   }
 
+  function syncCursorState(pointer: HTMLElement) {
+    const rect = pointer.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left, rect.top);
+    const cursor = hit ? window.getComputedStyle(hit).cursor : 'default';
+    const state = cursor === 'pointer' || cursor === 'grab' || cursor === 'grabbing' ? cursor : 'arrow';
+    if (pointer.dataset.cursorState !== state) pointer.dataset.cursorState = state;
+    return hit;
+  }
+
+  function openMenu() {
+    if (trigger.dataset.menuOpen === 'true') return menuOwned;
+    document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: 'start' } }));
+    menuOwned = trigger.dataset.menuOpen === 'true';
+    return menuOwned;
+  }
+
   function stop() {
     activeRun?.abort();
     activeRun = undefined;
     animations.forEach(animation => animation.cancel());
     animations.clear();
+    if (cursorFrame !== undefined) window.cancelAnimationFrame(cursorFrame);
+    cursorFrame = undefined;
     clone?.remove();
     clone = undefined;
     veil.hidden = true;
@@ -339,7 +360,8 @@ function mountSpotlight(root: HTMLElement) {
     pointer.style.opacity = '1';
     pointer.style.transform = transform(target);
     position.style.transform = transform(target);
-    pointer.dataset.cursorState = heldState === 'menu' && !mobileMq.matches ? 'pointer' : 'arrow';
+    if (mobileMq.matches) pointer.dataset.cursorState = 'arrow';
+    else syncCursorState(pointer);
   }
 
   function holdState(state: PreviewState) {
@@ -382,15 +404,23 @@ function mountSpotlight(root: HTMLElement) {
       const pointer = createPointer(mobile);
       pointer.style.opacity = '0';
       pointer.style.transform = transform(entrance);
-      pointer.dataset.cursorState = 'arrow';
+      if (mobile) pointer.dataset.cursorState = 'arrow';
       const move = (from: typeof entrance, to: typeof entrance, duration: number) => {
-        // Minimum-jerk progress starts and lands with zero velocity and acceleration.
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const distance = Math.hypot(dx, dy);
+        const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+        const normal = distance ? { x: -dy / distance, y: dx / distance } : { x: 0, y: 0 };
+        const inward = normal.x * (window.innerWidth / 2 - midpoint.x) + normal.y * (window.innerHeight / 2 - midpoint.y) >= 0 ? 1 : -1;
+        const bend = Math.min(snapshot.cursorBend, distance * .03) * inward;
         const frames = Array.from({ length: 61 }, (_, index) => {
           const time = index / 60;
-          const progress = time ** 3 * (10 - 15 * time + 6 * time ** 2);
+          const biasedTime = time + snapshot.cursorBias * time * (1 - time);
+          const progress = biasedTime ** 2 * (3 - 2 * biasedTime);
+          const bow = 4 * (1 - progress) * progress * bend;
           const at = index === 0 ? from : index === 60 ? to : {
-            x: from.x + (to.x - from.x) * progress,
-            y: from.y + (to.y - from.y) * progress,
+            x: from.x + dx * progress + normal.x * bow,
+            y: from.y + dy * progress + normal.y * bow,
           };
           return { offset: time, transform: transform(at) };
         });
@@ -398,11 +428,17 @@ function mountSpotlight(root: HTMLElement) {
       };
       const press = (at: typeof entrance, fromScale: number, toScale: number) => animate(pointer,
         [{ transform: transform(at, fromScale) }, { transform: transform(at, toScale) }], ms(120), 'ease-out', runSignal);
-      const openMenu = () => {
-        if (runSignal.aborted || trigger.dataset.menuOpen === 'true') return false;
-        document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: 'start' } }));
-        menuOwned = trigger.dataset.menuOpen === 'true';
-        return menuOwned;
+      let hoverActive = false;
+      const sampleDesktopCursor = () => {
+        const hit = syncCursorState(pointer);
+        if (!hoverActive) return;
+        if (hit && trigger.contains(hit)) openMenu();
+        else closeMenu();
+      };
+      const trackDesktopCursor = () => {
+        if (runSignal.aborted || !pointer.isConnected) return;
+        sampleDesktopCursor();
+        cursorFrame = window.requestAnimationFrame(trackDesktopCursor);
       };
 
       const playVeil = async () => {
@@ -418,33 +454,38 @@ function mountSpotlight(root: HTMLElement) {
       };
       const playCursor = async () => {
         if (!await wait(ms(t.cursorFadeStart), runSignal)) return;
+        if (!mobile) trackDesktopCursor();
         if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(t.cursorFadeDuration), snapshot.easing, runSignal)) return;
         if (!await wait(ms(snapshot.cursorWait), runSignal)) return;
         if (reduced) {
           if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
           pointer.style.transform = transform(start);
           position.style.transform = transform(start);
-          if (!mobile) pointer.dataset.cursorState = 'pointer';
+          if (!mobile) sampleDesktopCursor();
           if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
         } else {
+          hoverActive = !mobile;
           if (!await move(entrance, start, mobile ? 600 : 500)) return;
+          if (!mobile) sampleDesktopCursor();
           if (mobile && !await press(start, 1, .88)) return;
-          if (!mobile) pointer.dataset.cursorState = 'pointer';
         }
-        if (!openMenu()) return;
+        if ((mobile || reduced) && !openMenu()) return;
+        if (!menuOwned) return;
         if (mobile && !reduced && !await press(start, .88, 1)) return;
         if (!await wait(ms(1000), runSignal)) return;
         const away = outsidePoint();
-        pointer.dataset.cursorState = 'arrow';
         if (reduced) {
           if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), snapshot.easing, runSignal)) return;
           pointer.style.transform = transform(away);
           position.style.transform = transform(away);
+          if (!mobile) sampleDesktopCursor();
           if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), snapshot.easing, runSignal)) return;
         } else {
           if (!await move(start, away, 450)) return;
+          if (!mobile) sampleDesktopCursor();
           if (mobile && !await press(away, 1, .88)) return;
         }
+        hoverActive = false;
         closeMenu();
         const frames: Keyframe[] = mobile && !reduced
           ? [{ opacity: 1, transform: transform(away, .88) }, { opacity: 0, transform: transform(away) }]
