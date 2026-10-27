@@ -20,6 +20,16 @@ const featherStops = Array.from({ length: 33 }, (_, index) => {
   const shade = 100 * (1 - Math.cos(Math.PI * fraction)) / 2;
   return { fraction, color: `rgb(${shade}% ${shade}% ${shade}%)` };
 });
+const easingOptions = [
+  ['cubic-bezier(.215,.61,.355,1)', 'Ease out cubic'],
+  ['cubic-bezier(.165,.84,.44,1)', 'Ease out quart'],
+  ['cubic-bezier(.23,1,.32,1)', 'Ease out quint'],
+  ['cubic-bezier(.455,.03,.515,.955)', 'Ease in-out quad'],
+  ['cubic-bezier(.645,.045,.355,1)', 'Ease in-out cubic'],
+  ['cubic-bezier(.77,0,.175,1)', 'Ease in-out quart'],
+  ['cubic-bezier(.86,0,.07,1)', 'Ease in-out quint'],
+  ['linear', 'Linear'],
+];
 ---
 
 <div data-menu-spotlight-harness>
@@ -51,8 +61,12 @@ const featherStops = Array.from({ length: 33 }, (_, index) => {
       <button type="button" data-spotlight-state="end" aria-pressed="false">End</button>
     </div>
     <details open data-spotlight-controls>
-      <summary>Controls</summary>
-      <div class="spotlight-control-list">
+      <summary>Settings</summary>
+      <div class="spotlight-tabs" role="tablist" aria-label="Spotlight settings">
+        <button type="button" role="tab" data-spotlight-tab="controls" id="spotlight-tab-controls" aria-controls="spotlight-panel-controls" aria-selected="true" tabindex="0">Controls</button>
+        <button type="button" role="tab" data-spotlight-tab="easing" id="spotlight-tab-easing" aria-controls="spotlight-panel-easing" aria-selected="false" tabindex="-1">Easing</button>
+      </div>
+      <div class="spotlight-control-list" id="spotlight-panel-controls" role="tabpanel" aria-labelledby="spotlight-tab-controls" data-spotlight-tab-panel="controls">
         {sliders.map(({ key, label, min, max, step, value }) => (
           <label for={`spotlight-${key}`}>
             <span>{label}</span>
@@ -65,15 +79,6 @@ const featherStops = Array.from({ length: 33 }, (_, index) => {
           <label><input type="radio" name="spotlight-feather-mode" data-feather-mode value="fixed" /> <span>Fixed</span></label>
           <label><input type="radio" name="spotlight-feather-mode" data-feather-mode value="proportional" checked /> <span>Proportional</span></label>
         </fieldset>
-        <label for="spotlight-easing">
-          <span>Circle easing</span>
-          <select id="spotlight-easing" data-control="easing">
-            <option value="cubic-bezier(.215,.61,.355,1)">Ease out cubic</option>
-            <option value="cubic-bezier(.165,.84,.44,1)">Ease out quart</option>
-            <option value="cubic-bezier(.23,1,.32,1)">Ease out quint</option>
-            <option value="cubic-bezier(.645,.045,.355,1)">Ease in-out cubic</option>
-          </select>
-        </label>
         <label for="spotlight-speed">
           <span>Playback speed</span>
           <select id="spotlight-speed" data-control="speed">
@@ -90,6 +95,21 @@ const featherStops = Array.from({ length: 33 }, (_, index) => {
         </dl>
         <button type="button" data-copy-settings>Copy settings</button>
         <textarea readonly rows="3" data-settings-output aria-label="Spotlight settings" spellcheck="false"></textarea>
+      </div>
+      <div class="spotlight-control-list" id="spotlight-panel-easing" role="tabpanel" aria-labelledby="spotlight-tab-easing" data-spotlight-tab-panel="easing" hidden>
+        {[
+          { key: 'scaleEasing', label: 'Spotlight scale in' },
+          { key: 'exitEasing', label: 'Veil fade out' },
+          { key: 'cursorEasing', label: 'Cursor movement' },
+        ].map(({ key, label }) => (
+          <label for={`spotlight-${key}`}>
+            <span>{label}</span>
+            <select id={`spotlight-${key}`} data-control={key}>
+              {key === 'cursorEasing' && <option value="current" selected>Current motion</option>}
+              {easingOptions.map(([value, optionLabel], index) => <option value={value} selected={key !== 'cursorEasing' && index === 0}>{optionLabel}</option>)}
+            </select>
+          </label>
+        ))}
       </div>
     </details>
   </aside>
@@ -152,17 +172,22 @@ const featherStops = Array.from({ length: 33 }, (_, index) => {
 
   .spotlight-controls.is-dragging > header { cursor: grabbing; }
   .spotlight-controls summary { min-height: 44px; padding: 12px 16px; cursor: pointer; user-select: none; }
+  .spotlight-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 8px; }
+  .spotlight-tabs button { min-height: 44px; border: 1px solid rgba(255, 255, 255, .24); border-radius: 6px; background: transparent; color: #fff; font: inherit; cursor: pointer; }
+  .spotlight-tabs button[aria-selected="true"] { border-color: rgba(255, 255, 255, .72); background: rgba(255, 255, 255, .16); }
+  .spotlight-control-list[hidden] { display: none; }
 
   .spotlight-control-list {
     display: grid;
     gap: 12px;
-    max-height: calc(var(--vh-safe, 1svh) * 100 - 312px);
+    max-height: calc(var(--vh-safe, 1svh) * 100 - 364px);
     overflow: auto;
     padding: 0 16px 16px;
     border-radius: 0 0 12px 12px;
   }
 
   .spotlight-control-list label { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 12px; }
+  .spotlight-control-list label:has(input:disabled) { opacity: .5; }
   .spotlight-control-list input, .spotlight-control-list select, .spotlight-control-list textarea {
     width: 100%; min-width: 0; font-size: 16px; accent-color: #fff;
   }
