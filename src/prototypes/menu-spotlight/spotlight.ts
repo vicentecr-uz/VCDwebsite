@@ -408,6 +408,11 @@ function mountSpotlight(root: HTMLElement) {
       if (!await prepareIntro(snapshot, runSignal)) return;
       const t = timings(snapshot);
       const ms = (duration: number) => duration / snapshot.speed;
+      const menuHoldDuration = 1000;
+      const moveAwayDuration = 450;
+      const pressDuration = 120;
+      const repositionFadeOutDuration = 120;
+      const repositionFadeInDuration = 180;
       const mobile = mobileMq.matches;
       const reduced = reducedMq.matches;
       const fullScale = coveringScale(entrance, snapshot.radius);
@@ -416,6 +421,7 @@ function mountSpotlight(root: HTMLElement) {
       position.style.transform = transform(entrance);
       veil.style.opacity = reduced ? '0' : '1';
       const pointer = createPointer(mobile);
+      const cursorSurface = clone!;
       pointer.style.opacity = '0';
       pointer.style.transform = transform(entrance);
       if (mobile) pointer.dataset.cursorState = 'arrow';
@@ -442,7 +448,7 @@ function mountSpotlight(root: HTMLElement) {
         return animate([pointer, position], frames, ms(duration), currentMotion ? 'linear' : snapshot.cursorEasing, runSignal);
       };
       const press = (at: typeof entrance, fromScale: number, toScale: number) => animate(pointer,
-        [{ transform: transform(at, fromScale) }, { transform: transform(at, toScale) }], ms(120), 'ease-out', runSignal);
+        [{ transform: transform(at, fromScale) }, { transform: transform(at, toScale) }], ms(pressDuration), 'ease-out', runSignal);
       let hoverActive = false;
       const sampleDesktopCursor = () => {
         const hit = syncCursorState(pointer);
@@ -473,11 +479,11 @@ function mountSpotlight(root: HTMLElement) {
         if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(t.cursorFadeDuration), cursorFadeEasing, runSignal)) return;
         if (!await wait(ms(snapshot.cursorWait), runSignal)) return;
         if (reduced) {
-          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), cursorFadeEasing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(repositionFadeOutDuration), cursorFadeEasing, runSignal)) return;
           pointer.style.transform = transform(start);
           position.style.transform = transform(start);
           if (!mobile) sampleDesktopCursor();
-          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), cursorFadeEasing, runSignal)) return;
+          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(repositionFadeInDuration), cursorFadeEasing, runSignal)) return;
         } else {
           hoverActive = !mobile;
           if (!await move(entrance, start, mobile ? 600 : 500)) return;
@@ -487,29 +493,42 @@ function mountSpotlight(root: HTMLElement) {
         if ((mobile || reduced) && !openMenu()) return;
         if (!menuOwned) return;
         if (mobile && !reduced && !await press(start, .88, 1)) return;
-        if (!await wait(ms(1000), runSignal)) return;
-        const away = outsidePoint();
-        if (reduced) {
-          if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(120), cursorFadeEasing, runSignal)) return;
-          pointer.style.transform = transform(away);
-          position.style.transform = transform(away);
-          if (!mobile) sampleDesktopCursor();
-          if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(180), cursorFadeEasing, runSignal)) return;
-        } else {
-          if (!await move(start, away, 450)) return;
-          if (!mobile) sampleDesktopCursor();
-          if (mobile && !await press(away, 1, .88)) return;
-        }
-        hoverActive = false;
-        closeMenu();
-        const fadeOut = async () => {
-          if (!await wait(ms(snapshot.cursorOutDelay), runSignal)) return false;
-          return animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.cursorOutDuration), snapshot.cursorOutEasing, runSignal);
+        const finishRoutine = async () => {
+          if (!await wait(ms(menuHoldDuration), runSignal)) return false;
+          const away = outsidePoint();
+          if (reduced) {
+            if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(repositionFadeOutDuration), cursorFadeEasing, runSignal)) return false;
+            pointer.style.transform = transform(away);
+            position.style.transform = transform(away);
+            if (!mobile) sampleDesktopCursor();
+            if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(repositionFadeInDuration), cursorFadeEasing, runSignal)) return false;
+          } else {
+            if (!await move(start, away, moveAwayDuration)) return false;
+            if (!mobile) sampleDesktopCursor();
+            if (mobile && !await press(away, 1, .88)) return false;
+          }
+          hoverActive = false;
+          closeMenu();
+          return away;
         };
-        const [released, faded] = await Promise.all([
-          mobile && !reduced ? press(away, .88, 1) : true,
-          fadeOut(),
-        ]);
+        const ending = finishRoutine();
+        const release = async () => {
+          const away = await ending;
+          if (!away) return false;
+          return mobile && !reduced ? press(away, .88, 1) : true;
+        };
+        const fadeOut = async () => {
+          if (snapshot.cursorOutDelay < 0) {
+            const remainingRoutine = menuHoldDuration + (reduced
+              ? repositionFadeOutDuration + repositionFadeInDuration
+              : moveAwayDuration + (mobile ? pressDuration : 0));
+            if (!await wait(ms(remainingRoutine + snapshot.cursorOutDelay), runSignal)) return false;
+          } else {
+            if (!await ending || !await wait(ms(snapshot.cursorOutDelay), runSignal)) return false;
+          }
+          return animate(cursorSurface, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.cursorOutDuration), snapshot.cursorOutEasing, runSignal);
+        };
+        const [released, faded] = await Promise.all([release(), fadeOut()]);
         if (released && faded) {
           clone?.remove();
           clone = undefined;
