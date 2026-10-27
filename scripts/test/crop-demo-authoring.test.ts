@@ -7,7 +7,11 @@ import type { DemoImageReplacementAsset } from '../../src/lib/demoImageReplaceme
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const response = (body: object = { ok: true }, status = 200) => new Response(JSON.stringify(body), { status });
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
-const original = (): DemoImageCropState => ({ source: { src: '/images/original.preview.webp', width: 1200, height: 900, alt: 'Original' }, crop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 }, locked: true });
+const original = (): DemoImageCropState => ({ source: { src: '/images/original.preview.webp', width: 1200, height: 900, alt: 'Original' }, crop: { aspect: '3:2', cx: 0.31, cy: 0.68, w: 0.57 }, locked: false, variants: {
+  desktop: { aspect: '3:2', cx: 0.31, cy: 0.68, w: 0.57 },
+  tablet: { aspect: '4:3', cx: 0.62, cy: 0.27, w: 0.49 },
+  mobile: { aspect: '1:1', cx: 0.74, cy: 0.41, w: 0.38 },
+} });
 
 function setup(initial = original()) {
   const win = new Window({ url: 'http://localhost/preview/image-framing' }); const parent = new Window({ url: 'http://localhost/image-framing' }); Object.defineProperty(win, 'parent', { value: parent });
@@ -24,15 +28,27 @@ function setup(initial = original()) {
 }
 const asset = (src: string): DemoImageReplacementAsset => ({ src, filename: src.split('/').pop()!, url: `/images/${src}.preview.webp`, thumb: `/images/${src}.thumb.webp` });
 
-test('asset choice displays preview but saves original filename; reset and save preserve targets', async () => {
+test('asset choice displays preview; normal save uses the original filename and reset restores the initial state', async () => {
   const h = setup(); h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('folder/foo bar.jpg')); await tick(); h.images[0].complete(); await tick(); expect(h.images[0].src).toBe('/images/folder/foo bar.jpg.preview.webp');
-  h.button('demo-author-reset').click(); h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'folder/foo bar.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } }); expect(h.status()).toBe(''); expect(h.written).toBe(1); h.handle.destroy();
+  const initial = original();
+  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial); h.button('demo-author-save').click(); await tick(); expect(h.requests[0].body).toMatchObject({ src: 'original.jpg', path: ['sections', 0, 'sample'], target: { sectionId: 'demo-image-framing' } }); expect(h.status()).toBe(''); expect(h.written).toBe(1); h.handle.destroy();
+});
+
+test('reset and revert use independent initial and saved baselines', async () => {
+  const h = setup(); const initial = h.crop.getState();
+  h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('saved.jpg')); await tick(); h.images[0].complete(); await tick();
+  h.button('demo-author-save').click(); await tick(); const saved = h.crop.getState();
+  h.button('crop-replace-assets').click(); h.picks[1].resolve(asset('later.jpg')); await tick(); h.images[1].complete(); await tick();
+  h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved);
+  h.button('demo-author-reset').click(); h.button('demo-author-reset').click(); expect(h.crop.getState()).toEqual(initial);
+  h.handle.destroy();
 });
 
 test('revert restores the last saved image and crop, while failed save preserves it', async () => {
   const h = setup(); h.button('crop-replace-assets').click(); h.picks[0].resolve(asset('saved.jpg')); await tick(); h.images[0].complete(); await tick(); h.button('demo-author-save').click(); await tick(); const saved = h.crop.getState();
   h.button('crop-replace-assets').click(); h.picks[1].resolve(asset('later.jpg')); await tick(); h.images[1].complete(); await tick(); h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved);
-  h.respond(async () => response({ error: 'Could not write crop.' }, 400)); h.button('demo-author-save').click(); await tick(); expect(h.status()).toBe('Could not write crop.'); h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); h.handle.destroy();
+  h.respond(async () => response({ error: 'Could not write crop.' }, 400)); h.button('crop-replace-assets').click(); h.picks[2].resolve(asset('failed.jpg')); await tick(); h.images[2].complete(); await tick(); h.button('demo-author-save').click(); await tick(); expect(h.status()).toBe('Could not write crop.'); h.button('demo-author-revert').click(); expect(h.crop.getState()).toEqual(saved); h.handle.destroy();
 });
 
 test('picker cancellation and late image loads cannot change state after reset or destroy', async () => {
