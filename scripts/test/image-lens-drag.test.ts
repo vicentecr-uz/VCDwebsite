@@ -17,7 +17,7 @@ class CanvasContext {
   drawImage(image: Element, ...args: number[]) { this.draws.push({ image, args, transform: [...this.transform] }); }
 }
 class Element extends EventTarget {
-  style: Record<string, any> = { setProperty(name: string, value: string) { this[name] = value; } };
+  style = { setProperty(name: string, value: string) { Object.assign(this, { [name]: value }); } } as { [name: string]: string; setProperty(name: string, value: string): void };
   dataset: Record<string, string> = {};
   nodes: Record<string, Element> = {};
   captures = new Set<number>();
@@ -58,7 +58,6 @@ host.nodes['.actions'].rect = { left: 350, top: 494, right: 450, bottom: 538, wi
 host.nodes['[data-image-root]'].nodes['[data-progressive-image]'] = new Element();
 host.nodes['[data-image-root]'].nodes['img[data-progressive-image]'] = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
 const baseImage = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
-// The base image remains in flow while upgrade layers are temporary.
 baseImage.insertAdjacentElement = (_position: string, image: Element) => { host.nodes['[data-image-root]'].nodes['active-image'] = image; return image; };
 host.nodes.template.content = { cloneNode() {
   const image = new Element();
@@ -129,7 +128,7 @@ host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'] = reveal;
 resizeCallbacks.forEach(callback => callback());
 const sourceCanvas = host.nodes['.glass-source'];
 const mask = canvases[0];
-const photoDraw = () => sourceCanvas.context.draws.filter((draw) => !draw.image.removed && (draw.image === baseImage || draw.image === host.nodes['[data-image-root]'].nodes['active-image'])).at(-1)!.image;
+const photoDraw = () => sourceCanvas.context.draws.filter((draw) => draw.image === baseImage || draw.image === host.nodes['[data-image-root]'].nodes['active-image']).at(-1)!.image;
 const load = host.nodes['[data-load]'];
 load.click();
 const activeImage = host.nodes['[data-image-root]'].nodes['active-image'];
