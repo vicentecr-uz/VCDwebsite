@@ -19,7 +19,6 @@ type Config = {
   cursorOutDuration: number;
   cursorBias: number;
   cursorBend: number;
-  cursorExitGap: number;
   scaleEasing: string;
   exitEasing: string;
   cursorEasing: string;
@@ -31,13 +30,13 @@ const cursorFadeEasing = 'cubic-bezier(.215,.61,.355,1)';
 const defaults: Config = {
   radius: 140, feather: 80, featherMode: 'proportional', opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
-  cursorWait: 600, cursorOutDelay: 0, cursorOutDuration: 200, cursorBias: .2, cursorBend: 8, cursorExitGap: 240,
+  cursorWait: 600, cursorOutDelay: 0, cursorOutDuration: 200, cursorBias: .2, cursorBend: 8,
   scaleEasing: cursorFadeEasing, exitEasing: cursorFadeEasing,
   cursorEasing: 'current', cursorOutEasing: cursorFadeEasing, speed: 1,
 };
 const numericKeys = [
   'radius', 'feather', 'opacity', 'startDelay', 'circleIn', 'veilHold',
-  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorOutDelay', 'cursorOutDuration', 'cursorBias', 'cursorBend', 'cursorExitGap',
+  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorOutDelay', 'cursorOutDuration', 'cursorBias', 'cursorBend',
 ] as const;
 const easingKeys = ['scaleEasing', 'exitEasing', 'cursorEasing', 'cursorOutEasing'] as const;
 const storageKey = 'vcd:menu-spotlight';
@@ -121,11 +120,10 @@ function mountSpotlight(root: HTMLElement) {
       const key = control.dataset.control as keyof Config;
       control.value = String(config[key]);
       if (key === 'cursorBias') (control as HTMLInputElement).disabled = config.cursorEasing !== 'current';
-      if (key === 'cursorExitGap') (control as HTMLInputElement).disabled = mobileMq.matches;
       const output = root.querySelector<HTMLOutputElement>(`[data-value="${key}"]`);
       if (!output) continue;
       output.textContent = key === 'opacity' || key === 'cursorBias' ? `${Math.round(Number(config[key]) * 100)}%`
-        : `${config[key]} ${key === 'radius' || key === 'feather' || key === 'cursorBend' || key === 'cursorExitGap' ? 'px' : 'ms'}`;
+        : `${config[key]} ${key === 'radius' || key === 'feather' || key === 'cursorBend' ? 'px' : 'ms'}`;
     }
     for (const key of numericKeys) {
       root.style.setProperty(`--spotlight-${key}`, String(config[key]));
@@ -286,12 +284,18 @@ function mountSpotlight(root: HTMLElement) {
     const rect = element.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   };
-  const outsidePoint = (gap = 48) => {
+  const outsidePoint = () => {
     const rect = (trigger.querySelector<HTMLElement>('.header-trigger__panel') ?? trigger).getBoundingClientRect();
     return {
-      x: Math.max(16, Math.min(window.innerWidth - 16, rect.right + gap)),
-      y: Math.max(16, Math.min(window.innerHeight - 16, rect.bottom + gap)),
+      x: Math.max(16, Math.min(window.innerWidth - 16, rect.right + 48)),
+      y: Math.max(16, Math.min(window.innerHeight - 16, rect.bottom + 48)),
     };
+  };
+  const headerExitPoint = () => {
+    const row = trigger.closest<HTMLElement>('.site-header__row')!;
+    const left = trigger.querySelector<HTMLElement>('.header-trigger__panel')!.getBoundingClientRect();
+    const right = row.querySelector<HTMLElement>('.header-trigger--end .header-trigger__panel')!.getBoundingClientRect();
+    return { x: (left.right + right.left) / 2, y: point(row).y };
   };
   const transform = (p: { x: number; y: number }, scale = 1) => `translate(${p.x}px, ${p.y}px) scale(${scale})`;
   const entrancePoint = () => mobileMq.matches
@@ -497,7 +501,7 @@ function mountSpotlight(root: HTMLElement) {
         if (mobile && !reduced && !await press(start, .88, 1)) return;
         const finishRoutine = async () => {
           if (!await wait(ms(menuHoldDuration), runSignal)) return false;
-          const away = outsidePoint(mobile ? 48 : snapshot.cursorExitGap);
+          const away = mobile ? outsidePoint() : headerExitPoint();
           if (reduced) {
             if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(repositionFadeOutDuration), cursorFadeEasing, runSignal)) return false;
             pointer.style.transform = transform(away);
