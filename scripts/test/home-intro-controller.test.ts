@@ -127,10 +127,14 @@ describe('home intro controller', () => {
   test('Okay dismisses once and focuses main content', async () => {
     const f = fixture();
     let completed = 0;
+    const startingStates: string[] = [];
+    f.win.addEventListener('vcd:home-intro-dismissing', () => startingStates.push(f.controller.getState()));
     f.win.addEventListener('vcd:home-intro-dismissed', () => completed++);
     f.okay.focus();
     f.okay.emit('click');
     f.okay.emit('click');
+    expect(startingStates).toEqual(['dismissing']);
+    expect(completed).toBe(0);
     await waitForExit();
     expect(f.controller.getState()).toBe('dismissed');
     expect(completed).toBe(1);

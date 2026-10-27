@@ -154,6 +154,7 @@ export function createHomeIntroController(
     cancelFinish();
     dismissFocus = surface.contains(document.activeElement);
     setState('dismissing');
+    announce('vcd:home-intro-dismissing');
     finishTimer = setTimeout(() => {
       finishTimer = null;
       if (disposed || state !== 'dismissing') return;
