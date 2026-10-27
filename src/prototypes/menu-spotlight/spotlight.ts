@@ -15,11 +15,14 @@ type Config = {
   exitOffset: number;
   cursorOffset: number;
   cursorWait: number;
+  cursorOutDelay: number;
+  cursorOutDuration: number;
   cursorBias: number;
   cursorBend: number;
   scaleEasing: string;
   exitEasing: string;
   cursorEasing: string;
+  cursorOutEasing: string;
   speed: number;
 };
 type PreviewState = 'start' | 'settled' | 'menu' | 'end';
@@ -27,14 +30,15 @@ const cursorFadeEasing = 'cubic-bezier(.215,.61,.355,1)';
 const defaults: Config = {
   radius: 140, feather: 80, featherMode: 'proportional', opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
-  cursorWait: 600, cursorBias: .2, cursorBend: 8, scaleEasing: cursorFadeEasing,
-  exitEasing: cursorFadeEasing, cursorEasing: 'current', speed: 1,
+  cursorWait: 600, cursorOutDelay: 0, cursorOutDuration: 200, cursorBias: .2, cursorBend: 8,
+  scaleEasing: cursorFadeEasing, exitEasing: cursorFadeEasing,
+  cursorEasing: 'current', cursorOutEasing: cursorFadeEasing, speed: 1,
 };
 const numericKeys = [
   'radius', 'feather', 'opacity', 'startDelay', 'circleIn', 'veilHold',
-  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorBias', 'cursorBend',
+  'circleOut', 'exitOffset', 'cursorOffset', 'cursorWait', 'cursorOutDelay', 'cursorOutDuration', 'cursorBias', 'cursorBend',
 ] as const;
-const easingKeys = ['scaleEasing', 'exitEasing', 'cursorEasing'] as const;
+const easingKeys = ['scaleEasing', 'exitEasing', 'cursorEasing', 'cursorOutEasing'] as const;
 const storageKey = 'vcd:menu-spotlight';
 const hintDelayAfterIntro = 1200;
 const introHold = 1000;
@@ -86,7 +90,7 @@ function mountSpotlight(root: HTMLElement) {
     }
     for (const key of easingKeys) {
       const select = root.querySelector<HTMLSelectElement>(`[data-control="${key}"]`)!;
-      const value = raw[key] ?? (key === 'cursorEasing' ? undefined : raw.easing);
+      const value = raw[key] ?? (key === 'scaleEasing' || key === 'exitEasing' ? raw.easing : undefined);
       if ([...select.options].some(option => option.value === value)) next[key] = String(value);
     }
     if ([1, .5, .25].includes(Number(raw.speed))) next.speed = Number(raw.speed);
@@ -498,10 +502,15 @@ function mountSpotlight(root: HTMLElement) {
         }
         hoverActive = false;
         closeMenu();
-        const frames: Keyframe[] = mobile && !reduced
-          ? [{ opacity: 1, transform: transform(away, .88) }, { opacity: 0, transform: transform(away) }]
-          : [{ opacity: 1 }, { opacity: 0 }];
-        if (await animate(pointer, frames, ms(200), cursorFadeEasing, runSignal)) {
+        const fadeOut = async () => {
+          if (!await wait(ms(snapshot.cursorOutDelay), runSignal)) return false;
+          return animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.cursorOutDuration), snapshot.cursorOutEasing, runSignal);
+        };
+        const [released, faded] = await Promise.all([
+          mobile && !reduced ? press(away, .88, 1) : true,
+          fadeOut(),
+        ]);
+        if (released && faded) {
           clone?.remove();
           clone = undefined;
         }
