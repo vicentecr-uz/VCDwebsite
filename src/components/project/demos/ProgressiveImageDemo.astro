@@ -180,6 +180,7 @@ const showPrototypeControls = false;
     const replayHint = host.querySelector<HTMLButtonElement>('[data-replay-hint]');
     const configControls = [...host.querySelectorAll<HTMLInputElement>('[data-config]')];
     const template = host.querySelector<HTMLTemplateElement>('template')!;
+    const thumbnail = stack.querySelector<HTMLImageElement>('img[data-progressive-image]')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
     const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
     const context = source.getContext('2d');
@@ -193,7 +194,7 @@ const showPrototypeControls = false;
     let upgrade;
     let generation = 0;
     let loading = false;
-    let restoreBusy = false;
+    let activeImage = thumbnail;
     let frame = 0;
     type Breakpoint = 'mobile' | 'tablet' | 'desktop';
     type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number; hintX: number; hintY: number };
@@ -332,7 +333,7 @@ const showPrototypeControls = false;
       springFrame = requestAnimationFrame(tick);
     }
 
-    function currentImage() { return stack.querySelector<HTMLImageElement>('[data-progressive-image]')!; }
+    function currentImage() { return activeImage; }
 
     function syncBadges(reveal: Element | null = stack.querySelector('[data-preview-reveal]')) {
       const high = Boolean(reveal || currentImage()?.dataset.imageUpgraded);
@@ -401,7 +402,7 @@ const showPrototypeControls = false;
 
     function drawSource() {
       if (signal.aborted || !context || !maskContext) return;
-      const image = currentImage();
+      const image = currentImage()?.complete && currentImage()?.naturalWidth ? currentImage() : thumbnail;
       if (!image?.complete || !image.naturalWidth) return;
       const { width: imageWidth, height: imageHeight, diameter, padding, scale, radii, background } = geometry;
       if (!imageWidth || !imageHeight) return;
@@ -866,6 +867,7 @@ const showPrototypeControls = false;
     };
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
     host.addEventListener('pointerdown', () => { hideTooltip(); if (hinting) stopHint(); }, { signal });
+    host.addEventListener('keydown', () => { hideTooltip(); if (hinting) stopHint(); }, { signal });
     lens.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
@@ -1015,9 +1017,15 @@ const showPrototypeControls = false;
     function startLoad() {
       const run = ++generation;
       upgrade?.destroy();
+      if (activeImage !== thumbnail) activeImage.remove();
+      const incoming = template.content.cloneNode(true);
+      const image = incoming.querySelector<HTMLImageElement>('[data-progressive-image]');
+      if (!image) return;
+      thumbnail.insertAdjacentElement('afterend', image);
+      activeImage = image;
       setLoadingState(true);
       status.textContent = '';
-      currentImage().dataset.imagePreview = host.dataset.imagePreviewUrl;
+      activeImage.dataset.imagePreview = host.dataset.imagePreviewUrl;
       upgrade = createImagePreviewUpgrade({ onError: () => {
         if (run !== generation || signal.aborted) return;
         upgrade?.destroy();
@@ -1030,39 +1038,24 @@ const showPrototypeControls = false;
     }
 
     function restoreLow() {
-      const run = ++generation;
+      if (!thumbnail.complete || !thumbnail.naturalWidth) {
+        status.textContent = 'Low-resolution image unavailable. Try Unload again.';
+        return;
+      }
+      ++generation;
       upgrade?.destroy();
       cancelAnimationFrame(frame);
       setLoadingState(false);
-      restoreBusy = true;
-      status.textContent = '';
-      const incoming = template.content.cloneNode(true);
-      const image = incoming.querySelector('[data-progressive-image]');
-      let applied = false;
-      const apply = () => {
-        if (applied || run !== generation || signal.aborted) return;
-        applied = true;
-        restoreBusy = false;
-        // Keep the live photo until this thumb has pixels. Removing first leaves
-        // one empty frame while the lens canvas still holds the last zoomed bitmap.
-        currentImage()?.remove();
-        stack.prepend(incoming);
-        status.textContent = 'Low-resolution image shown';
-        drawSource();
-        if (loading) startLoad();
-      };
-      if (image?.complete && image.naturalWidth) apply();
-      else {
-        image?.addEventListener('load', apply, { once: true, signal });
-        image?.addEventListener('error', apply, { once: true, signal });
-        void image?.decode?.().then(apply, apply);
-      }
+      if (activeImage !== thumbnail) activeImage.remove();
+      activeImage = thumbnail;
+      syncBadges();
+      drawSource();
+      status.textContent = 'Low-resolution image shown';
     }
 
     function toggleLoading() {
       hideTooltip();
-      if (restoreBusy) setLoadingState(!loading);
-      else if (loading) restoreLow();
+      if (loading) restoreLow();
       else startLoad();
     }
     load.addEventListener('click', toggleLoading, { signal });
