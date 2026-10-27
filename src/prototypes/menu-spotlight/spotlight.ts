@@ -14,6 +14,7 @@ type Config = {
   easing: string;
   speed: number;
 };
+type PreviewState = 'start' | 'settled' | 'menu' | 'end';
 const defaults: Config = {
   radius: 140, feather: 80, opacity: .8, startDelay: 0, circleIn: 700,
   veilHold: 300, circleOut: 500, exitOffset: 0, cursorOffset: -200,
@@ -27,12 +28,13 @@ const storageKey = 'vcd:menu-spotlight';
 
 function mountSpotlight(root: HTMLElement) {
   const veil = root.querySelector<HTMLElement>('[data-spotlight-veil]')!;
-  const iris = root.querySelector<HTMLElement>('[data-spotlight-iris]')!;
+  const iris = root.querySelector<SVGCircleElement>('[data-spotlight-iris]')!;
+  const gradientStops = [...root.querySelectorAll<SVGStopElement>('[data-spotlight-stop]')];
+  const stateButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-state]')];
   const template = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]')!;
   const trigger = document.querySelector<HTMLElement>('.header-trigger--start')!;
   const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')];
   const easingSelect = root.querySelector<HTMLSelectElement>('[data-control="easing"]')!;
-  const speedSelect = root.querySelector<HTMLSelectElement>('[data-control="speed"]')!;
   const settings = root.querySelector<HTMLTextAreaElement>('[data-settings-output]')!;
   const copyButton = root.querySelector<HTMLButtonElement>('[data-copy-settings]')!;
   const disclosure = root.querySelector<HTMLDetailsElement>('[data-spotlight-controls]')!;
@@ -46,6 +48,8 @@ function mountSpotlight(root: HTMLElement) {
   let activeRun: AbortController | undefined;
   let clone: HTMLElement | undefined;
   let menuOwned = false;
+  let heldState: PreviewState | null = null;
+  let heldEntrance: { x: number; y: number } | undefined;
   const animations = new Set<Animation>();
 
   function normalize(raw: Record<string, unknown>): Config {
@@ -93,9 +97,12 @@ function mountSpotlight(root: HTMLElement) {
     }
     root.style.setProperty('--spotlight-easing', config.easing);
     root.style.setProperty('--spotlight-speed', String(config.speed));
-    iris.style.setProperty('--spotlight-radius', `${config.radius}px`);
-    iris.style.setProperty('--spotlight-feather', `${config.feather}px`);
-    iris.style.setProperty('--spotlight-opacity', String(config.opacity));
+    const outerRadius = config.radius + config.feather;
+    iris.setAttribute('r', String(outerRadius));
+    for (const stop of gradientStops) {
+      stop.setAttribute('offset', String((config.radius + config.feather * Number(stop.dataset.spotlightStop)) / outerRadius));
+    }
+    veil.style.setProperty('--spotlight-opacity', String(config.opacity));
     const t = timings(config);
     const anchors = {
       circleEnd: t.circleEnd / config.speed,
@@ -107,6 +114,7 @@ function mountSpotlight(root: HTMLElement) {
       root.querySelector<HTMLElement>(`[data-anchor="${key}"]`)!.textContent = `${Math.round(value)} ms`;
     }
     settings.value = JSON.stringify({ ...config, timelineMs: anchors }, null, 2);
+    if (heldState) renderHeldState();
   }
 
   function closeMenu() {
@@ -124,6 +132,10 @@ function mountSpotlight(root: HTMLElement) {
     clone = undefined;
     veil.hidden = true;
     closeMenu();
+    heldState = null;
+    heldEntrance = undefined;
+    delete root.dataset.spotlightState;
+    stateButtons.forEach(button => button.setAttribute('aria-pressed', 'false'));
   }
 
   function wait(ms: number, runSignal: AbortSignal) {
@@ -152,7 +164,7 @@ function mountSpotlight(root: HTMLElement) {
     });
   }
 
-  async function animate(element: HTMLElement, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal) {
+  async function animate(element: HTMLElement | SVGElement, frames: Keyframe[], duration: number, easing: string, runSignal: AbortSignal) {
     if (runSignal.aborted) return false;
     const animation = element.animate(frames, { duration, easing, fill: 'forwards' });
     animations.add(animation);
@@ -196,6 +208,54 @@ function mountSpotlight(root: HTMLElement) {
     };
   };
   const transform = (p: { x: number; y: number }, scale = 1) => `translate(${p.x}px, ${p.y}px) scale(${scale})`;
+  const entrancePoint = () => mobileMq.matches
+    ? { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+    : outsidePoint();
+  const coveringScale = (center: { x: number; y: number }, radius: number) => Math.max(1, (Math.hypot(
+    Math.max(center.x, window.innerWidth - center.x),
+    Math.max(center.y, window.innerHeight - center.y),
+  ) + 1) / radius);
+
+  function createPointer(mobile: boolean) {
+    if (!clone) {
+      clone = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+      clone.dataset.headerMenuDemoClone = '';
+      document.body.append(clone);
+    }
+    const pointer = clone.querySelector<HTMLElement>(mobile ? '[data-header-menu-demo-finger]' : '[data-header-menu-demo-cursor]')!;
+    const unused = clone.querySelector<HTMLElement>(mobile ? '[data-header-menu-demo-cursor]' : '[data-header-menu-demo-finger]');
+    if (unused) unused.style.display = 'none';
+    return pointer;
+  }
+
+  function renderHeldState() {
+    if (!heldState || !heldEntrance) return;
+    const shown = heldState === 'settled' || heldState === 'menu';
+    veil.hidden = !shown;
+    veil.style.opacity = '1';
+    iris.style.transform = transform(heldEntrance, shown ? 1 : coveringScale(heldEntrance, config.radius));
+    if (!shown) return;
+    const pointer = createPointer(mobileMq.matches);
+    const target = heldState === 'menu'
+      ? point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger)
+      : heldEntrance;
+    pointer.style.opacity = '1';
+    pointer.style.transform = transform(target);
+    pointer.dataset.cursorState = heldState === 'menu' && !mobileMq.matches ? 'pointer' : 'arrow';
+  }
+
+  function holdState(state: PreviewState) {
+    stop();
+    heldState = state;
+    heldEntrance = entrancePoint();
+    root.dataset.spotlightState = state;
+    stateButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.spotlightState === state)));
+    renderHeldState();
+    if (state === 'menu' && trigger.dataset.menuOpen !== 'true') {
+      document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: 'start' } }));
+      menuOwned = trigger.dataset.menuOpen === 'true';
+    }
+  }
 
   async function replay() {
     stop();
@@ -213,24 +273,12 @@ function mountSpotlight(root: HTMLElement) {
       const mobile = mobileMq.matches;
       const reduced = reducedMq.matches;
       const start = point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger);
-      const entrance = mobile ? { x: window.innerWidth / 2, y: window.innerHeight / 2 } : outsidePoint();
-      const farthestCorner = Math.hypot(
-        Math.max(entrance.x, window.innerWidth - entrance.x),
-        Math.max(entrance.y, window.innerHeight - entrance.y),
-      );
-      const coveringScale = farthestCorner / snapshot.radius + 1;
-      const irisTransform = (scale: number) => `translate(-50%, -50%) scale(${scale})`;
-      iris.style.left = `${entrance.x}px`;
-      iris.style.top = `${entrance.y}px`;
-      iris.style.width = `${2 * Math.hypot(window.innerWidth, window.innerHeight)}px`;
-      iris.style.transform = irisTransform(reduced ? 1 : coveringScale);
+      const entrance = entrancePoint();
+      const fullScale = coveringScale(entrance, snapshot.radius);
+      const irisTransform = (scale: number) => transform(entrance, scale);
+      iris.style.transform = irisTransform(reduced ? 1 : fullScale);
       veil.style.opacity = reduced ? '0' : '1';
-      clone = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
-      clone.dataset.headerMenuDemoClone = '';
-      document.body.append(clone);
-      const pointer = clone.querySelector<HTMLElement>(mobile ? '[data-header-menu-demo-finger]' : '[data-header-menu-demo-cursor]')!;
-      const unused = clone.querySelector<HTMLElement>(mobile ? '[data-header-menu-demo-cursor]' : '[data-header-menu-demo-finger]');
-      if (unused) unused.style.display = 'none';
+      const pointer = createPointer(mobile);
       pointer.style.opacity = '0';
       pointer.style.transform = transform(entrance);
       pointer.dataset.cursorState = 'arrow';
@@ -251,11 +299,11 @@ function mountSpotlight(root: HTMLElement) {
         veil.hidden = false;
         const entered = reduced
           ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.easing, runSignal)
-          : await animate(iris, [{ transform: irisTransform(coveringScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.easing, runSignal);
+          : await animate(iris, [{ transform: irisTransform(fullScale) }, { transform: irisTransform(1) }], ms(snapshot.circleIn), snapshot.easing, runSignal);
         if (!entered || !await wait(ms(t.veilOutStart - t.circleEnd), runSignal)) return;
         const exited = reduced
           ? await animate(veil, [{ opacity: 1 }, { opacity: 0 }], ms(snapshot.circleOut), snapshot.easing, runSignal)
-          : await animate(iris, [{ transform: irisTransform(1) }, { transform: irisTransform(coveringScale) }], ms(snapshot.circleOut), snapshot.easing, runSignal);
+          : await animate(iris, [{ transform: irisTransform(1) }, { transform: irisTransform(fullScale) }], ms(snapshot.circleOut), snapshot.easing, runSignal);
         if (exited) veil.hidden = true;
       };
       const playCursor = async () => {
@@ -307,11 +355,14 @@ function mountSpotlight(root: HTMLElement) {
       const raw: Record<string, unknown> = { ...config };
       raw[control.dataset.control!] = control === easingSelect ? control.value : Number(control.value);
       config = normalize(raw);
-      if (control.dataset.control === 'radius') stop();
+      if (control.dataset.control === 'radius' && !heldState) stop();
       applyConfig();
       try { localStorage.setItem(storageKey, JSON.stringify(config)); } catch { /* Storage is optional. */ }
     }, { signal });
   }
+  stateButtons.forEach(button => button.addEventListener('click', () => {
+    holdState(button.dataset.spotlightState as PreviewState);
+  }, { signal }));
   copyButton.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(settings.value);
