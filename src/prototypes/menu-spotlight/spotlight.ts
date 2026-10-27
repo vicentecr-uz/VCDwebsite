@@ -60,6 +60,7 @@ function mountSpotlight(root: HTMLElement) {
   const tabPanels = [...root.querySelectorAll<HTMLElement>('[data-spotlight-tab-panel]')];
   const settings = root.querySelector<HTMLTextAreaElement>('[data-settings-output]')!;
   const copyButton = root.querySelector<HTMLButtonElement>('[data-copy-settings]')!;
+  const previewLink = root.querySelector<HTMLAnchorElement>('[data-clean-preview-link]')!;
   const disclosure = root.querySelector<HTMLDetailsElement>('[data-spotlight-controls]')!;
   const picker = root.querySelector<HTMLElement>('.proto-picker')!;
   const pickerItem = picker.querySelector<HTMLButtonElement>('.proto-picker-item:not(.proto-picker-replay)')!;
@@ -103,6 +104,10 @@ function mountSpotlight(root: HTMLElement) {
     const saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}');
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) config = normalize(saved);
   } catch { /* Storage is optional. */ }
+  try {
+    const shared = JSON.parse(new URLSearchParams(window.location.hash.slice(1)).get('settings') ?? 'null');
+    if (shared && typeof shared === 'object' && !Array.isArray(shared)) config = normalize(shared);
+  } catch { /* URL settings are optional. */ }
 
   function timings(snapshot: Config) {
     const circleStart = Math.max(0, hintAnchor + snapshot.startDelay);
@@ -143,6 +148,11 @@ function mountSpotlight(root: HTMLElement) {
       root.querySelector<HTMLElement>(`[data-anchor="${key}"]`)!.textContent = `${Math.round(value)} ms`;
     }
     settings.value = JSON.stringify({ ...config, timelineMs: anchors }, null, 2);
+    const previewUrl = new URL(window.location.href);
+    previewUrl.searchParams.set('v', '1');
+    previewUrl.searchParams.set('preview', '1');
+    previewUrl.hash = new URLSearchParams({ settings: JSON.stringify(config) }).toString();
+    previewLink.href = previewUrl.href;
     if (heldState) renderHeldState();
   }
 
