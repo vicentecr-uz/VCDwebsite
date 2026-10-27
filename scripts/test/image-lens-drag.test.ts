@@ -12,12 +12,12 @@ class CanvasContext {
   setTransform(...values: number[]) { this.transform = values; }
   save() { this.stack.push([...this.transform]); }
   restore() { this.transform = this.stack.pop()!; }
-  clearRect() {} fillRect() {} beginPath() {} roundRect() {} clip() {}
+  clearRect() {} fillRect() {} fill() {} fillText() {} beginPath() {} roundRect() {} clip() {}
   createLinearGradient() { return { addColorStop() {} }; }
   drawImage(image: Element, ...args: number[]) { this.draws.push({ image, args, transform: [...this.transform] }); }
 }
 class Element extends EventTarget {
-  style: Record<string, string> = {};
+  style = { setProperty(name: string, value: string) { Object.assign(this, { [name]: value }); } } as { [name: string]: string; setProperty(name: string, value: string): void };
   dataset: Record<string, string> = {};
   nodes: Record<string, Element> = {};
   captures = new Set<number>();
@@ -26,8 +26,17 @@ class Element extends EventTarget {
   height = 150;
   complete = false;
   naturalWidth = 4032;
+  removed = false;
   rect = { left: 0, top: 0, right: 800, bottom: 576, width: 800, height: 576 };
   querySelector(selector: string) { return this.nodes[selector]; }
+  querySelectorAll(_selector: string) { return []; }
+  append(..._nodes: Element[]) {}
+  setAttribute(_name: string, _value: string) {}
+  removeAttribute(_name: string) {}
+  getAttribute(_name: string) { return null; }
+  click() { this.dispatchEvent(new Event('click')); }
+  remove() { this.removed = true; }
+  toggleAttribute(_name: string, _value: boolean) {}
   getBoundingClientRect() { return this.rect; }
   context = new CanvasContext();
   getContext() { return this.context; }
@@ -38,9 +47,27 @@ class Element extends EventTarget {
 }
 const host = new Element();
 for (const key of ['.glass-root', '.glass-source', '[data-image-root]', '.lens', '[data-load]', '[data-reset]', '.status', '.actions', 'template']) host.nodes[key] = new Element();
+const lensTooltip = new Element();
+lensTooltip.nodes['svg'] = new Element();
+lensTooltip.nodes['[data-tooltip-shape]'] = new Element();
+host.nodes['#progressive-image-lens-tooltip'] = lensTooltip;
+host.nodes['[data-hint]'] = new Element();
+host.nodes['[data-hint-pointer]'] = new Element();
 host.nodes['.glass-root'].rect = { left: 176, top: 120, right: 624, bottom: 456, width: 448, height: 336 };
 host.nodes['.actions'].rect = { left: 350, top: 494, right: 450, bottom: 538, width: 100, height: 44 };
 host.nodes['[data-image-root]'].nodes['[data-progressive-image]'] = new Element();
+host.nodes['[data-image-root]'].nodes['img[data-progressive-image]'] = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
+const baseImage = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
+baseImage.insertAdjacentElement = (_position: string, image: Element) => { host.nodes['[data-image-root]'].nodes['active-image'] = image; return image; };
+host.nodes.template.content = { cloneNode() {
+  const image = new Element();
+  image.complete = false;
+  image.naturalWidth = 0;
+  image.nodes['[data-progressive-image]'] = image;
+  return { querySelector: () => image };
+} };
+host.nodes['[data-image-root]'].nodes['.image-quality-badge--low'] = new Element();
+host.nodes['[data-image-root]'].nodes['.image-quality-badge--high'] = new Element();
 const lens = host.nodes['.lens'];
 const resizeCallbacks: Array<() => void> = [];
 class ResizeObserver {
@@ -50,18 +77,22 @@ class ResizeObserver {
 }
 class MutationObserver { observe() {} disconnect() {} }
 const html = new Element();
-const mask = new Element();
-const document = Object.assign(new EventTarget(), { documentElement: html, fonts: { ready: Promise.resolve() }, createElement: () => mask });
-const window = new EventTarget();
+const canvases: Element[] = [];
+const document = Object.assign(new EventTarget(), { documentElement: html, body: new Element(), fonts: { ready: Promise.resolve() }, createElement: (tag: string) => { const canvas = new Element(); if (tag === 'canvas') canvases.push(canvas); return canvas; } });
+const window = Object.assign(new EventTarget(), { setTimeout, clearTimeout });
 const media = Object.assign(new EventTarget(), { matches: false });
 const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', opacity: '1', getPropertyValue: (name: string) => name === '--preview-reveal-y' ? '122%' : '#f9f9fb' });
-const source = readFileSync(new URL('../../src/components/project/demos/ProgressiveImageDemo.astro', import.meta.url), 'utf8').match(/<script>([^]*?)<\/script>/)![1].replace(/^\s*import .*;\s*$/gm, '');
+const source = readFileSync(new URL('../../src/components/project/demos/ProgressiveImageDemo.astro', import.meta.url), 'utf8').match(/<script>([^]*?)<\/script>/)![1]
+  .replace(/^\s*import .*;\s*$/gm, '')
+  .replace(/import\.meta\.env\.DEV/g, 'false');
 const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`const { createEaseOut, inWall, LENS_INERTIA, stepContact } = inertia;\n${source}`);
 let time = 0;
 let nextFrame = 0;
 const frames = new Map<number, (time: number) => void>();
 const advance = (ms: number) => { time += ms; const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(time)); };
-const initialize = new Function('imageLensBounds', 'inertia', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', `${javascript}; return initializeDemo;`)(imageLensBounds, inertia, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time });
+const upgradeAttempts: Array<{ image: Element; destroy(): void; bind(): void; open(): void }> = [];
+const createImagePreviewUpgrade = () => { const image = host.nodes['[data-image-root]'].nodes['active-image']; const attempt = { image, destroy() {}, bind() {}, open() {} }; upgradeAttempts.push(attempt); return attempt; };
+const initialize = new Function('imageLensBounds', 'inertia', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', 'createImagePreviewUpgrade', `${javascript}; return initializeDemo;`)(imageLensBounds, inertia, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time }, createImagePreviewUpgrade);
 const dispose = initialize(host);
 resizeCallbacks.forEach(callback => callback());
 const pointer = (type: string, x: number, y: number) => lens.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }));
@@ -91,20 +122,36 @@ advance(16);
 assert.notEqual(lens.style.transform, returning, 'spring continues after refresh');
 for (let i = 0; i < 45; i++) advance(16);
 assert.equal(frames.size, 0, 'spring settles');
-const baseImage = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
 const reveal = new Element();
 baseImage.complete = reveal.complete = true;
 host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'] = reveal;
 resizeCallbacks.forEach(callback => callback());
 const sourceCanvas = host.nodes['.glass-source'];
+const mask = canvases[0];
+const photoDraw = () => sourceCanvas.context.draws.filter((draw) => draw.image === baseImage || draw.image === host.nodes['[data-image-root]'].nodes['active-image']).at(-1)!.image;
+const load = host.nodes['[data-load]'];
+load.click();
+const activeImage = host.nodes['[data-image-root]'].nodes['active-image'];
+resizeCallbacks.forEach(callback => callback());
+assert.equal(photoDraw(), baseImage, 'decoding upgrade keeps the persistent thumbnail in the lens');
+activeImage.complete = true;
+activeImage.naturalWidth = 4032;
+activeImage.dataset.imageUpgraded = 'true';
+resizeCallbacks.forEach(callback => callback());
+assert.equal(photoDraw(), activeImage, 'ready upgrade is sampled by the lens');
+load.click();
+assert.equal(photoDraw(), baseImage, 'unload samples the thumbnail synchronously');
 const revealDraw = mask.context.draws.at(-1)!;
-assert.deepEqual(revealDraw.transform, sourceCanvas.context.draws.at(-2)!.transform, 'thumb and reveal use identical magnified sampling');
+const latestBaseDraw = sourceCanvas.context.draws.filter((draw) => draw.image === baseImage).at(-1)!;
+assert.deepEqual(revealDraw.image, reveal, 'mask samples the reveal image');
+assert.deepEqual(latestBaseDraw.transform, revealDraw.transform, 'thumb and reveal use identical magnified sampling');
 assert.equal(mask.width, sourceCanvas.width, 'reveal crop retains the full source pixel density');
 assert.equal(mask.height, sourceCanvas.height);
 assert.deepEqual(sourceCanvas.context.draws.at(-1)!.args, [0, 0], 'composite the reveal without another rescale');
 delete host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'];
 resizeCallbacks.forEach(callback => callback());
-assert.deepEqual(sourceCanvas.context.draws.at(-1)!.transform, revealDraw.transform, 'final image retains the reveal sampling density');
+const finalImageDraw = sourceCanvas.context.draws.filter((draw) => draw.image === baseImage).at(-1)!;
+assert.deepEqual(finalImageDraw.transform, revealDraw.transform, 'final image retains the reveal sampling density');
 dispose();
 pointer('pointerdown', 200, 200);
 assert.equal(lens.hasPointerCapture(1), false, 'disposal removes drag handlers');
