@@ -1,0 +1,59 @@
+<div data-menu-spotlight-harness>
+  <div class="spotlight-veil" data-spotlight-veil aria-hidden="true"><div class="spotlight-iris" data-spotlight-iris></div></div>
+  <template data-header-menu-demo>
+    <div class="header-menu-demo-overlay hint is-visible" aria-hidden="true">
+      <span class="block-demo-cursor" data-header-menu-demo-cursor aria-hidden="true"><span data-cursor-glyph="arrow"></span><span data-cursor-glyph="pointer"></span></span>
+    </div>
+  </template>
+  <details class="spotlight-controls" open>
+    <summary>Spotlight controls</summary>
+    <div class="spotlight-control-list">
+      <label>Circle radius <output data-value="radius"></output><input data-control="radius" type="range" min="24" max="400" step="1" value="140" /></label>
+      <label>Feather <output data-value="feather"></output><input data-control="feather" type="range" min="0" max="300" step="1" value="80" /></label>
+      <label>Veil opacity <output data-value="opacity"></output><input data-control="opacity" type="range" min="0" max="1" step="0.01" value="0.8" /></label>
+      <label>Circle start delay <output data-value="startDelay"></output><input data-control="startDelay" type="range" min="0" max="2000" step="25" value="0" /></label>
+      <label>Circle in <output data-value="circleIn"></output><input data-control="circleIn" type="range" min="100" max="2400" step="25" value="700" /></label>
+      <label>Veil hold <output data-value="veilHold"></output><input data-control="veilHold" type="range" min="0" max="3000" step="25" value="300" /></label>
+      <label>Circle out <output data-value="circleOut"></output><input data-control="circleOut" type="range" min="0" max="2000" step="25" value="500" /></label>
+      <label>Veil exit offset <output data-value="exitOffset"></output><input data-control="exitOffset" type="range" min="-2000" max="2000" step="25" value="0" /></label>
+      <label>Cursor fade offset <output data-value="cursorOffset"></output><input data-control="cursorOffset" type="range" min="-2000" max="2000" step="25" value="-200" /></label>
+      <label>Cursor wait <output data-value="cursorWait"></output><input data-control="cursorWait" type="range" min="0" max="3000" step="25" value="600" /></label>
+      <label>Easing<select data-control="easing"><option value="cubic-bezier(.215,.61,.355,1)">Ease out cubic</option><option value="cubic-bezier(.165,.84,.44,1)">Ease out quart</option><option value="cubic-bezier(.23,1,.32,1)">Ease out quint</option><option value="cubic-bezier(.645,.045,.355,1)">Ease in-out cubic</option></select></label>
+      <label>Speed<select data-control="speed"><option value="1">1×</option><option value=".5">0.5×</option><option value=".25">0.25×</option></select></label>
+      <dl class="spotlight-anchors"><div><dt>Circle settled</dt><dd data-anchor="circleEnd">0 ms</dd></div><div><dt>Cursor visible</dt><dd data-anchor="cursorVisible">0 ms</dd></div><div><dt>Demo starts</dt><dd data-anchor="demoStart">0 ms</dd></div><div><dt>Veil out starts</dt><dd data-anchor="veilOutStart">0 ms</dd></div></dl>
+      <button type="button" data-copy-settings>Copy settings</button>
+      <textarea readonly data-settings-output aria-label="Spotlight settings"></textarea>
+    </div>
+  </details>
+  <nav class="proto-picker" aria-label="Prototype variants"><span class="proto-picker-highlight" aria-hidden="true"></span><button class="proto-picker-item" data-active aria-current="true">Spotlight</button><span class="proto-picker-divider" aria-hidden="true"></span><button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button></nav>
+</div>
+
+<script>
+  import './spotlight';
+</script>
+
+<style>
+  .spotlight-veil { position: fixed; inset: 0; z-index: 200; pointer-events: none; overflow: hidden; opacity: 1; }
+  .spotlight-iris { position: absolute; width: 100vmax; aspect-ratio: 1; background: var(--color-bg); opacity: var(--spotlight-opacity, .8); transform-origin: center; transform: translate(-50%, -50%) scale(1); -webkit-mask-image: radial-gradient(circle, transparent 0 var(--spotlight-radius, 140px), #000 calc(var(--spotlight-radius, 140px) + 1px) calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px)), #000 100%); mask-image: radial-gradient(circle, transparent 0 var(--spotlight-radius, 140px), #000 calc(var(--spotlight-radius, 140px) + 1px) calc(var(--spotlight-radius, 140px) + var(--spotlight-feather, 80px)), #000 100%); will-change: transform; }
+  .header-menu-demo-overlay { position: fixed; inset: 0; z-index: 201; pointer-events: none; }
+  .spotlight-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483647; width: min(280px, calc(100vw - 32px)); padding: 10px; color: #fff; background: rgba(10,10,10,.88); border-radius: 10px; font: 13px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.24); }
+  .spotlight-controls summary { cursor: pointer; user-select: none; }
+  .spotlight-control-list { display: grid; gap: 8px; margin-top: 10px; }
+  .spotlight-control-list label { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+  .spotlight-control-list input[type=range], .spotlight-control-list select { grid-column: 1 / -1; width: 100%; min-height: 28px; font-size: 16px; }
+  .spotlight-control-list output, .spotlight-anchors dd { font-variant-numeric: tabular-nums; color: rgba(255,255,255,.7); }
+  .spotlight-control-list button { min-height: 40px; color: #fff; border: 1px solid rgba(255,255,255,.24); border-radius: 6px; background: transparent; cursor: pointer; }
+  .spotlight-control-list button:focus-visible, .spotlight-control-list input:focus-visible, .spotlight-control-list select:focus-visible, .spotlight-controls summary:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .spotlight-control-list textarea { width: 100%; min-height: 88px; resize: vertical; color: #fff; background: rgba(255,255,255,.08); border: 0; font: 12px/1.3 ui-monospace,monospace; }
+  .spotlight-anchors { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; margin: 2px 0; }
+  .spotlight-anchors div { display:flex; justify-content:space-between; gap:4px; }
+  .spotlight-anchors dt, .spotlight-anchors dd { margin: 0; }
+  .proto-picker { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483647; display:flex; align-items:center; gap:2px; padding:4px; border-radius:999px; background:rgba(10,10,10,.82); backdrop-filter:blur(12px) saturate(1.4); box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 8px 24px rgba(0,0,0,.24),0 2px 6px rgba(0,0,0,.12); font:13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; user-select:none; }
+  .proto-picker-highlight { position:absolute; top:4px; left:0; height:28px; border-radius:999px; background:rgba(255,255,255,.12); }
+  .proto-picker-item { position:relative; display:flex; align-items:center; height:28px; padding:0 12px; border:0; border-radius:999px; background:transparent; color:rgba(255,255,255,.55); font:inherit; cursor:pointer; }
+  .proto-picker-item[data-active] { color:#fff; }
+  .proto-picker-divider { width:1px; height:16px; margin:0 4px; background:rgba(255,255,255,.12); }
+  .proto-picker-replay { padding:0 10px; font-size:14px; }
+  @media (max-width: 700px) { .spotlight-controls { top: 12px; right: 12px; } }
+  @media (prefers-reduced-motion: reduce) { .spotlight-iris { transition: none; } }
+</style>
