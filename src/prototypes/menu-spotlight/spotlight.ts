@@ -2,6 +2,7 @@ import { createDevPanelDrag } from '../../lib/devPanelDrag';
 import { createHomeRevealController } from '../../lib/homeReveal';
 import homeRevealConfig from '../../lib/homeRevealConfig.json';
 import { setIntroFoldOffsets } from '../../lib/safeVh';
+import { createHomeIntroController } from '../../scripts/homeIntro';
 
 type Config = {
   radius: number;
@@ -40,6 +41,7 @@ const numericKeys = [
 ] as const;
 const easingKeys = ['scaleEasing', 'exitEasing', 'cursorEasing', 'cursorOutEasing'] as const;
 const storageKey = 'vcd:menu-spotlight';
+const demoSeenKey = 'vcd:header-menu-demo-seen';
 const hintDelayAfterIntro = 1200;
 const introHold = 1000;
 const hintAnchor = homeRevealConfig.intro.durationMs + hintDelayAfterIntro;
@@ -53,7 +55,7 @@ function mountSpotlight(root: HTMLElement) {
   const stateButtons = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-state]')];
   const introTemplate = document.querySelector<HTMLTemplateElement>('[data-spotlight-home-intro]')!;
   const home = document.querySelector<HTMLElement>('.spotlight-page')!;
-  const template = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]')!;
+  const template = document.querySelector<HTMLTemplateElement>('[data-spotlight-cursor-template]')!;
   const trigger = document.querySelector<HTMLElement>('.header-trigger--start')!;
   const controls = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-control]')];
   const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-spotlight-tab]')];
@@ -67,6 +69,7 @@ function mountSpotlight(root: HTMLElement) {
   const highlight = picker.querySelector<HTMLElement>('.proto-picker-highlight')!;
   const mobileMq = window.matchMedia('(max-width: 40em)');
   const reducedMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const cleanPreview = root.hasAttribute('data-clean-preview');
   const lifetime = new AbortController();
   const { signal } = lifetime;
   let activeRun: AbortController | undefined;
@@ -78,6 +81,13 @@ function mountSpotlight(root: HTMLElement) {
   let revealScene: ReturnType<typeof createHomeRevealController> | undefined;
   let cursorFrame: number | undefined;
   const animations = new Set<Animation>();
+  const hasSeenDemo = () => {
+    try { return window.sessionStorage.getItem(demoSeenKey) === 'true'; } catch { return false; }
+  };
+  const canStartPageDemo = () => !hasSeenDemo() && !document.hidden
+    && !document.documentElement.classList.contains('is-dev-mode')
+    && trigger.dataset.menuOpen !== 'true' && trigger.dataset.headerTitlePending === undefined
+    && !trigger.matches(':hover') && !trigger.contains(document.activeElement);
 
   function normalize(raw: Record<string, unknown>): Config {
     const next = { ...defaults };
@@ -343,11 +353,8 @@ function mountSpotlight(root: HTMLElement) {
     return introClone;
   }
 
-  async function prepareIntro(snapshot: Config, runSignal: AbortSignal) {
-    const intro = createIntro();
-    const exitDuration = homeRevealConfig.intro.durationMs / snapshot.speed;
-    intro.style.setProperty('--home-intro-exit-duration', `${exitDuration}ms`);
-    const reveal = createHomeRevealController(home, window, {
+  function createReveal(snapshot: Config) {
+    return createHomeRevealController(home, window, {
       ...homeRevealConfig,
       entrance: {
         ...homeRevealConfig.entrance,
@@ -356,6 +363,13 @@ function mountSpotlight(root: HTMLElement) {
         headerLeadMs: homeRevealConfig.entrance.headerLeadMs / snapshot.speed,
       },
     });
+  }
+
+  async function prepareIntro(snapshot: Config, runSignal: AbortSignal) {
+    const intro = createIntro();
+    const exitDuration = homeRevealConfig.intro.durationMs / snapshot.speed;
+    intro.style.setProperty('--home-intro-exit-duration', `${exitDuration}ms`);
+    const reveal = createReveal(snapshot);
     revealScene = reveal;
     await reveal.prepare();
     if (runSignal.aborted || !await frame(runSignal)) return false;
@@ -407,23 +421,37 @@ function mountSpotlight(root: HTMLElement) {
     }
   }
 
-  async function replay() {
+  async function replay(introExitStartedAt?: number) {
     stop();
     if (signal.aborted || document.hidden) return;
+    const natural = introExitStartedAt !== undefined;
+    if (cleanPreview && !natural) return;
     const controller = new AbortController();
     activeRun = controller;
     const runSignal = controller.signal;
     try {
       if (!await ready(runSignal)) return;
       if (trigger.dataset.menuOpen === 'true') return;
+      if (natural && !canStartPageDemo()) return;
       if (mobileMq.matches) disclosure.open = false;
       const snapshot = { ...config };
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      const start = point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger);
       const entrance = entrancePoint();
-      if (!await prepareIntro(snapshot, runSignal)) return;
+      if (!natural) {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        if (!await prepareIntro(snapshot, runSignal)) return;
+      }
       const t = timings(snapshot);
       const ms = (duration: number) => duration / snapshot.speed;
+      const elapsed = introExitStartedAt === undefined ? 0 : window.performance.now() - introExitStartedAt;
+      const waitForStart = (delay: number) => wait(ms(delay) - elapsed, runSignal);
+      let demoBegan = false;
+      const beginDemo = () => {
+        if (!natural || demoBegan) return true;
+        if (!canStartPageDemo()) { stop(); return false; }
+        demoBegan = true;
+        try { window.sessionStorage.setItem(demoSeenKey, 'true'); } catch { /* Storage is optional. */ }
+        return true;
+      };
       const menuHoldDuration = 1000;
       const moveAwayDuration = 450;
       const pressDuration = 120;
@@ -479,7 +507,7 @@ function mountSpotlight(root: HTMLElement) {
       };
 
       const playVeil = async () => {
-        if (!await wait(ms(t.circleStart), runSignal)) return;
+        if (!await waitForStart(t.circleStart) || !beginDemo()) return;
         veil.hidden = false;
         const entered = reduced
           ? await animate(veil, [{ opacity: 0 }, { opacity: 1 }], ms(snapshot.circleIn), snapshot.scaleEasing, runSignal)
@@ -490,10 +518,11 @@ function mountSpotlight(root: HTMLElement) {
         if (exited) veil.hidden = true;
       };
       const playCursor = async () => {
-        if (!await wait(ms(t.cursorFadeStart), runSignal)) return;
+        if (!await waitForStart(t.cursorFadeStart) || !beginDemo()) return;
         if (!mobile) trackDesktopCursor();
         if (!await animate(pointer, [{ opacity: 0 }, { opacity: 1 }], ms(t.cursorFadeDuration), cursorFadeEasing, runSignal)) return;
         if (!await wait(ms(snapshot.cursorWait), runSignal)) return;
+        const start = point(trigger.querySelector<HTMLElement>('.header-trigger__brand') ?? trigger);
         if (reduced) {
           if (!await animate(pointer, [{ opacity: 1 }, { opacity: 0 }], ms(repositionFadeOutDuration), cursorFadeEasing, runSignal)) return;
           pointer.style.transform = transform(start);
@@ -550,7 +579,7 @@ function mountSpotlight(root: HTMLElement) {
           clone = undefined;
         }
       };
-      await Promise.all([dismissIntro(snapshot, runSignal), playVeil(), playCursor()]);
+      await Promise.all([natural ? undefined : dismissIntro(snapshot, runSignal), playVeil(), playCursor()]);
     } catch (error) {
       if (!runSignal.aborted) console.error('Menu spotlight prototype failed.', error);
     } finally {
@@ -629,6 +658,7 @@ function mountSpotlight(root: HTMLElement) {
   picker.querySelector('.proto-picker-replay')!.addEventListener('click', () => void replay(), { signal });
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') return stop();
+    if (cleanPreview) return;
     const target = event.target;
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     if (target instanceof Element && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
@@ -640,6 +670,10 @@ function mountSpotlight(root: HTMLElement) {
   }, { signal });
   document.addEventListener('click', event => {
     if (!(event.target instanceof Node) || root.contains(event.target)) return;
+    if (cleanPreview) {
+      if (document.querySelector<HTMLElement>('[data-spotlight-page-intro]')?.dataset.state !== 'dismissed') return;
+      if (trigger.contains(event.target)) menuOwned = false;
+    }
     stop();
   }, { capture: true, signal });
   window.addEventListener('resize', () => { stop(); moveHighlight(); }, { signal });
@@ -657,8 +691,24 @@ function mountSpotlight(root: HTMLElement) {
   applyConfig();
   selectVariant();
   void (async () => { if (await frame(signal) && await frame(signal)) picker.dataset.ready = ''; })();
-  void replay();
-  return () => { lifetime.abort(); stop(); disposeDrag(); };
+  let disposePageIntro = () => {};
+  if (cleanPreview) {
+    const surface = document.querySelector<HTMLElement>('[data-spotlight-page-intro]')!;
+    setIntroFoldOffsets(surface);
+    const durationMs = homeRevealConfig.intro.durationMs / config.speed;
+    surface.style.setProperty('--home-intro-exit-duration', `${durationMs}ms`);
+    const reveal = createReveal(config);
+    const intro = createHomeIntroController(surface, home, document.documentElement, window, { durationMs });
+    let attempted = false;
+    const observer = new MutationObserver(() => {
+      if (surface.dataset.state !== 'dismissing' || attempted || hasSeenDemo()) return;
+      attempted = true;
+      void replay(window.performance.now());
+    });
+    observer.observe(surface, { attributes: true, attributeFilter: ['data-state'] });
+    disposePageIntro = () => { observer.disconnect(); intro.teardown(); reveal.destroy(); };
+  } else void replay();
+  return () => { lifetime.abort(); stop(); disposeDrag(); disposePageIntro(); };
 }
 
 const root = document.querySelector<HTMLElement>('[data-menu-spotlight-harness]');

@@ -21,6 +21,9 @@ const introPage = loadPageDocument('home-intro');
       {
         // Keep this isolated prototype's header semantics aligned with Home.
         const header = document.querySelector('.spotlight-page .site-header');
+        const demoTemplate = document.querySelector('[data-header-menu-demo]');
+        demoTemplate.setAttribute('data-spotlight-cursor-template', '');
+        demoTemplate.removeAttribute('data-header-menu-demo');
         header.querySelector('.header-trigger--start').classList.add('header-trigger--home');
         header.querySelectorAll('.header-trigger__brand-link').forEach((link) => link.removeAttribute('href'));
         header.querySelectorAll('.header-menu__link').forEach((link) => {
@@ -42,6 +45,22 @@ const introPage = loadPageDocument('home-intro');
     <Footer />
   </div>
   <template data-spotlight-home-intro><HomeIntroController page={introPage} /></template>
+  <script is:inline>
+    {
+      if (new URLSearchParams(window.location.search).get('preview') === '1') {
+        const intro = document.querySelector('[data-spotlight-home-intro]').content.firstElementChild.cloneNode(true);
+        intro.setAttribute('data-spotlight-page-intro', '');
+        try {
+          if (window.sessionStorage.getItem('vcd:home-intro-seen') === 'true') {
+            intro.dataset.state = 'dismissed';
+            intro.hidden = true;
+            intro.inert = true;
+          }
+        } catch { /* Storage is optional. */ }
+        document.currentScript.before(intro);
+      }
+    }
+  </script>
   <SpotlightHarness />
 </Layout>
 
