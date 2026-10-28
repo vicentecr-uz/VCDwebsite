@@ -118,13 +118,14 @@ for (const demo of CRAFT_DEMOS) {
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
   if (isProgressiveImage) {
-    assert.match(attr(policy, 'content'), /connect-src 'self' https:\/\/fonts.googleapis.com https:\/\/fonts.gstatic.com;/, `${demo.id}: toolbar capture can embed its stylesheet and fonts`);
+    assert.match(attr(policy, 'content'), /connect-src 'self';/, `${demo.id}: toolbar capture can embed its stylesheet and fonts`);
     assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('lens') && attr(node, 'tabindex') === '0'), `${demo.id}: keyboard-accessible magnifier`);
     assert.equal(nodes.some((node) => attr(node, 'type') === 'range'), false, `${demo.id}: no prototype controls`);
   } else {
     assert.match(attr(policy, 'content'), /connect-src 'none'/, `${demo.id}: no production fetch/WebSocket access`);
   }
   assert.match(attr(policy, 'content'), /form-action 'none'/);
+  assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/, `${demo.id}: fonts are self-hosted`);
   assert.equal(nodes.some((node) => attr(node, 'contenteditable') !== undefined), false);
   assert.doesNotMatch(html.replaceAll('data-dev-editor-select', ''), /data-dev-document|data-dev-edit|data-project-image-crop-tuner|dev-mode-toggle/);
   const body = nodes.find((node) => node.tagName === 'body');
