@@ -44,6 +44,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   const removeListeners = () => {
     window.removeEventListener('click', cancelFromUser, true);
     window.removeEventListener('resize', cancelFromUser, true);
+    window.removeEventListener('scroll', cancelFromScroll);
     window.removeEventListener('pagehide', cancelFromUser, true);
     window.removeEventListener('vcd:dev-mode-change', cancelFromEdit);
     document.removeEventListener('visibilitychange', cancelFromVisibility, true);
@@ -77,6 +78,10 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     if (event?.type === 'click' && introVisible()) return;
     cleanup(Boolean(event?.type === 'click' && event.target instanceof Node && trigger.contains(event.target)));
   }
+  function cancelFromScroll() {
+    // The intro's restoration reset lands at the top, where the header still sits.
+    if (window.scrollY !== 0) cancelFromUser();
+  }
   function cancelFromVisibility() {
     if (document.hidden) cancelFromUser();
   }
@@ -86,6 +91,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   const addListeners = () => {
     window.addEventListener('click', cancelFromUser, true);
     window.addEventListener('resize', cancelFromUser, true);
+    window.addEventListener('scroll', cancelFromScroll, { passive: true });
     window.addEventListener('pagehide', cancelFromUser, true);
     window.addEventListener('vcd:dev-mode-change', cancelFromEdit);
     document.addEventListener('visibilitychange', cancelFromVisibility, true);
