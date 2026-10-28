@@ -294,6 +294,18 @@ test('a real click inside the menu preserves it while cancelling the guide', asy
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
+test('a page scroll cancels the guide and closes its menu, but the intro reset to the top does not', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed');
+  h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(3050);
+  expect(h.trigger.dataset.menuOpen).toBe('true');
+  Object.defineProperty(h.win, 'scrollY', { value: 120, configurable: true });
+  h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(16);
+  expect(h.trigger.dataset.menuOpen).toBeUndefined();
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  await h.advance(6000);
+  expect(h.menu).toEqual([{ open: true, time: expect.any(Number) }, { open: false, time: 3200 }]);
+});
+
 test('editing, visibility, hover, focus, pending title, and an already open menu prevent the hint', async () => {
   for (const guard of ['edit', 'hidden', 'hover', 'focus', 'title', 'menu']) {
     const h = fixture();
