@@ -50,7 +50,8 @@ async function makeRepo() {
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
   await mkdir(path.join(work, 'src/content/settings'), { recursive: true });
   await mkdir(path.join(work, 'src/components/project'), { recursive: true });
-  await writeFile(path.join(work, 'src/content/projects/tapico.json'), '{"title":"Tapico"}\n');
+  const sampleProject = await readFile(path.resolve(import.meta.dirname, '../../sample-content/src/content/projects/sample-modern.json'), 'utf8');
+  await writeFile(path.join(work, 'src/content/projects/sample-modern.json'), sampleProject);
   await writeFile(path.join(work, 'src/content/settings/header.json'), '{"menuLinks":[]}\n');
   await writeFile(path.join(work, 'src/components/Header.astro'), '<header />\n');
   await writeFile(path.join(work, 'src/components/project/ProjectImage.astro'), '<img />\n');
@@ -80,7 +81,7 @@ async function inRepo(label, fn) {
   }
 }
 
-const contentOnOrigin = async (repo, file = 'src/content/projects/tapico.json') => {
+const contentOnOrigin = async (repo, file = 'src/content/projects/sample-modern.json') => {
   const { stdout } = await execFile('git', ['show', `main:${file}`], { cwd: repo.origin });
   return stdout;
 };
@@ -104,14 +105,14 @@ await inRepo('on main, clean tree → nothing to publish', async () => {
 });
 
 await inRepo('on main, dirty content → commits in place and pushes', async (repo) => {
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico edited"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern edited"}\n');
 
   const status = await publishStatus();
-  check('sees the unpublished file', status.files.includes('src/content/projects/tapico.json'), status.files.join(', '));
+  check('sees the unpublished file', status.files.includes('src/content/projects/sample-modern.json'), status.files.join(', '));
 
   const result = await publishContent({});
   check('published', result.ok === true && result.pushed === true, result.error);
-  check('origin has the edit', (await contentOnOrigin(repo)).includes('Tapico edited'));
+  check('origin has the edit', (await contentOnOrigin(repo)).includes('Sample modern edited'));
 
   const { stdout } = await repo.git('status', '--porcelain');
   check('working tree is clean afterwards', stdout.trim() === '', stdout.trim());
@@ -119,7 +120,7 @@ await inRepo('on main, dirty content → commits in place and pushes', async (re
 });
 
 await inRepo('on main, staged engine file → refuses rather than sweeping it in', async (repo) => {
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico edited"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern edited"}\n');
   await writeFile(path.join(repo.work, 'README.md'), 'engine edited\n');
   await repo.git('add', 'README.md');
 
@@ -132,24 +133,24 @@ await inRepo('feature branch, no rendering changes → publishes to main, checko
   await repo.git('switch', '-c', 'feat/copy-tweak');
   await writeFile(path.join(repo.work, 'README.md'), 'engine edited\n');
   await repo.git('commit', '-am', 'engine: tweak readme');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico from branch"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern from branch"}\n');
 
   const status = await publishStatus();
   check('canPublish off main', status.canPublish === true, status.renderingFiles.join(', '));
   check('not on publish branch', status.onPublishBranch === false);
-  check('sees the unpublished file', status.files.includes('src/content/projects/tapico.json'));
+  check('sees the unpublished file', status.files.includes('src/content/projects/sample-modern.json'));
 
   const headBefore = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
   const result = await publishContent({});
   check('published', result.ok === true && result.pushed === true, result.error);
-  check('origin main has the edit', (await contentOnOrigin(repo)).includes('Tapico from branch'));
+  check('origin main has the edit', (await contentOnOrigin(repo)).includes('Sample modern from branch'));
 
   const headAfter = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
   check('branch HEAD did not move', headBefore === headAfter);
   check('still on the feature branch', (await repo.git('branch', '--show-current')).stdout.trim() === 'feat/copy-tweak');
   check(
     'working file keeps the edit',
-    (await readFile(path.join(repo.work, 'src/content/projects/tapico.json'), 'utf8')).includes('Tapico from branch'),
+    (await readFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), 'utf8')).includes('Sample modern from branch'),
   );
   const { stdout: staged } = await repo.git('diff', '--cached', '--name-only');
   check('nothing was staged', staged.trim() === '', staged.trim());
@@ -161,7 +162,7 @@ await inRepo('feature branch touching rendering code → blocked, override publi
   await repo.git('switch', '-c', 'feat/carousel-width');
   await writeFile(path.join(repo.work, 'src/components/project/ProjectImage.astro'), '<img class="wide" />\n');
   await repo.git('commit', '-am', 'engine: widen carousel');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico","maxWidth":"wide"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern","maxWidth":"wide"}\n');
 
   const rendering = await renderingChanges();
   check('rendering change detected', rendering.includes('src/components/project/ProjectImage.astro'), rendering.join(', '));
@@ -186,7 +187,7 @@ await inRepo('feature branch touching rendering code → blocked, override publi
 await inRepo('uncommitted rendering change also blocks', async (repo) => {
   await repo.git('switch', '-c', 'feat/wip');
   await writeFile(path.join(repo.work, 'src/components/project/ProjectImage.astro'), '<img class="wip" />\n');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico wip"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern wip"}\n');
 
   const status = await publishStatus();
   check('rendersContent true', status.rendersContent === true, status.renderingFiles.join(', '));
@@ -216,17 +217,17 @@ await inRepo('publishing twice from the same branch keeps working', async (repo)
   // guard that cannot tell it apart makes cross-branch publish a one-shot.
   await repo.git('switch', '-c', 'feat/copy-tweak');
 
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"First"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"First"}\n');
   const first = await publishContent({});
   check('first publish', first.ok === true, first.error);
 
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Second"}\n');
-  check('sees it as unpublished again', (await publishStatus()).files.includes('src/content/projects/tapico.json'));
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Second"}\n');
+  check('sees it as unpublished again', (await publishStatus()).files.includes('src/content/projects/sample-modern.json'));
   const second = await publishContent({});
   check('second publish', second.ok === true, second.error);
   check('origin has the second edit', (await contentOnOrigin(repo)).includes('Second'));
 
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Third"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Third"}\n');
   const third = await publishContent({});
   check('third publish', third.ok === true, third.error);
   check('origin has the third edit', (await contentOnOrigin(repo)).includes('Third'));
@@ -237,18 +238,18 @@ await inRepo('a foreign edit still blocks after we have published', async (repo)
   // Same shape as above, but someone else lands on top of our publish — the
   // record must not wave that through.
   await repo.git('switch', '-c', 'feat/copy-tweak');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Ours"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Ours"}\n');
   check('our publish', (await publishContent({})).ok === true);
 
   const other = path.join(repo.root, 'other');
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
   await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
-  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"Theirs"}\n');
-  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/sample-modern.json'), '{"title":"Theirs"}\n');
+  await execFile('git', ['commit', '-am', 'content: update sample-modern'], { cwd: other });
   await execFile('git', ['push', 'origin', 'main'], { cwd: other });
 
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Ours again"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Ours again"}\n');
   const result = await publishContent({});
   check('refused', result.ok === false && /newer edits/.test(result.error), result.error);
   check('their edit survives', (await contentOnOrigin(repo)).includes('Theirs'));
@@ -264,14 +265,14 @@ await inRepo('branch behind main is reported as behind, not as unpublished', asy
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
   await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
-  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"Published from main"}\n');
-  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/sample-modern.json'), '{"title":"Published from main"}\n');
+  await execFile('git', ['commit', '-am', 'content: update sample-modern'], { cwd: other });
   await execFile('git', ['push', 'origin', 'main'], { cwd: other });
   await repo.git('fetch', 'origin', 'main');
 
   const status = await publishStatus();
   check('nothing to publish', status.files.length === 0, status.files.join(', '));
-  check('reported as behind', status.behind.includes('src/content/projects/tapico.json'), status.behind.join(', '));
+  check('reported as behind', status.behind.includes('src/content/projects/sample-modern.json'), status.behind.join(', '));
 
   const result = await publishContent({});
   check('publish is a no-op, not a revert', result.ok === false && /No content changes/.test(result.error), result.error);
@@ -287,14 +288,14 @@ await inRepo('editing a file main moved is still publishable', async (repo) => {
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
   await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
-  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"From main"}\n');
-  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/sample-modern.json'), '{"title":"From main"}\n');
+  await execFile('git', ['commit', '-am', 'content: update sample-modern'], { cwd: other });
   await execFile('git', ['push', 'origin', 'main'], { cwd: other });
   await repo.git('fetch', 'origin', 'main');
 
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"My own edit"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"My own edit"}\n');
   const status = await publishStatus();
-  check('counted as unpublished', status.files.includes('src/content/projects/tapico.json'));
+  check('counted as unpublished', status.files.includes('src/content/projects/sample-modern.json'));
   check('not counted as behind', status.behind.length === 0, status.behind.join(', '));
 
   const result = await publishContent({});
@@ -303,32 +304,32 @@ await inRepo('editing a file main moved is still publishable', async (repo) => {
 
 await inRepo('main moved on the same file → refuses to clobber', async (repo) => {
   await repo.git('switch', '-c', 'feat/copy-tweak');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico from branch"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern from branch"}\n');
 
   // Someone else publishes to main in the meantime.
   const other = path.join(repo.root, 'other');
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
   await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
-  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"Tapico from elsewhere"}\n');
-  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern from elsewhere"}\n');
+  await execFile('git', ['commit', '-am', 'content: update sample-modern'], { cwd: other });
   await execFile('git', ['push', 'origin', 'main'], { cwd: other });
 
   const result = await publishContent({});
   check('refused', result.ok === false && /newer edits/.test(result.error), result.error);
-  check('the other edit survives', (await contentOnOrigin(repo)).includes('Tapico from elsewhere'));
+  check('the other edit survives', (await contentOnOrigin(repo)).includes('Sample modern from elsewhere'));
 });
 
 await inRepo('deleting content off-branch publishes the deletion', async (repo) => {
   await repo.git('switch', '-c', 'feat/prune');
-  await rm(path.join(repo.work, 'src/content/projects/tapico.json'));
+  await rm(path.join(repo.work, 'src/content/projects/sample-modern.json'));
 
   const status = await publishStatus();
-  check('sees the deletion', status.files.includes('src/content/projects/tapico.json'), status.files.join(', '));
+  check('sees the deletion', status.files.includes('src/content/projects/sample-modern.json'), status.files.join(', '));
 
   const result = await publishContent({});
   check('published', result.ok === true, result.error);
-  check('file is gone from main', !(await originHasFile(repo, 'src/content/projects/tapico.json')));
+  check('file is gone from main', !(await originHasFile(repo, 'src/content/projects/sample-modern.json')));
 });
 
 await inRepo('new untracked content off-branch publishes', async (repo) => {
@@ -347,16 +348,16 @@ await inRepo('revert restores ahead content to match main', async (repo) => {
   await repo.git('switch', '-c', 'feat/copy-tweak');
   await writeFile(path.join(repo.work, 'README.md'), 'engine edited\n');
   await repo.git('commit', '-am', 'engine: tweak readme');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Local only"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Local only"}\n');
 
-  check('sees unpublished content', (await publishStatus()).files.includes('src/content/projects/tapico.json'));
+  check('sees unpublished content', (await publishStatus()).files.includes('src/content/projects/sample-modern.json'));
 
   const result = await revertUnpublishedContent();
   check('reverted', result.ok === true, result.error);
-  check('restored tapico', Array.isArray(result.restored) && result.restored.includes('src/content/projects/tapico.json'));
+  check('restored sample-modern', Array.isArray(result.restored) && result.restored.includes('src/content/projects/sample-modern.json'));
   check(
     'working file matches main',
-    (await readFile(path.join(repo.work, 'src/content/projects/tapico.json'), 'utf8')).includes('"title":"Tapico"'),
+    JSON.parse(await readFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), 'utf8')).title === 'Sample modern',
   );
   check('nothing left unpublished', (await publishStatus()).files.length === 0);
   check(
@@ -422,9 +423,9 @@ await inRepo('revert restores an uncommitted edit to branch-committed content', 
 
 await inRepo('revert preserves an existing path modified and committed on the branch', async (repo) => {
   await repo.git('switch', '-c', 'feat/content-migration');
-  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  const migrated = path.join(repo.work, 'src/content/projects/sample-modern.json');
   await writeFile(migrated, '{"title":"Migrated on branch"}\n');
-  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('add', 'src/content/projects/sample-modern.json');
   await repo.git('commit', '-m', 'content: migrate existing document');
 
   const stray = path.join(repo.work, 'src/content/projects/stray.json');
@@ -441,9 +442,9 @@ await inRepo('revert preserves an existing path modified and committed on the br
 
 await inRepo('revert restores edits to an existing branch-migrated path from HEAD', async (repo) => {
   await repo.git('switch', '-c', 'feat/content-migration');
-  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  const migrated = path.join(repo.work, 'src/content/projects/sample-modern.json');
   await writeFile(migrated, '{"title":"Migrated on branch"}\n');
-  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('add', 'src/content/projects/sample-modern.json');
   await repo.git('commit', '-m', 'content: migrate existing document');
 
   await writeFile(migrated, '{"title":"Edited after migration"}\n');
@@ -458,9 +459,9 @@ await inRepo('revert restores edits to an existing branch-migrated path from HEA
 
 await inRepo('revert preserves a deletion committed on the branch', async (repo) => {
   await repo.git('switch', '-c', 'feat/content-migration');
-  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  const migrated = path.join(repo.work, 'src/content/projects/sample-modern.json');
   await rm(migrated);
-  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('add', 'src/content/projects/sample-modern.json');
   await repo.git('commit', '-m', 'content: delete migrated document');
 
   await writeFile(migrated, '{"title":"Resurrected working copy"}\n');

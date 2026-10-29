@@ -12,6 +12,7 @@ interface Props {
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import staticHeaderSettings from '../content/settings/header.json';
+import { validateHeaderSettings } from '../lib/content-schema';
 import menuDemoConfig from '../lib/headerMenuDemoConfig.json';
 import type { SvgComponent } from 'astro/types';
 import headerTitleTransitionSource from '../scripts/headerTitleTransition.js?raw';
@@ -23,9 +24,9 @@ import '../styles/demoFinger.css';
 import { sizeIcon } from '../lib/icons';
 
 // Dev SSR reads the saved file directly so it bypasses Astro's cached JSON import.
-const headerSettings = import.meta.env.DEV
+const headerSettings = validateHeaderSettings(import.meta.env.DEV
   ? JSON.parse(readFileSync(path.join(process.cwd(), 'src/content/settings/header.json'), 'utf8')) as typeof staticHeaderSettings
-  : staticHeaderSettings;
+  : staticHeaderSettings, 'src/content/settings/header.json') as typeof staticHeaderSettings;
 const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
 const logoPath = headerSettings.logoPath;
 const logoAssetPath = logoPath.startsWith('/images/')

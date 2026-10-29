@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ImageVariants } from './responsiveImage';
 import { EMPTY_COVER_FILL } from './placeholderCover.mjs';
+import { validateContentVersion, validatePageDocument, validateProjectDocument } from './content-schema';
 import type { ProjectStackSpacing } from './projectStack';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'image';
@@ -94,39 +95,71 @@ const pageModules = import.meta.glob<{ default: PageDocument }>(
   { eager: true },
 );
 
+const versionModules = import.meta.glob<{ default: unknown }>('../content/settings/schema.json', { eager: true });
+const versionPath = 'src/content/settings/schema.json';
+
+function readDocument(file: string): unknown {
+  let raw: string;
+  try {
+    raw = readFileSync(path.join(process.cwd(), file), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`${file}: invalid JSON`, { cause: error });
+  }
+}
+
+function validateVersion(): void {
+  validateContentVersion(import.meta.env.DEV
+    ? readDocument(versionPath)
+    : versionModules['../content/settings/schema.json']?.default, versionPath);
+}
+
+if (import.meta.env.PROD) {
+  validateVersion();
+  for (const [file, module] of Object.entries(projectModules)) {
+    validateProjectDocument(module.default, file.replace('../', 'src/'));
+  }
+  for (const [file, module] of Object.entries(pageModules)) {
+    validatePageDocument(module.default, file.replace('../', 'src/'));
+  }
+}
+
 function projectPathToSlug(filePath: string): string {
   return filePath.replace('../content/projects/', '').replace('.json', '');
 }
 
 function normalizeProject(slug: string, doc: ProjectDocument): ProjectDocument {
+  validateProjectDocument(doc, `src/content/projects/${slug}.json`);
   return {
     ...doc,
     slug: doc.slug ?? slug,
     status: doc.status ?? 'published',
-    stack: doc.stack ?? (slug === 'tapico' ? 'modern' : 'legacy'),
+    stack: doc.stack ?? 'modern',
   };
 }
 
 /** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
 function loadProjectFromDisk(slug: string): ProjectDocument | undefined {
   if (!import.meta.env.DEV) return undefined;
-  try {
-    const file = path.join(process.cwd(), 'src/content/projects', `${slug}.json`);
-    const doc = JSON.parse(readFileSync(file, 'utf8')) as ProjectDocument;
-    return normalizeProject(slug, doc);
-  } catch {
-    return undefined;
-  }
+  validateVersion();
+  const doc = readDocument(`src/content/projects/${slug}.json`);
+  return doc === undefined ? undefined : normalizeProject(slug, doc as ProjectDocument);
 }
 
 /** Dev must read JSON from disk — the eager glob stays stale after writes / stack changes. */
 function loadAllProjectsFromDisk(): ProjectDocument[] {
+  validateVersion();
   const dir = path.join(process.cwd(), 'src/content/projects');
   return readdirSync(dir)
     .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'))
     .map((file) => {
       const slug = file.replace(/\.json$/, '');
-      const doc = JSON.parse(readFileSync(path.join(dir, file), 'utf8')) as ProjectDocument;
+      const doc = readDocument(`src/content/projects/${file}`) as ProjectDocument;
       return normalizeProject(slug, doc);
     });
 }
@@ -147,12 +180,10 @@ export function loadProjectBySlug(slug: string): ProjectDocument | undefined {
 /** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
 function loadPageFromDisk(key: PageDocumentKey): PageDocument | undefined {
   if (!import.meta.env.DEV) return undefined;
-  try {
-    const file = path.join(process.cwd(), 'src/content/pages', `${key}.json`);
-    return JSON.parse(readFileSync(file, 'utf8')) as PageDocument;
-  } catch {
-    return undefined;
-  }
+  validateVersion();
+  const file = `src/content/pages/${key}.json`;
+  const doc = readDocument(file);
+  return doc === undefined ? undefined : validatePageDocument(doc, file) as PageDocument;
 }
 
 export function loadPageDocument(key: PageDocumentKey): PageDocument {
@@ -177,9 +208,8 @@ export function shouldIncludeProjectInBuild(
   return status === 'published';
 }
 
-export function getModernProjectSlugsForBuild(options: { dev?: boolean } = {}): string[] {
+export function getProjectSlugsForBuild(options: { dev?: boolean } = {}): string[] {
   return loadAllProjects()
-    .filter((project) => project.stack === 'modern')
     .filter((project) => shouldIncludeProjectInBuild(project, options))
     .map((project) => project.slug);
 }
@@ -290,12 +320,8 @@ export function emptyModernProjectDocument(
 export function getEditableProjectDocuments(): Map<string, string> {
   const map = new Map<string, string>();
   for (const project of loadAllProjects()) {
-    if (project.stack === 'modern' || project.slug === 'tapico') {
-      map.set(project.slug, `src/content/projects/${project.slug}.json`);
-    }
+    map.set(project.slug, `src/content/projects/${project.slug}.json`);
   }
-  map.set('parentpal', 'src/content/projects/parentpal.json');
-  map.set('conic-collection', 'src/content/projects/conic-collection.json');
   map.set('styles', 'src/content/pages/styles.json');
   return map;
 }

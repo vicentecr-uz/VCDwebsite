@@ -4,7 +4,7 @@
  * `bun scripts/test/publish-styles.test.mjs`
  */
 import { execFile as execFileCb } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -43,7 +43,8 @@ async function makeRepo() {
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
   await writeFile(path.join(work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #ffffff; }\n');
   await writeFile(path.join(work, STYLE_TOKEN_PATHS[1]), '{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"#ffffff"}}}}}\n');
-  await writeFile(path.join(work, 'src/content/projects/tapico.json'), '{"title":"Tapico"}\n');
+  const sampleProject = await readFile(path.resolve(import.meta.dirname, '../../sample-content/src/content/projects/sample-modern.json'), 'utf8');
+  await writeFile(path.join(work, 'src/content/projects/sample-modern.json'), sampleProject);
   await writeFile(path.join(work, 'README.md'), 'engine\n');
   await git('add', '.');
   await git('commit', '-m', 'initial');
@@ -127,7 +128,7 @@ await inRepo('save commit is idempotent when already committed', async (repo) =>
 await inRepo('content stays out of a styles publish', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens-only');
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #222222; }\n');
-  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Should not ship"}\n');
+  await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Should not ship"}\n');
   await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
 
   const result = await publishStyles({});
@@ -135,10 +136,11 @@ await inRepo('content stays out of a styles publish', async (repo) => {
   check('only styles in the commit', Array.isArray(result.files) && result.files.length === 1
     && result.files[0] === STYLE_TOKEN_PATH, JSON.stringify(result.files));
 
-  const { stdout: content } = await execFile('git', ['show', 'main:src/content/projects/tapico.json'], {
+  const { stdout: content } = await execFile('git', ['show', 'main:src/content/projects/sample-modern.json'], {
     cwd: repo.origin,
   });
-  check('content unchanged on main', content.includes('"Tapico"') && !content.includes('Should not ship'));
+  const parsedContent = JSON.parse(content);
+  check('content unchanged on main', parsedContent.title === 'Sample modern' && !content.includes('Should not ship'));
 });
 
 await inRepo('main moved on global.css → refuses to clobber', async (repo) => {
