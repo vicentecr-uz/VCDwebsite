@@ -13,6 +13,7 @@ import ProjectImage from '../ProjectImage.astro';
 import ViewportSelector from '../../ui/ViewportSelector.astro';
 import DemoCursor from './DemoCursor.astro';
 import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
+import { projectImageTier } from '../../../lib/images';
 import type { DemoAssetProject } from '../../../lib/demoAssetPicker';
 import { readPublishedDemoAssets } from '../../../../scripts/public-demo-assets.mjs';
 import path from 'node:path';
@@ -28,7 +29,7 @@ const fallback = { src: '/demo-fixtures/studio.svg', srcWidth: 1200, srcHeight: 
 const candidate = suppliedSample as typeof fallback | undefined;
 const sample = candidate && typeof candidate.src === 'string' && candidate.src && Number.isFinite(candidate.srcWidth) && candidate.srcWidth > 0 && Number.isFinite(candidate.srcHeight) && candidate.srcHeight > 0 ? candidate : fallback;
 const sampleSrc = sample.src;
-const imageSrc = sampleSrc.startsWith('/') ? sampleSrc : sampleSrc;
+const imageSrc = projectImageTier(sampleSrc, 'preview');
 const imageAlt = sampleSrc === fallback.src ? 'Studio still life' : sampleSrc.split('/').pop()!;
 const variants = normalizeImageVariants(sample.variants as ImageVariants, '4:3', { width: sample.srcWidth, height: sample.srcHeight });
 const pose = variants.desktop;
