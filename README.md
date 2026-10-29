@@ -99,7 +99,7 @@ media/            # private source media supplied before a content-backed build
 
 - **Spacing:** use `var(--space-unit)` consistently; it is `1rem`, tightening to `0.75rem` below `40em`.
 - **Page width:** text caps at `40em`, media at `50em`, and the outer column derives from the larger cap.
-- **Fonts:** Hanken Grotesk (upright 400–900 plus 400 italic) site-wide; EB Garamond loaded only where needed via the `serif` prop on `Layout`.
+- **Fonts:** Hanken Grotesk (upright 400–900 plus 400 italic) site-wide.
 
 ## Docs
 
