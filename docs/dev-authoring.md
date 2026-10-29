@@ -127,7 +127,7 @@ Home, Work, and Play listing cards come from each project's `listings`. Dev-mode
 
 `/analytics` is an owner-only tool used to exclude Anto's own browsers from Umami by setting `localStorage['umami.disabled']`, so testing visits do not count in the stats. It is not for public visitors: do not link it from navigation, menus, the footer, or any content, and do not list it in a sitemap. `src/components/Analytics.astro` marks it `noindex,nofollow` and skips tracking on it.
 
-Because nothing links to it, `scripts/public-site-output.mjs` prunes it from the production build, so it currently 404s on the live host. Any fix must keep the page unlinked rather than adding a public link to keep it reachable.
+Production output prunes pages that no link reaches, so `UNLINKED_ROUTES` in `scripts/public-site-output.mjs` keeps it shipping. Keep it unlinked; never add a public link to make it reachable.
 
 ## Key implementation files
 
