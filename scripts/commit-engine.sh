@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Commit engine work only — everything OUTSIDE the content surface.
 #
-# The content surface (src/content, media) is published straight to
-# main from the dev save bar, so it must never ride along in a feature commit.
+# The content surface (src/content, media) is published to the private content
+# repository from the dev save bar, never in a public engine commit.
 # See AGENTS.md → "Choose the delivery lane first".
 #
 #   bun run commit:engine "message" path/a path/b    # explicit paths only
@@ -34,7 +34,8 @@ cd "$(git rev-parse --show-toplevel)"
 
 is_private_path() {
   case "$1" in
-    src/content|src/content/*|media|media/*|public/images|public/images/*|public/videos|public/videos/*|sitemap|sitemap/*|ops|ops/*|uploads|uploads/*|scripts/vps-agent.py|scripts/test/vps-agent.test.py|scripts/build-view.mjs|.github/workflows/content-deploy.yml|.content.git|.content.git/*|.claude|.claude/*|.codex|.codex/*|.env|.env.*) return 0 ;;
+    .env.example) return 1 ;;
+    src/content|src/content/*|media|media/*|public/images|public/images/*|public/videos|public/videos/*|sitemap|sitemap/*|ops|ops/*|uploads|uploads/*|scripts/vps-agent.py|scripts/test/vps-agent.test.py|scripts/build-view.mjs|.github/workflows/content-deploy.yml|.content.git|.content.git/*|.claude|.claude/*|.codex|.codex/*|.env|.env.*|.dev.vars) return 0 ;;
     *) return 1 ;;
   esac
 }
