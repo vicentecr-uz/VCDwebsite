@@ -4,7 +4,7 @@ root=$(git rev-parse --show-toplevel)
 source_mode=${CONTENT_SOURCE:-repo}
 replace=0
 if [[ ${1:-} == --replace ]]; then replace=1; shift; fi
-if [[ $# -gt 0 ]]; then echo "usage: CONTENT_SOURCE=sample|repo $0 [--replace]" >&2; exit 2; fi
+if [[ $# -gt 0 ]]; then echo "usage: CONTENT_SOURCE=repo $0 [--replace]" >&2; exit 2; fi
 case "$root" in /|"$HOME"|$HOME/Developer/VCDwebsite) echo "refusing unsafe destination: $root" >&2; exit 2;; esac
 if [[ "$root" != / && -L "$root" ]]; then echo "refusing symlink destination: $root" >&2; exit 2; fi
 for parent in "$root/src" "$root/public"; do
@@ -15,9 +15,7 @@ for existing in "$root/src/content" "$root/media" "$root/public/images" "$root/p
 done
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/vcd-content.XXXXXX"); trap 'rm -rf "$tmp"' EXIT
 stage="$tmp/stage"; mkdir -p "$stage"
-if [[ "$source_mode" == sample ]]; then
-  cp -R "$(cd "$(dirname "$0")/../sample-content" && pwd)/." "$stage/"
-elif [[ "$source_mode" == repo ]]; then
+if [[ "$source_mode" == repo ]]; then
   repo=${CONTENT_REPO:-https://github.com/vicentecr-uz/vcd-content.git}
   if [[ "$repo" =~ ^https://[^/]*@ || ! "$repo" =~ ^(https://github\.com/|/|\.) ]]; then echo "CONTENT_REPO must be a GitHub URL or local path without userinfo" >&2; exit 2; fi
   if [[ -n ${CONTENT_TOKEN:-} && "$repo" == https://* ]]; then
@@ -26,7 +24,7 @@ elif [[ "$source_mode" == repo ]]; then
     GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="Authorization: Basic $token_b64" git clone --quiet --depth 1 "$repo" "$tmp/repo"
   else git clone --quiet --depth 1 "$repo" "$tmp/repo"; fi
   cp -R "$tmp/repo/." "$stage/"
-else echo "unsupported CONTENT_SOURCE: $source_mode" >&2; exit 2; fi
+else echo "unsupported CONTENT_SOURCE: $source_mode (repository mode is required)" >&2; exit 2; fi
 if find "$stage" -type l -print -quit | grep -q .; then echo "content source contains symlinks; refusing" >&2; exit 1; fi
 for required in src/content/projects src/content/pages src/content/settings media; do
   [[ -d "$stage/$required" ]] || { echo "content source missing $required" >&2; exit 1; }

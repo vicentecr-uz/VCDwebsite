@@ -15,7 +15,7 @@ test('real loaders validate fresh disk data, version and generic project routing
     for (const file of ['projects.ts', 'content-schema.ts', 'craftDemos.ts', 'placeholderCover.mjs']) {
       await cp(path.join(root, 'src/lib', file), path.join(dir, 'src/lib', file));
     }
-    await cp(path.join(root, 'sample-content/src/content'), path.join(dir, 'src/content'), { recursive: true });
+    await cp(path.join(root, 'scripts/test/fixtures/content/src/content'), path.join(dir, 'src/content'), { recursive: true });
     await symlink(path.join(root, 'node_modules'), path.join(dir, 'node_modules'));
     await writeFile(path.join(dir, 'package.json'), '{"type":"module"}');
     const code = `

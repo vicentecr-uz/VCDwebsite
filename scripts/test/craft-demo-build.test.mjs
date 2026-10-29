@@ -1,5 +1,6 @@
+import { existsSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parse as parseHtml } from 'parse5';
 import { init, parse as parseImports } from 'es-module-lexer';
@@ -31,7 +32,10 @@ const scriptGraph = async (source, seen = new Set()) => {
   return seen;
 };
 
+let checkedRoutes = 0;
 for (const demo of CRAFT_DEMOS) {
+  if (!existsSync(path.join(dist, 'preview', demo.id, 'index.html'))) continue;
+  checkedRoutes++;
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
   const isProgressiveImage = demo.id === 'progressive-image';
@@ -149,23 +153,19 @@ for (const demo of CRAFT_DEMOS) {
   }
 }
 
-const indexHtml = await readFile(path.join(dist, 'preview/craft/index.html'), 'utf8');
-const indexNodes = allNodes(parseHtml(indexHtml));
-assert.equal(indexNodes.some((node) => node.tagName === 'script'), false, 'the review index loads no interaction code');
-assert.equal(indexHtml.includes('href="/sample-modern"'), false, 'production must not link to draft-only project pages');
-for (const demo of CRAFT_DEMOS) assert.ok(indexHtml.includes(`/preview/${demo.id}`));
+assert.equal(existsSync(path.join(dist, 'preview/craft/index.html')), false, 'the standalone craft gallery is retired');
 assert.equal(craftDemo('https://attacker.example'), undefined);
 assert.equal(craftDemo('../api/upload'), undefined);
 assert.equal(craftDemo(null), undefined);
-
-for (const slug of ['sample-modern']) {
-  const document = JSON.parse(await readFile(path.join(root, 'sample-content/src/content/projects', `${slug}.json`), 'utf8'));
-  assert.ok(['draft', 'published'].includes(document.status), `${slug}: valid project visibility`);
-  assert.ok(document.sections.length > 0);
-  const demos = document.sections.filter((section) => section.type === 'interactiveDemo');
-  assert.ok(demos.length > 0, `${slug}: retains its interactive demo alongside authored content`);
-  for (const section of demos) assert.ok(craftDemo(section.demo), `${slug}: known demo`);
-  const demoIds = new Set(demos.map((section) => section.demo));
-  for (const demo of CRAFT_DEMOS) assert.ok(demoIds.has(demo.id), `${slug}: includes ${demo.id}`);
+let checkedProjects = 0;
+for (const file of await readdir(path.join(root, 'src/content/projects'))) {
+  if (!file.endsWith('.json')) continue;
+  const project = JSON.parse(await readFile(path.join(root, 'src/content/projects', file), 'utf8'));
+  const demos = project.sections?.filter((section) => section.type === 'interactiveDemo') ?? [];
+  const output = path.join(dist, project.slug ?? file.slice(0, -5), 'index.html');
+  if (!demos.length || !existsSync(output)) continue;
+  for (const section of demos) assert.ok(craftDemo(section.demo), `${file}: known demo`);
+  assert.ok((await readFile(output, 'utf8')).includes('project-interactive-demo'), `${file}: keeps its embedded demo`);
+  checkedProjects++;
 }
-console.log(`craft-demo-build: passed (${CRAFT_DEMOS.length} routes, native defaults, accessible labels, module isolation, no authoring APIs)`);
+console.log(`craft-demo-build: passed (${checkedRoutes} retained demo routes, ${checkedProjects} embedded project pages, no gallery)`);

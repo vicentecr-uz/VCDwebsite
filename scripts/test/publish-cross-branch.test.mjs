@@ -50,7 +50,7 @@ async function makeRepo() {
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
   await mkdir(path.join(work, 'src/content/settings'), { recursive: true });
   await mkdir(path.join(work, 'src/components/project'), { recursive: true });
-  const sampleProject = await readFile(path.resolve(import.meta.dirname, '../../sample-content/src/content/projects/sample-modern.json'), 'utf8');
+  const sampleProject = await readFile(path.resolve(import.meta.dirname, 'fixtures/content/src/content/projects/sample-modern.json'), 'utf8');
   await writeFile(path.join(work, 'src/content/projects/sample-modern.json'), sampleProject);
   await writeFile(path.join(work, 'src/content/settings/header.json'), '{"menuLinks":[]}\n');
   await writeFile(path.join(work, 'src/components/Header.astro'), '<header />\n');
