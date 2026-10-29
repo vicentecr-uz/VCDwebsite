@@ -123,6 +123,12 @@ Dev mode can create and author Public, Teaser, and Draft slugs without a server 
 
 Home, Work, and Play listing cards come from each project's `listings`. Dev-mode grid management is handled by `DevProjectGridEditor.astro`, including New page and project settings.
 
+## Analytics opt-out page
+
+`/analytics` is an owner-only tool used to exclude Anto's own browsers from Umami by setting `localStorage['umami.disabled']`, so testing visits do not count in the stats. It is not for public visitors: do not link it from navigation, menus, the footer, or any content, and do not list it in a sitemap. `src/components/Analytics.astro` marks it `noindex,nofollow` and skips tracking on it.
+
+Production output prunes pages that no link reaches, so `UNLINKED_ROUTES` in `scripts/public-site-output.mjs` keeps it shipping. Keep it unlinked; never add a public link to make it reachable.
+
 ## Key implementation files
 
 - `src/components/DevTextEditor.astro` — text/spacing Save bar, section changes, pending media batches, content/style publish UI
