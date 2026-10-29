@@ -157,6 +157,8 @@ cmd_start() {
     exit 1
   fi
 
+  "$BUN" "$ROOT/scripts/content-snapshot.mjs" "$ROOT"
+
   : >"$LOG_FILE"
   local pid
   if use_launchd; then
@@ -166,6 +168,7 @@ cmd_start() {
       "HOME=${HOME:-}" \
       "USER=${USER:-$(id -un)}" \
       "LOGNAME=${LOGNAME:-${USER:-$(id -un)}}" \
+      "VCD_REVIEW_PREVIEW=1" \
       /bin/bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host; then
       echo "Failed to start — see $LOG_FILE"
       tail -n 20 "$LOG_FILE" || true
@@ -203,7 +206,7 @@ cmd_start() {
   fi
 
   # Non-macOS fallback for environments without a per-user launchd session.
-  nohup bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host >>"$LOG_FILE" 2>&1 &
+  nohup env VCD_REVIEW_PREVIEW=1 bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host >>"$LOG_FILE" 2>&1 &
   pid=$!
   echo "$pid" >"$PID_FILE"
   disown "$pid" 2>/dev/null || true
