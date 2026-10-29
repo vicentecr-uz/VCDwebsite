@@ -99,7 +99,7 @@ function activeScope(): HTMLElement | null {
 function neededFontLoads(captures: FontCapture[]): Array<[string, FontCapture]> {
   const loads = new Map<string, [string, FontCapture]>();
   for (const capture of captures) {
-    const family = /EB Garamond/i.test(capture.family) ? 'EB Garamond' : /Hanken Grotesk/i.test(capture.family) ? 'Hanken Grotesk' : null;
+    const family = /Hanken Grotesk/i.test(capture.family) ? 'Hanken Grotesk' : null;
     if (!family) continue;
     const key = `${family}|${capture.style}|${capture.weight}|${capture.size}`;
     if (!loads.has(key)) loads.set(key, [family, capture]);
