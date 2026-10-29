@@ -378,6 +378,11 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   }
   const start = () => {
     if (idle || controller || hasSeen()) return;
+    const pagePath = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (pagePath === '/digital' || pagePath === '/about') {
+      arm(window.performance.now() - homeRevealConfig.intro.durationMs);
+      return;
+    }
     idle = true;
     window.addEventListener('vcd:home-intro-dismissing', onIntroDismissing);
     window.addEventListener('vcd:home-intro-dismissed', onIntroDismissed);
