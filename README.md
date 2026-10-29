@@ -4,7 +4,7 @@ Portfolio site for **Vicente Cruz** — London-based industrial designer. Built 
 
 Live: [vicentecr.uz](https://vicentecr.uz)
 
-This public repository contains the site engine and the source of the design-engineering work behind Vicente's portfolio. It is not a sample-site or demo gallery. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build. Fetching that private content requires configured credentials.
+This public repository contains the site engine and the source of the design-engineering work behind Vicente's portfolio. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build. Fetching that private content requires configured credentials.
 
 ## Stack
 
@@ -55,7 +55,21 @@ The build is fully static (`output: "static"`). Ordinary engine fixture CI uses 
 
 - `PUBLIC_TEASER_PASSWORD` — teaser project unlock on the public site (see `.env.example`)
 
-For a local engine-only check, use the fixture content under `scripts/test/fixtures/content/` with `scripts/fetch-content.sh` and then run the build and tests. The fixtures validate the engine boundary; they are not a replacement for the private site's authored content.
+For a local engine-only check in a fresh isolated checkout, use the fixtures for automated validation:
+
+```sh
+fixture_repo=$(mktemp -d "${TMPDIR:-/tmp}/vcd-engine-fixture.XXXXXX")
+git init -q "$fixture_repo"
+cp -R scripts/test/fixtures/content/. "$fixture_repo/"
+git -C "$fixture_repo" add .
+git -C "$fixture_repo" -c user.name=CI -c user.email=ci@example.com commit -qm fixture
+CONTENT_REPO="$fixture_repo" bash scripts/fetch-content.sh
+bun run build
+bun run test
+bun run test:assets
+```
+
+These fixtures validate the engine boundary for automated checks; they are not polished sample content.
 
 ## Deploy
 
@@ -74,11 +88,11 @@ src/
 ├── pages/        # routes (index, work, play, about, project pages, 404)
 ├── layouts/      # Layout.astro — <head>, fonts, page-transition overlay
 ├── components/   # Header, Footer, and project/ content components
-├── content/      # JSON content consumed by pages and in-page Edit
+├── content/      # private JSON content supplied before a content-backed build
 ├── styles/       # global.css, project.css
 └── lib/          # helpers (image resolution)
 public/           # static passthrough assets (favicon, vendored tools)
-media/            # source media; reachable assets are copied to dist/images at build
+media/            # private source media supplied before a content-backed build
 ```
 
 ## Conventions
@@ -92,7 +106,7 @@ media/            # source media; reachable assets are copied to dist/images at 
 - [`AGENTS.md`](AGENTS.md) — canonical cross-harness project and delivery workflow.
 - [`docs/interface-conventions.md`](docs/interface-conventions.md) — UI, layout, component, motion, accessibility, and Figma rules.
 - [`docs/dev-authoring.md`](docs/dev-authoring.md) — in-page Edit, content/media, project status, and publishing internals.
-- [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG, eventual open source). Not a sprint backlog.
+- [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG). Not a sprint backlog.
 
 ## Licensing
 
