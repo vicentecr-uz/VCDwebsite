@@ -4,7 +4,11 @@ import { Window } from 'happy-dom';
 import { renderHomeIntroAction } from '../../src/lib/homeIntroAction';
 import { createHomeIntroController, syncHomeIntroActions } from '../../src/scripts/homeIntro';
 import { readParagraphsValue } from '../../src/lib/devTextDom';
-import intro from '../../src/content/pages/home-intro.json';
+
+const introParagraphs = [
+  'Work in progress',
+  '<span class="text-emphasis">Vicente Cruz</span><span data-text-right-tab="true"><span data-home-intro-okay="true">View work →</span></span><br><span class="text-subtle">Design Engineer</span>',
+];
 
 const originalGlobals = Object.fromEntries(['document', 'Element', 'HTMLElement', 'Event', 'CustomEvent'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 const controllers: Array<ReturnType<typeof createHomeIntroController>> = [];
@@ -16,7 +20,7 @@ afterEach(() => {
   }
 });
 
-const fixture = (paragraphs = intro.sections[0].paragraphs) => {
+const fixture = (paragraphs = introParagraphs) => {
   const dom = new Window();
   const document = dom.document;
   Object.assign(globalThis, { document, Element: dom.Element, HTMLElement: dom.HTMLElement, Event: dom.Event, CustomEvent: dom.CustomEvent });
@@ -40,7 +44,7 @@ test('the saved name line renders one native button inside the right-indent run'
 });
 
 test('removing the WIP notice keeps the action in the name paragraph', () => {
-  const { body } = fixture(intro.sections[0].paragraphs.slice(1));
+  const { body } = fixture(introParagraphs.slice(1));
   const name = body.firstElementChild!;
   expect(name.querySelector('.text-emphasis')!.textContent).toBe('Vicente Cruz');
   expect(name.querySelector('button')!.textContent).toBe('View work →');
@@ -49,7 +53,7 @@ test('removing the WIP notice keeps the action in the name paragraph', () => {
 
 test('View markup saves as editable source and edited labels survive mode changes', () => {
   const { body, surface } = fixture();
-  expect(readParagraphsValue(body)).toEqual(intro.sections[0].paragraphs);
+  expect(readParagraphsValue(body)).toEqual(introParagraphs);
   syncHomeIntroActions(surface, true);
   expect(surface.querySelector('button[data-home-intro-okay]')).toBeNull();
   const label = surface.querySelector('span[data-home-intro-okay]')!;
@@ -68,7 +72,7 @@ test('restored Edit markup rebinds the recreated button and preserves focus tran
   const oldButton = surface.querySelector('button')!;
   dom.dispatchEvent(new dom.CustomEvent('vcd:dev-mode-change', { detail: { active: true } }));
   expect(controller.getState()).toBe('editing');
-  body.innerHTML = intro.sections[0].paragraphs.map((p) => `<p>${p}</p>`).join('');
+  body.innerHTML = introParagraphs.map((p) => `<p>${p}</p>`).join('');
   dom.dispatchEvent(new dom.CustomEvent('vcd:dev-mode-change', { detail: { active: false } }));
   const button = surface.querySelector('button') as HTMLButtonElement;
   expect(button).not.toBe(oldButton);

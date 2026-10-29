@@ -71,7 +71,7 @@ const sourceReaders = source.slice(source.indexOf('    const canonicalSrcFromUrl
 const readers = new Function('projectImage', 'window', `${new Bun.Transpiler({ loader: 'ts' }).transformSync(sourceReaders)}; return { readTargetSrc, readTargetDims };`)(projectImage, { location: { origin: 'http://localhost:4324' } });
 
 test('crop history retains the original source and dimensions after preview promotion', () => {
-  const attrs = imageDevEditAttrs(true, { documentKey: 'tapico', path: ['sections', 0], cropId: 'image', variants: undefined, src: 'original.jpg', srcWidth: 4000, srcHeight: 4751 });
+  const attrs = imageDevEditAttrs(true, { documentKey: 'sample-modern', path: ['sections', 0], cropId: 'image', variants: undefined, src: 'original.jpg', srcWidth: 4000, srcHeight: 4751 });
   const dataset = { devImageSrc: attrs?.['data-dev-image-src'], devImageSrcWidth: attrs?.['data-dev-image-src-width'], devImageSrcHeight: attrs?.['data-dev-image-src-height'] };
   const image = { src: 'http://localhost:4324/images/original.preview.webp', naturalWidth: 2155, naturalHeight: 2560, closest: () => ({ dataset }), classList: { contains: () => false } };
   expect(readers.readTargetSrc(image)).toBe('original.jpg');
@@ -81,7 +81,7 @@ test('crop history retains the original source and dimensions after preview prom
 });
 
 test('listing hover identity remains separate from the cover and its dimensions', () => {
-  const attrs = listingCoverDevEditAttrs('tapico', 'home', { image: 'cover.jpg', hoverImage: 'hover.png', srcWidth: 4000, srcHeight: 3000 }, false);
+  const attrs = listingCoverDevEditAttrs('sample-modern', 'home', { image: 'cover.jpg', hoverImage: 'hover.png', srcWidth: 4000, srcHeight: 3000 }, false);
   const dataset = { devImageSrc: attrs?.['data-dev-image-src'], devHoverImageSrc: attrs?.['data-dev-hover-image-src'], devImageSrcWidth: attrs?.['data-dev-image-src-width'], devImageSrcHeight: attrs?.['data-dev-image-src-height'] };
   const image = { src: 'http://localhost:4324/images/hover.preview.webp', naturalWidth: 800, naturalHeight: 600, closest: () => ({ dataset }), classList: { contains: (name: string) => name === 'project-grid__img--hover' } };
   expect(readers.readTargetSrc(image)).toBe('hover.png');
