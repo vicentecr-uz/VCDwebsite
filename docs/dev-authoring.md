@@ -106,7 +106,7 @@ Colour-token editing on `/styles` is the only app-mediated engine exception. The
 
 **Save** writes both files and commits only those token paths on the current branch so disk, `HEAD`, and the publish status agree. On a non-main branch, **Publish styles** then sends only those two files to `main` with the same scratch-index and stale-file protections as content publishing, without switching the checkout or staging unrelated engine work. This stays separate from **Save & Publish**, which is content-only.
 
-**Known main-branch limitation:** Save has already committed the token files, but `publishStylesInPlace()` currently looks for a staged change and reports “No style changes to publish” instead of pushing that commit. Do not claim a main-branch style edit is published until remote `main` actually contains it. Fixing that publisher is separate engine work.
+On `main`, **Publish styles** pushes the saved token commit (and any newly saved token files) after checking that every unpublished commit contains only the two style-token paths. If the remote `main` moved, update this checkout first. If local unpublished history contains another engine path, resolve those commits and return to a styles-only `main` before publishing. A failed push can be retried from the saved local commit.
 
 The dev server must be restarted by its operator to mount newly pulled style-token or commit middleware. Agents do not restart the owner's primary session.
 
