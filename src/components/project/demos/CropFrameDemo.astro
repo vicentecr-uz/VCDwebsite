@@ -13,7 +13,6 @@ import ProjectImage from '../ProjectImage.astro';
 import ViewportSelector from '../../ui/ViewportSelector.astro';
 import DemoCursor from './DemoCursor.astro';
 import { aspectRatioNumber, normalizeImageVariants, type ImageVariants } from '../../../lib/responsiveImage';
-import { projectImageTier } from '../../../lib/images';
 import type { DemoAssetProject } from '../../../lib/demoAssetPicker';
 import { readPublishedDemoAssets } from '../../../../scripts/public-demo-assets.mjs';
 import path from 'node:path';
@@ -25,12 +24,12 @@ interface Props {
 }
 const { sample: suppliedSample, catalog: suppliedCatalog, authoring, canvasOnly = false } = Astro.props;
 const fallbackPose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.8 };
-const fallback = { src: 'Good Home Tools Range Landscape 5.jpg', srcWidth: 7244, srcHeight: 5433, variants: { desktop: fallbackPose } };
+const fallback = { src: '/demo-fixtures/studio.svg', srcWidth: 1200, srcHeight: 800, variants: { desktop: fallbackPose } };
 const candidate = suppliedSample as typeof fallback | undefined;
 const sample = candidate && typeof candidate.src === 'string' && candidate.src && Number.isFinite(candidate.srcWidth) && candidate.srcWidth > 0 && Number.isFinite(candidate.srcHeight) && candidate.srcHeight > 0 ? candidate : fallback;
 const sampleSrc = sample.src;
-const imageSrc = projectImageTier(sampleSrc, 'preview');
-const imageAlt = sampleSrc === fallback.src ? 'GoodHome brushes, rollers and painting tools' : sampleSrc.split('/').pop()!;
+const imageSrc = sampleSrc.startsWith('/') ? sampleSrc : sampleSrc;
+const imageAlt = sampleSrc === fallback.src ? 'Studio still life' : sampleSrc.split('/').pop()!;
 const variants = normalizeImageVariants(sample.variants as ImageVariants, '4:3', { width: sample.srcWidth, height: sample.srcHeight });
 const pose = variants.desktop;
 const cropHeight = pose.w * (sample.srcWidth / sample.srcHeight) / (aspectRatioNumber(pose.aspect) ?? sample.srcWidth / sample.srcHeight);

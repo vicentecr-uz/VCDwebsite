@@ -187,8 +187,7 @@ function loadPageFromDisk(key: PageDocumentKey): PageDocument | undefined {
 }
 
 export function loadPageDocument(key: PageDocumentKey): PageDocument {
-  const fromDisk = loadPageFromDisk(key);
-  if (fromDisk) return fromDisk;
+  if (import.meta.env.DEV) return loadPageFromDisk(key) ?? { sections: [] };
   const module = pageModules[`../content/pages/${key}.json`];
   return module?.default ?? { sections: [] };
 }
