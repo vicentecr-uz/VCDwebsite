@@ -4,7 +4,7 @@ Portfolio site for **Vicente Cruz** — London-based industrial designer. Built 
 
 Live: [vicentecr.uz](https://vicentecr.uz)
 
-This public repository contains the site engine. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build. Fetching that private content requires configured credentials.
+This public repository contains the site engine and the source of the design-engineering work behind Vicente's portfolio. It is not a sample-site or demo gallery. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build. Fetching that private content requires configured credentials.
 
 ## Stack
 
@@ -55,9 +55,11 @@ The build is fully static (`output: "static"`). Ordinary engine fixture CI uses 
 
 - `PUBLIC_TEASER_PASSWORD` — teaser project unlock on the public site (see `.env.example`)
 
+For a local engine-only check, use the fixture content under `scripts/test/fixtures/content/` with `scripts/fetch-content.sh` and then run the build and tests. The fixtures validate the engine boundary; they are not a replacement for the private site's authored content.
+
 ## Deploy
 
-Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`**. There is no manual deploy step.
+Deployment is automatic. **Cloudflare Pages builds and deploys the engine on every push to `main`**. A push to `main` in the private content repository triggers its private Action and deploy hook; Cloudflare then rebuilds this engine with the latest private content. There is no manual deploy step.
 
 - Engine and repository-doc changes reach `main` through a feature/docs branch and pull request.
 - Routine content is published from in-page Edit with **Save & Publish**.
@@ -91,3 +93,7 @@ media/            # source media; reachable assets are copied to dist/images at 
 - [`docs/interface-conventions.md`](docs/interface-conventions.md) — UI, layout, component, motion, accessibility, and Figma rules.
 - [`docs/dev-authoring.md`](docs/dev-authoring.md) — in-page Edit, content/media, project status, and publishing internals.
 - [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG, eventual open source). Not a sprint backlog.
+
+## Licensing
+
+The original engine source and documentation in this repository are available under the [MIT License](LICENSE). Site content and media supplied from the private content repository are **all rights reserved** and are not covered by that licence. Third-party dependencies, fonts, vendored tools, and other included materials retain their own licences and notices.
