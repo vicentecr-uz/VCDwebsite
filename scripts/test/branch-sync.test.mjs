@@ -77,7 +77,7 @@ function sessionLog(fixture) {
 async function runOnce(fixture, { astro = 'off', stateUrl, bunBinary = bun } = {}) {
   const proc = Bun.spawn([fixture.script, 'once'], {
     cwd: fixture.work,
-    env: { ...process.env, ASTRO_RUNNING: astro, BRANCH_SYNC_BUN: bunBinary, BRANCH_SYNC_DAEMON: '0', BRANCH_SYNC_SESSION_SCRIPT: fixture.session, BRANCH_SYNC_SESSION_LOG: fixture.log, BRANCH_SYNC_REPO: fixture.work, ...(stateUrl ? { BRANCH_SYNC_STATE_URL: stateUrl } : {}) },
+    env: { ...process.env, ASTRO_RUNNING: astro, BRANCH_SYNC_BUN: bunBinary, BRANCH_SYNC_TEST_BUN: bun, BRANCH_SYNC_DAEMON: '0', BRANCH_SYNC_SESSION_SCRIPT: fixture.session, BRANCH_SYNC_SESSION_LOG: fixture.log, BRANCH_SYNC_REPO: fixture.work, ...(stateUrl ? { BRANCH_SYNC_STATE_URL: stateUrl } : {}) },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -343,7 +343,7 @@ await scenario('13. dependency failure reports failure after restoring drafts an
   const fixture = makeFixture();
   try {
     const wrapper = path.join(fixture.root, 'bun-install-fails.sh');
-    writeFileSync(wrapper, '#!/bin/bash\nif [[ "$1" == install ]]; then exit 1; fi\nexec $HOME/.bun/bin/bun "$@"\n');
+    writeFileSync(wrapper, '#!/bin/bash\nif [[ "$1" == install ]]; then exit 1; fi\nexec "$BRANCH_SYNC_TEST_BUN" "$@"\n');
     chmodSync(wrapper, 0o755);
     writeFileSync(path.join(fixture.work, 'README.md'), 'unpublished draft\n');
     const before = snapshotDrafts(fixture);
