@@ -3,6 +3,7 @@ import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import sharp from 'sharp';
 import config from '../../astro.config.mjs';
 
 const request = (body) => {
@@ -31,6 +32,9 @@ test('stable save targets survive stale section and item positions across save e
   const directory = path.join(root, 'src/content/projects');
   const file = path.join(directory, 'fixture.json');
   await mkdir(directory, { recursive: true });
+  await mkdir(path.join(root, 'media'));
+  await sharp({ create: { width: 8, height: 8, channels: 3, background: '#ffffff' } })
+    .jpeg().toFile(path.join(root, 'media/new.jpg'));
   const source = {
     sections: [
       { id: 'intro', type: 'bodyText', paragraphs: ['intro'], spacing: 'none' },
