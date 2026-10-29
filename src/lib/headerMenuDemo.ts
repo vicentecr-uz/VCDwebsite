@@ -80,7 +80,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
       leaving?.remove();
     };
     if (!leaving) return finish();
-    const layers = [...leaving.children].filter((layer): layer is HTMLElement => layer instanceof HTMLElement);
+    const layers = [...leaving.querySelectorAll<HTMLElement>('[data-header-menu-demo-veil], [data-header-menu-demo-cursor-layer]')];
     const fades = layers.map(layer => layer.animate(
       [{ opacity: window.getComputedStyle(layer).opacity }, { opacity: 0 }],
       { duration: config.dismissDuration, easing: config.exitEasing, fill: 'forwards' },
