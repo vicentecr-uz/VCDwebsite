@@ -1,7 +1,9 @@
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { writeAtomicJson } from './dev-api-plugins.mjs';
 
 export const HOME_REVEAL_CONFIG_PATH = path.resolve('src/lib/homeRevealConfig.json');
+export const HEADER_MENU_DEMO_CONFIG_PATH = path.resolve('src/lib/headerMenuDemoConfig.json');
 const TOP_LEVEL_KEYS = ['intro', 'entrance'];
 const INTRO_KEYS = ['durationMs', 'blurPx', 'scale', 'translateYPx'];
 const ENTRANCE_KEYS = ['durationMs', 'totalStaggerMs', 'headerLeadMs', 'blurPx', 'translateYPx', 'scale', 'easing'];
@@ -44,6 +46,28 @@ export function createHomeRevealConfigHandler({ write = writeAtomicJson, configP
   };
 }
 
+// Only the tuner's dialled fields are writable; the rest of the demo config stays as approved.
+export function validateHeaderMenuDemoTuning(value) {
+  if (!hasExactKeys(value, ['cursorOffset']) || !bounded(value.cursorOffset, -800, 800)) throw new Error('Invalid menu demo configuration.');
+  return { cursorOffset: value.cursorOffset };
+}
+
+export function createHeaderMenuDemoConfigHandler({ write = writeAtomicJson, read = (file) => readFile(file, 'utf8'), configPath = HEADER_MENU_DEMO_CONFIG_PATH } = {}) {
+  return async (req, res, next) => {
+    if (req.method !== 'POST') return next();
+    try {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const tuning = validateHeaderMenuDemoTuning(JSON.parse(body));
+      await write(configPath, { ...JSON.parse(await read(configPath)), ...tuning });
+      send(res, 200, { path: 'src/lib/headerMenuDemoConfig.json' });
+    } catch { send(res, 400, { error: 'Invalid menu demo configuration.' }); }
+  };
+}
+
 export function homeRevealConfigWriter() {
-  return { name: 'home-reveal-config-writer', apply: 'serve', configureServer(server) { server.middlewares.use('/api/home-reveal-config', createHomeRevealConfigHandler()); } };
+  return { name: 'home-reveal-config-writer', apply: 'serve', configureServer(server) {
+    server.middlewares.use('/api/home-reveal-config', createHomeRevealConfigHandler());
+    server.middlewares.use('/api/header-menu-demo-config', createHeaderMenuDemoConfigHandler());
+  } };
 }

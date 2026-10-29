@@ -17,6 +17,7 @@ const fields = [
   ['entrance.headerLeadMs', 'Header lead', 0, 600, 10, 'ms'], ['entrance.blurPx', 'Blur', 0, 40, 2, 'px'],
   ['entrance.translateYPx', 'Vertical offset', -40, 80, 2, 'px'], ['entrance.scale', 'Scale', .8, 1.3, .01, ''],
   ['intro.durationMs', 'Intro duration', 50, 400, 10, 'ms'], ['intro.blurPx', 'Intro blur', 0, 20, 2, 'px'], ['intro.scale', 'Intro scale', .8, 1, .01, ''], ['intro.translateYPx', 'Intro upward offset', 0, 80, 2, 'px'],
+  ['menuDemo.cursorOffset', 'Cursor fade-in delay', -800, 800, 25, 'ms'],
 ];
 ---
 <Layout title="Home reveal tuner (dev)" columnStyle={pageStyle}>
@@ -57,6 +58,8 @@ const fields = [
   import { bindHomeIntro } from '../../scripts/homeIntro';
   import { bindHomeReveal } from '../../lib/homeReveal';
   import revealConfig from '../../lib/homeRevealConfig.json';
+  // Same module instance headerMenuDemo.ts reads, so edits apply on the next replay.
+  import menuDemoConfig from '../../lib/headerMenuDemoConfig.json';
   import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
   const draft = structuredClone(revealConfig) as typeof revealConfig & { intro: typeof revealConfig.intro & { translateYPx: number } };
   draft.intro.translateYPx ??= 0;
@@ -64,8 +67,9 @@ const fields = [
   const status = tuner?.querySelector('[data-status]');
   const intro = document.querySelector('[data-home-intro-surface]');
   const REPLAY_HOLD_MS = 600;
-  const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
-  const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
+  const tuned = { ...draft, menuDemo: menuDemoConfig };
+  const read = (path) => path.split('.').reduce((value, key) => value[key], tuned);
+  const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], tuned); target[key] = Number(value); };
   const snapToStep = (value, min, step) => Number((min + Math.round((value - min) / step) * step).toFixed(6));
   const syncHeaderLead = () => {
     const maximum = Math.min(600, draft.entrance.totalStaggerMs);
@@ -91,6 +95,10 @@ const fields = [
       const nextIntro = bindHomeIntro({ durationMs: draft.intro.durationMs });
       nextIntro?.reset?.();
       bindHomeReveal(draft, { reducedMotion: tuner?.querySelector('[data-reduced]')?.checked === true });
+      const menuDemo = window.__vcdHeaderMenuDemo;
+      menuDemo?.cancel();
+      try { window.sessionStorage.removeItem('vcd:header-menu-demo-seen'); } catch { /* Storage is optional. */ }
+      menuDemo?.start();
       if (status) status.textContent = 'Holding intro…';
       replay.timeout = window.setTimeout(() => {
         nextIntro?.dismiss?.();
@@ -146,9 +154,12 @@ const fields = [
   tuner?.querySelector('[data-reduced]')?.addEventListener('change', replay);
   tuner?.querySelector('[data-replay]')?.addEventListener('click', replay);
   tuner?.querySelector('[data-save]')?.addEventListener('click', async () => {
-    const response = await fetch('/api/home-reveal-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) });
-    const result = await response.json().catch(() => ({}));
-    if (status) status.textContent = response.ok ? `Saved · ${result.path}` : 'Save failed';
+    const post = (url, body) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const [response, demoResponse] = await Promise.all([
+      post('/api/home-reveal-config', draft),
+      post('/api/header-menu-demo-config', { cursorOffset: menuDemoConfig.cursorOffset }),
+    ]);
+    if (status) status.textContent = response.ok && demoResponse.ok ? 'Saved' : 'Save failed';
   });
   replay();
 </script>

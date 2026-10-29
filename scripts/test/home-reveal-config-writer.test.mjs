@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createHomeRevealConfigHandler, validateHomeRevealConfig } from '../home-reveal-config-writer.mjs';
+import { createHeaderMenuDemoConfigHandler, createHomeRevealConfigHandler, validateHomeRevealConfig } from '../home-reveal-config-writer.mjs';
 import defaults from '../../src/lib/homeRevealConfig.json';
 
 const valid = structuredClone(defaults);
@@ -40,5 +40,19 @@ describe('home reveal config writer', () => {
     const res = response(); await handler(request(valid), res, () => {});
     expect(res.statusCode).toBe(200); expect(res.headers['content-type']).toBe('application/json'); expect(writes[0].path).toBe('/fixed/path');
     const bad = response(); await handler(request({}), bad, () => {}); expect(bad.statusCode).toBe(400); expect(writes).toHaveLength(1);
+  });
+});
+
+describe('header menu demo config writer', () => {
+  test('merges only the tuned cursor offset into the stored config', async () => {
+    const writes = [];
+    const stored = { radius: 70, cursorOffset: 75 };
+    const handler = createHeaderMenuDemoConfigHandler({ configPath: '/fixed/demo', read: async () => JSON.stringify(stored), write: async (path, value) => writes.push({ path, value }) });
+    const res = response(); await handler(request({ cursorOffset: -200 }), res, () => {});
+    expect(res.statusCode).toBe(200); expect(writes).toEqual([{ path: '/fixed/demo', value: { radius: 70, cursorOffset: -200 } }]);
+    for (const body of [{}, { cursorOffset: 801 }, { cursorOffset: NaN }, { cursorOffset: 0, radius: 1 }]) {
+      const bad = response(); await handler(request(body), bad, () => {}); expect(bad.statusCode).toBe(400);
+    }
+    expect(writes).toHaveLength(1);
   });
 });
