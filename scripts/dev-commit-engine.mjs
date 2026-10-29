@@ -189,7 +189,39 @@ export async function stylesPublishStatus() {
   };
 }
 
-async function publishStylesInPlace(message) {
+async function unpublishedCommitPaths(target) {
+  const changed = new Set();
+  for (const commit of lines(await git('rev-list', `${target}..HEAD`))) {
+    for (const file of lines(await git('diff-tree', '--root', '--no-commit-id', '--name-only', '-r', '-m', commit))) {
+      changed.add(file);
+    }
+  }
+  return [...changed];
+}
+
+async function publishStylesInPlace(message, files) {
+  try {
+    await git('fetch', 'origin', PUBLISH_BRANCH);
+  } catch {
+    return { ok: false, error: `Could not reach origin to publish to ${PUBLISH_BRANCH}.` };
+  }
+
+  const target = `origin/${PUBLISH_BRANCH}`;
+  try {
+    await execFile('git', ['merge-base', '--is-ancestor', target, 'HEAD'], { cwd: process.cwd() });
+  } catch {
+    return { ok: false, error: `${PUBLISH_BRANCH} has moved or this checkout has diverged — update before publishing.` };
+  }
+
+  const unpublishedPaths = await unpublishedCommitPaths(target);
+  const invalid = unpublishedPaths.filter((file) => !STYLE_TOKEN_PATHS.includes(file));
+  if (invalid.length) {
+    return {
+      ok: false,
+      error: `Unpublished commits contain non-style files (${invalid.slice(0, 3).join(', ')}) — update before publishing.`,
+    };
+  }
+
   const staged = lines(await git('diff', '--cached', '--name-only'));
   const strays = staged.filter((file) => !STYLE_TOKEN_PATHS.includes(file));
   if (strays.length) {
@@ -201,11 +233,10 @@ async function publishStylesInPlace(message) {
 
   await git('add', '--', ...STYLE_TOKEN_PATHS);
   const stagedNow = lines(await git('diff', '--cached', '--name-only'));
-  if (!stagedNow.length || !stagedNow.some((file) => STYLE_TOKEN_PATHS.includes(file))) {
-    return { ok: false, error: 'No style changes to publish.' };
-  }
+  if (stagedNow.length) await git('commit', '-m', message);
 
-  await git('commit', '-m', message);
+  const publishedFiles = [...new Set([...files, ...stagedNow])].filter((file) => STYLE_TOKEN_PATHS.includes(file));
+  if (!publishedFiles.length) return { ok: false, error: 'No style changes to publish.' };
 
   try {
     await git('push', 'origin', PUBLISH_BRANCH);
@@ -214,18 +245,18 @@ async function publishStylesInPlace(message) {
       ok: true,
       pushed: false,
       message,
-      files: stagedNow,
+      files: publishedFiles,
       error: error instanceof Error ? error.message.split('\n')[0] : 'Push failed.',
     };
   }
 
   await writePublishRecord(
     Object.fromEntries(await Promise.all(
-      stagedNow.map(async (file) => [file, await blobAt('HEAD', file)]),
+      publishedFiles.map(async (file) => [file, await blobAt('HEAD', file)]),
     )),
   );
 
-  return { ok: true, pushed: true, message, files: stagedNow };
+  return { ok: true, pushed: true, message, files: publishedFiles };
 }
 
 async function publishStylesFromBranch(files, message) {
@@ -351,7 +382,7 @@ export async function publishStyles(payload = {}) {
   const message = String(payload.message || '').trim() || DEFAULT_MESSAGE;
 
   return status.onPublishBranch
-    ? publishStylesInPlace(message)
+    ? publishStylesInPlace(message, status.files)
     : publishStylesFromBranch(status.files, message);
 }
 

@@ -83,13 +83,48 @@ await inRepo('on main, clean → nothing to publish', async () => {
 
 await inRepo('on main, dirty global.css → publishes in place', async (repo) => {
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #111111; }\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATHS[1]), '{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"#111111"}}}}}\n');
   const status = await stylesPublishStatus();
   check('sees dirty file', status.files.includes(STYLE_TOKEN_PATH), status.files.join(', '));
 
   const result = await publishStyles({ message: 'styles: update colour tokens' });
   check('published', result.ok === true && result.pushed === true, result.error);
   check('main has new colour', (await stylesOnOrigin(repo)).includes('#111111'));
+  check('publishes both style files', result.files.length === 2 && result.files.includes(STYLE_TOKEN_PATHS[1]), JSON.stringify(result.files));
   check('working tree matches main', (await stylesPublishStatus()).files.length === 0);
+});
+
+await inRepo('on main, already-committed styles → pushes saved commit', async (repo) => {
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #121212; }\n');
+  const saved = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
+  check('save committed styles', saved.ok === true && saved.committed === true, saved.error);
+  const result = await publishStyles({});
+  check('published saved commit', result.ok === true && result.pushed === true, result.error);
+  check('main has saved colour', (await stylesOnOrigin(repo)).includes('#121212'));
+});
+
+await inRepo('main unpublished engine commit → refuses style publish', async (repo) => {
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #131313; }\n');
+  await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
+  await writeFile(path.join(repo.work, 'README.md'), 'engine change\n');
+  await repo.git('add', 'README.md');
+  await repo.git('commit', '-m', 'engine: unrelated change');
+  const result = await publishStyles({});
+  check('refused unrelated unpublished commit', result.ok === false && /non-style files/.test(result.error), result.error);
+  check('remote unchanged', !(await stylesOnOrigin(repo)).includes('#131313'));
+});
+
+await inRepo('failed main push → retry saved style commit', async (repo) => {
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #141414; }\n');
+  const saved = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
+  check('save committed styles', saved.ok === true && saved.committed === true, saved.error);
+  await repo.git('remote', 'set-url', 'origin', path.join(repo.root, 'missing.git'));
+  const failed = await publishStyles({});
+  check('reports failed push', failed.ok === false, failed.error);
+  await repo.git('remote', 'set-url', 'origin', repo.origin);
+  const retried = await publishStyles({});
+  check('retry publishes saved commit', retried.ok === true && retried.pushed === true, retried.error);
+  check('main has retried colour', (await stylesOnOrigin(repo)).includes('#141414'));
 });
 
 await inRepo('off main, save commits on branch before publish', async (repo) => {
