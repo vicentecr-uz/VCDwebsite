@@ -5,24 +5,15 @@
 # main from the dev save bar, so it must never ride along in a feature commit.
 # See AGENTS.md → "Choose the delivery lane first".
 #
-#   bun run commit:engine "message"                  # every dirty engine file
 #   bun run commit:engine "message" path/a path/b    # only these paths
-#   bun run commit:engine --schema-migration "message" path/a path/b
 #
-# Prefer the second form. The first cannot tell your edits apart from anything
-# else dirty in the tree — another agent's work, a half-finished experiment —
-# and will commit all of it under your message.
-#
-# --schema-migration is the documented exception in AGENTS.md for a change
-# that requires touching content JSON alongside the code that reads it. It
-# only lifts the content-path refusal for THIS invocation — say so in the
-# message, and pass explicit paths (never the no-paths sweep) alongside it.
+# Paths are mandatory. The public engine and private content repositories have
+# separate delivery lanes, including for schema migrations.
 set -euo pipefail
 
-schema_migration=0
 if [ "${1:-}" = "--schema-migration" ]; then
-  schema_migration=1
-  shift
+  echo "Refusing: schema migrations use coordinated engine and private-content commits; this helper cannot stage content." >&2
+  exit 1
 fi
 
 message="${1:-}"
@@ -33,31 +24,45 @@ fi
 shift
 paths=("$@")
 
+if [ ${#paths[@]} -eq 0 ]; then
+  echo "usage: bun run commit:engine \"message\" path [path ...]" >&2
+  echo "Explicit paths are required; the helper never sweeps the worktree." >&2
+  exit 1
+fi
+
 cd "$(git rev-parse --show-toplevel)"
 
-is_content_path() {
-  if [ "$schema_migration" = "1" ]; then return 1; fi
+is_private_path() {
   case "$1" in
-    src/content|src/content/*|media|media/*) return 0 ;;
+    src/content|src/content/*|media|media/*|public/images|public/images/*|public/videos|public/videos/*|sitemap|sitemap/*|ops|ops/*|uploads|uploads/*|scripts/vps-agent.py|scripts/test/vps-agent.test.py|scripts/build-view.mjs|.github/workflows/content-deploy.yml) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-if [ ${#paths[@]} -gt 0 ]; then
-  for path in "${paths[@]}"; do
-    if is_content_path "$path"; then
-      echo "Refusing: '$path' is content, not engine." >&2
-      echo "Content publishes to main from the dev save bar — see AGENTS.md." >&2
-      exit 1
-    fi
-  done
-  git add -- "${paths[@]}"
-elif [ "$schema_migration" = "1" ]; then
-  echo "usage: bun run commit:engine --schema-migration \"message\" path [path ...]" >&2
-  echo "The no-paths sweep is refused under --schema-migration." >&2
+if ! git diff --cached --quiet; then
+  echo "Refusing: the index already contains staged changes. Commit only the explicit paths from this session." >&2
+  git diff --cached --name-only | sed 's/^/  staged: /' >&2
   exit 1
-else
-  git add -- . ':!src/content' ':!media'
+fi
+
+for path in "${paths[@]}"; do
+  case "$path" in
+    -*) echo "Refusing: paths beginning with '-' must be passed after '--'." >&2; exit 1 ;;
+  esac
+  if is_private_path "$path"; then
+    echo "Refusing: '$path' is private content or operations material." >&2
+    echo "Use the private content repository for content and schema migrations." >&2
+    exit 1
+  fi
+done
+
+git add -- "${paths[@]}"
+
+staged_private="$(git diff --cached --name-only | while IFS= read -r path; do if is_private_path "$path"; then printf '%s\n' "$path"; fi; done)"
+if [ -n "$staged_private" ]; then
+  echo "Refusing: private paths entered the staged diff:" >&2
+  printf '%s\n' "$staged_private" | sed 's/^/  /' >&2
+  exit 1
 fi
 
 if git diff --cached --quiet; then
@@ -66,26 +71,8 @@ if git diff --cached --quiet; then
 fi
 
 staged="$(git diff --cached --name-only)"
-staged_count="$(printf '%s\n' "$staged" | wc -l | tr -d ' ')"
-
 echo "Staged (engine):"
 printf '%s\n' "$staged" | sed 's/^/  /'
-
-# The sweep can't distinguish your edits from anyone else's. Say so, rather
-# than letting an unrelated file ride along unnoticed under your message.
-if [ ${#paths[@]} -eq 0 ] && [ "$staged_count" -gt 0 ]; then
-  echo
-  echo "⚠️  Swept every dirty engine file — this is not scoped to your session."
-  echo "    Check the list above. If anything is not yours, run:"
-  echo "      git reset && bun run commit:engine \"$message\" <your paths>"
-fi
-
-held_back="$(git status --porcelain -- src/content media)"
-if [ -n "$held_back" ]; then
-  echo
-  echo "Left alone (content — publish from the save bar):"
-  echo "$held_back" | sed 's/^/  /'
-fi
 
 echo
 git commit -m "$message"
