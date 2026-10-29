@@ -69,13 +69,9 @@ Content can publish while the checkout is on any branch. What gates publication 
 
 The gate is deliberately branch-level. The schema rejects unknown sections and unsupported `schemaVersion` values, but it cannot prove compatibility with a renderer that has not yet merged. A per-field allowlist would fail open. `RENDERING_PATHS` in `scripts/dev-publish.mjs` therefore errs toward including any path that can change how JSON becomes pixels. A stale path list fails open too, so add every new content-rendering component or helper when it is introduced.
 
-### Private content repository
+### Publisher internals
 
-In the current architecture, `.content.git` materializes `src/content/**` and `media/**` from the separate private content repository. Fetching content requires configured credentials; content commits and pushes target the private repository only. The engine rendering gate still applies to changes in this public repository, and review snapshots read content read-only without publishing or modifying either repository.
-
-### Legacy single-repository publisher compatibility
-
-The following publisher endpoints describe legacy single-repository plumbing retained for compatibility. They must not be used to commit private content into this public engine repository.
+In the current architecture, `.content.git` tracks the separate private content repository in the same working directory. It must be on `main` to publish; content commits and pushes target that private repository only. The engine rendering gate still checks the engine repository. Review worktrees use copied content without `.content.git`; local edits are possible, but publishing is disabled.
 
 `GET /api/publish` reports the branch, `files`, `behind`, `canPublish`, `onPublishBranch`, `rendersContent`, `renderingFiles`, and `publishBranch`.
 
@@ -83,6 +79,8 @@ The following publisher endpoints describe legacy single-repository plumbing ret
 - `behind` means `main` has a newer version that this checkout did not edit. It is shown as branch context, never offered for publication, because doing so would revert someone else's work.
 
 `POST /api/publish` accepts the Save bar's semantic change `manifest` and an optional confirmed `force` override.
+
+When `.content.git` is absent, the following legacy single-repository behavior remains for compatibility. Never use it to commit private content into this public engine repository:
 
 - On `main`, it refuses any staged engine file, stages only `src/content/**` and `media/**`, commits, and pushes.
 - Off `main`, it fetches `origin/main`, seeds a scratch index from that tree, swaps in only the changed content blobs, creates a commit on top of `origin/main`, and pushes the bare commit SHA to `main`. It never stages or moves the current checkout, index, or branch.
