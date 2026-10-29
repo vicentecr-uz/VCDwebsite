@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createHeaderMenuDemo } from '../../src/lib/headerMenuDemo';
+import config from '../../src/lib/headerMenuDemoConfig.json';
 
 type Trace = { node: Element; frames: Keyframe[]; duration: number; easing: string; start: number; startTime: number | null; cancelled: boolean };
 const restores: Array<() => void> = [];
@@ -35,7 +36,7 @@ function fixture({ mobile = false, reduced = false, intro = true, gallery = true
   doc.body.innerHTML = (intro ? '<div data-home-intro-surface data-state="active"></div>' : '')
     + (gallery ? '<div class="project-grid"></div>' : '')
     + (reveal ? '<div data-vcd-initial-reveal="running"></div>' : '')
-    + '<div class="site-header__row" style="cursor:auto"><div class="header-trigger header-trigger--start"><div class="header-trigger__panel" style="cursor:auto"><div class="header-trigger__brand" tabindex="-1" style="cursor:default"></div></div></div><div class="header-trigger--end"><div class="header-trigger__panel"></div></div></div><a class="gallery-link" style="cursor:pointer"></a><div class="occluder" style="cursor:grab"></div>';
+    + '<div class="site-header__row" style="cursor:auto"><div class="header-trigger header-trigger--start"><div class="header-trigger__panel" style="cursor:auto"><div class="header-trigger__brand" tabindex="-1" style="cursor:default"></div></div></div><div class="header-trigger header-trigger--end"><div class="header-trigger__panel"></div></div></div><a class="gallery-link" style="cursor:pointer"></a><div class="occluder" style="cursor:grab"></div>';
   const row = doc.querySelector<HTMLElement>('.site-header__row')!;
   const trigger = doc.querySelector<HTMLElement>('.header-trigger--start')!;
   const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel')!;
@@ -64,6 +65,7 @@ function fixture({ mobile = false, reduced = false, intro = true, gallery = true
       ready: Promise.resolve(), finished,
       get startTime() { return trace.startTime; },
       set startTime(value: number | null) { trace.startTime = value; },
+      pause() { jobs.delete(timer); },
       cancel() { trace.cancelled = true; jobs.delete(timer); reject(new Error('cancelled')); },
     } as Animation;
   };
@@ -168,16 +170,16 @@ test('desktop timings match the approved settings and fade overlaps departure', 
   const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames.length === 61);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   expect([iris.start, iris.duration, iris.easing]).toEqual([950, 800, 'cubic-bezier(.23,1,.32,1)']);
-  expect([veil.start, veil.duration, veil.easing]).toEqual([2375, 500, 'cubic-bezier(.23,1,.32,1)']);
-  expect([fadeIn.start, fadeIn.duration]).toEqual([1825, 500]);
-  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2575, 500], [4075, 450]]);
-  expect([fadeOut.start, fadeOut.duration, fadeOut.easing]).toEqual([4250, 100, 'cubic-bezier(.23,1,.32,1)']);
+  expect([veil.start, veil.duration, veil.easing]).toEqual([2200, 500, 'cubic-bezier(.23,1,.32,1)']);
+  expect([fadeIn.start, fadeIn.duration]).toEqual([1650, 500]);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2400, 500], [3900, 450]]);
+  expect([fadeOut.start, fadeOut.duration, fadeOut.easing]).toEqual([4075, 100, 'cubic-bezier(.23,1,.32,1)']);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 368, y: 238 });
   expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 700, y: 35 });
   expect(h.menu.filter(event => event.open)).toHaveLength(1);
   expect(h.menu.find(event => !event.open)!.time).toBeLessThan(4525);
-  await h.advance(175);
+  await h.advance(175 + config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
@@ -210,14 +212,14 @@ test('mobile keeps tap/release cleanup alive after the cursor has faded out', as
   const h = fixture({ mobile: true }); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(4400);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-finger]') && trace.frames.length === 61);
-  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2315, 600], [4155, 450]]);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2140, 600], [3980, 450]]);
   expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 600, y: 400 });
   expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 448, y: 648 });
-  expect([fadeOut.start, fadeOut.duration]).toEqual([4450, 100]);
+  expect([fadeOut.start, fadeOut.duration]).toEqual([4275, 100]);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
-  await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4725 });
+  await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4550 });
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
-  await h.advance(120); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  await h.advance(120 + config.dismissDuration); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
 test('reduced motion retains opacity durations and cannot resurrect the final outer fade', async () => {
@@ -226,12 +228,13 @@ test('reduced motion retains opacity durations and cannot resurrect the final ou
   const veilIn = entry(h, '[data-header-menu-demo-veil]', 800);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   expect(veilIn.start).toBe(950);
-  expect([fadeOut.start, fadeOut.duration]).toEqual([3580, 100]);
+  expect([fadeOut.start, fadeOut.duration]).toEqual([3405, 100]);
   expect(h.doc.querySelector('[data-header-menu-demo-iris]')!.getAttribute('style')).toContain('scale(1)');
   await h.advance(155);
   const reappearance = h.traces.findLast(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames[0].opacity === 0)!;
-  expect(reappearance.start + reappearance.duration).toBe(3855);
+  expect(reappearance.start + reappearance.duration).toBe(3680);
   expect(fadeOut.node.contains(reappearance.node)).toBe(true);
+  await h.advance(config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
@@ -266,7 +269,7 @@ test('late font readiness shifts the sequence together instead of compressing it
   const iris = entry(h, '[data-header-menu-demo-iris]');
   const cursor = entry(h, '[data-header-menu-demo-cursor]', 500);
   expect(iris.start).toBe(2182);
-  expect(cursor.start - iris.start).toBe(875);
+  expect(cursor.start - iris.start).toBe(700);
 });
 
 test('navigation title readiness is checked at the visual cue rather than during intro exit', async () => {
@@ -282,7 +285,8 @@ test('cancellation during animation removes the scene and all later menu work', 
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   h.demo.cancel(); await h.advance(6000);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
-  expect(h.menu).toHaveLength(0); expect(h.traces.every(trace => trace.cancelled)).toBe(true);
+  expect(h.menu).toHaveLength(0);
+  expect(h.traces.every(trace => trace.cancelled || trace.duration === config.dismissDuration)).toBe(true);
 });
 
 test('a real click inside the menu preserves it while cancelling the guide', async () => {
@@ -294,6 +298,25 @@ test('a real click inside the menu preserves it while cancelling the guide', asy
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
+test('a real hover on the trigger cancels the guide and leaves the menu open', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(2700);
+  const traces = h.traces.length;
+  h.hover(true); h.trigger.dispatchEvent(new h.win.MouseEvent('mouseenter')); h.hover(false); await h.advance(6000);
+  expect(h.traces.slice(traces).every(trace => trace.duration === config.dismissDuration)).toBe(true);
+  expect(h.menu.filter(event => !event.open)).toHaveLength(0);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
+test('a real hover on the opposite trigger cancels the guide and closes its menu', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(3050);
+  expect(h.trigger.dataset.menuOpen).toBe('true');
+  const traces = h.traces.length;
+  h.doc.querySelector('.header-trigger--end')!.dispatchEvent(new h.win.MouseEvent('mouseenter')); await h.advance(6000);
+  expect(h.traces.slice(traces).every(trace => trace.duration === config.dismissDuration)).toBe(true);
+  expect(h.trigger.dataset.menuOpen).toBeUndefined();
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
 test('a page scroll cancels the guide and closes its menu, but the intro reset to the top does not', async () => {
   const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed');
   h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(3050);
@@ -301,6 +324,10 @@ test('a page scroll cancels the guide and closes its menu, but the intro reset t
   Object.defineProperty(h.win, 'scrollY', { value: 120, configurable: true });
   h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(16);
   expect(h.trigger.dataset.menuOpen).toBeUndefined();
+  const fades = h.traces.filter(trace => trace.duration === config.dismissDuration);
+  expect(fades.map(trace => trace.frames.at(-1)!.opacity)).toEqual([0, 0]);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  await h.advance(config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
   await h.advance(6000);
   expect(h.menu).toEqual([{ open: true, time: expect.any(Number) }, { open: false, time: 3200 }]);

@@ -1141,7 +1141,10 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     if (trigger.classList.contains('header-trigger--start')) {
       const demoTemplate = document.querySelector<HTMLTemplateElement>('[data-header-menu-demo]');
       if (demoTemplate) {
-        createHeaderMenuDemo({ trigger, template: demoTemplate, open: () => openMenu(), close: (force = false) => closeMenu(force), isEditing: isDevEditing }).start();
+        const demo = createHeaderMenuDemo({ trigger, template: demoTemplate, open: () => openMenu(), close: (force = false) => closeMenu(force), isEditing: isDevEditing });
+        demo.start();
+        // The /dev/home-reveal tuner re-arms the demo on each replay.
+        if (import.meta.env.DEV) (window as typeof window & { __vcdHeaderMenuDemo?: typeof demo }).__vcdHeaderMenuDemo = demo;
       }
     }
   });
