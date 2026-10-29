@@ -82,18 +82,20 @@ await inRepo('on main, clean → nothing to publish', async () => {
 });
 
 await inRepo('on main, dirty global.css → publishes in place', async (repo) => {
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #111111; }\n');
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATHS[1]), '{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"#111111"}}}}}\n');
-  const status = await stylesPublishStatus();
-  check('sees dirty file', status.files.includes(STYLE_TOKEN_PATH), status.files.join(', '));
-
-  const result = await publishStyles({ message: 'styles: update colour tokens' });
-  check('published', result.ok === true && result.pushed === true, result.error);
-  check('main has new colour', (await stylesOnOrigin(repo)).includes('#111111'));
-  check('publishes both style files', result.files.length === 2 && result.files.includes(STYLE_TOKEN_PATHS[1]), JSON.stringify(result.files));
-  const { stdout: remoteTokens } = await execFile('git', ['show', `main:${STYLE_TOKEN_PATHS[1]}`], { cwd: repo.origin });
-  check('main has new token JSON', remoteTokens.includes('#111111'));
-  check('working tree matches main', (await stylesPublishStatus()).files.length === 0);
+  for (const value of ['#111111', '#222222']) {
+    await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), `:root { --sys-color-srf: ${value}; }\n`);
+    await writeFile(path.join(repo.work, STYLE_TOKEN_PATHS[1]), `{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"${value}"}}}}}\n`);
+    await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"private dirty"}\n');
+    const beforePrivate = (await readFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), 'utf8'));
+    const result = await publishStyles({ message: 'styles: update colour tokens' });
+    check(`published ${value}`, result.ok === true && result.pushed === true, result.error);
+    check(`main has ${value}`, (await stylesOnOrigin(repo)).includes(value));
+    const { stdout: remoteTokens } = await execFile('git', ['show', `main:${STYLE_TOKEN_PATHS[1]}`], { cwd: repo.origin });
+    check(`main has token JSON ${value}`, remoteTokens.includes(value));
+    check(`private content preserved ${value}`, (await readFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), 'utf8')) === beforePrivate);
+    check(`private content remains unstaged ${value}`, (await repo.git('status', '--porcelain', '--', 'src/content')).stdout.includes(' M '));
+    check(`working tree matches main ${value}`, (await stylesPublishStatus()).files.length === 0);
+  }
 });
 
 await inRepo('on main, already-committed styles → pushes saved commit', async (repo) => {
@@ -116,6 +118,56 @@ await inRepo('main unpublished engine commit → refuses style publish', async (
   check('remote unchanged', !(await stylesOnOrigin(repo)).includes('#131313'));
 });
 
+await inRepo('intermediate engine edit reverted → refuses net-clean history', async (repo) => {
+  await writeFile(path.join(repo.work, 'README.md'), 'temporary engine edit\n');
+  await repo.git('add', 'README.md');
+  await repo.git('commit', '-m', 'engine: temporary edit');
+  await writeFile(path.join(repo.work, 'README.md'), 'engine\n');
+  await repo.git('add', 'README.md');
+  await repo.git('commit', '-m', 'engine: revert temporary edit');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #171717; }\n');
+  await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
+  const result = await publishStyles({});
+  check('refused reverted engine history', result.ok === false && /resolve unrelated commits/.test(result.error), result.error);
+});
+
+await inRepo('remote main ahead → refuses without rewinding local state', async (repo) => {
+  const other = path.join(repo.root, 'other');
+  await execFile('git', ['clone', repo.origin, other]);
+  await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
+  await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
+  await writeFile(path.join(other, 'README.md'), 'remote ahead\n');
+  await execFile('git', ['commit', '-am', 'engine: remote ahead'], { cwd: other });
+  await execFile('git', ['push', 'origin', 'main'], { cwd: other });
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #181818; }\n');
+  const beforeHead = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
+  const beforeIndex = (await repo.git('diff', '--cached', '--binary')).stdout;
+  const result = await publishStyles({});
+  check('refused remote-ahead main', result.ok === false && /has moved or this checkout has diverged/.test(result.error), result.error);
+  check('HEAD unchanged remote-ahead', (await repo.git('rev-parse', 'HEAD')).stdout.trim() === beforeHead);
+  check('index unchanged remote-ahead', (await repo.git('diff', '--cached', '--binary')).stdout === beforeIndex);
+});
+
+await inRepo('diverged main → refuses without rewinding local state', async (repo) => {
+  const other = path.join(repo.root, 'other');
+  await execFile('git', ['clone', repo.origin, other]);
+  await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
+  await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
+  await writeFile(path.join(other, 'README.md'), 'remote divergence\n');
+  await execFile('git', ['commit', '-am', 'engine: remote divergence'], { cwd: other });
+  await execFile('git', ['push', 'origin', 'main'], { cwd: other });
+  await writeFile(path.join(repo.work, 'README.md'), 'local divergence\n');
+  await repo.git('add', 'README.md');
+  await repo.git('commit', '-m', 'engine: local divergence');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #191919; }\n');
+  const beforeHead = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
+  const beforeIndex = (await repo.git('diff', '--cached', '--binary')).stdout;
+  const result = await publishStyles({});
+  check('refused diverged main', result.ok === false && /has moved or this checkout has diverged/.test(result.error), result.error);
+  check('HEAD unchanged diverged', (await repo.git('rev-parse', 'HEAD')).stdout.trim() === beforeHead);
+  check('index unchanged diverged', (await repo.git('diff', '--cached', '--binary')).stdout === beforeIndex);
+});
+
 await inRepo('main merge history with engine path → refuses style publish', async (repo) => {
   await repo.git('switch', '-c', 'side');
   await writeFile(path.join(repo.work, 'README.md'), 'side change\n');
@@ -136,9 +188,9 @@ await inRepo('failed main push → retry saved style commit', async (repo) => {
   const hook = path.join(repo.origin, 'hooks', 'pre-receive');
   await writeFile(hook, '#!/bin/sh\nexit 1\n');
   await chmod(hook, 0o755);
+  const savedHead = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
   const failed = await publishStyles({});
   check('reports failed push', failed.ok === true && failed.pushed === false, failed.error);
-  const savedHead = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
   check('saved commit remains', (await repo.git('rev-parse', 'HEAD')).stdout.trim() === savedHead);
   await rm(hook, { force: true });
   const retried = await publishStyles({});

@@ -218,7 +218,7 @@ async function publishStylesInPlace(message, files) {
   if (invalid.length) {
     return {
       ok: false,
-      error: `Unpublished commits contain non-style files (${invalid.slice(0, 3).join(', ')}) — update before publishing.`,
+      error: `Unpublished commits contain non-style files (${invalid.slice(0, 3).join(', ')}) — resolve unrelated commits before publishing.`,
     };
   }
 
