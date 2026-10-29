@@ -2,12 +2,13 @@
 import Layout from '../../layouts/Layout.astro';
 import '../../styles/project.css';
 import ProjectImageCarousel from '../project/ProjectImageCarousel.astro';
-import project from '../../content/projects/goodhome-painting-tools.json';
 import tuning from '../../lib/carouselDragTuning.json';
 import { CAROUSEL_DRAG_TUNING_DEFAULTS } from '../../lib/carouselDragTuning';
 
-const carousel = project.sections.find((section) => section.type === 'imageCarousel');
-if (!carousel || carousel.type !== 'imageCarousel') throw new Error('GoodHome carousel fixture is missing.');
+const items = [1, 2, 3].map((index) => ({
+  src: '/demo-fixtures/studio.svg',
+  alt: `Studio sample ${index}`,
+}));
 ---
 
 <Layout title="Carousel drag tuning (dev)">
@@ -16,7 +17,7 @@ if (!carousel || carousel.type !== 'imageCarousel') throw new Error('GoodHome ca
       <p class="carousel-tuning-page__eyebrow">Interaction lab</p>
       <h1>Carousel drag</h1>
     </header>
-    <ProjectImageCarousel items={carousel.items} orientation="horizontal" dotsPlacement="over" spacing="group" />
+    <ProjectImageCarousel items={items} orientation="horizontal" dotsPlacement="over" spacing="group" />
     <aside class="carousel-tuning" data-carousel-tuning data-carousel-defaults={JSON.stringify(CAROUSEL_DRAG_TUNING_DEFAULTS)} aria-label="Carousel drag tuning controls">
       <h2>Mouse drag</h2>
       <label>Tension <output data-value="tension"></output><input data-control="tension" type="range" min="1" max="80" step="1" value={tuning.tension} /></label>

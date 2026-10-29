@@ -1,0 +1,64 @@
+name: Engine validation
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      ASTRO_TELEMETRY_DISABLED: 1
+    steps:
+      - name: Check out engine without private content
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/src/content/
+            !/media/
+            !/public/images/
+            !/public/videos/
+            !/sitemap/
+            !/ops/
+            !/uploads/
+            !/scripts/vps-agent.py
+            !/scripts/test/vps-agent.test.py
+            !/scripts/build-view.mjs
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - name: Create temporary fixture repository
+        run: |
+          git init -q "$RUNNER_TEMP/content"
+          cp -R scripts/test/fixtures/content/. "$RUNNER_TEMP/content/"
+          git -C "$RUNNER_TEMP/content" add .
+          git -C "$RUNNER_TEMP/content" -c user.name=CI -c user.email=ci@example.com commit -qm fixture
+          CONTENT_REPO="$RUNNER_TEMP/content" bash scripts/fetch-content.sh --replace
+      - name: Install dependencies without credentials
+        run: bun install --frozen-lockfile
+      - name: Build and verify production output
+        run: |
+          bun run build
+          bun scripts/check-production-output.mjs
+      - name: Test engine with fixtures
+        run: |
+          bun test scripts/test/content-schema.test.ts scripts/test/content-loaders.test.mjs scripts/test/fetch-content.test.mjs scripts/test/content-hmr-gate.test.mjs scripts/test/crop-page-history.test.ts scripts/test/award-writer.test.mjs scripts/test/home-intro-action.test.ts
+          bun scripts/test/publish-cross-branch.test.mjs
+          bun scripts/test/publish-styles.test.mjs
+          bun run test
+          bun run test:assets

@@ -1,6 +1,7 @@
 ---
 import ProjectLayout from '../components/ProjectLayout.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
+import LegacyProjectSections from '../components/project/legacy/LegacyProjectSections.astro';
 import DevImageDrop from '../components/DevImageDrop.astro';
 import TeaserGate from '../components/TeaserGate.astro';
 import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
@@ -8,7 +9,7 @@ import { projectImageTier } from '../lib/images';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 import { pageColumnStyle } from '../lib/pageColumn';
 import {
-  getModernProjectSlugsForBuild,
+  getProjectSlugsForBuild,
   loadProjectBySlug,
   shouldIncludeProjectInBuild,
 } from '../lib/projects';
@@ -18,13 +19,13 @@ import {
 export const prerender = import.meta.env.PROD;
 
 export function getStaticPaths() {
-  return getModernProjectSlugsForBuild().map((slug) => ({ params: { slug } }));
+  return getProjectSlugsForBuild().map((slug) => ({ params: { slug } }));
 }
 
 const slug = Astro.params.slug ?? '';
 const project = loadProjectBySlug(slug);
 
-if (!project || project.stack !== 'modern' || !shouldIncludeProjectInBuild(project)) {
+if (!project || !shouldIncludeProjectInBuild(project)) {
   return Astro.redirect('/404');
 }
 
@@ -40,6 +41,11 @@ const listingCover = Object.values(project.listings ?? {})
 const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
 ---
 
+{project.stack === 'legacy' ? (
+  <ProjectLayout title={project.title} description={project.description}>
+    <LegacyProjectSections sections={sections} documentKey={slug} />
+  </ProjectLayout>
+) : (
 <ProjectLayout
   title={project.title}
   description={project.description}
@@ -61,3 +67,4 @@ const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undef
     <DevImageDrop documentKey={slug} />
   </TeaserGate>
 </ProjectLayout>
+)}
