@@ -78,7 +78,7 @@ const shortcuts = [
             const identity = `${state.branch} · ${state.revision.slice(0, 7)}${state.clean ? '' : ' · Local changes'}`;
             let comparison;
             if (typeof state.mainRevision !== 'string') comparison = 'Main unavailable';
-            else if (state.revision === state.mainRevision) comparison = 'Matches fetched main';
+            else if (state.behind === 0 && state.ahead === 0) comparison = 'Matches fetched main';
             else {
               comparison = [
                 state.behind > 0 ? `${state.behind} behind fetched main` : '',

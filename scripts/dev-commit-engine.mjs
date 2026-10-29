@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
+import { isReviewPreview } from './content-repository.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -175,6 +176,7 @@ async function unpublishedStyles() {
 export async function stylesPublishStatus() {
   const branch = await git('branch', '--show-current');
   const { files, behind } = await unpublishedStyles();
+  const readOnly = isReviewPreview();
   return {
     branch,
     files,
@@ -182,6 +184,8 @@ export async function stylesPublishStatus() {
     dirty: files.length > 0,
     publishBranch: PUBLISH_BRANCH,
     onPublishBranch: branch === PUBLISH_BRANCH,
+    canPublish: !readOnly,
+    readOnly,
   };
 }
 
@@ -332,6 +336,9 @@ export async function commitStyleTokensOnBranch(payload = {}) {
  * @param {{ message?: string }} [payload]
  */
 export async function publishStyles(payload = {}) {
+  if (isReviewPreview()) {
+    return { ok: false, error: 'Publishing styles is disabled in a review preview.' };
+  }
   const status = await stylesPublishStatus();
 
   if (!status.branch) {

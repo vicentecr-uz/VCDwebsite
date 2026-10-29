@@ -79,12 +79,36 @@ sync_once() (
     write_update_status failed "The checkout has no active upstream branch."
     return 1
   fi
+  if [[ "${VCD_REVIEW_PREVIEW:-0}" == 1 || -e "$SESSION_DIR/content-snapshot.json" ]]; then
+    write_update_status failed "Updates are unavailable in a review preview."
+    return 1
+  fi
+  if [[ -L "$ROOT/.content.git" || ( -e "$ROOT/.content.git" && ! -d "$ROOT/.content.git" ) ]]; then
+    write_update_status failed "The content repository is invalid. Your files are unchanged."
+    return 1
+  fi
+  local content_repo=0 content_branch="" content_behind=0 content_main=""
+  if [[ -d "$ROOT/.content.git" && ! -L "$ROOT/.content.git" ]]; then
+    content_repo=1
+    content_branch="$(git --git-dir="$ROOT/.content.git" --work-tree="$ROOT" branch --show-current 2>/dev/null || true)"
+    if [[ "$content_branch" != main ]] || ! content_main="$(git --git-dir="$ROOT/.content.git" --work-tree="$ROOT" rev-parse --verify origin/main 2>/dev/null)"; then
+      write_update_status failed "The content checkout is not ready on main."
+      return 1
+    fi
+  fi
   if ! git -C "$ROOT" fetch origin "$branch" 2>&1; then
     write_update_status failed "Could not fetch the update. Your files are unchanged."
     return 1
   fi
+  if [[ "$content_repo" -eq 1 ]] && ! git --git-dir="$ROOT/.content.git" --work-tree="$ROOT" fetch origin main 2>&1; then
+    write_update_status failed "Could not fetch the content update. Your files are unchanged."
+    return 1
+  fi
   behind="$(git -C "$ROOT" rev-list --count HEAD.."$upstream")"
-  if [[ "$behind" -eq 0 ]]; then
+  if [[ "$content_repo" -eq 1 ]]; then
+    content_behind="$(git --git-dir="$ROOT/.content.git" --work-tree="$ROOT" rev-list --count HEAD..origin/main)"
+  fi
+  if [[ "$behind" -eq 0 && "$content_behind" -eq 0 ]]; then
     echo "$branch up to date ($upstream)"
     write_update_status succeeded "Already up to date."
     return 0
