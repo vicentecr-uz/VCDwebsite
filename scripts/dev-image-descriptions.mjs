@@ -8,7 +8,7 @@ import { documentInfo } from './public-site-output.mjs';
 import { readDevDocument, resolveEditableDocument, writeDevDocument } from './dev-api-plugins.mjs';
 import { requestVpsAgent } from './vps-agent.mjs';
 
-const DEFAULT_SITE = 'https://wip.vcruzdesigns.com';
+const DEFAULT_SITE = 'https://vicentecr.uz';
 const MAX_PAGES = 100;
 const MAX_HTML = 2 * 1024 * 1024;
 const MAX_IMAGE = 16 * 1024 * 1024;

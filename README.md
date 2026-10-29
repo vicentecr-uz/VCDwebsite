@@ -2,7 +2,7 @@
 
 Portfolio site for **Vicente Cruz** — London-based industrial designer. Built with Astro, Tailwind CSS v4, and GSAP, deployed on Cloudflare Pages.
 
-Live (work-in-progress): [wip.vcruzdesigns.com](https://wip.vcruzdesigns.com)
+Live: [vicentecr.uz](https://vicentecr.uz)
 
 ## Stack
 
@@ -55,7 +55,7 @@ The build is fully static (`output: "static"`). No environment variables are req
 
 ## Deploy
 
-Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`** — the change is live at [wip.vcruzdesigns.com](https://wip.vcruzdesigns.com) within ~30 seconds. There is no manual deploy step.
+Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`** — the change is live at [vicentecr.uz](https://vicentecr.uz) within ~30 seconds. There is no manual deploy step.
 
 - Engine and repository-doc changes reach `main` through a feature/docs branch and pull request.
 - Routine content is published from in-page Edit with **Save & Publish**.
@@ -79,7 +79,7 @@ media/            # source media; reachable assets are copied to dist/images at 
 
 ## Hosted tools
 
-- **Stoozing Playground** — served at [`/stoozing-playground`](https://wip.vcruzdesigns.com/stoozing-playground) from `public/stoozing-playground/index.html`. This is a **vendored copy** of the single self-contained HTML file in the [`vicentecr-uz/stooze-page`](https://github.com/vicentecr-uz/stooze-page) repo (canonical source). It has no build step and loads Chart.js from a CDN. Mobile touch tweaks (16px inputs to stop iOS zoom-on-focus, floating Settings pill) are applied in this copy under a `@media (max-width: 640px)` block. To refresh, re-copy `stoozing-playground.html` from `stooze-page` over the vendored file and re-apply the mobile block if it was overwritten.
+- **Stoozing Playground** — served at [`/stoozing-playground`](https://vicentecr.uz/stoozing-playground) from `public/stoozing-playground/index.html`. This is a **vendored copy** of the single self-contained HTML file in the [`vicentecr-uz/stooze-page`](https://github.com/vicentecr-uz/stooze-page) repo (canonical source). It has no build step and loads Chart.js from a CDN. Mobile touch tweaks (16px inputs to stop iOS zoom-on-focus, floating Settings pill) are applied in this copy under a `@media (max-width: 640px)` block. To refresh, re-copy `stoozing-playground.html` from `stooze-page` over the vendored file and re-apply the mobile block if it was overwritten.
 
 ## Conventions
 
