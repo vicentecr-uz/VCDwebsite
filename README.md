@@ -4,7 +4,7 @@ Portfolio site for **Vicente Cruz** — London-based industrial designer. Built 
 
 Live: [vicentecr.uz](https://vicentecr.uz)
 
-This public repository contains the site engine. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build.
+This public repository contains the site engine. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build. Fetching that private content requires configured credentials.
 
 ## Stack
 
@@ -51,13 +51,13 @@ bun run build        # outputs static site to ./dist/
 bun run preview      # preview the built site locally
 ```
 
-The build is fully static (`output: "static"`). No environment variables are required for the public site. Optional:
+The build is fully static (`output: "static"`). Ordinary engine fixture CI uses no secrets; fetching private content requires configured credentials. Optional:
 
 - `PUBLIC_TEASER_PASSWORD` — teaser project unlock on the public site (see `.env.example`)
 
 ## Deploy
 
-Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`** — the change is live at [vicentecr.uz](https://vicentecr.uz) within ~30 seconds. There is no manual deploy step.
+Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`**. There is no manual deploy step.
 
 - Engine and repository-doc changes reach `main` through a feature/docs branch and pull request.
 - Routine content is published from in-page Edit with **Save & Publish**.
