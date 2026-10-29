@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createHeaderMenuDemo } from '../../src/lib/headerMenuDemo';
+import config from '../../src/lib/headerMenuDemoConfig.json';
 
 type Trace = { node: Element; frames: Keyframe[]; duration: number; easing: string; start: number; startTime: number | null; cancelled: boolean };
 const restores: Array<() => void> = [];
@@ -64,6 +65,7 @@ function fixture({ mobile = false, reduced = false, intro = true, gallery = true
       ready: Promise.resolve(), finished,
       get startTime() { return trace.startTime; },
       set startTime(value: number | null) { trace.startTime = value; },
+      pause() { jobs.delete(timer); },
       cancel() { trace.cancelled = true; jobs.delete(timer); reject(new Error('cancelled')); },
     } as Animation;
   };
@@ -177,7 +179,7 @@ test('desktop timings match the approved settings and fade overlaps departure', 
   expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 700, y: 35 });
   expect(h.menu.filter(event => event.open)).toHaveLength(1);
   expect(h.menu.find(event => !event.open)!.time).toBeLessThan(4525);
-  await h.advance(175);
+  await h.advance(175 + config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
@@ -217,7 +219,7 @@ test('mobile keeps tap/release cleanup alive after the cursor has faded out', as
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4725 });
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
-  await h.advance(120); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  await h.advance(120 + config.dismissDuration); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
 test('reduced motion retains opacity durations and cannot resurrect the final outer fade', async () => {
@@ -232,6 +234,7 @@ test('reduced motion retains opacity durations and cannot resurrect the final ou
   const reappearance = h.traces.findLast(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames[0].opacity === 0)!;
   expect(reappearance.start + reappearance.duration).toBe(3855);
   expect(fadeOut.node.contains(reappearance.node)).toBe(true);
+  await h.advance(config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
@@ -282,7 +285,8 @@ test('cancellation during animation removes the scene and all later menu work', 
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   h.demo.cancel(); await h.advance(6000);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
-  expect(h.menu).toHaveLength(0); expect(h.traces.every(trace => trace.cancelled)).toBe(true);
+  expect(h.menu).toHaveLength(0);
+  expect(h.traces.every(trace => trace.cancelled || trace.duration === config.dismissDuration)).toBe(true);
 });
 
 test('a real click inside the menu preserves it while cancelling the guide', async () => {
@@ -294,6 +298,15 @@ test('a real click inside the menu preserves it while cancelling the guide', asy
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
+test('a real hover on the trigger cancels the guide and leaves the menu open', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(2700);
+  const traces = h.traces.length;
+  h.hover(true); h.trigger.dispatchEvent(new h.win.MouseEvent('mouseenter')); h.hover(false); await h.advance(6000);
+  expect(h.traces.slice(traces).every(trace => trace.duration === config.dismissDuration)).toBe(true);
+  expect(h.menu.filter(event => !event.open)).toHaveLength(0);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
 test('a page scroll cancels the guide and closes its menu, but the intro reset to the top does not', async () => {
   const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed');
   h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(3050);
@@ -301,6 +314,10 @@ test('a page scroll cancels the guide and closes its menu, but the intro reset t
   Object.defineProperty(h.win, 'scrollY', { value: 120, configurable: true });
   h.win.dispatchEvent(new h.win.Event('scroll')); await h.advance(16);
   expect(h.trigger.dataset.menuOpen).toBeUndefined();
+  const fades = h.traces.filter(trace => trace.duration === config.dismissDuration);
+  expect(fades.map(trace => trace.frames.at(-1)!.opacity)).toEqual([0, 0]);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  await h.advance(config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
   await h.advance(6000);
   expect(h.menu).toEqual([{ open: true, time: expect.any(Number) }, { open: false, time: 3200 }]);
