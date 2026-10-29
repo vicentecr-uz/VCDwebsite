@@ -38,6 +38,15 @@ jobs:
         with:
           bun-version-file: package.json
 
+      - name: Create fixture content when private content is absent
+        if: ${{ hashFiles('src/content/**') == '' }}
+        run: |
+          git init -q "$RUNNER_TEMP/content"
+          cp -R scripts/test/fixtures/content/. "$RUNNER_TEMP/content/"
+          git -C "$RUNNER_TEMP/content" add .
+          git -C "$RUNNER_TEMP/content" -c user.name=CI -c user.email=ci@example.com commit -qm fixture
+          CONTENT_REPO="$RUNNER_TEMP/content" bash scripts/fetch-content.sh
+
       - name: Create temporary config and cache paths
         run: |
           mkdir -p "$RUNNER_TEMP/vcd-config" "$RUNNER_TEMP/vcd-bun-cache"

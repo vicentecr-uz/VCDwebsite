@@ -32,6 +32,9 @@ const contentPaths = [
   "ops",
   "scripts/vps-agent.py",
   "scripts/test/vps-agent.test.py",
+  "scripts/build-view.mjs",
+  "uploads",
+  ".github/workflows/content-deploy.yml",
 ];
 
 function fixture() {
@@ -61,10 +64,16 @@ function fixture() {
   git(seedContent, "init", "-b", "main");
   configure(seedContent);
   mkdirSync(path.join(seedContent, "src/content"), { recursive: true });
+  mkdirSync(path.join(seedContent, "scripts"), { recursive: true });
+  mkdirSync(path.join(seedContent, "uploads"), { recursive: true });
+  mkdirSync(path.join(seedContent, ".github/workflows"), { recursive: true });
   writeFileSync(
     path.join(seedContent, "src/content/project.json"),
     '{"v":1}\n',
   );
+  writeFileSync(path.join(seedContent, "scripts/build-view.mjs"), "fixture view\n");
+  writeFileSync(path.join(seedContent, "uploads/fixture.txt"), "fixture upload\n");
+  writeFileSync(path.join(seedContent, ".github/workflows/content-deploy.yml"), "name: fixture content deploy\n");
   git(seedContent, "add", ".");
   git(seedContent, "commit", "-qm", "content initial");
   git(seedContent, "remote", "add", "origin", contentOrigin);
@@ -146,6 +155,9 @@ function incoming(f, repo, file, value, message) {
       path.join(f.work, "src/content/local.json"),
       '{"local":true}\n',
     );
+    writeFileSync(path.join(f.work, "scripts/build-view.mjs"), "local view\n");
+    writeFileSync(path.join(f.work, "uploads/local.txt"), "local upload\n");
+    writeFileSync(path.join(f.work, ".github/workflows/content-deploy.yml"), "name: local content deploy\n");
     incoming(
       f,
       f.peerEngine,
@@ -176,6 +188,9 @@ function incoming(f, repo, file, value, message) {
       [...readFileSync(path.join(f.work, "src/content/local ignored.bin"))],
       [0, 1, 2, 255],
     );
+    assert.equal(readFileSync(path.join(f.work, "scripts/build-view.mjs"), "utf8"), "local view\n");
+    assert.equal(readFileSync(path.join(f.work, "uploads/local.txt"), "utf8"), "local upload\n");
+    assert.equal(readFileSync(path.join(f.work, ".github/workflows/content-deploy.yml"), "utf8"), "name: local content deploy\n");
     console.log("PASS: both repositories advance and preserve drafts");
   } finally {
     f.close();
@@ -444,7 +459,7 @@ for (const fetchFailure of [false, true]) {
   const f = fixture();
   try {
     const scripts = path.join(f.work, "scripts");
-    mkdirSync(scripts);
+    mkdirSync(scripts, { recursive: true });
     for (const file of [
       "branch-sync.sh",
       "branch-sync-drafts.mjs",
