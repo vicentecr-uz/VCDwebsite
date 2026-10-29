@@ -5,7 +5,7 @@
 # main from the dev save bar, so it must never ride along in a feature commit.
 # See AGENTS.md → "Choose the delivery lane first".
 #
-#   bun run commit:engine "message" path/a path/b    # only these paths
+#   bun run commit:engine "message" path/a path/b    # explicit paths only
 #
 # Paths are mandatory. The public engine and private content repositories have
 # separate delivery lanes, including for schema migrations.
@@ -18,7 +18,7 @@ fi
 
 message="${1:-}"
 if [ -z "$message" ]; then
-  echo "usage: bun run commit:engine \"commit message\" [path ...]" >&2
+  echo "usage: bun run commit:engine \"commit message\" path [path ...]" >&2
   exit 1
 fi
 shift
@@ -34,7 +34,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 is_private_path() {
   case "$1" in
-    src/content|src/content/*|media|media/*|public/images|public/images/*|public/videos|public/videos/*|sitemap|sitemap/*|ops|ops/*|uploads|uploads/*|scripts/vps-agent.py|scripts/test/vps-agent.test.py|scripts/build-view.mjs|.github/workflows/content-deploy.yml) return 0 ;;
+    src/content|src/content/*|media|media/*|public/images|public/images/*|public/videos|public/videos/*|sitemap|sitemap/*|ops|ops/*|uploads|uploads/*|scripts/vps-agent.py|scripts/test/vps-agent.test.py|scripts/build-view.mjs|.github/workflows/content-deploy.yml|.content.git|.content.git/*|.claude|.claude/*|.codex|.codex/*|.env|.env.*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -47,7 +47,7 @@ fi
 
 for path in "${paths[@]}"; do
   case "$path" in
-    -*) echo "Refusing: paths beginning with '-' must be passed after '--'." >&2; exit 1 ;;
+    -*) echo "Refusing: path '$path' begins with '-'; use a path beginning with './' instead." >&2; exit 1 ;;
   esac
   if is_private_path "$path"; then
     echo "Refusing: '$path' is private content or operations material." >&2
@@ -58,7 +58,10 @@ done
 
 git add -- "${paths[@]}"
 
-staged_private="$(git diff --cached --name-only | while IFS= read -r path; do if is_private_path "$path"; then printf '%s\n' "$path"; fi; done)"
+staged_private=""
+while IFS= read -r -d '' path; do
+  if is_private_path "$path"; then staged_private+="$path"$'\n'; fi
+done < <(git diff --cached --name-only -z)
 if [ -n "$staged_private" ]; then
   echo "Refusing: private paths entered the staged diff:" >&2
   printf '%s\n' "$staged_private" | sed 's/^/  /' >&2
