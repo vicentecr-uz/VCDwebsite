@@ -4,14 +4,14 @@ This documents local in-page Edit, the content/media model, project visibility, 
 
 ## Ownership and boundaries
 
-The owner owns routine authoring. In-page Edit writes the same files the site renders; there is no separate `/admin` CMS.
+The owner controls routine authoring. In-page Edit writes the same files the site renders; there is no separate `/admin` CMS.
 
 The content surface is:
 
 - `src/content/**` — JSON documents;
 - `media/**` — source media managed by authoring and the reachable-asset build.
 
-Everything outside those paths is engine, except for the narrowly scoped colour-token publisher described below. Agents never stage routine content in a feature commit. The only mixed commit is an explicitly requested schema migration coupled to the engine that consumes it; use `commit:engine --schema-migration` with explicit paths and deliver it through a PR.
+Everything outside those paths is engine, except for the narrowly scoped colour-token publisher described below. Content paths belong to the private content repository and are never staged in a public engine feature commit. Schema changes use coordinated engine and private-content branches/PRs with an expand → migrate → contract sequence.
 
 ## In-page Edit flow
 
@@ -55,21 +55,27 @@ The build derives publication from navigation-reachable output. Before collectin
 
 - **Pending:** usually browser DOM or a tuner queue; inserted media can already be on disk while remaining reversible in the Save bar.
 - **Saved:** the Save bar has cleared pending state and the relevant content JSON/media is on disk; it survives reload but is not committed.
-- **Published:** the app has committed the content surface to `main` and pushed it; Cloudflare deploys shortly afterward.
+- **Published:** the app has committed the content surface to the private content repository's `main` and pushed it; Cloudflare deploys shortly afterward.
 
 There is no general content auto-save; only the direct-write exceptions above persist before Save.
 
 - **Save** writes content to disk only.
-- **Save & Publish** performs Save, then calls the dev-only content publisher. This is the only routine content path to `main`.
+- **Save & Publish** performs Save, then calls the dev-only content publisher. This is the only routine content path to the private repository's `main`.
 
 Content can publish while the checkout is on any branch. What gates publication is whether that branch changes content-rendering code:
 
 - no rendering changes: publishing proceeds;
 - rendering changes: the bar shows an amber warning naming the files, reduces the Publish action's emphasis, and requires the owner to confirm the override.
 
-The gate is deliberately branch-level. There is no schema capable of proving that one content edit is compatible with `main`; `ProjectSections.astro` silently ignores an unknown field and returns `null` for an unknown section type. A per-field allowlist would fail open. `RENDERING_PATHS` in `scripts/dev-publish.mjs` therefore errs toward including any path that can change how JSON becomes pixels. A stale path list fails open too, so add every new content-rendering component or helper when it is introduced.
+The gate is deliberately branch-level. The schema rejects unknown sections and unsupported `schemaVersion` values, but it cannot prove compatibility with a renderer that has not yet merged. A per-field allowlist would fail open. `RENDERING_PATHS` in `scripts/dev-publish.mjs` therefore errs toward including any path that can change how JSON becomes pixels. A stale path list fails open too, so add every new content-rendering component or helper when it is introduced.
 
-### Publisher internals
+### Private content repository
+
+In the current architecture, `.content.git` materializes `src/content/**` and `media/**` from the separate private content repository. Fetching content requires configured credentials; content commits and pushes target the private repository only. The engine rendering gate still applies to changes in this public repository, and review snapshots read content read-only without publishing or modifying either repository.
+
+### Legacy single-repository publisher compatibility
+
+The following publisher endpoints describe legacy single-repository plumbing retained for compatibility. They must not be used to commit private content into this public engine repository.
 
 `GET /api/publish` reports the branch, `files`, `behind`, `canPublish`, `onPublishBranch`, `rendersContent`, `renderingFiles`, and `publishBranch`.
 

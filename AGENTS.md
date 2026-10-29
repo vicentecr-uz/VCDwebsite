@@ -14,23 +14,23 @@ VCDwebsite is Vicente Cruz's Astro + Bun + Tailwind CSS v4 + GSAP portfolio site
 
 ## Workspace boundary
 
-The owner's primary checkout and its port `4321` session are the owner's uninterrupted workspace. Agents may read files and inspect state there only to understand the task or locate/create an isolated worktree. Never edit files, change its branch or index, commit/reset there, or start/stop/restart its dev session or branch sync.
+The primary checkout and its port `4321` session are reserved for the owner's uninterrupted work. Agents may read files and inspect state there only to understand the task or locate/create an isolated worktree. Never edit files, change its branch or index, commit/reset there, or start/stop/restart its dev session or branch sync.
 
 After creating or locating a dedicated sibling worktree, all edits, builds, servers, and task Git operations happen there. A harness-provided task worktree counts. Unless the task explicitly depends on another local base, start from the latest `origin/main`. The responsible agent owns branch, worktree, and preview-port collision avoidance; the owner should not have to operate the terminal or coordinate agent plumbing.
 
-Bun is available as `bun` in the task environment.
+Use `bun`; if it is not on `PATH`, use `$HOME/.bun/bin/bun`.
 
 ## Choose the delivery lane first
 
-The content surface is `src/content/**` plus `media/**`. Everything else is engine unless a row below names a narrower workflow.
+The content surface is `src/content/**` plus `media/**`, maintained in a separate private content repository and never committed to this public engine repository. Everything else is engine unless a row below names a narrower workflow.
 
 | Task | Workspace and delivery lane |
 | --- | --- |
 | Read-only inspection, explanation, or diagnosis | May inspect the primary checkout. Do not mutate files or repo state, build, start a server, commit, push, or open a PR unless separately requested. |
 | Engine code, UI, tooling, or configuration | Dedicated task worktree and feature/fix branch; use the full PR lifecycle below. Never include routine content. |
 | Repository docs or standards | Dedicated task worktree and a standalone docs branch from latest `origin/main`; use the same lifecycle with a PR that targets `main`. Never bundle standards work into a feature branch. |
-| Routine content | The owner owns authoring and publication through in-page Edit. **Save** writes locally; **Save & Publish** uses the app-mediated publisher. Agents do not edit or publish routine content unless the owner explicitly requests it and agrees the delivery path. |
-| Schema migration coupled to engine | Dedicated task worktree and one migration branch/PR. Engine and the required `src/content/**` or `media/**` changes travel together. Commit only explicit paths with `commit:engine --schema-migration`. |
+| Routine content | The owner controls authoring and publication through in-page Edit in the private content repository. **Save** writes locally; **Save & Publish** uses the app-mediated publisher. Agents do not edit or publish routine content unless the owner explicitly requests it and agrees the delivery path. |
+| Schema migration coupled to engine | Coordinate separate engine and private-content branches/PRs using expand → migrate → contract. Never commit `src/content/**` or `media/**` to this public engine repository. |
 | Styles | The owner's colour-token edits on `/styles` use **Save** then the app-mediated **Publish styles** action; read the current main-branch limitation in `docs/dev-authoring.md`. Agent-authored CSS or style-engine changes use the normal engine PR lane. |
 | Isolated hosted task (Codex Cloud or Cursor remote/cloud) | Follow the scoped override at the end of this file. |
 
@@ -50,12 +50,6 @@ Use this sequence for every engine or repository-docs change:
 
    ```sh
    bun run commit:engine "message" path/a path/b
-   ```
-
-   For an approved schema migration only:
-
-   ```sh
-   bun run commit:engine --schema-migration "message" path/a src/content/path media/path
    ```
 
 6. Push the branch and open or update its PR. A draft PR is appropriate while result review is pending.
@@ -86,7 +80,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 - Fix root causes and inspect other callers before changing shared behavior.
 - First ask whether a change is needed at all. If it is, stop at the first adequate solution: existing project pattern, standard library, native platform feature, installed dependency, one line, then the minimum new code.
 - Prefer deletion and existing files over new abstractions or dependencies. Do not trade away validation, error handling, security, or accessibility for a smaller diff.
-- The owner owns product intent and UI feel; the responsible agent owns implementation shape and should explain a material tradeoff before locking it in.
+- The owner sets product intent and UI feel; the responsible agent owns implementation shape and should explain a material tradeoff before locking it in.
 - If work moves to another session, leave a builder-ready handoff: done condition, required worker capability, branch/issue, first reads, settled root cause and approach, exact change list, landmines, cleanup, verification, out of scope, and pickup instruction. Include pseudo-code for timing loops, observers, or state machines. Use the handoff mechanism supported by the active harness.
 
 ## Task router
@@ -104,7 +98,7 @@ This section applies inside an isolated hosted agent task where the owner's loca
 
 - The owner's primary checkout and local persistent review previews are unavailable. Skip only those local steps; do not treat their absence as a blocker.
 - Use the task's provided checkout and selected Git ref as the isolated workspace. Do not start `dev:session` or branch sync.
-- Bun is available as `bun`. Run `bun run build` and relevant tests before handoff.
+- Use `bun`; if it is not on `PATH`, use `$HOME/.bun/bin/bun`. Run `bun run build` and relevant tests before handoff.
 - Push the task branch and open a PR. Hosted work is PR-only handoff: never merge and never push directly to `main`.
-- Do not modify `src/content/**` or `media/**` unless the task explicitly requires a schema/content migration.
+- Do not modify or commit `src/content/**` or `media/**` in the public engine repository; coordinate private-content changes separately.
 - The owner performs visual acceptance after the PR is available locally.
