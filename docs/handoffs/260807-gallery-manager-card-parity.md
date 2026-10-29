@@ -66,7 +66,7 @@ If the template approach hits something structural, **stop and report** — do n
 
 ## Worker landmines
 
-- Bun: `$HOME/.bun/bin/bun`
+- Bun: `bun`
 - Do **not** start a dev server (4321 owned). Cannot browser-verify.
 - `bun run commit:engine "msg" <explicit paths>` — never stage `src/content/**` / `public/images/**`
 - Vite mounts middleware at server start — Anto's test script step 0 is session restart

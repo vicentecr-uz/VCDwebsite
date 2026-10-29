@@ -22,7 +22,7 @@ Non-negotiable: none of this leaks to the live site with dev mode off.
 
 ## Worker landmines — read before touching anything
 
-- **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
+- **Bun is available as `bun`.**
 - **Do not start a dev server.** Another session owns port 4321. You cannot verify in a browser; Anto does that after merge. A green `bun run build` proves compilation only — do not report it as verification.
 - **Commit only via `bun run commit:engine "msg" <explicit paths>`.** Pass only the files you edited. The script refuses content paths outright; never stage `src/content/**` or `public/images/**`.
 - **`ProjectGrid.astro` has two `<style>` blocks.** The scoped one (line ~286) and `is:global` (line ~588). Chip rails, drop chrome, and the crossfade overlay **must** stay in the global block — listing pages never import `project.css`, and Astro's scope attribute is absent on JS-created nodes. There is a comment saying so at line 588. Respect it.

@@ -4,6 +4,8 @@ Portfolio site for **Vicente Cruz** — London-based industrial designer. Built 
 
 Live: [vicentecr.uz](https://vicentecr.uz)
 
+This public repository contains the site engine. Site content and media are maintained in a separate private repository and must be supplied in `src/content/` and `media/` before running a build.
+
 ## Stack
 
 - **[Astro](https://astro.build)** — static site generation
@@ -28,7 +30,7 @@ bun install
 bun run dev          # Astro dev server at http://localhost:4321
 ```
 
-In Anto's primary local checkout, Astro and branch sync run together:
+In the owner's primary local checkout, Astro and branch sync run together:
 
 ```sh
 bun run dev:session         # start Astro (4321) + branch sync

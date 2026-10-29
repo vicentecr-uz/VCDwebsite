@@ -24,9 +24,9 @@ This is *not* the "authored flag" #172 rejected. A human is not judging; the mac
 
 ## Worker landmines
 
-- **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
+- **Bun is available as `bun`.**
 - **Do not start a dev server.** Another session owns port 4321. You cannot verify in a browser — that is expected. A green `bun run build` proves compilation only; do not report it as verification.
-- **Commit via `$HOME/.bun/bin/bun run commit:engine "msg" <explicit paths>`.** Never stage `src/content/**` or `public/images/**`.
+- **Commit via `bun run commit:engine "msg" <explicit paths>`.** Never stage `src/content/**` or `public/images/**`.
 - **Do not migrate existing content.** No script that back-fills `hoverDark` into existing JSON. Absent means "fall back to `dark`".
 - **`listingCardForGrid` is an allowlist.** See below — this is the main trap.
 - Vite mounts dev middleware at server start, so your `dev-api-plugins.mjs` change needs a session restart before it does anything. Say so in the test script.

@@ -103,7 +103,7 @@ If `src/content/projects/stoozing-playground.json` exists in the worktree, set `
 
 ## Landmines
 
-- Bun: `$HOME/.bun/bin/bun`
+- Bun: `bun`
 - **Do not start a dev server**
 - `commit:engine` with **explicit paths** — for the content migration, either one `commit:engine` that includes project JSON **and** deleted play JSON (script may refuse content — if it refuses, use a single git commit that stages engine + the migration content paths together with a message that says schema/content migration, after staging explicitly). Prefer: try `commit:engine` for engine files; if content must ship in the same PR, `git add` the content paths and `git commit` once with both, noting the exception.
 - `listingCardForGrid` in API is an allowlist — `href` needs `previous.*` fallback
@@ -125,7 +125,7 @@ If `src/content/projects/stoozing-playground.json` exists in the worktree, set `
 ## Verify (worker: build only)
 
 ```bash
-$HOME/.bun/bin/bun run build
+bun run build
 ```
 
 Exit 0. Grep: no `getPlayGridItems` play-link merge; no `.project-grid__card--teaser .project-grid__img { filter: blur`; status menu order Public/Teaser/Draft; `is-dev-crop-open` in beforeunload.
