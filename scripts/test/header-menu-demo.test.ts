@@ -170,10 +170,10 @@ test('desktop timings match the approved settings and fade overlaps departure', 
   const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames.length === 61);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   expect([iris.start, iris.duration, iris.easing]).toEqual([950, 800, 'cubic-bezier(.23,1,.32,1)']);
-  expect([veil.start, veil.duration, veil.easing]).toEqual([2375, 500, 'cubic-bezier(.23,1,.32,1)']);
-  expect([fadeIn.start, fadeIn.duration]).toEqual([1825, 500]);
-  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2575, 500], [4075, 450]]);
-  expect([fadeOut.start, fadeOut.duration, fadeOut.easing]).toEqual([4250, 100, 'cubic-bezier(.23,1,.32,1)']);
+  expect([veil.start, veil.duration, veil.easing]).toEqual([2200, 500, 'cubic-bezier(.23,1,.32,1)']);
+  expect([fadeIn.start, fadeIn.duration]).toEqual([1650, 500]);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2400, 500], [3900, 450]]);
+  expect([fadeOut.start, fadeOut.duration, fadeOut.easing]).toEqual([4075, 100, 'cubic-bezier(.23,1,.32,1)']);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 368, y: 238 });
   expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 700, y: 35 });
@@ -212,12 +212,12 @@ test('mobile keeps tap/release cleanup alive after the cursor has faded out', as
   const h = fixture({ mobile: true }); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(4400);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   const moves = h.traces.filter(trace => trace.node.matches('[data-header-menu-demo-finger]') && trace.frames.length === 61);
-  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2315, 600], [4155, 450]]);
+  expect(moves.map(trace => [trace.start, trace.duration])).toEqual([[2140, 600], [3980, 450]]);
   expect(h.at(moves[0].frames[0].transform)).toEqual({ x: 600, y: 400 });
   expect(h.at(moves[1].frames.at(-1)!.transform)).toEqual({ x: 448, y: 648 });
-  expect([fadeOut.start, fadeOut.duration]).toEqual([4450, 100]);
+  expect([fadeOut.start, fadeOut.duration]).toEqual([4275, 100]);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
-  await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4725 });
+  await h.advance(175); expect(h.menu.at(-1)).toEqual({ open: false, time: 4550 });
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
   await h.advance(120 + config.dismissDuration); expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
@@ -228,11 +228,11 @@ test('reduced motion retains opacity durations and cannot resurrect the final ou
   const veilIn = entry(h, '[data-header-menu-demo-veil]', 800);
   const fadeOut = entry(h, '[data-header-menu-demo-cursor-layer]');
   expect(veilIn.start).toBe(950);
-  expect([fadeOut.start, fadeOut.duration]).toEqual([3580, 100]);
+  expect([fadeOut.start, fadeOut.duration]).toEqual([3405, 100]);
   expect(h.doc.querySelector('[data-header-menu-demo-iris]')!.getAttribute('style')).toContain('scale(1)');
   await h.advance(155);
   const reappearance = h.traces.findLast(trace => trace.node.matches('[data-header-menu-demo-cursor]') && trace.frames[0].opacity === 0)!;
-  expect(reappearance.start + reappearance.duration).toBe(3855);
+  expect(reappearance.start + reappearance.duration).toBe(3680);
   expect(fadeOut.node.contains(reappearance.node)).toBe(true);
   await h.advance(config.dismissDuration);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
@@ -269,7 +269,7 @@ test('late font readiness shifts the sequence together instead of compressing it
   const iris = entry(h, '[data-header-menu-demo-iris]');
   const cursor = entry(h, '[data-header-menu-demo-cursor]', 500);
   expect(iris.start).toBe(2182);
-  expect(cursor.start - iris.start).toBe(875);
+  expect(cursor.start - iris.start).toBe(700);
 });
 
 test('navigation title readiness is checked at the visual cue rather than during intro exit', async () => {
