@@ -38,7 +38,7 @@ Why this is strictly better:
 1. **URL-encoded refs are live in content today.** `src/content/about.json` holds `"/images/1Q1A6418%20(Custom).jpg"`; the file on disk is `1Q1A6418 (Custom).jpg`. Five content files contain `%20` refs (`about.json`, `settings/header.json`, `parentpal.json`, `conic-collection.json`, `the-rams.json`). **Every path comparison must `decodeURIComponent` both sides.** Get this wrong and Anto's own portrait 404s on the live site — it will look like the collector "worked" because the build succeeds.
 2. **Not every ref is a local file.** `the-rams.json` contains a YouTube embed URL in a `src` field. Skip anything starting with `http://`, `https://`, or `//`.
 3. **`public/images/` has subdirectories** — `press-logos/`, `reddit/`, `tapico-research-paper/`, `whatisbudgeting/`. Preserve that structure inside `media/`. Do not flatten. (#202 flattened *draft* media only.)
-4. **Bun is not on `PATH`** — use `$HOME/.bun/bin/bun`.
+4. **Bun is available as `bun`.**
 5. **Do not start a dev server.** One already owns port 4321. You cannot verify in-browser; Anto does that after merge.
 6. **This is a schema migration**, so content JSON and engine code commit **together** — the documented exception in `CLAUDE.md`. Use `bun run commit:engine` with explicit paths and say so in the message.
 7. `astro.config.mjs:2060` excludes `**/public/images/**` from the watcher. Update to `**/media/**`.
@@ -159,9 +159,9 @@ Run `bun run test:publish` after touching this file. Non-negotiable — the off-
 Do **not** open a browser. Do run:
 
 ```
-$HOME/.bun/bin/bun run test:assets
-$HOME/.bun/bin/bun run test:publish
-$HOME/.bun/bin/bun run build
+bun run test:assets
+bun run test:publish
+bun run build
 ```
 
 The build must succeed and `dist/images/` must contain ~174 files, not 282. State the actual numbers in your summary. Confirm `dist/images/` contains **no** file that only `test-card.json` (a draft) references.

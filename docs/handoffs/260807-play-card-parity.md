@@ -47,9 +47,9 @@ These landed after the first draft of this spec. Preserve them:
 
 ## Worker landmines
 
-- **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
+- **Bun is available as `bun`.**
 - **Do not start a dev server.** Port 4321 is owned by another session. You cannot verify in a browser. A green build proves compilation only — say so explicitly; do not report it as verification.
-- **Commit via `$HOME/.bun/bin/bun run commit:engine "msg" <explicit paths>`.** Never stage `src/content/**` — including the play JSON. If a schema field needs to exist in `src/content/play/*.json` for your code to run, **do not add it**: write the reader to tolerate its absence, and note in the PR that Anto adds it through the editor.
+- **Commit via `bun run commit:engine "msg" <explicit paths>`.** Never stage `src/content/**` — including the play JSON. If a schema field needs to exist in `src/content/play/*.json` for your code to run, **do not add it**: write the reader to tolerate its absence, and note in the PR that Anto adds it through the editor.
 - **`resolveEditableDocument` is a live allowlist, not a router.** Anything it does not return a path for is silently unreachable by every text/crop/upload route — the handler just does nothing. That is the silent-no-op failure mode. Test your key mapping first, before wiring any UI.
 - **`listingCardForGrid` (`scripts/dev-api-plugins.mjs`) is an allowlist, not a merge.** New fields need a `previous.*` fallback or they vanish on the *second* save. Do not touch it unless a Part 1 field is missing — `full` / `hoverDark` / `hoverImage` / `variants` are already handled.
 - **A new field has to be threaded through six places** if you add one: client payload → server allowlist → server GET → client `ensureLoaded` → `src/lib/projects.ts` → **page mappers** (`index.astro` / `work.astro` / `play.astro`). Part 1 already has a live example of this bug (see below).

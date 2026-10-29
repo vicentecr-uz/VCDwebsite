@@ -48,7 +48,7 @@ Every Home/Work/Play gallery card is a **full project card** (`src/content/proje
 4. `is:global` style blocks must **not** leave literal `:global(…)` wrappers (invalid CSS; title ink died that way).  
 5. Stale Vite transforms — restart `dev:session` before blaming CSS.  
 6. No silent fallbacks in new fill paths — `console.warn`.  
-7. Bun: `$HOME/.bun/bin/bun`. No second dev server. `commit:engine` with explicit paths; never stage content unless schema migration.
+7. Bun: `bun`. No second dev server. `commit:engine` with explicit paths; never stage content unless schema migration.
 8. Middleware / Vite plugins: restart `dev:session` after landing routes like `/api/content-revert`.
 9. Manager/executor split: expensive model diagnoses + specs; Sonnet/Composer types in a worktree; Anto verifies with a numbered script.
 
