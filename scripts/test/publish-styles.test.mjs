@@ -161,5 +161,30 @@ await inRepo('main moved on global.css → refuses to clobber', async (repo) => 
   check('other edit survives', (await stylesOnOrigin(repo)).includes('#bbbbbb'));
 });
 
+await inRepo('review preview environment refuses styles publish', async (repo) => {
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #cccccc; }\n');
+  const previous = process.env.VCD_REVIEW_PREVIEW;
+  process.env.VCD_REVIEW_PREVIEW = '1';
+  try {
+    const status = await stylesPublishStatus();
+    check('reports read-only', status.readOnly === true && status.canPublish === false);
+    const result = await publishStyles({ force: true });
+    check('refuses publish', result.ok === false && /review preview/.test(result.error), result.error);
+  } finally {
+    if (previous === undefined) delete process.env.VCD_REVIEW_PREVIEW;
+    else process.env.VCD_REVIEW_PREVIEW = previous;
+  }
+});
+
+await inRepo('review preview marker refuses styles publish', async (repo) => {
+  await mkdir(path.join(repo.work, '.dev-session'), { recursive: true });
+  await writeFile(path.join(repo.work, '.dev-session/content-snapshot.json'), '{}\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #dddddd; }\n');
+  const status = await stylesPublishStatus();
+  check('marker reports read-only', status.readOnly === true && status.canPublish === false);
+  const result = await publishStyles({});
+  check('marker refuses publish', result.ok === false && /review preview/.test(result.error), result.error);
+});
+
 console.log(failures ? `\n${failures} failing check(s)\n` : '\nAll checks passed\n');
 process.exit(failures ? 1 : 0);

@@ -4,6 +4,7 @@ import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { CONTENT_REPO_PATHS, contentGitArgs, hasContentRepository, isReviewPreview } from './content-repository.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -12,32 +13,39 @@ const git = async (cwd, ...args) => {
   return stdout.trim();
 };
 
+const contentGit = async (cwd, ...args) => {
+  const { stdout } = await execFile('git', [...contentGitArgs(cwd), ...args], { cwd });
+  return stdout.trim();
+};
+
 const readUpdateStatus = async (cwd) => {
   try { return JSON.parse(await readFile(path.join(cwd, '.dev-session/branch-sync.status'), 'utf8')); } catch { return null; }
 };
 
-const hasGitOperation = async (cwd) => {
+const hasGitOperation = async (cwd, run = git) => {
   for (const name of ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'sequencer']) {
-    try { await access(path.resolve(cwd, await git(cwd, 'rev-parse', '--git-path', name))); return true; } catch {}
+    try { await access(path.resolve(cwd, await run(cwd, 'rev-parse', '--git-path', name))); return true; } catch {}
   }
   return false;
 };
 
 export async function branchUpdateState(cwd = process.cwd()) {
   const branch = await git(cwd, 'branch', '--show-current') || 'detached HEAD';
-  const clean = !(await git(cwd, 'status', '--porcelain'));
+  const separateContent = hasContentRepository(cwd);
+  const content = separateContent ? await readContentState(cwd) : null;
+  const clean = !(await git(cwd, 'status', '--porcelain')) && (!content || content.clean);
   let revision;
   try {
     revision = await git(cwd, 'rev-parse', 'HEAD');
   } catch {
-    return { branch, revision: null, mainRevision: null, behind: 0, ahead: 0, clean, available: false };
+    return { branch, revision: null, mainRevision: null, behind: 0, ahead: 0, clean, available: false, ...(content || {}) };
   }
 
   let mainRevision;
   try {
     mainRevision = await git(cwd, 'rev-parse', 'origin/main');
   } catch {
-    return { branch, revision, mainRevision: null, behind: 0, ahead: 0, clean, available: false };
+    return { branch, revision, mainRevision: null, behind: 0, ahead: 0, clean, available: false, ...(content || {}) };
   }
 
   let behind = 0;
@@ -48,21 +56,54 @@ export async function branchUpdateState(cwd = process.cwd()) {
       .map(Number);
     [ahead, behind] = counts;
   } catch {
-    return { branch, revision, mainRevision: null, behind, ahead, clean: false, available: false };
+    return { branch, revision, mainRevision: null, behind, ahead, clean: false, available: false, ...(content || {}) };
   }
 
   const update = await readUpdateStatus(cwd);
-  const gitBusy = await hasGitOperation(cwd);
+  const gitBusy = await hasGitOperation(cwd) || Boolean(content?.contentBusy);
+  const contentBehind = content?.contentBehind || 0;
   return {
     branch,
     revision,
-    mainRevision,
-    behind,
-    ahead,
+    mainRevision: separateContent && !content?.contentMainRevision ? null : mainRevision,
+    engineBehind: behind,
+    engineAhead: ahead,
+    behind: behind + contentBehind,
+    ahead: ahead + (content?.contentAhead || 0),
     clean,
-    available: branch === 'main' && behind > 0 && !gitBusy,
+    contentBehind,
+    contentBusy: Boolean(content?.contentBusy),
+    contentAhead: content?.contentAhead || 0,
+    contentBranch: content?.contentBranch || null,
+    contentRevision: content?.contentRevision || null,
+    contentMainRevision: content?.contentMainRevision || null,
+    readOnly: isReviewPreview(cwd),
+    available: branch === 'main' && (!separateContent || content?.contentBranch === 'main') && (behind > 0 || contentBehind > 0) && !gitBusy && !isReviewPreview(cwd),
     update,
   };
+}
+
+async function readContentState(cwd) {
+  let branch;
+  let contentRevision;
+  let contentMainRevision;
+  try {
+    branch = await contentGit(cwd, 'branch', '--show-current');
+    contentRevision = await contentGit(cwd, 'rev-parse', 'HEAD');
+    contentMainRevision = await contentGit(cwd, 'rev-parse', 'origin/main');
+  } catch {
+    return { contentBranch: null, contentRevision: null, contentMainRevision: null, contentBehind: 0, contentAhead: 0, clean: false, contentBusy: true };
+  }
+  let contentBehind = 0;
+  let contentAhead = 0;
+  try {
+    [contentAhead, contentBehind] = (await contentGit(cwd, 'rev-list', '--left-right', '--count', `${contentRevision}...${contentMainRevision}`)).split(/\s+/).map(Number);
+  } catch {
+    return { contentBranch: branch, contentRevision, contentMainRevision, contentBehind: 0, contentAhead: 0, clean: false, contentBusy: true };
+  }
+  const clean = !(await contentGit(cwd, 'status', '--porcelain', '--untracked-files=all', '--ignored', '--', ...CONTENT_REPO_PATHS));
+  const contentBusy = await hasGitOperation(cwd, contentGit);
+  return { contentBranch: branch, contentRevision, contentMainRevision, contentBehind, contentAhead, clean, contentBusy };
 }
 
 export async function requestBranchUpdate(cwd = process.cwd(), authoringActive = false) {
@@ -71,7 +112,10 @@ export async function requestBranchUpdate(cwd = process.cwd(), authoringActive =
   const state = await branchUpdateState(cwd);
   if (state.branch !== 'main') throw new Error('Updates are available only on main.');
   if (await hasGitOperation(cwd)) throw new Error('Finish the current Git operation before updating.');
-  if (!state.behind) throw new Error('Already up to date.');
+  if (hasContentRepository(cwd) && state.contentBranch !== 'main') throw new Error('Content updates are available only on main.');
+  if (state.contentBusy) throw new Error('Finish the current Git operation before updating.');
+  if (!state.behind && !state.contentBehind) throw new Error('Already up to date.');
+  if (state.readOnly) throw new Error('Updates are unavailable in a review preview.');
 
   const sessionDir = path.join(cwd, '.dev-session');
   await mkdir(sessionDir, { recursive: true });

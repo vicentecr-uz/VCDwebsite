@@ -58,7 +58,10 @@ jobs:
       - name: Test engine with fixtures
         run: |
           bun test scripts/test/content-schema.test.ts scripts/test/content-loaders.test.mjs scripts/test/fetch-content.test.mjs scripts/test/content-hmr-gate.test.mjs scripts/test/crop-page-history.test.ts scripts/test/award-writer.test.mjs scripts/test/home-intro-action.test.ts
-          bun scripts/test/publish-cross-branch.test.mjs
+          bun run test:publish
           bun scripts/test/publish-styles.test.mjs
+          bun run test:branch-sync
+          bun run test:dev-branch-update
+          bun test scripts/test/content-snapshot.test.mjs
           bun run test
           bun run test:assets

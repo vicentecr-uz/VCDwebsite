@@ -1,12 +1,13 @@
 // @ts-check
 import { execFile as execFileCb } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { requestVpsAgent } from './vps-agent.mjs';
+import { contentGitArgs, hasContentRepository, isReviewPreview } from './content-repository.mjs';
 
 const execFile = promisify(execFileCb);
 
@@ -18,16 +19,17 @@ const execFile = promisify(execFileCb);
 export const CONTENT_PATHS = ['src/content', 'media'];
 const PUBLISH_BRANCH = 'main';
 
+const separateContentRepository = () => hasContentRepository(process.cwd());
+const contentGitOptions = () => contentGitArgs(process.cwd());
+
 /**
  * Code that decides how content JSON becomes pixels. Content and the engine that
  * renders it are versioned separately — content publishes straight to main, the
  * engine travels through a branch — so a content edit that depends on unmerged
  * rendering code breaks the live site the moment it lands.
  *
- * There is no schema and no content collections to catch it: `ProjectSections`
- * dispatches on `section.type` through an `if` chain ending in `return null`, so
- * an unknown section type silently vanishes and an unknown field is silently
- * ignored. Nothing throws, nothing logs.
+ * The local schema validates content for this engine version; it cannot prove
+ * that the deployed engine understands fields added on an unmerged branch.
  *
  * The check this list feeds is deliberately **branch-level**, not field-level:
  * "does this branch touch rendering at all?", never "does this edit use a new
@@ -74,6 +76,7 @@ const RENDERING_PATHS = [
   'public/awards/',
   'src/lib/imageUpload.mjs',
   'src/lib/inlineVideo.ts',
+  'src/lib/content-schema.ts',
 ];
 
 /** The VPS names subjects so the Mac does not need a resident local model. */
@@ -87,13 +90,27 @@ const gitRaw = async (...args) => {
 
 const git = async (...args) => (await gitRaw(...args)).trim();
 
+const contentGitRaw = async (...args) => {
+  const { stdout } = await execFile('git', [...contentGitOptions(), ...args], { cwd: process.cwd() });
+  return stdout;
+};
+
+const contentGit = async (...args) => (await contentGitRaw(...args)).trim();
+
 /** Same, with extra environment — used to build a commit against a scratch index. */
 const gitWithEnv = async (env, ...args) => {
   const { stdout } = await execFile('git', args, { cwd: process.cwd(), env: { ...process.env, ...env } });
   return stdout.trim();
 };
 
+const contentGitWithEnv = async (env, ...args) => {
+  const { stdout } = await execFile('git', [...contentGitOptions(), ...args], { cwd: process.cwd(), env: { ...process.env, ...env } });
+  return stdout.trim();
+};
+
 const lines = (value) => value.split('\n').map((line) => line.trim()).filter(Boolean);
+
+const nullPaths = (value) => value.split('\0').filter(Boolean);
 
 const isContentPath = (file) => CONTENT_PATHS.some((dir) => file.startsWith(`${dir}/`));
 
@@ -102,7 +119,7 @@ async function trackedContentPaths() {
   const present = [];
   for (const dir of CONTENT_PATHS) {
     try {
-      await execFile('git', ['ls-files', '--error-unmatch', '--', dir], { cwd: process.cwd() });
+      await execFile('git', [...contentGitOptions(), 'ls-files', '--error-unmatch', '--', dir], { cwd: process.cwd() });
       present.push(dir);
     } catch {
       // Nothing tracked under this path in this checkout — skip it.
@@ -140,7 +157,7 @@ const isRenderingPath = (file) => RENDERING_PATHS.some((prefix) => file.startsWi
  * because that is exactly what it describes: what *this* working tree last sent.
  */
 async function publishRecordPath() {
-  const gitDir = await git('rev-parse', '--absolute-git-dir');
+  const gitDir = await contentGit('rev-parse', '--absolute-git-dir');
   return path.join(gitDir, 'vcd-last-publish.json');
 }
 
@@ -166,7 +183,7 @@ async function writePublishRecord(entries) {
 /** Blob sha of `file` at `ref`, or null when it does not exist there. */
 async function blobAt(ref, file) {
   try {
-    return await git('rev-parse', `${ref}:${file}`);
+    return await contentGit('rev-parse', `${ref}:${file}`);
   } catch {
     return null;
   }
@@ -203,10 +220,11 @@ const porcelainPaths = (raw) => raw
  * save bar on every dev-mode entry, and a network round trip per poll is not
  * worth it. Publish itself fetches before it commits.
  */
-async function publishBaseRef() {
+async function publishBaseRef(content = separateContentRepository()) {
+  const run = content ? contentGit : git;
   for (const ref of [`origin/${PUBLISH_BRANCH}`, PUBLISH_BRANCH]) {
     try {
-      await execFile('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: process.cwd() });
+      await run('rev-parse', '--verify', '--quiet', ref);
       return ref;
     } catch {
       // Not present in this checkout — try the next one.
@@ -223,7 +241,7 @@ async function publishBaseRef() {
  * On main with a clean tree this is empty, so the everyday flow is unchanged.
  */
 export async function renderingChanges() {
-  const base = await publishBaseRef();
+  const base = await publishBaseRef(false);
   const changed = new Set();
 
   if (base) {
@@ -251,33 +269,16 @@ export async function renderingChanges() {
  * between the two matters.
  */
 async function unpublishedContent() {
-  const paths = await trackedContentPaths();
-  const base = await publishBaseRef();
-
+  const base = await publishBaseRef(true);
   if (!base) {
-    // No main to compare against (a fresh clone of a branch, say) — fall back to
-    // plain dirtiness, which is what this reported before cross-branch publish.
     return {
-      files: paths.length ? porcelainPaths(await gitRaw('status', '--porcelain', '--', ...paths)) : [],
+      files: porcelainPaths(await contentGitRaw('status', '--porcelain', '--', ...CONTENT_PATHS)),
       behind: [],
     };
   }
-
-  const changed = new Set();
-  if (paths.length) {
-    for (const file of lines(await git('diff', '--name-only', base, '--', ...paths))) {
-      changed.add(file);
-    }
-    for (const file of lines(await git('ls-files', '--others', '--exclude-standard', '--', ...paths))) {
-      changed.add(file);
-    }
-  }
-  // Untracked content under a directory git does not track at all yet — the
-  // pathspec above would have errored on it, so ask without one.
-  for (const file of lines(await git('ls-files', '--others', '--exclude-standard'))) {
-    if (isContentPath(file)) changed.add(file);
-  }
-
+  const changed = new Set(nullPaths(await contentGitRaw('diff', '--name-only', '-z', base, '--', ...CONTENT_PATHS)));
+  const excludes = separateContentRepository() ? [] : ['--exclude-standard'];
+  for (const file of nullPaths(await contentGitRaw('ls-files', '--others', ...excludes, '-z', '--', ...CONTENT_PATHS))) changed.add(file);
   return splitAheadBehind([...changed].sort(), base);
 }
 
@@ -297,7 +298,7 @@ async function splitAheadBehind(files, target) {
   const record = await readPublishRecord();
   let mergeBase = null;
   try {
-    mergeBase = await git('merge-base', 'HEAD', target);
+    mergeBase = await contentGit('merge-base', 'HEAD', target);
   } catch {
     // No shared history — every difference reads as ours, which is the safe way
     // round: the staleness guard still refuses anything main changed under us.
@@ -307,7 +308,7 @@ async function splitAheadBehind(files, target) {
   const behind = [];
   for (const file of files) {
     const absolute = path.join(process.cwd(), file);
-    const ours = existsSync(absolute) ? await git('hash-object', '--', absolute) : null;
+    const ours = existsSync(absolute) ? await contentGit('hash-object', '--', absolute) : null;
     const lastSynced = Object.hasOwn(record, file)
       ? record[file]
       : (mergeBase ? await blobAt(mergeBase, file) : null);
@@ -319,6 +320,22 @@ async function splitAheadBehind(files, target) {
 /** Branch, what is unpublished inside the content surface, and whether it is safe to publish. */
 export async function publishStatus() {
   const branch = await git('branch', '--show-current');
+  const reviewPreview = isReviewPreview(process.cwd());
+  if (reviewPreview) {
+    return {
+      branch,
+      files: [],
+      behind: [],
+      canPublish: false,
+      readOnly: true,
+      onPublishBranch: false,
+      contentBranch: null,
+      rendersContent: false,
+      renderingFiles: [],
+      publishBranch: PUBLISH_BRANCH,
+    };
+  }
+  const contentBranch = separateContentRepository() ? await contentGit('branch', '--show-current') : branch;
   const { files, behind } = await unpublishedContent();
   const renderingFiles = await renderingChanges();
 
@@ -326,11 +343,13 @@ export async function publishStatus() {
     branch,
     files,
     behind,
-    // Publishing is no longer gated on being on main — content commits to main
-    // through a worktree from wherever you are. What it is gated on is whether
-    // this branch could have produced content main cannot render.
-    canPublish: renderingFiles.length === 0,
+    // The engine can stay on a feature branch; the separate content repo stays
+    // on main. Rendering changes still require the existing explicit override.
+    canPublish: !reviewPreview && renderingFiles.length === 0
+      && (!separateContentRepository() || contentBranch === PUBLISH_BRANCH),
+    readOnly: reviewPreview,
     onPublishBranch: branch === PUBLISH_BRANCH,
+    contentBranch,
     rendersContent: renderingFiles.length > 0,
     renderingFiles,
     publishBranch: PUBLISH_BRANCH,
@@ -420,7 +439,7 @@ export async function generateMessage(manifest, files, env = {}, base = 'HEAD') 
   const fallback = fallbackMessage(manifest, files);
 
   try {
-    const diff = (await gitWithEnv(
+    const diff = (await (separateContentRepository() ? contentGitWithEnv : gitWithEnv)(
       env,
       'diff', '--cached', '--no-ext-diff', '--no-textconv', base, '--', ...CONTENT_PATHS,
     )).slice(0, 24_000); // Keep the prompt bounded at 24,000 chars; raise only with a remote input limit change.
@@ -484,6 +503,70 @@ async function publishInPlace(manifest) {
   );
 
   return { ok: true, pushed: true, message, generated, files: stagedNow };
+}
+
+async function publishSeparateContent(manifest) {
+  if ((await contentGit('branch', '--show-current')) !== PUBLISH_BRANCH) {
+    return { ok: false, error: `Content repository must be on ${PUBLISH_BRANCH} to publish.` };
+  }
+
+  const staged = nullPaths(await contentGitRaw('diff', '--cached', '--name-only', '-z'));
+  const strays = staged.filter((file) => !isContentPath(file));
+  if (strays.length) {
+    return { ok: false, error: `Non-content files are staged (${strays.slice(0, 3).join(', ')}) — commit or unstage them first.` };
+  }
+
+  try {
+    await contentGit('fetch', 'origin', PUBLISH_BRANCH);
+  } catch {
+    return { ok: false, error: `Could not reach content origin to publish to ${PUBLISH_BRANCH}.` };
+  }
+  const { files } = await unpublishedContent();
+  const target = `origin/${PUBLISH_BRANCH}`;
+  const remote = await contentGit('rev-parse', target);
+  const mergeBase = await contentGit('merge-base', 'HEAD', target);
+  const stale = await staleFiles(files, target, mergeBase);
+  if (stale.length) {
+    return { ok: false, error: `${PUBLISH_BRANCH} has newer edits to ${stale.slice(0, 3).join(', ')} — Update before publishing.` };
+  }
+  if (mergeBase !== remote) {
+    return { ok: false, error: `Content ${PUBLISH_BRANCH} is behind or diverged from origin — Update before publishing.` };
+  }
+  const committedPaths = nullPaths(await contentGitRaw('diff', '--name-only', '-z', `${target}..HEAD`));
+  const committedHistoryPaths = nullPaths(await contentGitRaw('log', '--format=', '--name-only', '-z', `${target}..HEAD`));
+  if (committedHistoryPaths.some((file) => !isContentPath(file))) {
+    return { ok: false, error: 'Unpublished content commit contains non-content files — split it before publishing.' };
+  }
+  const workingFiles = files.filter(isContentPath);
+  for (const file of workingFiles) {
+    try {
+      if (!lstatSync(path.join(process.cwd(), file)).isFile()) return { ok: false, error: `Content must be a regular file: ${file}` };
+    } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+  if (workingFiles.length) {
+    await contentGit('add', '-f', '--', ...workingFiles);
+  }
+  const stagedNow = nullPaths(await contentGitRaw('diff', '--cached', '--name-only', '-z'));
+  if (!stagedNow.length && !committedPaths.length) return { ok: false, error: 'No content changes to publish.' };
+
+  let message;
+  let generated = false;
+  if (stagedNow.length) {
+    ({ message, generated } = await generateMessage(manifest, stagedNow));
+    await contentGit('commit', '-m', message);
+  }
+  try {
+    await contentGit('push', 'origin', PUBLISH_BRANCH);
+  } catch (error) {
+    return { ok: true, pushed: false, message, generated, files: stagedNow.length ? stagedNow : committedPaths,
+      error: error instanceof Error ? error.message.split('\n')[0] : 'Push failed.' };
+  }
+
+  const published = [...new Set([...committedPaths, ...stagedNow])];
+  await writePublishRecord(Object.fromEntries(await Promise.all(
+    published.map(async (file) => [file, await blobAt('HEAD', file)]),
+  )));
+  return { ok: true, pushed: true, message, generated, files: published, branch: await git('branch', '--show-current') };
 }
 
 /**
@@ -585,6 +668,10 @@ async function publishFromBranch(manifest, files) {
  * save-bar Revert when there is nothing in-memory left to undo (#196).
  */
 export async function revertUnpublishedContent() {
+  if (isReviewPreview(process.cwd())) {
+    return { ok: false, error: 'Revert is disabled in review preview mode.' };
+  }
+  if (separateContentRepository()) return revertSeparateContent();
   // Match publish: reason about a current tip, not a stale fetch.
   try {
     await git('fetch', 'origin', PUBLISH_BRANCH);
@@ -665,6 +752,33 @@ export async function revertUnpublishedContent() {
   return { ok: true, restored };
 }
 
+async function revertSeparateContent() {
+  try { await contentGit('fetch', 'origin', PUBLISH_BRANCH); } catch { /* offline: use the fetched ref */ }
+  const base = await publishBaseRef(true);
+  if (!base) return { ok: false, error: 'No main ref to restore from.' };
+  const { files } = await unpublishedContent();
+  if (!files.length) return { ok: false, error: 'No unpublished content to revert.' };
+  const mergeBase = await contentGit('merge-base', 'HEAD', base);
+  const restored = [];
+  const published = {};
+  for (const file of files) {
+    if (!isContentPath(file)) return { ok: false, error: `Refusing to revert non-content path: ${file}` };
+    const onHead = await blobAt('HEAD', file);
+    const locallyCommitted = onHead !== await blobAt(mergeBase, file);
+    const ref = locallyCommitted ? 'HEAD' : base;
+    const blob = await blobAt(ref, file);
+    if (blob) await contentGit('checkout', ref, '--', file);
+    else {
+      await contentGit('rm', '-f', '--ignore-unmatch', '--', file);
+      await rm(path.join(process.cwd(), file), { force: true });
+    }
+    if (!locallyCommitted) published[file] = blob;
+    restored.push(file);
+  }
+  await writePublishRecord(published);
+  return { ok: true, restored };
+}
+
 /**
  * Commit the unpublished content surface to main and push. Refuses rather than
  * guessing whenever the repo is in a state where "just the content" is unclear.
@@ -673,6 +787,8 @@ export async function revertUnpublishedContent() {
  */
 export async function publishContent(manifest, { force = false } = {}) {
   const status = await publishStatus();
+
+  if (status.readOnly) return { ok: false, error: 'Publishing is disabled in review preview mode.' };
 
   if (!status.branch) {
     return { ok: false, error: 'On a detached HEAD — check out a branch to publish.' };
@@ -689,9 +805,8 @@ export async function publishContent(manifest, { force = false } = {}) {
     };
   }
 
-  return status.onPublishBranch
-    ? publishInPlace(manifest)
-    : publishFromBranch(manifest, status.files);
+  if (separateContentRepository()) return publishSeparateContent(manifest);
+  return status.onPublishBranch ? publishInPlace(manifest) : publishFromBranch(manifest, status.files);
 }
 
 /**
