@@ -3,7 +3,7 @@
 Context for anyone (human or agent) picking up work in the VCD Website Figma file.
 Read this before touching the Design System page.
 
-**File:** `$FIGMA_FILE_KEY` · **Page:**
+**File:** key in `FIGMA_FILE_KEY` (`.env`); links below use that placeholder · **Page:**
 [`Design System`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=285-525)
 
 Companion docs: [`button-design-system.md`](button-design-system.md) is the original
