@@ -6,6 +6,8 @@ import { parse } from 'parse5';
 
 const GENERATED_EXTENSIONS = new Set(['.html', '.css', '.js']);
 const URL_ATTRIBUTES = new Set(['src', 'href', 'poster', 'data', 'action', 'srcset']);
+// Owner-only pages that ship without being linked; see docs/dev-authoring.md → Analytics opt-out page.
+const UNLINKED_ROUTES = ['/analytics/'];
 
 /** @param {string} dir @returns {Promise<string[]>} */
 async function listFiles(dir) {
@@ -203,7 +205,7 @@ export async function prunePublicOutput(distDir, options = {}) {
   const documents = new Map();
   for (const file of htmlFiles) documents.set(file, parse(await readFile(file, 'utf8')));
   const reachable = new Set();
-  const queue = [routeFiles.get('/')];
+  const queue = [routeFiles.get('/'), ...UNLINKED_ROUTES.map((route) => routeFiles.get(route))];
   while (queue.length) {
     const file = queue.shift();
     if (!file || reachable.has(file)) continue;

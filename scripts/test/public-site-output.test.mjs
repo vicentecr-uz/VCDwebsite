@@ -121,3 +121,15 @@ test('retains reachable Astro island component and renderer assets through their
   for (const asset of ['_astro/UnreachableIsland.js', '_astro/unreachable-client.js']) assert.ok(result.removedAssets.includes(asset), asset);
   assert.ok(result.removedHtml.includes('draft/index.html'));
 });
+
+test('ships the unlinked owner-only analytics page with its assets', async () => {
+  const { root, put } = await fixture();
+  await put('index.html', 'home');
+  await put('analytics/index.html', '<script src="/_astro/analytics.js"></script>');
+  await put('_astro/analytics.js', 'export const optOut = true;');
+
+  const result = await prunePublicOutput(root, { site });
+
+  assert.ok(result.retainedHtml.includes('analytics/index.html'));
+  assert.ok(result.retainedAssets.includes('_astro/analytics.js'));
+});
