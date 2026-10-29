@@ -265,6 +265,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { initTextField } from '../lib/devTextField.js';
   import { createHeaderMenuDemo } from '../lib/headerMenuDemo';
+  import { trackEvent } from '../lib/analytics';
 
   // Touch / no-hover devices open the menu on tap instead of on hover.
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
@@ -1757,34 +1758,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     completionStored = false;
   }
   let storySequence = completionStored ? 'returning' : 'main';
-  const trackingWindow = window as Window & {
-    __vcdHeaderStoryStages?: Set<string>;
-    umami?: { track?: (name: string, data: { sequence: string; stage: string }) => void | Promise<unknown> };
-  };
-  // This Set deduplicates within one document; Umami Visits provide cross-reload aggregation.
-  const trackedStoryStages = trackingWindow.__vcdHeaderStoryStages ??= new Set<string>();
-  const trackStoryStage = (stage: string) => {
-    const script = document.querySelector<HTMLScriptElement>('script[data-website-id]');
-    const domains = script?.dataset.domains?.split(/[\s,]+/).filter(Boolean) ?? [];
-    const pathname = location.pathname.replace(/\/+$/, '') || '/';
-    const track = trackingWindow.umami?.track;
-    if (!script || typeof track !== 'function' || !domains.includes(location.hostname) || pathname === '/analytics' ||
-      pathname === '/dev' || pathname.startsWith('/dev/')) return;
-    try {
-      if (window.localStorage.getItem('umami.disabled')) return;
-    } catch {
-      return;
-    }
-    const eventName = `header-story-${storySequence}-${stage}`;
-    if (trackedStoryStages.has(eventName)) return;
-    trackedStoryStages.add(eventName);
-    try {
-      const result = track.call(trackingWindow.umami, eventName, { sequence: storySequence, stage });
-      if (result && typeof result.then === 'function') result.catch(() => {});
-    } catch {
-      // Analytics failures must not affect the header interaction.
-    }
-  };
+  const trackStoryStage = (stage: string) => trackEvent(`header-story-${storySequence}-${stage}`, { sequence: storySequence, stage });
 
   const messageForClick = (count: number) => {
     if (completionStored) return count === 2 ? 'ah, you again' : count === 3 ? 'welcome back' : null;

@@ -62,7 +62,18 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
 <script>
   import { bindHomeIntro } from '../../scripts/homeIntro';
   import { onPageLoad } from '../../lib/pageLifecycle';
-  const dispose = onPageLoad(() => bindHomeIntro()?.teardown);
+  import { trackEvent } from '../../lib/analytics';
+  const onDismissing = () => trackEvent('home-intro-dismissed');
+  const dispose = onPageLoad(() => {
+    const controller = bindHomeIntro();
+    if (!controller) return;
+    if (controller.getState() === 'active') trackEvent('home-intro-shown');
+    window.addEventListener('vcd:home-intro-dismissing', onDismissing);
+    return () => {
+      window.removeEventListener('vcd:home-intro-dismissing', onDismissing);
+      controller.teardown();
+    };
+  });
   import.meta.hot?.dispose(dispose);
 </script>
 
