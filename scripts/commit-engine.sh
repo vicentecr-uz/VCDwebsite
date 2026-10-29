@@ -51,11 +51,7 @@ if [ ${#paths[@]} -gt 0 ]; then
       exit 1
     fi
   done
-  if [ "$schema_migration" = "1" ]; then
-    git add -f -- "${paths[@]}"
-  else
-    git add -- "${paths[@]}"
-  fi
+  git add -- "${paths[@]}"
 elif [ "$schema_migration" = "1" ]; then
   echo "usage: bun run commit:engine --schema-migration \"message\" path [path ...]" >&2
   echo "The no-paths sweep is refused under --schema-migration." >&2
