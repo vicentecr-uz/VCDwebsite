@@ -19,7 +19,6 @@ const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 
 const PROD_ORIGINS = new Set([
   'https://vicentecr.uz',
-  'https://wip.vcruzdesigns.com',
 ]);
 
 // Match ProjectSignup.astro: HTML email type + tlds package (via URL hostname).

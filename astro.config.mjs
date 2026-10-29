@@ -2739,9 +2739,7 @@ const isolatedViteCommandCache = () => ({
 export default defineConfig({
   // Absolute base for canonical links and og:image URLs. Social scrapers and
   // search engines both reject relative ones, so this has to be a real origin.
-  // Flip to the apex domain via PUBLIC_SITE_URL when #15 migrates it — no code
-  // change needed, just the env var in Cloudflare.
-  site: process.env.PUBLIC_SITE_URL || 'https://wip.vcruzdesigns.com',
+  site: process.env.PUBLIC_SITE_URL || 'https://vicentecr.uz',
   devToolbar: { enabled: false },
   integrations: [react(), mediaCollectorIntegration(), devInspectors(), isolatedViteCommandCache()],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.

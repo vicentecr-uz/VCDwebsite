@@ -6,7 +6,7 @@ Harness and system instructions outrank repository prose. This guide defines pro
 
 ## Project and sources of truth
 
-VCDwebsite is Vicente Cruz's Astro + Bun + Tailwind CSS v4 + GSAP portfolio site. Cloudflare Pages deploys `main` to [wip.vcruzdesigns.com](https://wip.vcruzdesigns.com).
+VCDwebsite is Vicente Cruz's Astro + Bun + Tailwind CSS v4 + GSAP portfolio site. Cloudflare Pages deploys `main` to [vicentecr.uz](https://vicentecr.uz).
 
 - This file is canonical for work inside this repository.
 - Atlas is the shared, cross-project knowledge base. When it is available, follow its own `AGENT-GUIDE.md` for reading, logging, committing, and pushing Atlas changes. Do not mirror the whole VCD workflow into Atlas.
