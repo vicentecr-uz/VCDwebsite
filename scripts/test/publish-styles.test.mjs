@@ -98,13 +98,21 @@ await inRepo('on main, dirty global.css → publishes in place', async (repo) =>
   }
 });
 
-await inRepo('on main, already-committed styles → pushes saved commit', async (repo) => {
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #121212; }\n');
-  const saved = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
-  check('save committed styles', saved.ok === true && saved.committed === true, saved.error);
-  const result = await publishStyles({});
-  check('published saved commit', result.ok === true && result.pushed === true, result.error);
-  check('main has saved colour', (await stylesOnOrigin(repo)).includes('#121212'));
+await inRepo('on main, repeated Save → Publish pushes both saved style files', async (repo) => {
+  for (const value of ['#121212', '#343434']) {
+    await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), `:root { --sys-color-srf: ${value}; }\n`);
+    await writeFile(path.join(repo.work, STYLE_TOKEN_PATHS[1]), JSON.stringify({ color: value }) + '\n');
+    const saved = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
+    check(`save committed ${value}`, saved.ok === true && saved.committed === true, saved.error);
+    const savedHead = (await repo.git('rev-parse', 'HEAD')).stdout.trim();
+    const result = await publishStyles({});
+    check(`published saved ${value}`, result.ok === true && result.pushed === true, result.error);
+    check(`main has saved ${value}`, (await stylesOnOrigin(repo)).includes(value));
+    const { stdout: remoteTokens } = await execFile('git', ['show', `main:${STYLE_TOKEN_PATHS[1]}`], { cwd: repo.origin });
+    check(`main has saved token JSON ${value}`, JSON.parse(remoteTokens).color === value);
+    check(`push reused saved commit ${value}`, (await repo.git('rev-parse', 'origin/main')).stdout.trim() === savedHead);
+    check(`nothing left to publish ${value}`, (await stylesPublishStatus()).files.length === 0);
+  }
 });
 
 await inRepo('main unpublished engine commit → refuses style publish', async (repo) => {
@@ -125,6 +133,7 @@ await inRepo('intermediate engine edit reverted → refuses net-clean history', 
   await writeFile(path.join(repo.work, 'README.md'), 'engine\n');
   await repo.git('add', 'README.md');
   await repo.git('commit', '-m', 'engine: revert temporary edit');
+  check('engine file has no net changes', (await repo.git('diff', 'origin/main', '--', 'README.md')).stdout === '');
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #171717; }\n');
   await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
   const result = await publishStyles({});
@@ -195,6 +204,7 @@ await inRepo('failed main push → retry saved style commit', async (repo) => {
   await rm(hook, { force: true });
   const retried = await publishStyles({});
   check('retry publishes saved commit', retried.ok === true && retried.pushed === true, retried.error);
+  check('retry pushed the original saved commit', (await repo.git('rev-parse', 'origin/main')).stdout.trim() === savedHead);
   check('main has retried colour', (await stylesOnOrigin(repo)).includes('#141414'));
 });
 
