@@ -11,7 +11,7 @@ The content surface is:
 - `src/content/**` — JSON documents;
 - `media/**` — source media managed by authoring and the reachable-asset build.
 
-Everything outside those paths is engine, except for the narrowly scoped colour-token publisher described below. Content paths belong to the private content repository and are never staged in a public engine feature commit. Schema changes use coordinated engine and private-content branches/PRs with an expand → migrate → contract sequence.
+Everything outside those paths is engine, except for the narrowly scoped colour-token publisher described below. Content paths belong to the private content repository and are never staged in a public engine feature commit. The engine repository carries the renderer and fixtures; the private content repository carries authored JSON and media. Schema changes use coordinated engine and private-content branches/PRs with an expand → migrate → contract sequence: make the renderer accept the new shape, migrate private documents, then remove compatibility only after the private content build and checks pass. The current content schema is version 1.
 
 ## In-page Edit flow
 
@@ -29,7 +29,7 @@ Image uploads and inserted media sections are the important exception: the uploa
 
 Because full reloads are blocked, Vite can keep a stale transform after a Git pull, branch switch, or same-branch merge. A hard browser reload may still serve old component CSS. The tell is a partial update, such as new markup with one old `<style>` block.
 
-On the primary `main` checkout, the branch-sync service fetches `origin/main` every minute. Updates remain deferred while any browser is in Edit mode. When `main` is behind its remote, Edit mode shows **Update available** alongside any Save/Publish actions. Saved, unpublished files and local commits do not hide it. With pending browser edits, the action becomes **Save & Update** and saves locally first; a failed or cancelled save stops the update. Neither action publishes content.
+On the primary `main` checkout, the branch-sync service fetches the engine repository's `origin/main` every minute. The private content repository is kept alongside it through `.content.git`; Update coordinates both repositories and preserves local content edits before installing dependencies and restarting the session. Updates remain deferred while any browser is in Edit mode. When `main` is behind its remote, Edit mode shows **Update available** alongside any Save/Publish actions. Saved, unpublished files and local commits do not hide it. With pending browser edits, the action becomes **Save & Update** and saves locally first; a failed or cancelled save stops the update. Neither action publishes content.
 
 **Update** leaves Edit mode, releases the authoring lease, and wakes the existing sync service. The service preserves local files, replays local commits onto the fetched remote revision, restores the files, and completes dependency installation and the required server restart before reporting success. The browser reloads at the preserved scroll position only after that request succeeds. A Git conflict cancels the update and restores the previous revision and drafts; a recovery failure retains the backup and reports an error. Updates remain unavailable on feature branches or during an unresolved Git operation.
 
@@ -71,7 +71,7 @@ The gate is deliberately branch-level. The schema rejects unknown sections and u
 
 ### Publisher internals
 
-In the current architecture, `.content.git` tracks the separate private content repository in the same working directory. It must be on `main` to publish; content commits and pushes target that private repository only. The engine rendering gate still checks the engine repository. Review worktrees use copied content without `.content.git`; local edits are possible, but publishing is disabled.
+In the current architecture, `.content.git` tracks the separate private content repository in the same working directory. It must be on `main` to publish; content commits and pushes target that private repository only. The engine rendering gate still checks the engine repository. Review worktrees use copied fixture or private content without `.content.git`; local edits are possible, but publishing is disabled. A private-content push triggers the content deployment workflow, which asks Cloudflare Pages to rebuild the engine with that content.
 
 `GET /api/publish` reports the branch, `files`, `behind`, `canPublish`, `onPublishBranch`, `rendersContent`, `renderingFiles`, and `publishBranch`.
 
