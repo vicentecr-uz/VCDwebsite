@@ -1,4 +1,4 @@
-name: Sample content
+name: Engine validation
 
 on:
   pull_request:
@@ -10,13 +10,12 @@ permissions:
   contents: read
 
 jobs:
-  sample:
+  fixtures:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       CI: true
       ASTRO_TELEMETRY_DISABLED: 1
-      CONTENT_SOURCE: sample
     steps:
       - name: Check out engine without private content
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -43,18 +42,22 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: package.json
-      - name: Populate fictional content
-        run: bash scripts/fetch-content.sh
+      - name: Create temporary fixture repository
+        run: |
+          git init -q "$RUNNER_TEMP/content"
+          cp -R scripts/test/fixtures/content/. "$RUNNER_TEMP/content/"
+          git -C "$RUNNER_TEMP/content" add .
+          git -C "$RUNNER_TEMP/content" -c user.name=CI -c user.email=ci@example.com commit -qm fixture
+          CONTENT_REPO="$RUNNER_TEMP/content" bash scripts/fetch-content.sh --replace
       - name: Install dependencies without credentials
         run: bun install --frozen-lockfile
       - name: Build and verify production output
         run: |
           bun run build
           bun scripts/check-production-output.mjs
-      - name: Test engine with sample content
+      - name: Test engine with fixtures
         run: |
           bun test scripts/test/content-schema.test.ts scripts/test/content-loaders.test.mjs scripts/test/fetch-content.test.mjs scripts/test/content-hmr-gate.test.mjs scripts/test/crop-page-history.test.ts scripts/test/award-writer.test.mjs scripts/test/home-intro-action.test.ts
-          bun scripts/test/craft-demo-build.test.mjs
           bun scripts/test/publish-cross-branch.test.mjs
           bun scripts/test/publish-styles.test.mjs
           bun run test

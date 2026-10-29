@@ -75,11 +75,26 @@ const legacy: Record<string, z.ZodRawShape> = {
 const sectionSchemas = Object.fromEntries(Object.entries({ modern, legacy }).map(([stack, types]) => [
   stack, Object.fromEntries(Object.entries(types).map(([type, fields]) => [type, sectionBase.extend(fields)])),
 ])) as Record<'modern' | 'legacy', Record<string, z.ZodType>>;
+const stylesExamples = object.extend({
+  hero: text,
+  detail: text,
+  referenceProject: object.extend({ title: text, href: text }),
+  pressQuotes: z.array(object.extend({ quote: text, logoSrc: text, logoAlt: text, href: text, name: text.optional() })),
+  redditComments: z.array(object.extend({ author: text, paragraphs: strings, score: z.union([number, text]), avatarSrc: text.optional(), href: text.optional(), theme: z.enum(['light', 'dark']).optional() })),
+  projectCards: z.array(object.extend({ title: text, subtitle: text.optional(), image: text, hoverImage: text.optional(), bg: text, dark: z.boolean(), href: text })),
+  awardHref: text,
+  projectDetails: z.array(object.extend({ label: text, value: text })),
+  video: object.extend({ src: text, alt: text }),
+  aboutBody: text,
+});
+export type StylesExamples = z.infer<typeof stylesExamples>;
+
 const document = object.extend({
   schemaVersion: version,
   title: text.optional(),
   description: text.optional(),
   sections: z.array(sectionBase),
+  examples: stylesExamples.optional(),
   outline: z.array(object).optional(),
   introHeight: number.optional(),
   trailingSpacing: responsive(text).optional(),

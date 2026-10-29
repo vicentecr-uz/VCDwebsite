@@ -43,7 +43,7 @@ async function makeRepo() {
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
   await writeFile(path.join(work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #ffffff; }\n');
   await writeFile(path.join(work, STYLE_TOKEN_PATHS[1]), '{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"#ffffff"}}}}}\n');
-  const sampleProject = await readFile(path.resolve(import.meta.dirname, '../../sample-content/src/content/projects/sample-modern.json'), 'utf8');
+  const sampleProject = await readFile(path.resolve(import.meta.dirname, 'fixtures/content/src/content/projects/sample-modern.json'), 'utf8');
   await writeFile(path.join(work, 'src/content/projects/sample-modern.json'), sampleProject);
   await writeFile(path.join(work, 'README.md'), 'engine\n');
   await git('add', '.');

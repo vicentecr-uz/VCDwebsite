@@ -39,7 +39,7 @@ test('validates pages, settings, and schema versions', () => {
   assert.throws(() => validateContentVersion({}, 'schema.json'), /schema\.json: schemaVersion/);
 });
 
-for (const source of ['src/content', 'sample-content/src/content']) test(`${source} documents satisfy the contract`, async () => {
+for (const source of ['src/content', 'scripts/test/fixtures/content/src/content']) test(`${source} documents satisfy the contract`, async () => {
   for (const directory of ['projects', 'pages']) {
     const files = await Array.fromAsync(new Bun.Glob(`${source}/${directory}/*.json`).scan({ cwd: root }));
     assert.ok(files.length > 0);
@@ -50,4 +50,8 @@ for (const source of ['src/content', 'sample-content/src/content']) test(`${sour
     }
   }
   validateHeaderSettings(JSON.parse(await readFile(path.join(root, source, 'settings/header.json'), 'utf8')), `${source}/settings/header.json`);
+});
+
+test('rejects incomplete instance style examples', () => {
+  assert.throws(() => validatePageDocument({ sections: [], examples: { hero: '/hero.svg' } }, 'styles.json'), /styles\.json: examples\.detail/);
 });

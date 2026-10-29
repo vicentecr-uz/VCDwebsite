@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ImageVariants } from './responsiveImage';
 import { EMPTY_COVER_FILL } from './placeholderCover.mjs';
-import { validateContentVersion, validatePageDocument, validateProjectDocument } from './content-schema';
+import { validateContentVersion, validatePageDocument, validateProjectDocument, type StylesExamples } from './content-schema';
 import type { ProjectStackSpacing } from './projectStack';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'image';
@@ -80,6 +80,7 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
 export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics';
 
 export type PageDocument = {
+  examples?: StylesExamples;
   title?: string;
   description?: string;
   subtitle?: string;
