@@ -123,6 +123,21 @@ Dev mode can create and author Public, Teaser, and Draft slugs without a server 
 
 Home, Work, and Play listing cards come from each project's `listings`. Dev-mode grid management is handled by `DevProjectGridEditor.astro`, including New page and project settings.
 
+### Pretty referral links and reserved project slugs
+
+These links all go to the homepage with `utm_medium=social&utm_campaign=profile`. Umami reports the `utm_source` value in UTM / Campaigns; same-site redirects do not appear as Referrers.
+
+| Link | Source |
+| --- | --- |
+| [https://vicentecr.uz/linkedin](https://vicentecr.uz/linkedin) | `linkedin` |
+| [https://vicentecr.uz/ig](https://vicentecr.uz/ig) | `instagram` |
+| [https://vicentecr.uz/instagram](https://vicentecr.uz/instagram) (alias) | `instagram` |
+| [https://vicentecr.uz/x](https://vicentecr.uz/x) | `x` |
+| [https://vicentecr.uz/threads](https://vicentecr.uz/threads) | `threads` |
+| [https://vicentecr.uz/yc](https://vicentecr.uz/yc) | `ycombinator` |
+
+Both trailing-slash variants are reserved for each referral link, so these slugs cannot be used for project pages. Other existing page and project routes remain unavailable: New page and rename already reject an existing `src/pages/{slug}.astro` file or project JSON. The source of truth is `public/_redirects` plus the fallback pages in `src/pages`; update this table whenever a referral is added, renamed, or removed.
+
 ## Analytics opt-out page
 
 `/analytics` is an owner-only tool used to exclude Anto's own browsers from Umami by setting `localStorage['umami.disabled']`, so testing visits do not count in the stats. It is not for public visitors: do not link it from navigation, menus, the footer, or any content, and do not list it in a sitemap. `src/components/Analytics.astro` marks it `noindex,nofollow` and skips tracking on it.
