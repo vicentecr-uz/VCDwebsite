@@ -67,11 +67,11 @@ test('inserts an award, saves its link by stable section ID, and restores it aft
       document: 'fixture',
       path: ['sections', 0, 'href'],
       target: { sectionId: inserted.body.section.id },
-      value: 'https://ifdesign.com/en/winner-ranking/project/goodhome-painting-tools/768056',
+      value: 'https://example.com/awards/sample-modern',
     }] }), res, () => {});
     assert.equal((await res.done).status, 200);
     let saved = JSON.parse(await readFile(file, 'utf8'));
-    assert.equal(saved.sections[1].href, 'https://ifdesign.com/en/winner-ranking/project/goodhome-painting-tools/768056');
+    assert.equal(saved.sections[1].href, 'https://example.com/awards/sample-modern');
 
     const batch = configuredMiddleware('content-batch-dev-writer');
     res = response();

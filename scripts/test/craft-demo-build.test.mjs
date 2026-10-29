@@ -152,20 +152,20 @@ for (const demo of CRAFT_DEMOS) {
 const indexHtml = await readFile(path.join(dist, 'preview/craft/index.html'), 'utf8');
 const indexNodes = allNodes(parseHtml(indexHtml));
 assert.equal(indexNodes.some((node) => node.tagName === 'script'), false, 'the review index loads no interaction code');
-assert.equal(indexHtml.includes('href="/devpanel"'), false, 'production must not link to draft-only project pages');
+assert.equal(indexHtml.includes('href="/sample-modern"'), false, 'production must not link to draft-only project pages');
 for (const demo of CRAFT_DEMOS) assert.ok(indexHtml.includes(`/preview/${demo.id}`));
 assert.equal(craftDemo('https://attacker.example'), undefined);
 assert.equal(craftDemo('../api/upload'), undefined);
 assert.equal(craftDemo(null), undefined);
 
-for (const slug of ['devpanel', 'low-res-image-loader']) {
-  const document = JSON.parse(await readFile(path.join(root, 'src/content/projects', `${slug}.json`), 'utf8'));
+for (const slug of ['sample-modern']) {
+  const document = JSON.parse(await readFile(path.join(root, 'sample-content/src/content/projects', `${slug}.json`), 'utf8'));
   assert.ok(['draft', 'published'].includes(document.status), `${slug}: valid project visibility`);
   assert.ok(document.sections.length > 0);
   const demos = document.sections.filter((section) => section.type === 'interactiveDemo');
   assert.ok(demos.length > 0, `${slug}: retains its interactive demo alongside authored content`);
-  for (const section of demos) {
-    assert.ok(craftDemo(section.demo), `${slug}: known demo`);
-  }
+  for (const section of demos) assert.ok(craftDemo(section.demo), `${slug}: known demo`);
+  const demoIds = new Set(demos.map((section) => section.demo));
+  for (const demo of CRAFT_DEMOS) assert.ok(demoIds.has(demo.id), `${slug}: includes ${demo.id}`);
 }
 console.log(`craft-demo-build: passed (${CRAFT_DEMOS.length} routes, native defaults, accessible labels, module isolation, no authoring APIs)`);
