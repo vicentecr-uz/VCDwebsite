@@ -5,7 +5,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const productionScript = path.resolve(import.meta.dirname, '../branch-sync.sh');
-const bun = '$HOME/.bun/bin/bun';
+const bun = process.execPath;
 const failures = [];
 
 function git(cwd, ...args) {
@@ -42,6 +42,7 @@ function makeFixture() {
   copyFileSync(productionScript, script);
   chmodSync(script, 0o755);
   copyFileSync(path.resolve(import.meta.dirname, '../branch-sync-drafts.mjs'), path.join(scripts, 'branch-sync-drafts.mjs'));
+  copyFileSync(path.resolve(import.meta.dirname, '../content-repository.mjs'), path.join(scripts, 'content-repository.mjs'));
   writeFileSync(path.join(work, '.git/info/exclude'), 'scripts/\n.dev-session/\n');
   const log = path.join(root, 'session.log');
   const session = path.join(scripts, 'fake-session.sh');
