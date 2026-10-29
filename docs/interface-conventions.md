@@ -6,7 +6,7 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 
 - **Spacing:** Use `var(--space-unit)` consistently for header, grid, footer, and gaps. It is `1rem` at every breakpoint and steps down to `0.75rem` below `40em`. It is defined in `src/styles/global.css`; do not replace it with a literal `1em`. Prefer inline `style=` over framework arbitrary values when guaranteed rendering matters.
 - **Mobile breakpoint:** `40em` (640px). This is where `--space-unit` tightens and the header steps down through `--header-wordmark-size`, `--header-menu-link-size`, and `--header-logo-size`.
-- **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. EB Garamond is loaded only where a `Layout` explicitly requests the `serif` prop.
+- **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic.
 - **Page ground:** Use `--color-bg` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
 
 ## Scrollable overflow
