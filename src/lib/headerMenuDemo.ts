@@ -43,6 +43,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   };
   const removeListeners = () => {
     window.removeEventListener('click', cancelFromUser, true);
+    trigger.removeEventListener('mouseenter', cancelFromHover);
     window.removeEventListener('resize', cancelFromUser, true);
     window.removeEventListener('scroll', cancelFromScroll);
     window.removeEventListener('pagehide', cancelFromUser, true);
@@ -62,21 +63,38 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     const active = controller;
     controller = undefined;
     active?.abort();
-    animations.forEach(animation => animation.cancel());
-    animations.clear();
     if (cursorFrame !== undefined) window.cancelAnimationFrame(cursorFrame);
     cursorFrame = undefined;
     removeIdle();
     removeListeners();
     if (preserveMenu) menuOwned = false;
     else closeOwned();
-    scene?.remove();
+    // Freeze the scene where it is and fade it out, so every dismissal leaves the same way.
+    const leaving = scene;
+    const running = [...animations];
     scene = undefined;
+    animations.clear();
+    running.forEach(animation => animation.pause());
+    const finish = () => {
+      running.forEach(animation => animation.cancel());
+      leaving?.remove();
+    };
+    if (!leaving) return finish();
+    const layers = [...leaving.children].filter((layer): layer is HTMLElement => layer instanceof HTMLElement);
+    const fades = layers.map(layer => layer.animate(
+      [{ opacity: window.getComputedStyle(layer).opacity }, { opacity: 0 }],
+      { duration: config.dismissDuration, easing: config.exitEasing, fill: 'forwards' },
+    ).finished);
+    void Promise.all(fades).catch(() => undefined).then(finish);
   };
   function cancelFromUser(event?: Event) {
     if (!controller) return;
     if (event?.type === 'click' && introVisible()) return;
     cleanup(Boolean(event?.type === 'click' && event.target instanceof Node && trigger.contains(event.target)));
+  }
+  function cancelFromHover() {
+    // The real pointer's mouseenter opens the menu; leave it to the header.
+    if (controller) cleanup(true);
   }
   function cancelFromScroll() {
     // The intro's restoration reset lands at the top, where the header still sits.
@@ -90,6 +108,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   }
   const addListeners = () => {
     window.addEventListener('click', cancelFromUser, true);
+    trigger.addEventListener('mouseenter', cancelFromHover);
     window.addEventListener('resize', cancelFromUser, true);
     window.addEventListener('scroll', cancelFromScroll, { passive: true });
     window.addEventListener('pagehide', cancelFromUser, true);
