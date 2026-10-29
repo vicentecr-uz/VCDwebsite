@@ -25,10 +25,15 @@ async function fixture() {
   await mkdir(path.join(source, 'src/content'), { recursive: true });
   await mkdir(path.join(source, 'media/private'), { recursive: true });
   await mkdir(path.join(source, 'public/images'), { recursive: true });
-  await mkdir(path.join(source, 'docs'), { recursive: true });
+  await mkdir(path.join(source, 'scripts'), { recursive: true });
+  await mkdir(path.join(source, 'uploads'), { recursive: true });
+  await mkdir(path.join(source, '.github/workflows'), { recursive: true });
   await writeFile(path.join(source, 'src/content/project.json'), '{"title":"source"}\n');
   await writeFile(path.join(source, 'media/private/secret.txt'), 'private bytes\n');
   await writeFile(path.join(source, 'public/images/image.txt'), 'image bytes\n');
+  await writeFile(path.join(source, 'scripts/build-view.mjs'), 'build view bytes\n');
+  await writeFile(path.join(source, 'uploads/upload.txt'), 'upload bytes\n');
+  await writeFile(path.join(source, '.github/workflows/content-deploy.yml'), 'name: content deploy\n');
   return { root, source, destination };
 }
 
@@ -37,16 +42,18 @@ try {
   try {
     const result = await prepareContentSnapshot(destination, source);
     assert.equal(result.copied, true);
-    for (const relative of ['src/content/project.json', 'media/private/secret.txt', 'public/images/image.txt']) {
+    for (const relative of ['src/content/project.json', 'media/private/secret.txt', 'public/images/image.txt', 'scripts/build-view.mjs', 'uploads/upload.txt', '.github/workflows/content-deploy.yml']) {
       assert.equal(await readFile(path.join(destination, relative), 'utf8'), await readFile(path.join(source, relative), 'utf8'));
     }
     assert.equal(await readFile(path.join(source, 'src/content/project.json'), 'utf8'), '{"title":"source"}\n');
     assert.equal(CONTENT_REPO_PATHS.includes('.content.git'), false);
 
     await writeFile(path.join(destination, 'src/content/project.json'), '{"title":"edited"}\n');
+    await writeFile(path.join(destination, '.github/workflows/content-deploy.yml'), 'name: local draft\n');
     const rerun = await prepareContentSnapshot(destination, source);
     assert.equal(rerun.preserved, true);
     assert.equal(await readFile(path.join(destination, 'src/content/project.json'), 'utf8'), '{"title":"edited"}\n');
+    assert.equal(await readFile(path.join(destination, '.github/workflows/content-deploy.yml'), 'utf8'), 'name: local draft\n');
   } finally {
     await rm(root, { recursive: true, force: true });
   }

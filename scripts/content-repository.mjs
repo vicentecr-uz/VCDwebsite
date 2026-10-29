@@ -10,6 +10,9 @@ export const CONTENT_REPO_PATHS = [
   'ops',
   'scripts/vps-agent.py',
   'scripts/test/vps-agent.test.py',
+  'scripts/build-view.mjs',
+  'uploads',
+  '.github/workflows/content-deploy.yml',
 ];
 
 function contentGitPath(cwd) {
