@@ -5,7 +5,7 @@ source_mode=${CONTENT_SOURCE:-repo}
 replace=0
 if [[ ${1:-} == --replace ]]; then replace=1; shift; fi
 if [[ $# -gt 0 ]]; then echo "usage: CONTENT_SOURCE=repo $0 [--replace]" >&2; exit 2; fi
-case "$root" in /|"$HOME"|$HOME/Developer/VCDwebsite) echo "refusing unsafe destination: $root" >&2; exit 2;; esac
+case "$root" in /|"$HOME"|"$HOME/Developer/VCDwebsite") echo "refusing unsafe destination: $root" >&2; exit 2;; esac
 if [[ "$root" != / && -L "$root" ]]; then echo "refusing symlink destination: $root" >&2; exit 2; fi
 for parent in "$root/src" "$root/public"; do
   [[ ! -L "$parent" ]] || { echo "refusing symlink destination: $parent" >&2; exit 2; }
