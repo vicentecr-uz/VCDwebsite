@@ -41,9 +41,10 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     window.removeEventListener('vcd:home-intro-dismissed', onIntroDismissed);
     idle = false;
   };
+  const hoverTriggers = () => trigger.closest('.site-header__row')?.querySelectorAll<HTMLElement>('.header-trigger') ?? [trigger];
   const removeListeners = () => {
     window.removeEventListener('click', cancelFromUser, true);
-    trigger.removeEventListener('mouseenter', cancelFromHover);
+    hoverTriggers().forEach(element => element.removeEventListener('mouseenter', cancelFromHover));
     window.removeEventListener('resize', cancelFromUser, true);
     window.removeEventListener('scroll', cancelFromScroll);
     window.removeEventListener('pagehide', cancelFromUser, true);
@@ -92,9 +93,9 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     if (event?.type === 'click' && introVisible()) return;
     cleanup(Boolean(event?.type === 'click' && event.target instanceof Node && trigger.contains(event.target)));
   }
-  function cancelFromHover() {
-    // The real pointer's mouseenter opens the menu; leave it to the header.
-    if (controller) cleanup(true);
+  function cancelFromHover(event: Event) {
+    // The real pointer's mouseenter opens that menu; the demo's own menu stays only if it is the one entered.
+    if (controller) cleanup(event.currentTarget === trigger);
   }
   function cancelFromScroll() {
     // The intro's restoration reset lands at the top, where the header still sits.
@@ -108,7 +109,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   }
   const addListeners = () => {
     window.addEventListener('click', cancelFromUser, true);
-    trigger.addEventListener('mouseenter', cancelFromHover);
+    hoverTriggers().forEach(element => element.addEventListener('mouseenter', cancelFromHover));
     window.addEventListener('resize', cancelFromUser, true);
     window.addEventListener('scroll', cancelFromScroll, { passive: true });
     window.addEventListener('pagehide', cancelFromUser, true);

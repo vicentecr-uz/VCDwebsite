@@ -36,7 +36,7 @@ function fixture({ mobile = false, reduced = false, intro = true, gallery = true
   doc.body.innerHTML = (intro ? '<div data-home-intro-surface data-state="active"></div>' : '')
     + (gallery ? '<div class="project-grid"></div>' : '')
     + (reveal ? '<div data-vcd-initial-reveal="running"></div>' : '')
-    + '<div class="site-header__row" style="cursor:auto"><div class="header-trigger header-trigger--start"><div class="header-trigger__panel" style="cursor:auto"><div class="header-trigger__brand" tabindex="-1" style="cursor:default"></div></div></div><div class="header-trigger--end"><div class="header-trigger__panel"></div></div></div><a class="gallery-link" style="cursor:pointer"></a><div class="occluder" style="cursor:grab"></div>';
+    + '<div class="site-header__row" style="cursor:auto"><div class="header-trigger header-trigger--start"><div class="header-trigger__panel" style="cursor:auto"><div class="header-trigger__brand" tabindex="-1" style="cursor:default"></div></div></div><div class="header-trigger header-trigger--end"><div class="header-trigger__panel"></div></div></div><a class="gallery-link" style="cursor:pointer"></a><div class="occluder" style="cursor:grab"></div>';
   const row = doc.querySelector<HTMLElement>('.site-header__row')!;
   const trigger = doc.querySelector<HTMLElement>('.header-trigger--start')!;
   const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel')!;
@@ -304,6 +304,16 @@ test('a real hover on the trigger cancels the guide and leaves the menu open', a
   h.hover(true); h.trigger.dispatchEvent(new h.win.MouseEvent('mouseenter')); h.hover(false); await h.advance(6000);
   expect(h.traces.slice(traces).every(trace => trace.duration === config.dismissDuration)).toBe(true);
   expect(h.menu.filter(event => !event.open)).toHaveLength(0);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+});
+
+test('a real hover on the opposite trigger cancels the guide and closes its menu', async () => {
+  const h = fixture(); h.demo.start(); h.dismiss('dismissing'); await h.advance(150); h.dismiss('dismissed'); await h.advance(3050);
+  expect(h.trigger.dataset.menuOpen).toBe('true');
+  const traces = h.traces.length;
+  h.doc.querySelector('.header-trigger--end')!.dispatchEvent(new h.win.MouseEvent('mouseenter')); await h.advance(6000);
+  expect(h.traces.slice(traces).every(trace => trace.duration === config.dismissDuration)).toBe(true);
+  expect(h.trigger.dataset.menuOpen).toBeUndefined();
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
 });
 
