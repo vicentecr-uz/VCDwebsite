@@ -6,6 +6,7 @@ import DevImageDrop from '../components/DevImageDrop.astro';
 import TeaserGate from '../components/TeaserGate.astro';
 import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
 import { projectImageTier } from '../lib/images';
+import { firstProjectSectionImage } from '../lib/projectShareImage';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 import { pageColumnStyle } from '../lib/pageColumn';
 import {
@@ -33,16 +34,15 @@ const sections = project.sections;
 const outline = resolveProjectOutline(project);
 const sectionLinks = resolveProjectSectionLinks(project);
 
-// Share card = the project's own gallery cover, at the `preview` tier so
-// scrapers get a ~150KB webp rather than the multi-MB original.
 const listingCover = Object.values(project.listings ?? {})
   .map((listing) => listing?.image)
   .find((image): image is string => Boolean(image));
-const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
+const shareImage = listingCover ?? firstProjectSectionImage(sections);
+const ogImage = shareImage ? projectImageTier(shareImage, 'preview') : undefined;
 ---
 
 {project.stack === 'legacy' ? (
-  <ProjectLayout title={project.title} description={project.description}>
+  <ProjectLayout title={project.title} description={project.description} ogImage={ogImage}>
     <LegacyProjectSections sections={sections} documentKey={slug} />
   </ProjectLayout>
 ) : (
