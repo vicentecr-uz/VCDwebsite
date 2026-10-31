@@ -152,6 +152,19 @@ await scenario('2. runtime update while editing defers without stop/start', asyn
   } finally { fixture.close(); }
 });
 
+await scenario('2b. explicit update proceeds while an edit tab is active', async () => {
+  const fixture = makeFixture();
+  try {
+    addIncoming(fixture, 'src/components/Widget.astro');
+    const sessionDir = path.join(fixture.work, '.dev-session');
+    mkdirSync(sessionDir);
+    writeFileSync(path.join(sessionDir, 'branch-sync.request'), JSON.stringify({ id: 'manual-active' }) + '\n');
+    await withStateServer({ editing: true, clients: 1 }, async (stateUrl) => assert.equal((await runOnce(fixture, { astro: 'on', stateUrl })).code, 0));
+    assert.notEqual(git(fixture.work, 'rev-parse', 'HEAD'), fixture.oldHead);
+    assert.deepEqual(sessionLog(fixture).map(([action]) => action), ['astro-running', 'stop-astro', 'start-astro']);
+  } finally { fixture.close(); }
+});
+
 await scenario('3. idle runtime update stops before pull and starts after pull', async () => {
   const fixture = makeFixture();
   try {

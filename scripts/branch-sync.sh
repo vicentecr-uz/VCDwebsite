@@ -117,8 +117,13 @@ sync_once() (
   if grep -Eq '^(package.json|bun.lock|bun.lockb)$' <<<"$incoming_paths"; then dependencies_changed=1; fi
   if astro_running; then
     local state
-    if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)" || [[ "$state" != '{"editing":false,"clients":0}' ]]; then
-      echo "Update deferred (authoring session active or state unavailable)."
+    if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)"; then
+      echo "Update deferred (authoring state unavailable)."
+      write_update_status failed "The editor state is unavailable. Try again when the dev session is ready."
+      return 0
+    fi
+    if [[ -z "$request_id" && "$state" != '{"editing":false,"clients":0}' ]]; then
+      echo "Update deferred (authoring session active)."
       write_update_status failed "Another Edit tab is active or the editor is unavailable. Try again after closing Edit mode."
       return 0
     fi
