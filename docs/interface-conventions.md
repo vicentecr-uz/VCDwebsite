@@ -87,10 +87,23 @@ Signed-off Tapico/future case-study primitives:
 - `ProjectSectionTitle`
 - `ProjectPressQuoteTicker`
 - `ProjectRedditCommentCarousel`
+- `ProjectInteractiveDemo`
 
 Home, Work, and Play use `ProjectGrid` from `src/components/ProjectGrid.astro`. Its `variant` is `home`, `work`, or `play`; listings come from each project document. `src/components/project/legacy/LegacyProjectGrid` is a case-study media cluster, not the same listing grid.
 
 Any interactive element built from Button Base or its variants needs a hit area extending `space/hit-inset` (8px in Figma Primitives) beyond every visual edge. Figma deliberately does not model this geometry. In code, use an interactive wrapper or a pseudo-element with `inset: -8px`; when the token is exported to CSS, reference it instead of hardcoding the value.
+
+## Demo frames
+
+The outer demo frame is an inset in the page ground, not a floating card. Use [`ProjectInteractiveDemo`](../src/components/project/ProjectInteractiveDemo.astro) through an `interactiveDemo` content block. Register the demo in [`craftDemos.ts`](../src/lib/craftDemos.ts); the shared component supplies the frame automatically. Do not recreate its frame in a demo component or add `dev-surface`, an outer drop shadow, or a second background plate.
+
+The shared frame owns `--comp-demo-frame-container`, the inset edge treatment, corner radius, and mobile full bleed. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
+
+Only use another frame treatment when Anto explicitly requests it. Record a frameless exception as `frame: 'none'` in the registry, as the image-framing demo does. Keep exceptions out of page-specific CSS so the default remains shared and reviewable.
+
+Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small control demo must fit its frame without vertical scrolling; opt into `scrolling` only when scrolling is part of the demonstrated interaction. Size the scene and layout together rather than merely hiding an overflowing control. Stageshow supplies the scene and choreography inside this frame, not a replacement outer surface.
+
+Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the inset edges, full bleed, and absence of accidental scrolling at desktop and phone widths.
 
 ## Figma
 
