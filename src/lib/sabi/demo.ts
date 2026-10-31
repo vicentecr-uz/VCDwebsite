@@ -25,7 +25,7 @@ export function mountSabiDemo(root: HTMLElement) {
       example.setAttribute('aria-label', `Selection handle clipping illustration: ${button.textContent?.trim()}`);
       setButtons(button.dataset.choice!);
     }, { signal }));
-    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, text: (_value: string) => {}, seek: (_offset: number) => {}, begin: () => {}, finish: () => {} };
+    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, begin: () => {}, finish: () => {} };
   }
 
   const input = root.querySelector<HTMLInputElement>('input')!;
@@ -148,6 +148,7 @@ export function mountSabiDemo(root: HTMLElement) {
       if (mode === 'before' && kind === 'jump') {
         frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { if (auto) position(offset, geometry().safeInset); }); });
       }
+      return strip.scrollLeft;
     },
     stop,
     finish() { auto = false; },
