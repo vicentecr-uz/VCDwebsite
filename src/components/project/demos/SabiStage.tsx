@@ -9,6 +9,7 @@ type Controller = ReturnType<typeof mountSabiDemo>;
 const example = 'A little more room to say what you mean, even when the words run past the edge.';
 const empty = {};
 const demoScale = 2;
+const cursorRest = { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } };
 
 // Two tangent-matched curves per corner keep the flat sides easing into the turn.
 function squircle(width: number, height: number, radius = 18) {
@@ -35,7 +36,6 @@ function SquircleField({ width, children, handles = false }: { width: number; ch
     <svg className="sabi-field-shape" viewBox={`0 0 ${width} 64`} aria-hidden="true">
       <defs><clipPath id={id} clipPathUnits="objectBoundingBox"><path d={d} transform={`scale(${1 / width} ${1 / 64})`} /></clipPath></defs>
       <path className="sabi-field-fill" d={d} />
-      <path className="sabi-field-ring" d={d} />
     </svg>
     <div className="sabi-field-clip">{children}</div>
   </div>;
@@ -127,14 +127,14 @@ function Take({ kind }: { kind: string }) {
       if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     }
     a.mark('pointer');
-    await a.move({ at: 'field', x: 1, y: 1.7 });
+    await a.move(cursorRest);
     await a.wait(2000);
     demo.finish();
   }, [kind]);
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'real' }}
+      palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
       tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
         '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
         '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
