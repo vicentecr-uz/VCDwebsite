@@ -13,7 +13,7 @@ const playPage = loadPageDocument('play');
 ---
 
 <Layout persistentNavigation title="Digital — Vicente Cruz" columnStyle={pageColumnStyle(playPage.sections)}>
-  <div data-page-shell data-intro-document="play" class="flex flex-col min-h-dvh">
+  <div data-page-shell data-intro-document="play" class="home-page flex flex-col min-h-dvh" data-home-page>
     <Header title="Digital" navMenu />
 
     <h1 class="sr-only">Digital — Vicente Cruz</h1>
@@ -34,8 +34,20 @@ const playPage = loadPageDocument('play');
   <DevImageDrop documentKey="play" />
 </Layout>
 
+<script>
+  import { bindHomeReveal } from '../lib/homeReveal';
+  import { onPageLoad } from '../lib/pageLifecycle';
+  const dispose = onPageLoad(() => bindHomeReveal()?.destroy);
+  import.meta.hot?.dispose(dispose);
+</script>
+
 <style>
   .listing-main {
     padding: 0;
+  }
+
+  .home-page {
+    position: relative;
+    z-index: 0;
   }
 </style>
