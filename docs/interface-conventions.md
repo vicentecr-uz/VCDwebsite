@@ -103,6 +103,8 @@ Only use another frame treatment when Anto explicitly requests it. Record a fram
 
 Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small control demo must fit its frame without vertical scrolling; opt into `scrolling` only when scrolling is part of the demonstrated interaction. Size the scene and layout together rather than merely hiding an overflowing control. Stageshow supplies the scene and choreography inside this frame, not a replacement outer surface.
 
+Demo cursors keep their native proportions relative to the featured control. Share the control’s enlargement factor with every cursor kind, including the I-beam: a control enlarged by 47% needs a cursor at 1.47×. Use one scale setting for the control and cursor, then let stage fitting scale both together. Do not choose an independent large-cursor preset. Sabi uses `--sabi-demo-scale` for its field height and Stageshow’s `--ss-cursor-size`.
+
 Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the save-bar rings above the content, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
 
 ## Figma
