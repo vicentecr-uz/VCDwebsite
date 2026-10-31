@@ -190,12 +190,22 @@ function navigationFixture(pageTitle = 'Home') {
       doc.dispatchEvent(new win.CustomEvent('header:navigation-start', { detail: { pending: { title: page().textContent, targetTitle: title } } }));
       return animations.slice(count);
     },
-    commit(title: string) {
+    commit(title: string, titleDocument?: string) {
       const incoming = slot.cloneNode(true) as HTMLElement;
       const next = incoming.querySelector<HTMLElement>('.header-trigger--start')!;
       next.dataset.headerTitleSwap = String(title !== 'Home');
       next.classList.toggle('header-trigger--home', title === 'Home');
       next.querySelector('.header-trigger__wordmark--page')!.innerHTML = chars(title);
+      next.querySelector('.header-trigger__wordmark--edit')?.remove();
+      if (titleDocument) {
+        const editable = doc.createElement('h1');
+        editable.className = 'header-trigger__wordmark header-trigger__wordmark--edit';
+        editable.dataset.devTextDocument = titleDocument;
+        editable.dataset.devTextPath = '["title"]';
+        editable.dataset.devTextKind = 'text';
+        editable.textContent = title;
+        next.querySelector('.header-trigger__wordmark-stack')!.insertAdjacentElement('afterend', editable);
+      }
       incoming.querySelectorAll('a.header-trigger__brand-link').forEach((link) => link.setAttribute('href', title === 'Home' ? '#' : '/'));
       doc.dispatchEvent(new win.CustomEvent('header:navigation-commit', { detail: { header: incoming, url: new URL('https://vcd.test/') } }));
     },
@@ -342,4 +352,20 @@ test('both brand links update on commits without replacing either anchor', () =>
   f.commit('Home');
   expect(links.map((link) => link.getAttribute('href'))).toEqual(['#', '#']);
   expect([...f.slot.querySelectorAll('.header-trigger__brand-link')]).toEqual(links);
+});
+
+test('navigation replaces the editable title and its document, including pages without one', () => {
+  const f = navigationFixture();
+  const editable = () => f.start.querySelector<HTMLElement>('.header-trigger__wordmark--edit');
+  f.commit('Building Sabi', 'building-sabi');
+  expect(editable()?.textContent).toBe('Building Sabi');
+  expect(editable()?.dataset.devTextDocument).toBe('building-sabi');
+  f.commit('Low-res Image Loader', 'low-res-image-loader');
+  expect(editable()?.textContent).toBe('Low-res Image Loader');
+  expect(editable()?.dataset.devTextDocument).toBe('low-res-image-loader');
+  expect(editable()?.dataset.devTextPath).toBe('["title"]');
+  expect(f.start.querySelectorAll('.header-trigger__wordmark--edit')).toHaveLength(1);
+  f.commit('Digital');
+  expect(editable()).toBeNull();
+  expect(f.page().textContent).toBe('Digital');
 });
