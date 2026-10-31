@@ -28,8 +28,8 @@ export function installPersistentNavigation(hooks: Hooks) {
     }
     return true;
   };
-  const unseenHome = (url: URL) => {
-    if (url.pathname !== '/') return false;
+  const unseenIntro = (url: URL) => {
+    if (!/^\/(?:digital\/?)?$/.test(url.pathname)) return false;
     try { return sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { return true; }
   };
   const announceTitle = (title?: string, animateTitle = preserveTitleMotion) => {
@@ -37,7 +37,7 @@ export function installPersistentNavigation(hooks: Hooks) {
     document.dispatchEvent(new CustomEvent('header:navigation-start', {
       detail: { animateTitle, pending: { title: visible?.textContent?.trim(), targetTitle: title } },
     }));
-    if (!animateTitle || (navigation && unseenHome(navigation.to))) document.documentElement.removeAttribute('data-header-navigation');
+    if (!animateTitle || (navigation && unseenIntro(navigation.to))) document.documentElement.removeAttribute('data-header-navigation');
   };
   document.addEventListener('astro:before-preparation', ((event: TransitionBeforePreparationEvent) => {
     if (event.defaultPrevented) return;
