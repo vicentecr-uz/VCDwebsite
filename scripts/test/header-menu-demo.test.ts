@@ -167,9 +167,12 @@ test('intro events outside Home and an already seen session do not arm', async (
 test('Digital waits for its active intro before arming the menu demo', async () => {
   const h = fixture({ path: '/digital' }); h.demo.start(); await h.advance(6000);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  expect(h.menu).toHaveLength(0);
   expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
   h.dismiss('dismissing'); h.dismiss('dismissed'); await h.advance(2000);
   expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  await h.advance(3000);
+  expect(h.menu.some(event => event.open)).toBe(true);
   expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBe('true');
 });
 
@@ -181,7 +184,7 @@ test('Digital without an intro still starts the menu demo immediately', async ()
 
 test('hidden or offscreen headers do not arm the menu demo', async () => {
   for (const triggerState of ['hidden', 'offscreen'] as const) {
-    const h = fixture({ triggerState, intro: false }); h.demo.start(); await h.advance(6000);
+    const h = fixture({ path: '/digital', triggerState, intro: false }); h.demo.start(); await h.advance(6000);
     expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
     expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
   }
