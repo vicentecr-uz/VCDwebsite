@@ -68,9 +68,9 @@ export interface Act<S> {
   /**
    * Show a keystroke as keycaps: 'cmd+k', 'enter', 'shift+cmd+p'. Resolves
    * as the key comes back up, the moment an app would react; the caps fade
-   * on their own.
+   * on their own. An optional callback keeps the key down while its scene action runs.
    */
-  key(combo: string): Promise<void>
+  key(combo: string, whileHeld?: () => Promise<void>): Promise<void>
   /**
    * Start fn for each item, `gap` ms apart (60 by default), and wait for them all. Staggered
    * starts read as organic where a single block reads as mechanical.
@@ -462,26 +462,31 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
         release()
       }
     },
-    async key(combo) {
+    async key(combo, whileHeld) {
       check()
       const caps = capsOf(combo)
       const id = ++keyId
       const k = keysRef.current
-      setLastKeys(k.caps.length ? { ...k, show: false, down: false } : null)
-      setKeys({ id, caps, show: false, down: false })
-      await frame()
-      await frame()
+      const repeated = k.show && k.caps.length === caps.length && k.caps.every((cap, i) => cap === caps[i])
+      const rowId = repeated ? k.id : id
+      if (!repeated) {
+        setLastKeys(k.caps.length ? { ...k, show: false, down: false } : null)
+        setKeys({ id: rowId, caps, show: false, down: false })
+        await frame()
+        await frame()
+        check()
+        setKeys({ id: rowId, caps, show: true, down: false })
+        await wait(180)
+      }
       check()
-      setKeys({ id, caps, show: true, down: false })
-      await wait(180)
+      setKeys({ id: rowId, caps, show: true, down: true })
+      if (whileHeld) await whileHeld()
+      else await wait(140)
       check()
-      setKeys({ id, caps, show: true, down: true })
-      await wait(140)
-      check()
-      setKeys({ id, caps, show: true, down: false })
+      setKeys({ id: rowId, caps, show: true, down: false })
       // The caps linger and fade without holding up the script.
       void wait(600).then(() => {
-        if (keyId === id && !signal.aborted) setKeys({ id, caps, show: false, down: false })
+        if (keyId === id && !signal.aborted) setKeys({ id: rowId, caps, show: false, down: false })
       }, (error) => {
         if (!(error instanceof Stopped)) console.error('[stageshow] script error', error)
       })

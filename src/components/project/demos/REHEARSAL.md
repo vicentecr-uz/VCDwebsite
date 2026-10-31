@@ -19,6 +19,8 @@ Keypress labels match the host article’s computed body size (including respons
 
 The illustrated app uses the platform system font for inputs, selectors, captions and keypress labels; Hanken Grotesk remains the surrounding site’s font.
 
-The first demo moves left character by character to halfway through the text, then shows repeated Option/Alt + left-arrow word jumps to position zero. The final hold leaves the beginning visible.
+The first demo uses a narrower 420px field (294px compact). Its left-arrow key stays visibly held until the text has scrolled through six character steps, then shows repeated Option/Alt + left-arrow word jumps to position zero. The switch follows measured scroll movement instead of a fixed character offset. The final hold leaves the beginning visible.
 
 Shared iframe loading now crossfades for 180ms: the hydrated demo fades in as the page spinner fades out. The spinner stays mounted for its exit, becomes inaccessible immediately on readiness, and is hidden after the fade; its pulse pauses while fading. Frame dimensions remain reserved throughout.
+
+Repeated presses of the same visible shortcut reuse one keycap row, avoiding an exit/entry fade between word jumps. Shared frame strokes are inset by their own 0.75px width so the outer ring stays within the frame beside the header; ring colors, width and drop shadow are unchanged.

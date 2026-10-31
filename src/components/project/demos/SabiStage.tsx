@@ -32,7 +32,7 @@ function SquircleField({ width, children, handles = false }: { width: number; ch
   return <div className={handles ? 'handle-example' : 'sabi-demo-field'} data-choice={handles ? 'container' : undefined}
     data-target={handles ? undefined : 'field'} data-cursor={handles ? undefined : 'ibeam'}
     role={handles ? 'img' : undefined} aria-label={handles ? 'Illustration of selection handles clipped to the field container' : undefined}
-    style={{ '--sabi-clip': `url(#${id})` } as CSSProperties}>
+    style={{ width, '--sabi-clip': `url(#${id})` } as CSSProperties}>
     <svg className="sabi-field-shape" viewBox={`0 0 ${width} 64`} aria-hidden="true">
       <defs><clipPath id={id} clipPathUnits="objectBoundingBox"><path d={d} transform={`scale(${1 / width} ${1 / 64})`} /></clipPath></defs>
       <path className="sabi-field-fill" d={d} />
@@ -46,6 +46,7 @@ function Scene({ kind, controller, onManual, compact }: {
 }) {
   const root = useRef<HTMLDivElement>(null);
   const handles = kind === 'handles';
+  const fieldWidth = compact ? (kind === 'playground' ? 294 : 326) : (kind === 'playground' ? 420 : 480);
   const comparison = !['playground', 'direction', 'handles'].includes(kind);
   const choices = handles ? ['Original', 'More room', 'No scroll', 'Container'] : ['Before', 'After'];
   useLayoutEffect(() => {
@@ -86,9 +87,9 @@ function Scene({ kind, controller, onManual, compact }: {
   }, [compact]);
   return <div ref={root} className="sabi-scene" data-kind={kind} data-mode="after"
     onPointerDownCapture={onManual} onKeyDownCapture={onManual} onFocusCapture={onManual} onWheelCapture={onManual}>
-    {handles ? <SquircleField width={compact ? 326 : 480} handles>
+    {handles ? <SquircleField width={fieldWidth} handles>
       <div className="handle-viewport"><span className="handle-text">A little more <span className="selection">room<span className="handle start" /><span className="handle end" /></span> to say it.</span></div>
-    </SquircleField> : <SquircleField width={compact ? 326 : 480}>
+    </SquircleField> : <SquircleField width={fieldWidth}>
       {/* The input is uncontrolled: the guide yields the same DOM node to the reader. */}
       <sabi-input>
         <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, Sabi 2026 — קצת מקום לכתוב ולערוך' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
@@ -122,10 +123,23 @@ function Take({ kind }: { kind: string }) {
     await a.key('cmd+a');
     demo.text('A');
     for (let i = 2; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
-    await a.key('left');
-    const firstStop = comparison ? 5 : Math.floor(example.length / 2);
-    for (let offset = example.length - 1; offset >= firstStop; offset--) { demo.seek(offset); await a.wait(35); }
-    if (!comparison) {
+    if (comparison) {
+      await a.key('left');
+      for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
+    } else {
+      let firstStop = example.length;
+      let previousScroll = demo.seek(example.length);
+      let scrollingSteps = 0;
+      await a.key('left', async () => {
+        for (let offset = example.length - 1; offset >= 0; offset--) {
+          const scroll = demo.seek(offset);
+          if (scroll < previousScroll - 0.5) scrollingSteps++;
+          previousScroll = scroll;
+          firstStop = offset;
+          await a.wait(55);
+          if (scrollingSteps >= 6) break;
+        }
+      });
       await a.wait(350);
       const words = [...example.slice(0, firstStop).matchAll(/\S+/g)].reverse();
       for (const word of words) {
