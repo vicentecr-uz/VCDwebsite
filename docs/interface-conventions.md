@@ -6,7 +6,7 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 
 - **Spacing:** Use `var(--space-unit)` consistently for header, grid, footer, and gaps. It is `1rem` at every breakpoint and steps down to `0.75rem` below `40em`. It is defined in `src/styles/global.css`; do not replace it with a literal `1em`. Prefer inline `style=` over framework arbitrary values when guaranteed rendering matters.
 - **Mobile breakpoint:** `40em` (640px). This is where `--space-unit` tightens and the header steps down through `--header-wordmark-size`, `--header-menu-link-size`, and `--header-logo-size`.
-- **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. Content Heading 2 uses the body size, leading, and tracking with the same 500 weight as body emphasis; it remains a heading block in the editor and rendered document.
+- **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. Content Heading 2 uses the body size, leading, and tracking with bold weight 700; body emphasis stays at 500. It remains a heading block in the editor and rendered document.
 - **Page ground:** Use `--sys-color-srf` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
 
 ## Scrollable overflow
