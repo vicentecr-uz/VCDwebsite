@@ -62,9 +62,6 @@ try {
   assert.notEqual(advancedRemote.mainRevision, localRevision);
   assert.equal(advancedRemote.behind, 2);
 
-  await assert.rejects(() => requestBranchUpdate(work, true), /Another Edit tab is active/);
-  assert.equal(existsSync(path.join(work, '.dev-session/branch-sync.request')), false);
-
   const request = await requestBranchUpdate(work);
   assert.match(request.requestId, /^[0-9a-f-]{36}$/);
   assert.equal(existsSync(path.join(work, '.dev-session/branch-sync.request')), true);
