@@ -1,11 +1,11 @@
 import { define, type SabiInput } from './core';
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
-const fadeMask = (left: number, right: number, linear: boolean) => {
+const fadeMask = (left: number, right: number, linear: boolean, fadeWidth: number, solid: number) => {
   const stops = linear ? [0, 1] : Array.from({ length: 9 }, (_, i) => i / 8);
   const side = (progress: number, reverse: boolean) => stops.map((t) => {
     const alpha = linear ? t : t * t * (3 - 2 * t);
-    const x = progress * (8 + 14 * t);
+    const x = progress * (solid + (fadeWidth - solid) * t);
     return `rgb(0 0 0 / ${alpha}) ${reverse ? `calc(100% - ${x}px)` : `${x}px`}`;
   });
   return `linear-gradient(to right, ${[...side(left, false), ...side(right, true).reverse()].join(', ')})`;
@@ -30,6 +30,16 @@ export function mountSabiDemo(root: HTMLElement) {
 
   const input = root.querySelector<HTMLInputElement>('input')!;
   let strip = input.parentElement!;
+  const geometry = () => {
+    const style = getComputedStyle(strip);
+    const value = (name: string, fallback: number) => Number.parseFloat(style.getPropertyValue(name)) || fallback;
+    const fadeWidth = value('--sabi-fade-width', 22);
+    const gutter = value('--sabi-edge-gutter', 8);
+    return {
+      fadeWidth, gutter, solid: value('--sabi-fade-solid', 8),
+      safeInset: Math.max(gutter, fadeWidth - value('--sabi-caret-penetration', 4)),
+    };
+  };
   const caret = document.createElement('i');
   caret.className = 'sabi-auto-caret';
   caret.setAttribute('aria-hidden', 'true');
@@ -62,21 +72,22 @@ export function mountSabiDemo(root: HTMLElement) {
   };
   const fades = () => {
     if (mode !== 'before') return;
-    const targetLeft = clamp(strip.scrollLeft / 22);
-    const targetRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / 22);
+    const { fadeWidth, solid } = geometry();
+    const targetLeft = clamp(strip.scrollLeft / fadeWidth);
+    const targetRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
     cancelAnimationFrame(fadeFrame);
     const fromLeft = left, fromRight = right, start = performance.now();
     const paint = (now: number) => {
       const t = kind === 'fade' ? clamp((now - start) / 150) : 1;
       left = fromLeft + (targetLeft - fromLeft) * t;
       right = fromRight + (targetRight - fromRight) * t;
-      strip.style.maskImage = fadeMask(left, right, kind === 'gradient');
+      strip.style.maskImage = fadeMask(left, right, kind === 'gradient', fadeWidth, solid);
       if (t < 1) fadeFrame = requestAnimationFrame(paint);
     };
     paint(start);
   };
   const position = (offset: number, inset: number) => {
-    const x = 8 + width(input.value.slice(0, offset));
+    const x = geometry().gutter + width(input.value.slice(0, offset));
     const max = Math.max(0, strip.scrollWidth - strip.clientWidth);
     if (offset === 0) strip.scrollLeft = 0;
     else if (offset === input.value.length) strip.scrollLeft = max;
@@ -89,8 +100,8 @@ export function mountSabiDemo(root: HTMLElement) {
     if (mode !== 'before' || auto || composing) return;
     input.style.width = `${width(input.value) + 2}px`;
     const offset = input.selectionEnd ?? input.value.length;
-    position(offset, kind === 'caret' || kind === 'jump' ? 1 : 18);
-    if (kind === 'jump') frame = requestAnimationFrame(() => position(offset, 18));
+    position(offset, kind === 'caret' || kind === 'jump' ? 1 : geometry().safeInset);
+    if (kind === 'jump') frame = requestAnimationFrame(() => position(offset, geometry().safeInset));
   };
   const onScroll = () => fades();
   strip.addEventListener('scroll', onScroll, { passive: true, signal });
@@ -129,13 +140,13 @@ export function mountSabiDemo(root: HTMLElement) {
       input.value = value;
       input.style.width = `${width(value) + 2}px`;
       input.setSelectionRange(value.length, value.length);
-      position(value.length, 18);
+      position(value.length, geometry().safeInset);
     },
     seek(offset: number) {
       input.setSelectionRange(offset, offset);
-      position(offset, mode === 'before' && (kind === 'caret' || kind === 'jump') ? 1 : 18);
+      position(offset, mode === 'before' && (kind === 'caret' || kind === 'jump') ? 1 : geometry().safeInset);
       if (mode === 'before' && kind === 'jump') {
-        frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { if (auto) position(offset, 18); }); });
+        frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { if (auto) position(offset, geometry().safeInset); }); });
       }
     },
     stop,
