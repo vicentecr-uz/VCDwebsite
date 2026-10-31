@@ -62,8 +62,8 @@ function Scene({ kind, controller, onManual, compact }: {
       if (!scene.height || !stage.offsetHeight) return;
       const scale = scene.height / stage.offsetHeight;
       const frameBottom = document.documentElement.clientHeight;
-      const keysCenter = (field.getBoundingClientRect().bottom + frameBottom) / 2;
-      stage.style.setProperty('--sabi-keys-y', `${(keysCenter - scene.top) / scale}px`);
+      const fieldBottom = field.getBoundingClientRect().bottom;
+      stage.style.setProperty('--sabi-field-bottom', `${(fieldBottom - scene.top) / scale}px`);
       stage.style.setProperty('--sabi-frame-bottom', `${(frameBottom - scene.top) / scale}px`);
     };
     const observer = new ResizeObserver(placeKeys);
