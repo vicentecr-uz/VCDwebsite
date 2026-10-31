@@ -48,11 +48,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     position: relative;
     border-radius: var(--radius-control-smooth);
     background: var(--comp-demo-frame-container);
-    --demo-frame-highlight: rgb(255 255 255 / 0.8);
-    --demo-frame-outline: color-mix(in srgb, var(--sys-color-on-srf) 10%, transparent);
-    --demo-frame-shade: color-mix(in srgb, var(--sys-color-surface-shadow) 75%, transparent);
     box-shadow:
-      0 0 0 1px var(--demo-frame-outline),
       0 1px 2px rgb(0 0 0 / 0.04),
       0 4px 12px -4px rgb(0 0 0 / 0.04);
   }
@@ -98,8 +94,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     }
   }
 
-  .project-interactive-demo[data-demo-frame='none']::before { display: none; }
-
   .project-interactive-demo::after {
     content: '';
     position: absolute;
@@ -107,32 +101,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     z-index: 2;
     border-radius: inherit;
     pointer-events: none;
-    box-shadow:
-      inset 0 1px 0 var(--demo-frame-highlight),
-      inset 0 -1px 0 var(--demo-frame-shade);
-  }
-
-  :global(:root[data-theme='dark']) .project-interactive-demo {
-    --demo-frame-highlight: rgb(255 255 255 / 0.08);
-  }
-
-  @media (max-width: 40em) {
-    .project-interactive-demo::before {
-      content: '';
-      display: block;
-      width: 100%;
-      height: 4px;
-      margin-bottom: -4px;
-      position: sticky;
-      top: var(--site-header-height, calc(var(--space-unit) * 3.75));
-      z-index: 3;
-      pointer-events: none;
-      box-shadow: inset 0 1px 0 var(--demo-frame-highlight);
-    }
-
-    .project-interactive-demo::after {
-      box-shadow: inset 0 -1px 0 var(--demo-frame-shade);
-    }
+    box-shadow: var(--surface-stroke-shadow);
   }
 
   .project-interactive-demo__content iframe {
