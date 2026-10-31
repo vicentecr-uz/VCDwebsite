@@ -43,6 +43,7 @@ export function createHomeIntroController(
   win: Window = window,
   config: HomeIntroConfig = revealConfig.intro,
 ): HomeIntroController {
+  const introDocument = home.dataset.introDocument ?? 'home';
   const readIntroSeen = () => {
     try {
       return win.sessionStorage?.getItem(introSeenStorageKey) === 'true';
@@ -117,7 +118,7 @@ export function createHomeIntroController(
   const onBlur = () => hideCursor();
 
   const announce = (name: string) => win.dispatchEvent(new CustomEvent(name, {
-    detail: { surface: state === 'dismissed' ? 'home' : 'home-intro', state },
+    detail: { surface: state === 'dismissed' ? introDocument : 'home-intro', state },
   }));
   const setState = (next: HomeIntroState) => {
     if (disposed) return;
@@ -137,7 +138,7 @@ export function createHomeIntroController(
     else home.setAttribute('aria-hidden', originalAriaHidden);
     document.body.style.overflow = veilVisible ? 'hidden' : originalOverflow;
     root.style.overflow = veilVisible ? 'hidden' : originalRootOverflow;
-    const nextSurface = veilVisible ? 'home-intro' : 'home';
+    const nextSurface = veilVisible ? 'home-intro' : introDocument;
     if (nextSurface !== previousSurface) {
       previousSurface = nextSurface;
       win.dispatchEvent(new CustomEvent('vcd:page-surface-change', { detail: { documentKey: nextSurface } }));
@@ -252,7 +253,7 @@ export function createHomeIntroController(
 
 export function bindHomeIntro(config: HomeIntroConfig = revealConfig.intro): HomeIntroController | null {
   const surface = document.querySelector<HTMLElement>('[data-home-intro-surface]');
-  const home = document.querySelector<HTMLElement>('[data-home-page]');
+  const home = document.querySelector<HTMLElement>('[data-page-shell]');
   if (!surface || !home) return null;
   const existing = (window as Window & Record<string, unknown>)[controllerKey] as HomeIntroController | undefined;
   existing?.teardown();
