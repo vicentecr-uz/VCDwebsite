@@ -30,7 +30,7 @@
 
 /* Button Base hitbox: the tappable area extends space/hit-inset beyond the
    visual bounds. Containers that pack buttons closer than the inset (the
-   Segmented Control's 4px gap) zero --dev-btn-hit-inset so a neighbour's
+   Segmented Control's packed gap) zero --dev-btn-hit-inset so a neighbour's
    slop can't steal clicks off this button's own visible edge. */
 .dev-btn::before {
   content: '';
@@ -687,7 +687,7 @@
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 4px;
+  gap: var(--dev-control-padding);
   padding: var(--dev-control-padding);
   background: var(--comp-segmentedcontrol-bg);
   /* Concentric with the buttons: outer radius (10, radius/control-in-container)
@@ -708,7 +708,7 @@
      pill) was too low-contrast. Hover/press keep Ghost fill + the
      OKLCH mix; only the ink is set here. */
   color: var(--sys-color-on-srf-variant);
-  /* Segments sit 4px apart — closer than the 8px hit-inset, so the slop
+  /* Segments sit at the control padding — closer than the 8px hit-inset, so the slop
      would reach over a neighbour's visible edge. Segments are adjacent by
      design; the pill itself is the enlarged target. */
   --dev-btn-hit-inset: 0px;
@@ -748,7 +748,11 @@
     background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
   }
 }
-.dev-segmented .dev-btn:active:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+/* Stageshow marks simulated hover/press without moving the real pointer. */
+.dev-segmented .dev-btn[data-hover]:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+}
+.dev-segmented .dev-btn:is(:active, [data-pressed]):not(.is-selected):not(.is-active):not([aria-pressed='true']) {
   background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
 }
 
