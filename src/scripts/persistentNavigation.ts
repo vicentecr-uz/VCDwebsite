@@ -88,7 +88,7 @@ export function installPersistentNavigation(hooks: Hooks) {
       const safeVh = document.documentElement.style.getPropertyValue('--vh-safe');
       swapFunctions.swapRootAttributes(event.newDocument);
       if (safeVh) document.documentElement.style.setProperty('--vh-safe', safeVh);
-      if (preserveTitleMotion && !unseenHome(event.to)) document.documentElement.dataset.headerNavigation = '';
+      if (preserveTitleMotion && !unseenIntro(event.to)) document.documentElement.dataset.headerNavigation = '';
       else document.documentElement.removeAttribute('data-header-navigation');
       swapFunctions.swapHeadElements(event.newDocument);
       swapPageContent(document, event.newDocument);
