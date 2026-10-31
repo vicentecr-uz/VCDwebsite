@@ -27,4 +27,4 @@ bundled.
 
 ## Local adaptation
 
-The cursor renderer reuses the site’s rounded arrow and pointing-hand assets and hotspots from `src/assets/demo-cursors`, with their shared display shadow. See that directory’s README for artwork attribution. The keycap renderer groups shortcut combinations in one container with plus separators and uses rounded Lucide SVG arrows at a heavier stroke weight. Keycap geometry is font-relative, with an optional `--ss-key-font-size` override. Other runtime files remain unchanged from the imported kit.
+The cursor renderer reuses the site’s rounded arrow and pointing-hand assets and hotspots from `src/assets/demo-cursors`, with their shared display shadow. See that directory’s README for artwork attribution. The keycap renderer groups shortcut combinations in one container with plus separators and uses rounded Lucide SVG arrows at their standard stroke weight. Keycap geometry is font-relative, with an optional `--ss-key-font-size` override. Other runtime files remain unchanged from the imported kit.
