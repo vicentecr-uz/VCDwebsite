@@ -123,7 +123,17 @@ function Take({ kind }: { kind: string }) {
     demo.text('A');
     for (let i = 2; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
     await a.key('left');
-    for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
+    const firstStop = comparison ? 5 : Math.floor(example.length / 2);
+    for (let offset = example.length - 1; offset >= firstStop; offset--) { demo.seek(offset); await a.wait(35); }
+    if (!comparison) {
+      await a.wait(350);
+      const words = [...example.slice(0, firstStop).matchAll(/\S+/g)].reverse();
+      for (const word of words) {
+        await a.key('alt+left');
+        demo.seek(word.index!);
+        await a.wait(180);
+      }
+    }
     if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     await a.wait(700);
     if (comparison) {
@@ -136,7 +146,6 @@ function Take({ kind }: { kind: string }) {
       for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
       if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     }
-    a.mark('pointer');
     await a.move(cursorRest);
     await a.wait(2000);
     demo.finish();
@@ -145,7 +154,7 @@ function Take({ kind }: { kind: string }) {
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
       palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
-      tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
+      tokens={{ '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
         '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
         '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} compact={layout === 'compact'} />}
