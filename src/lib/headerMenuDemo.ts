@@ -29,9 +29,22 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   const hasSeen = () => {
     try { return window.sessionStorage.getItem(SEEN_KEY) === 'true'; } catch { return false; }
   };
-  const eligible = () => !isEditing() && !document.hidden
+  const triggerVisible = () => {
+    if (!trigger.isConnected || trigger.closest('[inert], [hidden], [aria-hidden="true"], .is-scrolled-hidden')) return false;
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+    if (!(rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0 && rect.left < viewportWidth && rect.top < viewportHeight)) return false;
+    for (let element: HTMLElement | null = trigger; element; element = element.parentElement) {
+      const style = document.defaultView?.getComputedStyle(element);
+      if (!style || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || parseFloat(style.opacity) === 0) return false;
+      if (element === document.body) break;
+    }
+    return true;
+  };
+  const eligible = () => !isEditing() && !document.hidden && !introVisible()
     && trigger.dataset.menuOpen !== 'true' && trigger.dataset.headerTitlePending === undefined
-    && !trigger.matches(':hover') && !trigger.contains(document.activeElement);
+    && !trigger.matches(':hover') && !trigger.contains(document.activeElement) && triggerVisible();
   const introVisible = () => {
     const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
     return Boolean(intro && !intro.hidden && intro.dataset.state !== 'dismissed');
@@ -379,7 +392,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
   const start = () => {
     if (idle || controller || hasSeen()) return;
     const pagePath = window.location.pathname.replace(/\/+$/, '') || '/';
-    if (pagePath === '/digital' || pagePath === '/about') {
+    if ((pagePath === '/digital' || pagePath === '/about') && !introVisible()) {
       arm(window.performance.now() - homeRevealConfig.intro.durationMs);
       return;
     }

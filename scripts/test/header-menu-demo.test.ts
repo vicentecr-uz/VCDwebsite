@@ -8,8 +8,8 @@ const restores: Array<() => void> = [];
 const settle = async () => { for (let i = 0; i < 30; i++) await Promise.resolve(); };
 afterEach(() => { restores.splice(0).reverse().forEach(restore => restore()); });
 
-function fixture({ mobile = false, reduced = false, intro = true, gallery = true, reveal = false } = {}) {
-  const win = new Window({ url: 'http://localhost:4323/' });
+function fixture({ mobile = false, reduced = false, intro = true, gallery = true, reveal = false, path = '/', triggerState = 'visible' as 'visible' | 'hidden' | 'offscreen' } = {}) {
+  const win = new Window({ url: 'http://localhost:4323' + path });
   const doc = win.document;
   let now = 0, nextId = 0, editing = false, hovered = false;
   const jobs = new Map<number, { at: number; fn: () => void }>();
@@ -45,6 +45,8 @@ function fixture({ mobile = false, reduced = false, intro = true, gallery = true
   row.getBoundingClientRect = () => rect(80, 20, 1120, 50);
   brand.getBoundingClientRect = () => rect(100, 20, 200, 50);
   panel.getBoundingClientRect = () => trigger.dataset.menuOpen === 'true' ? rect(80, 10, 400, 600) : rect(80, 10, 320, 190);
+  trigger.getBoundingClientRect = () => triggerState === 'offscreen' ? rect(80, 900, 200, 930) : rect(80, 20, 200, 50);
+  if (triggerState === 'hidden') trigger.classList.add('is-scrolled-hidden');
   row.querySelector<HTMLElement>('.header-trigger--end .header-trigger__panel')!.getBoundingClientRect = () => rect(1000, 10, 1120, 190);
   const matches = trigger.matches.bind(trigger);
   trigger.matches = selector => selector === ':hover' ? hovered : matches(selector);
@@ -160,6 +162,29 @@ test('intro events outside Home and an already seen session do not arm', async (
   expect(h.traces).toHaveLength(0);
   const seen = fixture(); seen.win.sessionStorage.setItem('vcd:header-menu-demo-seen', 'true'); seen.demo.start(); seen.dismiss('dismissing'); await seen.advance(6000);
   expect(seen.traces).toHaveLength(0);
+});
+
+test('Digital waits for its active intro before arming the menu demo', async () => {
+  const h = fixture({ path: '/digital' }); h.demo.start(); await h.advance(6000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
+  h.dismiss('dismissing'); h.dismiss('dismissed'); await h.advance(2000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBe('true');
+});
+
+test('Digital without an intro still starts the menu demo immediately', async () => {
+  const h = fixture({ path: '/digital', intro: false }); h.demo.start(); await h.advance(2000);
+  expect(h.doc.querySelector('[data-header-menu-demo-scene]')).not.toBeNull();
+  expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBe('true');
+});
+
+test('hidden or offscreen headers do not arm the menu demo', async () => {
+  for (const triggerState of ['hidden', 'offscreen'] as const) {
+    const h = fixture({ triggerState, intro: false }); h.demo.start(); await h.advance(6000);
+    expect(h.doc.querySelector('[data-header-menu-demo-scene]')).toBeNull();
+    expect(h.win.sessionStorage.getItem('vcd:header-menu-demo-seen')).toBeNull();
+  }
 });
 
 test('desktop timings match the approved settings and fade overlaps departure', async () => {
