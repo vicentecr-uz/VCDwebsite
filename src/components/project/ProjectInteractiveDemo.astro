@@ -1,6 +1,8 @@
 ---
 import '../../styles/devOverlayFrame.css';
 import '../../styles/assetManager.css';
+import '../../styles/loading-spinner.css';
+import loadingSpinner from '../ui/LoadingSpinner.svg?raw';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import CropFrameDemo from './demos/CropFrameDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
@@ -20,6 +22,7 @@ interface Props {
 const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
 const frame = demo && 'frame' in demo ? demo.frame : 'default';
+const embedded = demo && !['progressive-image', 'image-framing'].includes(demo.id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
@@ -29,7 +32,8 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
-    <div class="project-interactive-demo__content">
+    <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
+      {embedded && <span class="project-interactive-demo__loading" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
       {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
@@ -38,10 +42,42 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
         referrerpolicy="no-referrer"
         style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`}
       />}
-    </div>
+    </project-demo-content>
     {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 )}
+
+<script>
+  class ProjectDemoContent extends HTMLElement {
+    private pending?: AbortController;
+
+    connectedCallback() {
+      const frame = this.querySelector('iframe');
+      if (!frame) return;
+      this.pending = new AbortController();
+      const { signal } = this.pending;
+      const ready = () => {
+        const document = frame.contentDocument;
+        if (!document || document.URL === 'about:blank' || document.readyState !== 'complete') return;
+        const islands = document.querySelectorAll('astro-island[ssr]');
+        if (islands.length) {
+          islands.forEach((island) => island.addEventListener('astro:hydrate', ready, { once: true, signal }));
+          return;
+        }
+        this.removeAttribute('data-demo-loading');
+        this.removeAttribute('aria-busy');
+        this.querySelector('.project-interactive-demo__loading')?.remove();
+      };
+      frame.addEventListener('load', ready, { signal });
+      ready();
+    }
+
+    disconnectedCallback() {
+      this.pending?.abort();
+    }
+  }
+  if (!customElements.get('project-demo-content')) customElements.define('project-demo-content', ProjectDemoContent);
+</script>
 
 <style>
   .project-interactive-demo {
@@ -61,7 +97,22 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   .project-interactive-demo[data-demo-frame='none']::after { display: none; }
 
   .project-interactive-demo__content {
+    display: block;
+    position: relative;
     border-radius: inherit;
+  }
+
+  .project-interactive-demo__loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: var(--sys-color-on-srf-variant);
+    pointer-events: none;
+  }
+
+  .project-interactive-demo__content[data-demo-loading] iframe {
+    visibility: hidden;
   }
 
   .project-interactive-demo__mobile-notice { display: none; }
