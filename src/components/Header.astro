@@ -1570,6 +1570,11 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       invalidateWordmarkRun();
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
+      const editableWordmark = startTrigger.querySelector('.header-trigger__wordmark--edit');
+      const nextEditableWordmark = next.querySelector('.header-trigger__wordmark--edit');
+      if (editableWordmark && nextEditableWordmark) editableWordmark.replaceWith(nextEditableWordmark);
+      else if (editableWordmark) editableWordmark.remove();
+      else if (nextEditableWordmark) wordmarkStack.insertAdjacentElement('afterend', nextEditableWordmark);
       pageWordmark.replaceWith(nextWordmark);
       pageWordmark = nextWordmark;
       pageChars = [...nextWordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
