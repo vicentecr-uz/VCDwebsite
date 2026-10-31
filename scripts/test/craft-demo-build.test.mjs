@@ -175,7 +175,7 @@ for (const file of await readdir(path.join(root, 'src/content/projects'))) {
   assert.equal(blocks.length, demos.length, `${file}: every demo uses the shared frame`);
   blocks.forEach((block, index) => {
     const registered = craftDemo(demos[index].demo);
-    assert.equal(attr(block, 'data-demo-frame'), registered.frame ?? 'inset', `${file}: inset unless explicitly opted out in the registry`);
+    assert.equal(attr(block, 'data-demo-frame'), registered.frame ?? 'default', `${file}: shared default unless explicitly opted out in the registry`);
     assert.ok(!attr(block, 'class').split(/\s+/).includes('dev-surface'), `${file}: outer frame is not an elevated editor surface`);
   });
   checkedProjects++;
