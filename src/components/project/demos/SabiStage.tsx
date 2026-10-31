@@ -7,6 +7,7 @@ import './sabi-stage.css';
 type Controller = ReturnType<typeof mountSabiDemo>;
 const example = 'A little more room to say what you mean, even when the words run past the edge.';
 const empty = {};
+const demoScale = 2;
 
 // Two tangent-matched curves per corner keep the flat sides easing into the turn.
 function squircle(width: number, height: number, radius = 18) {
@@ -134,7 +135,9 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
       palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'real' }}
-      tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)' }}>
+      tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
+        '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
+        '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} onReplay={replay} compact={layout === 'compact'} />}
     </Stage>
   </div>;
