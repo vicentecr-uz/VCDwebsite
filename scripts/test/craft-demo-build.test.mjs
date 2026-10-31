@@ -38,8 +38,9 @@ for (const demo of CRAFT_DEMOS) {
   checkedRoutes++;
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
+  const isSabi = demo.id.startsWith('sabi-');
   const isProgressiveImage = demo.id === 'progressive-image';
-  const isCanvas = ['progressive-image', 'image-framing', 'gap-spacing', 'block-reorder'].includes(demo.id);
+  const isCanvas = demo.id.startsWith('sabi-') || ['progressive-image', 'image-framing', 'gap-spacing', 'block-reorder'].includes(demo.id);
   if (isCanvas) {
     assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 0, `${demo.id}: no visible demo title`);
   } else {
@@ -95,7 +96,7 @@ for (const demo of CRAFT_DEMOS) {
     assert.equal(panelNodes.some((node) => attr(node, 'data-dev-overlay') !== undefined), false, 'image panel: isolated presentation only');
   }
   const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
-  if (!isProgressiveImage) assert.ok(reset, `${demo.id}: Reset`);
+  if (!isProgressiveImage && !isSabi) assert.ok(reset, `${demo.id}: Reset`);
   if (isProgressiveImage) {
     const controls = nodes.find((node) => attr(node, 'role') === 'group' && attr(node, 'aria-label') === 'Image loading');
     assert.ok(controls, `${demo.id}: image loading controls`);
@@ -103,7 +104,12 @@ for (const demo of CRAFT_DEMOS) {
   }
   assert.equal(panelNodes.includes(reset), demo.id === 'image-framing', `${demo.id}: Reset follows this demo's action layout`);
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
-  assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
+  if (isSabi) {
+    const island = nodes.find((node) => node.tagName === 'astro-island' && /SabiStage/.test(attr(node, 'component-url') ?? ''));
+    assert.ok(island, `${demo.id}: isolated Stageshow island`);
+    assert.ok(attr(island, 'props').includes(demo.id.replace('sabi-', '')), `${demo.id}: correct scene`);
+    await scriptGraph(`import ${JSON.stringify(attr(island, 'component-url'))};`);
+  } else assert.ok(instance && (isProgressiveImage || allNodes(instance).includes(reset)), `${demo.id}: controls stay within the demo lifecycle`);
   if (demo.id === 'gap-spacing') {
     for (const state of ['pointer', 'grab', 'grabbing']) {
       const glyph = nodes.find((node) => attr(node, 'data-cursor-glyph') === state);
@@ -165,7 +171,13 @@ for (const file of await readdir(path.join(root, 'src/content/projects'))) {
   const output = path.join(dist, project.slug ?? file.slice(0, -5), 'index.html');
   if (!demos.length || !existsSync(output)) continue;
   for (const section of demos) assert.ok(craftDemo(section.demo), `${file}: known demo`);
-  assert.ok((await readFile(output, 'utf8')).includes('project-interactive-demo'), `${file}: keeps its embedded demo`);
+  const blocks = allNodes(parseHtml(await readFile(output, 'utf8'))).filter((node) => attr(node, 'class')?.split(/\s+/).includes('project-interactive-demo'));
+  assert.equal(blocks.length, demos.length, `${file}: every demo uses the shared frame`);
+  blocks.forEach((block, index) => {
+    const registered = craftDemo(demos[index].demo);
+    assert.equal(attr(block, 'data-demo-frame'), registered.frame ?? 'inset', `${file}: inset unless explicitly opted out in the registry`);
+    assert.ok(!attr(block, 'class').split(/\s+/).includes('dev-surface'), `${file}: outer frame is not an elevated editor surface`);
+  });
   checkedProjects++;
 }
 console.log(`craft-demo-build: passed (${checkedRoutes} retained demo routes, ${checkedProjects} embedded project pages, no gallery)`);
