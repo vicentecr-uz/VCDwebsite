@@ -27,7 +27,6 @@ function updateFlow({ pending = false, draft = false, saved = true, failure = fa
     updateActions() {},
     hasPendingEdits: () => pending,
     async performSave() { events.push('save'); if (saved) { pending = false; draft = false; return {}; } return null; },
-    async waitForAuthoringIdle() { events.push('idle'); },
     async fetch() { events.push('request'); return { ok: true }; },
     async readApiJson() { return { ok: true, requestId: 'one' }; },
     async waitForBranchUpdate(id: string) { events.push(`wait:${id}`); if (failure) throw new Error('Conflict restored'); },
@@ -47,12 +46,12 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 test('saved unpublished work updates without publishing or an unnecessary save', async () => {
   const { events } = updateFlow(); await settle();
-  expect(events).toEqual(['leave', 'idle', 'request', 'wait:one', 'reload']);
+  expect(events).toEqual(['leave', 'request', 'wait:one', 'reload']);
 });
 
 test('pending editor and tuner drafts save before the authoring lease is released', async () => {
   const { events } = updateFlow({ pending: true, draft: true }); await settle();
-  expect(events).toEqual(['save', 'leave', 'idle', 'request', 'wait:one', 'reload']);
+  expect(events).toEqual(['save', 'leave', 'request', 'wait:one', 'reload']);
 });
 
 test('failed or cancelled saves never request an update or reload', async () => {
@@ -64,7 +63,7 @@ test('failed or cancelled saves never request an update or reload', async () => 
 
 test('an update conflict restores Edit mode and retains the error', async () => {
   const { events, state } = updateFlow({ failure: true }); await settle();
-  expect(events).toEqual(['leave', 'idle', 'request', 'wait:one', 'edit']);
+  expect(events).toEqual(['leave', 'request', 'wait:one', 'edit']);
   expect(state().branchUpdateMessage).toBe('Conflict restored');
   expect(state().branchUpdateBusy).toBe(false);
 });
@@ -84,3 +83,32 @@ test('polling rejects matching failure and ignores success for a different reque
   await expect(wait('current')).rejects.toThrow('Restored drafts');
   expect(calls).toBe(2);
 });
+
+for (const scenario of [
+  { name: 'clean tabs reload', pending: false, saved: true, busy: false, expected: ['reload'] },
+  { name: 'dirty tabs save before reloading', pending: true, saved: true, busy: false, expected: ['save', 'reload'] },
+  { name: 'conflicting drafts stay in the old tab', pending: true, saved: false, busy: false, expected: ['save'] },
+  { name: 'in-flight work finishes before recovery', pending: true, saved: true, busy: true, expected: [] },
+]) {
+  test(`focus recovery: ${scenario.name}`, async () => {
+    const events: string[] = [];
+    let pending = scenario.pending;
+    let recover;
+    const window = {
+      addEventListener(_type, handler) { const detail = {}; handler({ detail }); recover = detail.recover; },
+      dispatchEvent(event) { event.detail.dirty = pending; },
+      scrollY: 35,
+      location: { reload() { events.push('reload'); } },
+    };
+    const input = {
+      window, CustomEvent, actionsBusy: scenario.busy, pageHistory: { busy: false }, branchUpdateBusy: false,
+      hasPendingEdits: () => pending,
+      async performSave() { events.push('save'); if (scenario.saved) { pending = false; return {}; } return null; },
+      sessionStorage: { setItem() {} }, SCROLL_RESTORE_KEY: 'scroll', editorSignal: undefined,
+    };
+    const code = slice("    window.addEventListener('vcd:dev-tab-stale'", '    void refreshStyleEngineState();');
+    new Function(...Object.keys(input), transpiler.transformSync(code))(...Object.values(input));
+    await recover();
+    expect(events).toEqual(scenario.expected);
+  });
+}
