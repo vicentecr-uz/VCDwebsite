@@ -289,6 +289,41 @@ test('unseen Home navigation covers the retained header with the outgoing veil b
   storageThrows = true; prepare('/'); expect(covered.at(-1)).toBe(false);
 });
 
+test('seen-session Digital to Home navigation completes the persistent swap', async () => {
+  const win = fixture(); const doc = win.document;
+  doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
+  doc.body.innerHTML = '<div id="site-wrapper"><div data-page-shell><div class="site-header-slot"><header class="site-header"><span class="header-trigger__wordmark" aria-hidden="false">Digital</span></header></div><div class="header-menu-backdrop"></div><main id="main-content">Digital</main><footer>Digital</footer></div><section data-home-intro>Digital</section></div><div id="transition-overlay"></div>';
+  const header = doc.querySelector('.site-header')!;
+  Object.defineProperty(header, 'getBoundingClientRect', { value: () => ({ width: 100, height: 48, top: 10, bottom: 58 }) });
+  const incoming = new win.DOMParser().parseFromString(html('Home'), 'text/html');
+  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
+  const reveals: number[] = [];
+  const swapFunctions = {
+    deselectScripts() {}, swapRootAttributes() {}, swapHeadElements() {},
+  };
+  const sessionStorage = { getItem: () => 'true' };
+  const hooks = { cover: () => Promise.resolve(), reveal: () => reveals.push(1), cancel() {}, beforeSwap() {} };
+  new Function('document', 'sessionStorage', 'CustomEvent', 'persistentPageParts', 'supportsPersistentPage', 'swapFunctions', 'swapPageContent', 'setIntroFoldOffsets', 'hooks', `${script}; installPersistentNavigation(hooks);`)(
+    doc, sessionStorage, win.CustomEvent, persistentPageParts, supportsPersistentPage, swapFunctions, swapPageContent, () => {}, hooks,
+  );
+  const preparation = new win.Event('astro:before-preparation', { cancelable: true }) as any;
+  Object.assign(preparation, {
+    to: new URL('https://vcd.test/'), newDocument: incoming, signal: new AbortController().signal,
+    loader: async () => {}, sourceElement: { dataset: { headerNavigationTitle: 'Home' } },
+  });
+  doc.dispatchEvent(preparation);
+  await preparation.loader();
+  const beforeSwap = new win.Event('astro:before-swap') as any;
+  Object.assign(beforeSwap, { to: preparation.to, newDocument: incoming, viewTransition: { ready: Promise.resolve(), skipTransition() {} } });
+  doc.dispatchEvent(beforeSwap);
+  expect(() => beforeSwap.swap()).not.toThrow();
+  doc.dispatchEvent(new win.Event('astro:page-load'));
+  await Promise.resolve();
+  expect(doc.getElementById('main-content')?.textContent).toBe('Home');
+  expect(reveals).toEqual([1]);
+});
+
 function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10, bottom: 58 }, hiddenClass = false, ancestorOpacity = '' } = {}) {
   const win = fixture(); const doc = win.document;
   doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
