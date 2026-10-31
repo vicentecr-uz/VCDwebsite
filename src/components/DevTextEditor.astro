@@ -6495,12 +6495,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (actionsBusy || pageHistory.busy || branchUpdateBusy) return;
         const draft = { dirty: false };
         window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
-        if (hasPendingEdits() || draft.dirty) {
-          const saved = await performSave();
-          const remaining = { dirty: false };
-          window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: remaining }));
-          if (!saved || hasPendingEdits() || remaining.dirty) return;
-        }
+        // Keep drafts, Save state, and undo history intact until the user saves or discards.
+        if (hasPendingEdits() || draft.dirty) return;
         sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
         window.location.reload();
       };
