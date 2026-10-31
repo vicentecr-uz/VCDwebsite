@@ -108,7 +108,7 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="top" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'large' }}
+      palette="mono" fidelity="realistic" keys="top" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'real' }}
       tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)' }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} onReplay={replay} compact={layout === 'compact'} />}
     </Stage>
