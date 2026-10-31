@@ -5745,20 +5745,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncBranchUpdateBar();
     };
 
-    const waitForAuthoringIdle = async () => {
-      for (let attempt = 0; attempt < 25; attempt += 1) {
-        try {
-          const response = await fetch('/api/dev-session-state', { cache: 'no-store' });
-          const state = await readApiJson(response);
-          if (response.ok && state.editing === false) return;
-        } catch {
-          // The dev server is still present here; retry a delayed lease release.
-        }
-        await sleep(100);
-      }
-      throw new Error('Another Edit tab is active.');
-    };
-
     const waitForBranchUpdate = async (requestId: string) => {
       for (let attempt = 0; attempt < 240; attempt += 1) {
         await sleep(500);
@@ -5802,7 +5788,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           actionsBusy = true;
           updateActions();
           window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: false } }));
-          await waitForAuthoringIdle();
 
           const response = await fetch('/api/dev-branch-update', { method: 'POST' });
           const payload = await readApiJson(response);
@@ -6505,6 +6490,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
 
     void refreshPublishState();
+    window.addEventListener('vcd:dev-tab-stale', ((event: CustomEvent) => {
+      event.detail.recover = async () => {
+        if (actionsBusy || pageHistory.busy || branchUpdateBusy) return;
+        const draft = { dirty: false };
+        window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
+        // Keep drafts, Save state, and undo history intact until the user saves or discards.
+        if (hasPendingEdits() || draft.dirty) return;
+        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
+        window.location.reload();
+      };
+    }) as EventListener, { signal: editorSignal });
+
     void refreshStyleEngineState();
     void refreshBranchUpdateState();
     branchUpdatePollTimer = setInterval(() => {

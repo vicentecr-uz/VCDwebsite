@@ -1,5 +1,6 @@
 // @ts-check
 import path from 'node:path';
+import { protectStaleTabWrites } from './dev-tab-state.mjs';
 
 /** @type {number} */
 let suppressUntil = 0;
@@ -47,7 +48,13 @@ export function contentHmrGate() {
   return {
     name: 'content-hmr-gate',
     apply: 'serve',
+    transform(code, id) {
+      if (!id.replaceAll('\\', '/').endsWith('/vite/dist/client/client.mjs')) return;
+      // Vite reconnect reloads bypass WebSocket full-reload filtering.
+      return code.replaceAll('location.reload()', "window.dispatchEvent(new Event('vcd:dev-reconnect'))");
+    },
     configureServer(server) {
+      server.middlewares.use(protectStaleTabWrites);
       const send = server.ws.send.bind(server.ws);
       server.ws.send = (payload, ...rest) => {
         if (
