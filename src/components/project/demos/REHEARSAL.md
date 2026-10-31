@@ -20,3 +20,5 @@ Keypress labels match the host article’s computed body size (including respons
 The illustrated app uses the platform system font for inputs, selectors, captions and keypress labels; Hanken Grotesk remains the surrounding site’s font.
 
 The first demo moves left character by character to halfway through the text, then shows repeated Option/Alt + left-arrow word jumps to position zero. The final hold leaves the beginning visible.
+
+Shared iframe loading now crossfades for 180ms: the hydrated demo fades in as the page spinner fades out. The spinner stays mounted for its exit, becomes inaccessible immediately on readiness, and is hidden after the fade; its pulse pauses while fading. Frame dimensions remain reserved throughout.
