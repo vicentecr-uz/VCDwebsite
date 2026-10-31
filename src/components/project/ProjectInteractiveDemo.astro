@@ -19,6 +19,7 @@ interface Props {
 }
 const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
+const frame = demo && 'frame' in demo ? demo.frame : 'inset';
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
@@ -26,7 +27,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <div class="project-interactive-demo__content">
       {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
@@ -47,13 +48,14 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     position: relative;
     border-radius: var(--radius-control-smooth);
     background: var(--comp-demo-frame-container);
+    box-shadow: none;
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo) {
+  .project-interactive-demo[data-demo-frame='none'] {
     background: transparent;
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo)::after { display: none; }
+  .project-interactive-demo[data-demo-frame='none']::after { display: none; }
 
   .project-interactive-demo__content {
     border-radius: inherit;
@@ -76,6 +78,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       /* Negative margins expand a block's auto width into the page gutter.
          `100% + 2 * gutter` overshoots when the inherited gutter does not
          match the parent padding, which caused horizontal scrolling. */
+      width: auto;
       max-width: none;
       margin-inline: calc(-1 * var(--page-gutter));
       border-radius: 0;
@@ -88,7 +91,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     }
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo)::before { display: none; }
+  .project-interactive-demo[data-demo-frame='none']::before { display: none; }
 
   .project-interactive-demo::after {
     content: '';

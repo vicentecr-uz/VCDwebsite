@@ -1,0 +1,10 @@
+# Sabi demo rehearsal — 2026-10-31
+
+Seven scenes in `SabiStage.tsx`, embedded through `ProjectInteractiveDemo` on `/building-sabi`.
+
+- Starting references: Stageshow `form-error` (type, show the fault, fix, hold) and `close-up` (one enlarged control). The requested single input replaces their window chrome. The shared site frame stays inset; editor field tokens style the input within it.
+- Geometry: 720 × 336 wide, 358 × 336 compact below 560px. Static local-browser inspection included desktop and phone widths. At a 390px page viewport, the frame measured left 0 / right 390, with no page horizontal overflow. After removing inherited padding and fixing the measurement probe, the first iframe measured 368px content height / 368px viewport height, with no vertical scroll.
+- States implemented: After poster, once-in-view typing/comparison, interrupted manual editing, Replay, mixed-direction input, and four explicitly labelled selection-handle illustrations. The same native input survives Before/After changes. Reduced motion uses the settled poster through Stage.
+- Automated evidence: adapter tests cover input identity, value/selection preservation, interruption, cleanup, and accessible illustration choices. Build checks cover retained demo routes, isolated scripts, frame defaults and explicit exceptions. Local save/reorder endpoints were exercised, persisted to disk, and restored.
+- Fresh-eye review found a mobile pseudo-element override, a cursor on static scenes, and a handle-strip alignment regression. All three were corrected. Final review also restored the existing inset frame per owner feedback.
+- Not checked: complete animation films/contact sheets, the Stageshow film gate, live focused SVG clipping in every browser, native iPhone selection handles, and keyboard/touch interaction through the page editor. Repository `AGENTS.md` reserves interactive visual verification for the owner and prohibits headless pointer/focus/animation QA. The illustrated handles are not a recording of native iOS behaviour. This record does not claim a film-gate pass.
