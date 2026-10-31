@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { devTabState } from '../../scripts/dev-tab-state.mjs';
 import designTokens from '../../tokens/design-tokens.json';
 import { ClientRouter } from 'astro:transitions';
 import Analytics from '../components/Analytics.astro';
@@ -105,6 +106,13 @@ const initialThemeColor = resolveToken('sys.color.srf');
   data-adaptive-page-columns={ADAPTIVE_PAGE_COLUMNS_ENABLED ? '' : undefined}
 >
   <head>
+    {showDevTools && <meta name="vcd-tab-state" content={JSON.stringify(devTabState())} />}
+    <script>
+      if (import.meta.env.DEV) {
+        const { installDevTabRecovery } = await import('../lib/devTabRecovery');
+        installDevTabRecovery();
+      }
+    </script>
     <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
     <script>
       import { bindSafeVh } from '../lib/safeVh';
