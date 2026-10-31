@@ -1,7 +1,7 @@
+import { Fragment } from 'react'
 import './keys.css'
 
-// Keystrokes shown as keycaps (act.key): the caps for a combo, and the rows
-// the stage draws them in.
+// Keystrokes shown as keycaps (act.key): one shared cap per combination.
 
 /** Where keycaps show. Give `{ wide, compact }` to place them per layout. */
 export type KeysAt = 'bottom' | 'top' | 'bottom-left' | 'bottom-right'
@@ -23,11 +23,14 @@ export function Keycaps({ rows, at }: { rows: (Keys | null)[]; at: KeysAt }) {
         (row) =>
           row && (
             <div key={row.id} className="ss-keys" data-show={row.show} data-at={at} aria-hidden>
-              {row.caps.map((c, i) => (
-                <kbd key={i} className="ss-key" data-down={row.down}>
-                  {c}
-                </kbd>
-              ))}
+              <kbd className="ss-key" data-down={row.down}>
+                {row.caps.map((c, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && <span className="ss-key-separator">+</span>}
+                    <span data-arrow={['←', '→', '↑', '↓'].includes(c) || undefined}>{c}</span>
+                  </Fragment>
+                ))}
+              </kbd>
             </div>
           ),
       )}
