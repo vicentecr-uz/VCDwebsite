@@ -86,6 +86,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 ## Task router
 
 - UI, typography, spacing, motion, responsive layout, components, Figma: [`docs/interface-conventions.md`](docs/interface-conventions.md)
+- Demo frames, embedded demos, Stageshow: [`docs/interface-conventions.md` → Demo frames](docs/interface-conventions.md#demo-frames)
 - In-page Edit, content/media, project statuses, Save/Publish internals: [`docs/dev-authoring.md`](docs/dev-authoring.md)
 - Page-width token and breakpoint inventory: [`docs/page-width.md`](docs/page-width.md)
 - Figma architecture and source alignment: [`docs/figma-design-system.md`](docs/figma-design-system.md), [`docs/figma-source-alignment.md`](docs/figma-source-alignment.md)
