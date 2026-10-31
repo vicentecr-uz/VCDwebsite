@@ -106,9 +106,7 @@ async function readContentState(cwd) {
   return { contentBranch: branch, contentRevision, contentMainRevision, contentBehind, contentAhead, clean, contentBusy };
 }
 
-export async function requestBranchUpdate(cwd = process.cwd(), authoringActive = false) {
-  if (authoringActive) throw new Error('Another Edit tab is active.');
-
+export async function requestBranchUpdate(cwd = process.cwd()) {
   const state = await branchUpdateState(cwd);
   if (state.branch !== 'main') throw new Error('Updates are available only on main.');
   if (await hasGitOperation(cwd)) throw new Error('Finish the current Git operation before updating.');
@@ -143,7 +141,7 @@ export async function requestBranchUpdate(cwd = process.cwd(), authoringActive =
   }
 }
 
-export function branchUpdateDevWriter({ authoringActive = () => false } = {}) {
+export function branchUpdateDevWriter() {
   return {
     name: 'vcd-dev-branch-update',
     apply: 'serve',
@@ -167,7 +165,7 @@ export function branchUpdateDevWriter({ authoringActive = () => false } = {}) {
 
         if (req.method === 'POST') {
           try {
-            const state = await requestBranchUpdate(process.cwd(), authoringActive());
+            const state = await requestBranchUpdate(process.cwd());
             send(202, { ok: true, ...state });
           } catch (error) {
             send(409, { error: error instanceof Error ? error.message : 'Could not request the update.' });
