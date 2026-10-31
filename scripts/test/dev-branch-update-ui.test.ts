@@ -85,25 +85,26 @@ test('polling rejects matching failure and ignores success for a different reque
 });
 
 for (const scenario of [
-  { name: 'clean tabs reload', pending: false, saved: true, busy: false, expected: ['reload'] },
-  { name: 'dirty tabs save before reloading', pending: true, saved: true, busy: false, expected: ['save', 'reload'] },
-  { name: 'conflicting drafts stay in the old tab', pending: true, saved: false, busy: false, expected: ['save'] },
-  { name: 'in-flight work finishes before recovery', pending: true, saved: true, busy: true, expected: [] },
+  { name: 'clean tabs reload', pending: false, busy: false, expected: ['reload'] },
+  { name: 'pending text stays in the old tab', pending: true, busy: false, expected: [] },
+  { name: 'tuner-only drafts stay in the old tab', pending: false, draft: true, busy: false, expected: [] },
+  { name: 'in-flight work finishes before recovery', pending: true, busy: true, expected: [] },
 ]) {
   test(`focus recovery: ${scenario.name}`, async () => {
     const events: string[] = [];
     let pending = scenario.pending;
+    let draft = scenario.draft ?? false;
     let recover;
     const window = {
       addEventListener(_type, handler) { const detail = {}; handler({ detail }); recover = detail.recover; },
-      dispatchEvent(event) { event.detail.dirty = pending; },
+      dispatchEvent(event) { event.detail.dirty = draft; },
       scrollY: 35,
       location: { reload() { events.push('reload'); } },
     };
     const input = {
       window, CustomEvent, actionsBusy: scenario.busy, pageHistory: { busy: false }, branchUpdateBusy: false,
       hasPendingEdits: () => pending,
-      async performSave() { events.push('save'); if (scenario.saved) { pending = false; return {}; } return null; },
+      async performSave() { throw new Error('automatic recovery must not save'); },
       sessionStorage: { setItem() {} }, SCROLL_RESTORE_KEY: 'scroll', editorSignal: undefined,
     };
     const code = slice("    window.addEventListener('vcd:dev-tab-stale'", '    void refreshStyleEngineState();');
@@ -112,3 +113,28 @@ for (const scenario of [
     expect(events).toEqual(scenario.expected);
   });
 }
+
+test('dirty tab reloads only after an explicit Save clears its draft', async () => {
+  const events: string[] = [];
+  let pending = true;
+  let recover;
+  const window = {
+    addEventListener(_type, handler) { const detail = {}; handler({ detail }); recover = detail.recover; },
+    dispatchEvent(event) { event.detail.dirty = false; },
+    scrollY: 35,
+    location: { reload() { events.push('reload'); } },
+  };
+  const input = {
+    window, CustomEvent, actionsBusy: false, pageHistory: { busy: false }, branchUpdateBusy: false,
+    hasPendingEdits: () => pending,
+    async performSave() { throw new Error('automatic recovery must not save'); },
+    sessionStorage: { setItem() {} }, SCROLL_RESTORE_KEY: 'scroll', editorSignal: undefined,
+  };
+  const code = slice("    window.addEventListener('vcd:dev-tab-stale'", '    void refreshStyleEngineState();');
+  new Function(...Object.keys(input), transpiler.transformSync(code))(...Object.values(input));
+  await recover();
+  expect(events).toEqual([]);
+  pending = false;
+  await recover();
+  expect(events).toEqual(['reload']);
+});
