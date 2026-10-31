@@ -7,7 +7,7 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 - **Spacing:** Use `var(--space-unit)` consistently for header, grid, footer, and gaps. It is `1rem` at every breakpoint and steps down to `0.75rem` below `40em`. It is defined in `src/styles/global.css`; do not replace it with a literal `1em`. Prefer inline `style=` over framework arbitrary values when guaranteed rendering matters.
 - **Mobile breakpoint:** `40em` (640px). This is where `--space-unit` tightens and the header steps down through `--header-wordmark-size`, `--header-menu-link-size`, and `--header-logo-size`.
 - **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic.
-- **Page ground:** Use `--color-bg` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
+- **Page ground:** Use `--sys-color-srf` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
 
 ## Scrollable overflow
 
@@ -95,15 +95,15 @@ Any interactive element built from Button Base or its variants needs a hit area 
 
 ## Demo frames
 
-The outer demo frame is an inset in the page ground, not a floating card. Use [`ProjectInteractiveDemo`](../src/components/project/ProjectInteractiveDemo.astro) through an `interactiveDemo` content block. Register the demo in [`craftDemos.ts`](../src/lib/craftDemos.ts); the shared component supplies the frame automatically. Do not recreate its frame in a demo component or add `dev-surface`, an outer drop shadow, or a second background plate.
+The outer demo frame sits directly on the page with shallow, raised edges. Use [`ProjectInteractiveDemo`](../src/components/project/ProjectInteractiveDemo.astro) through an `interactiveDemo` content block. Register the demo in [`craftDemos.ts`](../src/lib/craftDemos.ts); the shared component supplies the frame automatically. Do not recreate its frame in a demo component or add `dev-surface`, a stronger elevation shadow, or a second background plate.
 
-The shared frame owns `--comp-demo-frame-container`, the inset edge treatment, corner radius, and mobile full bleed. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
+The shared frame owns `--comp-demo-frame-container` (aliased to the page surface, `--sys-color-srf`), a thin outline, a light inner edge at the top, a dark inner edge at the bottom, a very soft drop shadow, corner radius, and mobile full bleed. Depth comes from these edges rather than a contrasting fill or a broad floating-card shadow. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
 
 Only use another frame treatment when Anto explicitly requests it. Record a frameless exception as `frame: 'none'` in the registry, as the image-framing demo does. Keep exceptions out of page-specific CSS so the default remains shared and reviewable.
 
 Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small control demo must fit its frame without vertical scrolling; opt into `scrolling` only when scrolling is part of the demonstrated interaction. Size the scene and layout together rather than merely hiding an overflowing control. Stageshow supplies the scene and choreography inside this frame, not a replacement outer surface.
 
-Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the inset edges, full bleed, and absence of accidental scrolling at desktop and phone widths.
+Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the top highlight, bottom shading, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
 
 ## Figma
 
