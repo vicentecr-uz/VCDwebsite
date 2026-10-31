@@ -51,6 +51,27 @@ function Scene({ kind, controller, onManual, onReplay, compact }: {
     controller.current = handle;
     return () => { handle.destroy(); controller.current = null; };
   }, [kind, controller]);
+  useLayoutEffect(() => {
+    const stage = root.current!.closest<HTMLElement>('.ss-stage')!;
+    const field = root.current!.querySelector<HTMLElement>('.sabi-demo-field');
+    if (!field) return;
+    const placeKeys = () => {
+      const scene = stage.getBoundingClientRect();
+      if (!scene.height || !stage.offsetHeight) return;
+      const scale = scene.height / stage.offsetHeight;
+      const frameBottom = document.documentElement.clientHeight;
+      const keysCenter = (field.getBoundingClientRect().bottom + frameBottom) / 2;
+      stage.style.setProperty('--sabi-keys-y', `${(keysCenter - scene.top) / scale}px`);
+      stage.style.setProperty('--sabi-frame-bottom', `${(frameBottom - scene.top) / scale}px`);
+    };
+    const observer = new ResizeObserver(placeKeys);
+    observer.observe(stage);
+    observer.observe(stage.parentElement!);
+    observer.observe(field);
+    observer.observe(document.documentElement);
+    placeKeys();
+    return () => observer.disconnect();
+  }, [compact]);
   return <div ref={root} className="sabi-scene" data-kind={kind} data-mode="after"
     onPointerDownCapture={onManual} onKeyDownCapture={onManual} onFocusCapture={onManual} onWheelCapture={onManual}>
     {handles ? <SquircleField width={compact ? 326 : 480} handles>
@@ -86,6 +107,7 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
     await a.click({ at: 'field', x: .65, y: .5 });
     demo.begin();
     // Select all explains replacing the sample without a visible rewind.
+    a.mark('keyboard');
     await a.key('cmd+a');
     demo.text('A');
     for (let i = 2; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
@@ -94,13 +116,16 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
     if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     await a.wait(700);
     if (comparison) {
+      a.mark('pointer');
       await a.click({ at: 'after', x: .85, y: .55 }); demo.choose('after'); demo.begin();
       await a.move({ at: 'field', x: .9, y: .5 });
+      a.mark('keyboard');
       await a.key('End'); demo.seek(example.length);
       await a.key('ArrowLeft');
       for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
       if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     }
+    a.mark('pointer');
     await a.move({ at: 'field', x: 1, y: 1.7 });
     await a.wait(2000);
     demo.finish();
@@ -108,7 +133,7 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="top" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'real' }}
+      palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } }, style: 'real' }}
       tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)' }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} onReplay={replay} compact={layout === 'compact'} />}
     </Stage>
