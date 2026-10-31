@@ -253,7 +253,7 @@ export function createHomeIntroController(
 
 export function bindHomeIntro(config: HomeIntroConfig = revealConfig.intro): HomeIntroController | null {
   const surface = document.querySelector<HTMLElement>('[data-home-intro-surface]');
-  const home = document.querySelector<HTMLElement>('[data-page-shell]');
+  const home = document.querySelector<HTMLElement>('[data-page-shell], [data-home-page]');
   if (!surface || !home) return null;
   const existing = (window as Window & Record<string, unknown>)[controllerKey] as HomeIntroController | undefined;
   existing?.teardown();
