@@ -142,11 +142,12 @@ function Take({ kind }: { kind: string }) {
       });
       await a.wait(350);
       const words = [...example.slice(0, firstStop).matchAll(/\S+/g)].reverse();
-      for (const word of words) {
-        await a.key('alt+left');
-        demo.seek(word.index!);
-        await a.wait(180);
-      }
+      await a.key('alt+left', async () => {
+        for (const word of words) {
+          demo.seek(word.index!);
+          await a.wait(180);
+        }
+      });
     }
     if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     await a.wait(700);
