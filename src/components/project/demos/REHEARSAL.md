@@ -3,6 +3,7 @@
 Seven scenes in `SabiStage.tsx`, embedded through `ProjectInteractiveDemo` on `/building-sabi`.
 
 - Starting references: Stageshow `form-error` (type, show the fault, fix, hold) and `close-up` (one enlarged control). The requested single input replaces their window chrome. The shared site frame uses the page surface, the save bar’s shared light inner and dark outer rings above the content, and a tighter soft drop shadow; editor field tokens style the input within it.
+- Keyboard presentation: the pointer hides during keyboard beats and returns for pointer movement. Keycaps are centered in the measured space between the input and iframe bottom; comparison controls sit at the footer.
 - Cursor scale: the editor’s 32px field becomes 64px through `--sabi-demo-scale: 2`; every cursor kind uses that same multiplier, including the I-beam. Stage fitting scales both together.
 - Geometry: 720 × 336 wide, 358 × 336 compact below 560px. Static local-browser inspection included desktop and phone widths. At a 390px page viewport, the frame measured left 0 / right 390, with no page horizontal overflow. After removing inherited padding and fixing the measurement probe, the first iframe measured 368px content height / 368px viewport height, with no vertical scroll.
 - States implemented: After poster, once-in-view typing/comparison, interrupted manual editing, Replay, mixed-direction input, and four explicitly labelled selection-handle illustrations. The same native input survives Before/After changes. Reduced motion uses the settled poster through Stage.
