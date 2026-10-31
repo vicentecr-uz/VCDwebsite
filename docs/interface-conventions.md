@@ -97,13 +97,13 @@ Any interactive element built from Button Base or its variants needs a hit area 
 
 The outer demo frame sits directly on the page with shallow, raised edges. Use [`ProjectInteractiveDemo`](../src/components/project/ProjectInteractiveDemo.astro) through an `interactiveDemo` content block. Register the demo in [`craftDemos.ts`](../src/lib/craftDemos.ts); the shared component supplies the frame automatically. Do not recreate its frame in a demo component or add `dev-surface`, a stronger elevation shadow, or a second background plate.
 
-The shared frame owns `--comp-demo-frame-container` (aliased to the page surface, `--sys-color-srf`), a thin outline, a crisp light inner stroke at the top, a crisp dark inner stroke at the bottom (both zero-blur), a very soft drop shadow, corner radius, and mobile full bleed. Depth comes from these edges rather than a contrasting fill or a broad floating-card shadow. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
+The shared frame owns `--comp-demo-frame-container` (aliased to the page surface, `--sys-color-srf`), the save bar’s shared `--surface-stroke-shadow` (a light inner ring and dark outer ring, both zero-blur) drawn above demo content, a tighter soft drop shadow, corner radius, and mobile full bleed. Depth comes from these edges rather than a contrasting fill or a broad floating-card shadow. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
 
 Only use another frame treatment when Anto explicitly requests it. Record a frameless exception as `frame: 'none'` in the registry, as the image-framing demo does. Keep exceptions out of page-specific CSS so the default remains shared and reviewable.
 
 Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small control demo must fit its frame without vertical scrolling; opt into `scrolling` only when scrolling is part of the demonstrated interaction. Size the scene and layout together rather than merely hiding an overflowing control. Stageshow supplies the scene and choreography inside this frame, not a replacement outer surface.
 
-Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the top highlight, bottom shading, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
+Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the save-bar rings above the content, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
 
 ## Figma
 
