@@ -61,16 +61,20 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
 
 <script>
   import { bindHomeIntro } from '../../scripts/homeIntro';
+  import { createHomeRevealController } from '../../lib/homeReveal';
   import { onPageLoad } from '../../lib/pageLifecycle';
   import { trackEvent } from '../../lib/analytics';
   const onDismissing = () => trackEvent('home-intro-dismissed');
   const dispose = onPageLoad(() => {
     const controller = bindHomeIntro();
     if (!controller) return;
+    const pageShell = document.querySelector<HTMLElement>('[data-page-shell]');
+    const reveal = pageShell ? createHomeRevealController(pageShell) : undefined;
     if (controller.getState() === 'active') trackEvent('home-intro-shown');
     window.addEventListener('vcd:home-intro-dismissing', onDismissing);
     return () => {
       window.removeEventListener('vcd:home-intro-dismissing', onDismissing);
+      reveal?.destroy();
       controller.teardown();
     };
   });
@@ -78,6 +82,15 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
 </script>
 
 <style>
+  :global([data-page-shell]:has(~ [data-home-intro-surface])) {
+    position: relative;
+    z-index: 0;
+  }
+
+  :global(html[data-header-navigation] [data-page-shell]:has(~ [data-home-intro-surface])) {
+    z-index: auto;
+  }
+
   #home-intro-surface {
     position: fixed;
     inset: 0;
