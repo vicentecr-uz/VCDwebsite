@@ -2,6 +2,7 @@ import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode, 
 import { Stage } from '../../../lib/stageshow/stage';
 import type { Act } from '../../../lib/stageshow/act';
 import { mountSabiDemo } from '../../../lib/sabi/demo';
+import replayIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import './sabi-stage.css';
 
 type Controller = ReturnType<typeof mountSabiDemo>;
@@ -40,8 +41,8 @@ function SquircleField({ width, children, handles = false }: { width: number; ch
   </div>;
 }
 
-function Scene({ kind, controller, onManual, onReplay, compact }: {
-  kind: string; controller: { current: Controller | null }; onManual: () => void; onReplay: () => void; compact: boolean;
+function Scene({ kind, controller, onManual, compact }: {
+  kind: string; controller: { current: Controller | null }; onManual: () => void; compact: boolean;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const handles = kind === 'handles';
@@ -89,11 +90,10 @@ function Scene({ kind, controller, onManual, onReplay, compact }: {
         aria-pressed={index === choices.length - 1 ? 'true' : 'false'}>{label}</button>)}
     </div>}
     {handles && <p className="sabi-caption">Selection handles · illustration</p>}
-    {!handles && kind !== 'direction' && <button type="button" className="dev-btn dev-btn--ghost sabi-replay" onClick={onReplay}>Replay</button>}
   </div>;
 }
 
-function Take({ kind, replay }: { kind: string; replay: () => void }) {
+function Take({ kind }: { kind: string }) {
   const controller = useRef<Controller | null>(null);
   const [manual, setManual] = useState(false);
   const interrupt = useCallback(() => { controller.current?.stop(); setManual(true); }, []);
@@ -138,14 +138,20 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
       tokens={{ '--ss-font': "'Hanken Grotesk', sans-serif", '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
         '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
         '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
-      {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} onReplay={replay} compact={layout === 'compact'} />}
+      {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} compact={layout === 'compact'} />}
     </Stage>
   </div>;
 }
 
 export default function SabiStage({ kind }: { kind: string }) {
   const [take, setTake] = useState(0);
-  return <Take key={take} kind={kind} replay={() => setTake((value) => value + 1)} />;
+  return <div className="sabi-demo">
+    <Take key={take} kind={kind} />
+    {!['handles', 'direction'].includes(kind) && <button type="button" className="dev-btn dev-btn--ghost sabi-replay"
+      aria-label="Replay demo" title="Replay" onClick={() => setTake((value) => value + 1)}>
+      <span className="dev-btn__icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: replayIcon }} />
+    </button>}
+  </div>;
 }
 
 declare global {
