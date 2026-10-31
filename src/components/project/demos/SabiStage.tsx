@@ -57,12 +57,18 @@ function Scene({ kind, controller, onManual, compact }: {
     const stage = root.current!.closest<HTMLElement>('.ss-stage')!;
     const field = root.current!.querySelector<HTMLElement>('.sabi-demo-field');
     if (!field) return;
+    const pageText = window.frameElement?.ownerDocument.querySelector('.project-body-text');
     const placeKeys = () => {
       const scene = stage.getBoundingClientRect();
       if (!scene.height || !stage.offsetHeight) return;
       const scale = scene.height / stage.offsetHeight;
       const frameBottom = document.documentElement.clientHeight;
       const fieldBottom = field.getBoundingClientRect().bottom;
+      stage.style.setProperty('--sabi-stage-scale', `${scale}`);
+      if (pageText) {
+        const size = pageText.ownerDocument.defaultView!.getComputedStyle(pageText).fontSize;
+        stage.style.setProperty('--ss-key-font-size', `calc(${size} / ${scale})`);
+      }
       stage.style.setProperty('--sabi-field-bottom', `${(fieldBottom - scene.top) / scale}px`);
       stage.style.setProperty('--sabi-frame-bottom', `${(frameBottom - scene.top) / scale}px`);
     };
@@ -71,6 +77,10 @@ function Scene({ kind, controller, onManual, compact }: {
     observer.observe(stage.parentElement!);
     observer.observe(field);
     observer.observe(document.documentElement);
+    if (pageText) {
+      observer.observe(pageText);
+      observer.observe(pageText.ownerDocument.documentElement);
+    }
     placeKeys();
     return () => observer.disconnect();
   }, [compact]);
