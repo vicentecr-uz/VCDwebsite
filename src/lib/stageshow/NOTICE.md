@@ -24,3 +24,7 @@ The local brand registry in `kit/brands/` includes SVG artwork from SVGL (MIT), 
 `--ss-phone-photo-light: url(...)` and optionally `--ss-phone-photo-dark`.
 Without it, the kit uses its CSS-drawn `pro` frame. No bezel photographs are
 bundled.
+
+## Local adaptation
+
+The cursor renderer reuses the site’s rounded arrow and pointing-hand assets and hotspots from `src/assets/demo-cursors`, with their shared display shadow. See that directory’s README for artwork attribution. Other runtime files remain unchanged from the imported kit.
