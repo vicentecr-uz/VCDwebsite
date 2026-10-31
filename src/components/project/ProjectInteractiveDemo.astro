@@ -33,7 +33,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
-      {embedded && <span class="project-interactive-demo__loading" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
+      {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
       {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
@@ -107,7 +107,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     inset: 0;
     display: grid;
     place-items: center;
-    color: var(--sys-color-on-srf-variant);
     pointer-events: none;
   }
 
