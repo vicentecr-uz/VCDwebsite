@@ -111,7 +111,7 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
     await a.key('cmd+a');
     demo.text('A');
     for (let i = 2; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
-    await a.key('ArrowLeft');
+    await a.key('left');
     for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
     if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     await a.wait(700);
@@ -121,7 +121,7 @@ function Take({ kind, replay }: { kind: string; replay: () => void }) {
       await a.move({ at: 'field', x: .9, y: .5 });
       a.mark('keyboard');
       await a.key('End'); demo.seek(example.length);
-      await a.key('ArrowLeft');
+      await a.key('left');
       for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
       if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
     }
