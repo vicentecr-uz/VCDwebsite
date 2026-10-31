@@ -1,0 +1,93 @@
+@layer sabi {
+  /* The element is the scrolling text strip, not the field box: the mask fades
+     everything it paints, so put backgrounds, borders and focus rings on a parent. */
+  sabi-input {
+    --sabi-fade-width: 22px;
+    --sabi-fade-solid: 8px;
+    --sabi-caret-penetration: 4px;
+    --sabi-edge-gutter: 8px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    padding-inline: var(--sabi-edge-gutter);
+    /* The strip clips what overflows it, iOS selection handles included; taking
+       the field box's corners makes that clip match the box. */
+    border-radius: inherit;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    scroll-padding-inline: calc(var(--sabi-fade-width) - var(--sabi-caret-penetration));
+    cursor: text;
+    /* iOS draws its tap flash over the whole input, overflow included, past the clip and fade. */
+    -webkit-tap-highlight-color: transparent;
+    /* Each fade runs from the fully hidden edge to full opacity, eased along a
+       smoothstep curve in eight steps, so it has no visible start or end. */
+    --_sabi-l0: calc(var(--sabi-fade-solid) * var(--sabi-fade-left-progress, 0));
+    --_sabi-ls: calc((var(--sabi-fade-width) - var(--sabi-fade-solid)) * var(--sabi-fade-left-progress, 0));
+    --_sabi-r0: calc(100% - var(--sabi-fade-solid) * var(--sabi-fade-right-progress, 0));
+    --_sabi-rs: calc((var(--sabi-fade-width) - var(--sabi-fade-solid)) * var(--sabi-fade-right-progress, 0));
+    mask-image: linear-gradient(
+      to right,
+      rgb(0 0 0 / 0) var(--_sabi-l0),
+      rgb(0 0 0 / 0.043) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.125),
+      rgb(0 0 0 / 0.156) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.25),
+      rgb(0 0 0 / 0.316) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.375),
+      rgb(0 0 0 / 0.5) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.5),
+      rgb(0 0 0 / 0.684) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.625),
+      rgb(0 0 0 / 0.844) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.75),
+      rgb(0 0 0 / 0.957) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.875),
+      #000 calc(var(--_sabi-l0) + var(--_sabi-ls)),
+      #000 calc(var(--_sabi-r0) - var(--_sabi-rs)),
+      rgb(0 0 0 / 0.957) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.875),
+      rgb(0 0 0 / 0.844) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.75),
+      rgb(0 0 0 / 0.684) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.625),
+      rgb(0 0 0 / 0.5) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.5),
+      rgb(0 0 0 / 0.316) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.375),
+      rgb(0 0 0 / 0.156) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.25),
+      rgb(0 0 0 / 0.043) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.125),
+      rgb(0 0 0 / 0) var(--_sabi-r0)
+    );
+  }
+
+  sabi-input::-webkit-scrollbar {
+    display: none;
+  }
+
+  sabi-input > input {
+    flex: none;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+
+  sabi-input[data-caret-hidden] > input {
+    caret-color: transparent;
+  }
+
+  sabi-input > :not(input) {
+    flex: none;
+    white-space: pre;
+  }
+
+  /* Starts where the text ends, over the input's 2px of caret room (core.ts). */
+  sabi-input > input + * {
+    margin-inline-start: -2px;
+  }
+
+  sabi-input > input ~ * {
+    opacity: 0.5;
+  }
+
+  /* Anything before the input is a prefix; clicks fall through to the strip. */
+  sabi-input > :has(~ input) {
+    opacity: 0.5;
+    pointer-events: none;
+    user-select: none;
+  }
+}

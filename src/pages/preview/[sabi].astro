@@ -1,0 +1,15 @@
+---
+import DemoLayout from '../../layouts/DemoLayout.astro';
+import SabiDemo from '../../components/project/demos/SabiDemo.astro';
+import { CRAFT_DEMOS } from '../../lib/craftDemos';
+export function getStaticPaths() {
+  return CRAFT_DEMOS.filter((demo) => demo.id.startsWith('sabi-')).map((demo) => ({ params: { sabi: demo.id }, props: { demo } }));
+}
+const { demo } = Astro.props;
+---
+<DemoLayout title={demo.title}><SabiDemo kind={demo.id.replace('sabi-', '')} /></DemoLayout>
+
+<style is:global>
+  html:root, html > body { background: transparent; overflow: clip; }
+  html .demo-page.demo-page { padding: 0; }
+</style>

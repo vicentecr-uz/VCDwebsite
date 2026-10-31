@@ -268,7 +268,7 @@
   --comp-button-label-subtle: var(--sys-color-on-srf-subtle);
   --comp-button-label-inverse-subtle: var(--sys-color-inverse-on-srf-subtle);
   --comp-button-outline: var(--sys-color-outline);
-  --comp-demo-frame-container: var(--sys-color-srf-container-lowest);
+  --comp-demo-frame-container: var(--sys-color-srf);
   --comp-field-container: var(--comp-button-soft-container);
   --comp-segmentedcontrol-bg: var(--sys-color-srf-container-low);
   --comp-droparea-rest: var(--comp-button-soft-container);
@@ -326,10 +326,10 @@
 /* ── CSS Variables ──────────────────────────────────────── */
 :root {
   --smooth-ring-width: 0.75px;
-  --elevated-surface-shadow:
-    var(--smooth-shadow-md),
+  --surface-stroke-shadow:
     inset 0 0 0 var(--smooth-ring-width) rgb(255 255 255 / 0.18),
     0 0 0 var(--smooth-ring-width) rgb(0 0 0 / 0.05);
+  --elevated-surface-shadow: var(--smooth-shadow-md), var(--surface-stroke-shadow);
   /* Dev layer: a dashed hairline means "this is editable" — nothing else in
      the dev chrome may use one. Text fields carry it while editable; media
      frames fade it in on hover. Solid rules and fills mean state (selected,
@@ -408,9 +408,9 @@
      numbers. Figma is the approximate source for these roles; a
      component with its own deliberately-tuned geometry (see Header.astro's
      wordmark/nav, whose ch-based tracking is tuned against a runtime
-     kerning-correction script) stays as the component's own value. Weight
-     is the one property Figma governs literally throughout. */
+     kerning-correction script) stays as the component's own value. */
   --text-body-weight: 400;
+  --text-body-emphasis-weight: 500;
   --text-body-size: 1.2rem;
   --text-body-leading: 1.65;
   --text-body-tracking: 0;
@@ -447,12 +447,11 @@
 
   --text-nav-weight: 500;
 
-  /* Matches Figma Type/Content/Heading 2 (110% / -2%). The pre-rename token
-     carried the footer's numbers, not this role's — see --text-footer-* below. */
+  /* Heading 2 follows body typography at every breakpoint, with bold weight. */
   --text-heading-2-weight: 700;
-  --text-heading-2-size: 1.1rem;
-  --text-heading-2-leading: 1.1;
-  --text-heading-2-tracking: -0.02em;
+  --text-heading-2-size: var(--text-body-size);
+  --text-heading-2-leading: var(--text-body-leading);
+  --text-heading-2-tracking: var(--text-body-tracking);
 
   --text-footer-weight: 700;
   --text-footer-size: 1.1rem;
@@ -474,7 +473,6 @@
   :root {
     --text-body-size: 1.1rem;
     --text-heading-1-size: 1.35rem;
-    --text-heading-2-size: 1.05rem;
     --text-grid-title-size: 1.15rem;
     --text-about-heading-size: 1.75rem;
     --text-about-body-size: 1.1rem;
@@ -491,7 +489,6 @@
     --text-body-size: 1rem;
     --text-body-leading: 1.6;
     --text-heading-1-size: 1.25rem;
-    --text-heading-2-size: 1rem;
     --text-grid-title-size: 1.05rem;
     --text-about-heading-size: 1.5rem;
     --text-about-body-size: var(--text-body-size);
