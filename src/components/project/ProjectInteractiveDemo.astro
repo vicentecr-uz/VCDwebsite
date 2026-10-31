@@ -1,6 +1,8 @@
 ---
 import '../../styles/devOverlayFrame.css';
 import '../../styles/assetManager.css';
+import '../../styles/loading-spinner.css';
+import loadingSpinner from '../ui/LoadingSpinner.svg?raw';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import CropFrameDemo from './demos/CropFrameDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
@@ -19,6 +21,8 @@ interface Props {
 }
 const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
+const frame = demo && 'frame' in demo ? demo.frame : 'default';
+const embedded = demo && !['progressive-image', 'image-framing'].includes(demo.id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
@@ -26,9 +30,10 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
-    <div class="project-interactive-demo__content">
+    <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
+      {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
       {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
@@ -37,26 +42,91 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
         referrerpolicy="no-referrer"
         style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`}
       />}
-    </div>
+    </project-demo-content>
     {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
   </div>
 )}
+
+<script>
+  class ProjectDemoContent extends HTMLElement {
+    private pending?: AbortController;
+
+    connectedCallback() {
+      const frame = this.querySelector('iframe');
+      if (!frame) return;
+      this.pending = new AbortController();
+      const { signal } = this.pending;
+      const ready = () => {
+        const document = frame.contentDocument;
+        if (!document || document.URL === 'about:blank' || document.readyState !== 'complete') return;
+        const islands = document.querySelectorAll('astro-island[ssr]');
+        if (islands.length) {
+          islands.forEach((island) => island.addEventListener('astro:hydrate', ready, { once: true, signal }));
+          return;
+        }
+        this.removeAttribute('data-demo-loading');
+        this.removeAttribute('aria-busy');
+        this.querySelector('.project-interactive-demo__loading')?.setAttribute('aria-hidden', 'true');
+      };
+      frame.addEventListener('load', ready, { signal });
+      ready();
+    }
+
+    disconnectedCallback() {
+      this.pending?.abort();
+    }
+  }
+  if (!customElements.get('project-demo-content')) customElements.define('project-demo-content', ProjectDemoContent);
+</script>
 
 <style>
   .project-interactive-demo {
     position: relative;
     border-radius: var(--radius-control-smooth);
     background: var(--comp-demo-frame-container);
+    box-shadow:
+      0 1px 2px rgb(0 0 0 / 0.04),
+      0 4px 12px -4px rgb(0 0 0 / 0.04);
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo) {
+  .project-interactive-demo[data-demo-frame='none'] {
     background: transparent;
+    box-shadow: none;
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo)::after { display: none; }
+  .project-interactive-demo[data-demo-frame='none']::after { display: none; }
 
   .project-interactive-demo__content {
+    display: block;
+    position: relative;
     border-radius: inherit;
+  }
+
+  .project-interactive-demo__loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    z-index: 1;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 180ms ease-out, visibility 0s linear 180ms;
+  }
+
+  .project-interactive-demo__content[data-demo-loading] .project-interactive-demo__loading {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .project-interactive-demo__content:not([data-demo-loading]) .project-interactive-demo__loading :global(rect) {
+    animation-play-state: paused;
+  }
+
+  .project-interactive-demo__content[data-demo-loading] iframe {
+    opacity: 0;
+    visibility: hidden;
   }
 
   .project-interactive-demo__mobile-notice { display: none; }
@@ -76,6 +146,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       /* Negative margins expand a block's auto width into the page gutter.
          `100% + 2 * gutter` overshoots when the inherited gutter does not
          match the parent padding, which caused horizontal scrolling. */
+      width: auto;
       max-width: none;
       margin-inline: calc(-1 * var(--page-gutter));
       border-radius: 0;
@@ -88,58 +159,15 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     }
   }
 
-  .project-interactive-demo:has(vcd-crop-frame-demo)::before { display: none; }
-
   .project-interactive-demo::after {
     content: '';
     position: absolute;
-    inset: 0;
+    /* Keep the outer ring inside the frame when it touches the header. */
+    inset: var(--smooth-ring-width);
     z-index: 2;
-    border-radius: inherit;
+    border-radius: max(0px, calc(var(--radius-control-smooth) - var(--smooth-ring-width)));
     pointer-events: none;
-    box-shadow:
-      inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-      inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
-      inset 0 0 0 1px var(--sys-color-surface-outline);
-  }
-
-  :global(:root[data-theme='dark']) .project-interactive-demo::after {
-    box-shadow:
-      inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-      inset 0 0 0 1px var(--sys-color-surface-outline);
-  }
-
-  @media (max-width: 40em) {
-    .project-interactive-demo::before {
-      content: '';
-      display: block;
-      width: 100%;
-      height: 4px;
-      margin-bottom: -4px;
-      position: sticky;
-      top: var(--site-header-height, calc(var(--space-unit) * 3.75));
-      z-index: 3;
-      pointer-events: none;
-      box-shadow:
-        inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
-        inset 0 1px 0 var(--sys-color-surface-outline);
-    }
-
-    :global(:root[data-theme='dark']) .project-interactive-demo::before {
-      box-shadow: inset 0 1px 0 var(--sys-color-surface-outline);
-    }
-
-    .project-interactive-demo::after {
-      box-shadow:
-        inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 -1px 0 var(--sys-color-surface-outline);
-    }
-
-    :global(:root[data-theme='dark']) .project-interactive-demo::after {
-      box-shadow:
-        inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
-        inset 0 -1px 0 var(--sys-color-surface-outline);
-    }
+    box-shadow: var(--surface-stroke-shadow);
   }
 
   .project-interactive-demo__content iframe {
@@ -148,9 +176,12 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     border: 0;
     border-radius: inherit;
     height: var(--demo-height);
+    opacity: 1;
+    transition: opacity 180ms ease-out;
   }
 
   @media (max-width: 40em) {
+    .project-interactive-demo::after { border-radius: 0; }
     .project-interactive-demo__content iframe { height: var(--demo-narrow-height); }
   }
 </style>

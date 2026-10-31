@@ -41,6 +41,10 @@ const contentGitOptions = () => contentGitArgs(process.cwd());
  * A stale list also fails open, so err towards including a path.
  */
 const RENDERING_PATHS = [
+  'src/lib/craftDemos.ts',
+  'src/lib/sabi/',
+  'src/lib/stageshow/',
+  'src/pages/preview/[sabi].astro',
   'src/components/project/',
   'src/scripts/siteAnnotationPosition.ts',
   'src/lib/siteAnnotations.ts',
