@@ -89,7 +89,7 @@ afterAll(() => {
     else Reflect.deleteProperty(globalThis, key);
   });
 });
-const fixture = () => {
+const fixture = (storage?: Storage, introDocument?: string) => {
   fixtureDocument.activeElement = null;
   fixtureDocument.main = new FixtureElement();
   fixtureDocument.body.style.overflow = '';
@@ -100,8 +100,9 @@ const fixture = () => {
   surface.children['[data-home-intro-okay="true"]'] = okay;
   surface.children['[data-home-intro-cursor]'] = cursor;
   const home = new FixtureElement();
+  if (introDocument) home.dataset.introDocument = introDocument;
   const root = new FixtureElement();
-  const win = fixtureWindow();
+  const win = fixtureWindow(storage);
   const controller = createHomeIntroController(surface, home, root, win);
   controllers.push(controller);
   return { surface, okay, cursor, home, root, win, controller };
@@ -151,6 +152,26 @@ describe('home intro controller', () => {
     controllers.push(replacement);
     expect(replacement.getState()).toBe('dismissed');
     expect(fixture().controller.getState()).toBe('active');
+  });
+
+  test('digital uses the shared seen marker and restores its page surface', async () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    } as unknown as Storage;
+    const digital = fixture(storage, 'play');
+    const surfaces: string[] = [];
+    digital.win.addEventListener('vcd:page-surface-change', ((event: CustomEvent<{ documentKey?: string }>) => {
+      if (event.detail?.documentKey) surfaces.push(event.detail.documentKey);
+    }) as EventListener);
+    expect(digital.controller.getState()).toBe('active');
+    digital.controller.dismiss();
+    await waitForExit();
+    expect(surfaces).toContain('play');
+
+    const home = fixture(storage);
+    expect(home.controller.getState()).toBe('dismissed');
   });
 
   test('pointerdown alone never dismisses; the later click starts the exit', async () => {
