@@ -1,5 +1,5 @@
 ---
-import '../../styles/dev-chrome.css';
+import '../styles/dev-chrome.css';
 interface Props { isDev?: boolean }
 const { isDev = false } = Astro.props;
 const entering = isDev && Astro.url.searchParams.has('edit');
@@ -13,6 +13,7 @@ const entering = isDev && Astro.url.searchParams.has('edit');
     </div>
     <p id="remote-editor-error" class="remote-entry__error" aria-live="polite" hidden></p>
     <button type="submit" data-remote-submit hidden>Enter</button>
+    <button type="button" class="remote-entry__close" data-remote-close>Close</button>
   </form>
 </dialog>
 <div class:list={['remote-entry__reveal', { 'is-visible': entering }]} data-remote-reveal hidden={!entering} aria-hidden="true"></div>
@@ -161,6 +162,7 @@ const entering = isDev && Astro.url.searchParams.has('edit');
       else openDialog();
     });
     scope.listen(trigger, 'contextmenu', (event) => event.preventDefault());
+    scope.listen(dialog.querySelector('[data-remote-close]'), 'click', closeDialog);
     scope.listen(dialog, 'cancel', (event) => { event.preventDefault(); closeDialog(); });
     scope.listen(dialog, 'click', (event) => { if (event.target === dialog) closeDialog(); });
     scope.listen(window.visualViewport, 'resize', updateViewport);
@@ -231,6 +233,8 @@ const entering = isDev && Astro.url.searchParams.has('edit');
   .remote-entry__field:focus-within { outline: 2px solid var(--ref-palette-grey-500); outline-offset: 2px; }
   .remote-entry__field input { height: 48px; font-size: 16px; }
   .remote-entry__error { margin: 0; font-size: 14px; line-height: 1.4; }
+  .remote-entry__close { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .remote-entry__close:focus-visible { position: static; width: auto; height: auto; clip-path: none; }
   .remote-entry__form[aria-busy="true"] input { opacity: 0.5; }
   .remote-entry__reveal { position: fixed; inset: 0; z-index: 1000; background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
   .remote-entry__reveal.is-visible { opacity: 1; }
