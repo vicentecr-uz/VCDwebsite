@@ -355,6 +355,62 @@ function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessR
   };
 }
 
+test('initial reveal waits for styles and thumbnails without waiting for editing or navigation modules', async () => {
+  const image = new ImageFixture();
+  const f = fixture({ initialController: true, layoutPending: true, deferNavigationModule: true, images: [image] });
+  const globalStyle = Object.assign(new Target(), { src: '/src/styles/global.css' });
+  const componentStyle = Object.assign(new Target(), { src: '/src/components/Header.astro?astro&type=style&index=0&lang.css' });
+  const editor = Object.assign(new Target(), { src: '/src/components/DevTextEditor.astro?astro&type=script&index=0&lang.ts' });
+  const query = f.document.querySelectorAll;
+  f.document.querySelectorAll = (selector: string) => selector === 'script[type="module"][src]'
+    ? [globalStyle, componentStyle, editor] as any : query(selector);
+  const source = layout.match(/<!-- Keep layout readiness independent from the heavier transition and editor graph\. -->\s*<script>([\s\S]*?)<\/script>/)![1];
+  const bootstrap = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    source
+      .replace(/^\s*import .*?;\s*$/gm, '')
+      .replace('import(/* @vite-ignore */ script.src)', '__testImport(script.src)')
+      .replace(/import\.meta\.env\.DEV/g, 'true'),
+  );
+  const requested: string[] = [];
+  const globalReady = deferred();
+  const componentReady = deferred();
+  let initialized = false;
+  const importModule = (src: string) => {
+    requested.push(src);
+    if (src === globalStyle.src) return globalReady.promise;
+    if (src === componentStyle.src) return componentReady.promise;
+    return Promise.resolve();
+  };
+  runInNewContext(bootstrap, {
+    document: f.document, location: { href: sourceUrl }, URL, Promise, __testImport: importModule,
+    bindSafeVh() {
+      initialized = true;
+      f.document.documentElement.dataset.introLayoutReady = 'true';
+      f.window.emit('vcd:intro-layout-ready');
+    },
+  });
+  await f.paint();
+  assert.equal(initialized, false);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  assert.deepEqual(requested, [globalStyle.src, componentStyle.src]);
+  globalReady.resolve();
+  await flush();
+  assert.equal(initialized, false);
+  componentReady.resolve();
+  await flush();
+  assert.equal(initialized, true);
+  assert.equal(requested.includes(editor.src), false);
+  assert.equal(image.count('load'), 1);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  image.load();
+  image.decoded.resolve();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, true);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(f.persistentHooks, undefined);
+});
+
 for (const mode of ['evaluated', 'pending', 'rejected'] as const) {
   test(`layout initializer releases after ${mode} style modules`, async () => {
     const f = fixture();
