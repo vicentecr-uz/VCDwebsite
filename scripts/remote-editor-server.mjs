@@ -158,6 +158,11 @@ export function createRemoteEditorServer(options = {}) {
       if (pathname === '/api/remote-editor/login' && req.method === 'POST') return await login(req, res);
       if (pathname === '/api/remote-editor/logout' && req.method === 'POST') return json(res, 200, { ok: true }, { 'set-cookie': `${COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict` });
       if (pathname.startsWith('/api/remote-editor/')) return json(res, 404, { error: 'Not found' });
+      // Public pages can finish loading their build assets after the login cookie changes.
+      if (pathname.startsWith('/_astro/') && ['GET', 'HEAD'].includes(req.method)) {
+        if (!(await serveStatic(req, res, pathname))) json(res, 404, { error: 'Not found' });
+        return;
+      }
       if (signedIn) {
         if (mutating(req) && WRITE_BLOCKS.some((prefix) => pathname.startsWith(prefix))) return json(res, 403, { error: 'Publishing is disabled.' });
         return proxy(req, res, target);
