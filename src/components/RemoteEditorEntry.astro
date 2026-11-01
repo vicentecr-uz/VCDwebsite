@@ -1,5 +1,5 @@
 ---
-import Button from './ui/Button.astro';
+import '../../styles/dev-chrome.css';
 interface Props { isDev?: boolean }
 const { isDev = false } = Astro.props;
 const entering = isDev && Astro.url.searchParams.has('edit');
@@ -7,16 +7,12 @@ const entering = isDev && Astro.url.searchParams.has('edit');
 
 <dialog class="remote-entry" data-remote-entry data-is-dev={String(isDev)} aria-label="Edit">
   <form method="post" action="/api/remote-editor/login" class="remote-entry__form">
-    <input class="remote-entry__username" name="username" type="text" value="anto" autocomplete="username" tabindex="-1" aria-hidden="true" />
-    <label class="remote-entry__label" for="remote-editor-password">Password</label>
+    <input name="username" type="hidden" value="anto" autocomplete="username" />
     <div class="dev-field__value remote-entry__field">
-      <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-describedby="remote-editor-error" required />
+      <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Password" placeholder="Password" aria-describedby="remote-editor-error" required />
     </div>
     <p id="remote-editor-error" class="remote-entry__error" aria-live="polite" hidden></p>
-    <div class="remote-entry__actions">
-      <Button label="Cancel" emphasis="soft" width="fill" data-remote-cancel />
-      <Button label="Enter" emphasis="filled" width="fill" type="submit" data-remote-submit />
-    </div>
+    <button type="submit" data-remote-submit hidden>Enter</button>
   </form>
 </dialog>
 <div class:list={['remote-entry__reveal', { 'is-visible': entering }]} data-remote-reveal hidden={!entering} aria-hidden="true"></div>
@@ -33,7 +29,6 @@ const entering = isDev && Astro.url.searchParams.has('edit');
     const password = form.elements.namedItem('password') as HTMLInputElement;
     const error = dialog.querySelector<HTMLElement>('#remote-editor-error')!;
     const submit = dialog.querySelector<HTMLButtonElement>('[data-remote-submit]')!;
-    const cancel = dialog.querySelector<HTMLButtonElement>('[data-remote-cancel]')!;
     const reveal = document.querySelector<HTMLElement>('[data-remote-reveal]')!;
     const isDev = dialog.dataset.isDev === 'true';
     let authenticated = isDev;
@@ -55,7 +50,6 @@ const entering = isDev && Astro.url.searchParams.has('edit');
     const setBusy = (busy: boolean) => {
       submit.disabled = busy;
       password.readOnly = busy;
-      submit.textContent = busy ? 'Entering…' : 'Enter';
       form.setAttribute('aria-busy', String(busy));
     };
     const updateViewport = () => {
@@ -167,9 +161,8 @@ const entering = isDev && Astro.url.searchParams.has('edit');
       else openDialog();
     });
     scope.listen(trigger, 'contextmenu', (event) => event.preventDefault());
-    scope.listen(cancel, 'click', closeDialog);
     scope.listen(dialog, 'cancel', (event) => { event.preventDefault(); closeDialog(); });
-    scope.listen(dialog, 'click', (event) => { if (event.target === dialog && !password.value) closeDialog(); });
+    scope.listen(dialog, 'click', (event) => { if (event.target === dialog) closeDialog(); });
     scope.listen(window.visualViewport, 'resize', updateViewport);
     scope.listen(window.visualViewport, 'scroll', updateViewport);
     scope.listen(window, 'resize', updateViewport);
@@ -226,13 +219,6 @@ const entering = isDev && Astro.url.searchParams.has('edit');
     opacity: 0;
     transform: translateY(8px);
     transition: opacity 200ms ease, transform 200ms ease;
-    --comp-button-label: var(--ref-palette-grey-150);
-    --comp-button-soft-container: var(--ref-palette-grey-950);
-    --comp-button-soft-container-hover: var(--ref-palette-grey-900);
-    --comp-button-soft-container-pressed: var(--ref-palette-grey-800);
-    --comp-button-filled-container: var(--ref-palette-grey-150);
-    --comp-button-filled-container-hover: var(--ref-palette-grey-300);
-    --comp-button-filled-label: var(--ref-palette-grey-1000);
     --comp-field-container: var(--ref-palette-grey-950);
     --sys-color-on-srf: var(--ref-palette-grey-150);
   }
@@ -241,14 +227,11 @@ const entering = isDev && Astro.url.searchParams.has('edit');
   .remote-entry.is-visible::backdrop { opacity: 1; }
   .remote-entry.is-closing, .remote-entry.is-closing::backdrop { transition-duration: 160ms; }
   .remote-entry__form { display: grid; gap: 8px; }
-  .remote-entry__label { font-family: var(--font-sans); font-size: var(--text-footer-size); font-weight: var(--text-footer-weight); letter-spacing: var(--text-footer-tracking); }
   .remote-entry__field { min-height: 48px; }
   .remote-entry__field:focus-within { outline: 2px solid var(--ref-palette-grey-500); outline-offset: 2px; }
   .remote-entry__field input { height: 48px; font-size: 16px; }
-  .remote-entry__username { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
   .remote-entry__error { margin: 0; font-size: 14px; line-height: 1.4; }
-  .remote-entry__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-  .remote-entry__actions :global(button) { min-height: 48px; --dev-btn-hit-inset: 0px; }
+  .remote-entry__form[aria-busy="true"] input { opacity: 0.5; }
   .remote-entry__reveal { position: fixed; inset: 0; z-index: 1000; background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
   .remote-entry__reveal.is-visible { opacity: 1; }
   @media (prefers-reduced-motion: reduce) { .remote-entry { transform: none; } }
