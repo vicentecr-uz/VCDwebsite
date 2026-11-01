@@ -1020,6 +1020,7 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (!document.documentElement.classList.contains('is-dev-mode')) return;
+  if (window.matchMedia('(max-width: 40em)').matches) return;
   if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.code !== 'KeyD') return;
   const selected = drawingSelection();
   if (!selected && !shortcutTarget()) return;

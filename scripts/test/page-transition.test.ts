@@ -12,12 +12,12 @@ test('scrub transition UI and source instrumentation are removed', () => {
   assert.doesNotMatch(layout, /transitionMode === 'scrub'/);
 });
 test('layout readiness has an independent early initializer', () => {
-  const headInitializer = layout.match(/<head>\s*<!--[\s\S]*?-->\s*<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  const headInitializer = layout.match(/<!-- Keep layout readiness independent from the heavier transition and editor graph\. -->\s*<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
   assert.match(headInitializer, /import \{ bindSafeVh \} from ['"]\.\.\/lib\/safeVh['"]/);
   assert.match(headInitializer, /bindSafeVh\(\);/);
   assert.match(headInitializer, /pathname\.endsWith\('\.css'\)/);
   assert.match(headInitializer, /searchParams\.get\('type'\) === 'style'/);
-  assert.match(headInitializer, /addEventListener\('error'/);
+  assert.match(headInitializer, /import\(\/\* @vite-ignore \*\/ script\.src\)/);
   assert.doesNotMatch(headInitializer, /gsap|persistentNavigation|imagePreviewUpgrade|pageLifecycle/);
   assert.doesNotMatch(script ?? '', /bindSafeVh/);
   assert.match(layout, /<link rel="stylesheet" href="\/fonts\/hanken-grotesk\/hanken\.css"/);
@@ -364,13 +364,25 @@ test('initial reveal waits for styles and thumbnails without waiting for editing
   const query = f.document.querySelectorAll;
   f.document.querySelectorAll = (selector: string) => selector === 'script[type="module"][src]'
     ? [globalStyle, componentStyle, editor] as any : query(selector);
-  const source = layout.match(/<head>\s*<!--[\s\S]*?-->\s*<script>([\s\S]*?)<\/script>/)![1];
+  const source = layout.match(/<!-- Keep layout readiness independent from the heavier transition and editor graph\. -->\s*<script>([\s\S]*?)<\/script>/)![1];
   const bootstrap = new Bun.Transpiler({ loader: 'ts' }).transformSync(
-    source.replace(/^\s*import .*?;\s*$/gm, '').replace(/import\.meta\.env\.DEV/g, 'true'),
+    source
+      .replace(/^\s*import .*?;\s*$/gm, '')
+      .replace('import(/* @vite-ignore */ script.src)', '__testImport(script.src)')
+      .replace(/import\.meta\.env\.DEV/g, 'true'),
   );
+  const requested: string[] = [];
+  const globalReady = deferred();
+  const componentReady = deferred();
   let initialized = false;
+  const importModule = (src: string) => {
+    requested.push(src);
+    if (src === globalStyle.src) return globalReady.promise;
+    if (src === componentStyle.src) return componentReady.promise;
+    return Promise.resolve();
+  };
   runInNewContext(bootstrap, {
-    document: f.document, location: { href: sourceUrl }, URL, Promise,
+    document: f.document, location: { href: sourceUrl }, URL, Promise, __testImport: importModule,
     bindSafeVh() {
       initialized = true;
       f.document.documentElement.dataset.introLayoutReady = 'true';
@@ -380,13 +392,14 @@ test('initial reveal waits for styles and thumbnails without waiting for editing
   await f.paint();
   assert.equal(initialized, false);
   assert.equal(Number(f.overlay.style.opacity), 1);
-  globalStyle.emit('load');
+  assert.deepEqual(requested, [globalStyle.src, componentStyle.src]);
+  globalReady.resolve();
   await flush();
   assert.equal(initialized, false);
-  componentStyle.emit('load');
+  componentReady.resolve();
   await flush();
   assert.equal(initialized, true);
-  assert.equal(editor.count('load') + editor.count('error'), 0);
+  assert.equal(requested.includes(editor.src), false);
   assert.equal(image.count('load'), 1);
   assert.equal(Number(f.overlay.style.opacity), 1);
   image.load();
@@ -397,6 +410,46 @@ test('initial reveal waits for styles and thumbnails without waiting for editing
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
   assert.equal(f.persistentHooks, undefined);
 });
+
+for (const mode of ['evaluated', 'pending', 'rejected'] as const) {
+  test(`layout initializer releases after ${mode} style modules`, async () => {
+    const f = fixture();
+    const globalStyle = Object.assign(new Target(), { src: '/src/styles/global.css' });
+    const componentStyle = Object.assign(new Target(), { src: '/src/components/Header.astro?astro&type=style&index=0&lang.css' });
+    const query = f.document.querySelectorAll;
+    f.document.querySelectorAll = (selector: string) => selector === 'script[type="module"][src]'
+      ? [globalStyle, componentStyle] as any : query(selector);
+    const source = layout.match(/<!-- Keep layout readiness independent from the heavier transition and editor graph\. -->\s*<script>([\s\S]*?)<\/script>/)![1];
+    const bootstrap = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+      source
+        .replace(/^\s*import .*?;\s*$/gm, '')
+        .replace('import(/* @vite-ignore */ script.src)', '__testImport(script.src)')
+        .replace(/import\.meta\.env\.DEV/g, 'true'),
+    );
+    const pending = mode === 'pending' ? deferred() : undefined;
+    let initialized = false;
+    const importModule = (src: string) => {
+      if (mode === 'rejected' && src === globalStyle.src) return Promise.reject(new Error('style unavailable'));
+      if (pending && src === globalStyle.src) return pending.promise;
+      return Promise.resolve();
+    };
+    runInNewContext(bootstrap, {
+      document: f.document, location: { href: sourceUrl }, URL, Promise, __testImport: importModule,
+      bindSafeVh() {
+        initialized = true;
+        f.document.documentElement.dataset.introLayoutReady = 'true';
+        f.window.emit('vcd:intro-layout-ready');
+      },
+    });
+    await flush();
+    assert.equal(initialized, mode !== 'pending');
+    if (pending) {
+      pending.resolve();
+      await flush();
+      assert.equal(initialized, true);
+    }
+  });
+}
 
 test('initial reveal keeps the veil opaque until a visible opted-in root is ready', async () => {
   const root = new ReadinessRoot();
