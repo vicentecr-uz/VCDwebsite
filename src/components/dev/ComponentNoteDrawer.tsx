@@ -38,6 +38,7 @@ export default function ComponentNoteDrawer() {
   const [conflict, setConflict] = useState<Note | null>(null);
   const [saving, setSaving] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
+  const viewport = useRef<HTMLDivElement>(null);
   const busy = useRef(false);
   const alive = useRef(true);
   const requests = useRef(new Set<AbortController>());
@@ -109,6 +110,7 @@ export default function ComponentNoteDrawer() {
     try { localStorage.removeItem(draftKey(block)); } catch { /* Saved server data remains authoritative. */ }
   };
   const openNote = (block: Block, trigger: HTMLButtonElement) => {
+    if (busy.current) return;
     if (!notes[block.document]) { void load(block.document); return; }
     const saved = notes[block.document][block.id] || empty;
     const recovery = drafts[keyFor(block)];
@@ -122,17 +124,25 @@ export default function ComponentNoteDrawer() {
     field.current?.focus({ preventScroll: true });
     field.current?.setSelectionRange(field.current.value.length, field.current.value.length);
   };
+  const closeNote = () => {
+    const element = viewport.current;
+    if (element) {
+      element.style.setProperty('--note-dismiss-inset', getComputedStyle(element).getPropertyValue('--drawer-keyboard-inset') || '0px');
+    }
+    setOpen(false);
+    field.current?.blur();
+  };
   const saveAndClose = async (revision = editing?.baseline.revision) => {
     if (!editing || busy.current) return;
     const target = editing;
     const value = text;
     const saved = notes[target.document]?.[target.id] || empty;
-    if (value === saved.text) { forget(target); setOpen(false); return; }
+    if (value === saved.text) { forget(target); closeNote(); return; }
     remember(target, { text: value, revision: revision! });
     busy.current = true;
     setSaving(true);
     setError('');
-    setOpen(false);
+    closeNote();
     try {
       const { response, payload } = await request('/api/component-notes', {
         method: 'POST', headers: { 'content-type': 'application/json' },
@@ -193,7 +203,8 @@ export default function ComponentNoteDrawer() {
       return createPortal(<button type="button" className={`dev-btn dev-btn--ghost dev-component-note-button${hasNote ? ' has-note' : ''}${loadErrors[block.document] || (error && editing && keyFor(editing) === key) ? ' has-error' : ''}`}
         aria-label={loadErrors[block.document] ? 'Retry loading notes' : hasNote ? 'Edit note' : 'Add note'}
         aria-haspopup="dialog" aria-expanded={Boolean(open && editing && keyFor(editing) === key)}
-        disabled={saving || (!notes[block.document] && !loadErrors[block.document])}
+        aria-disabled={saving || undefined}
+        disabled={(saving && (!editing || keyFor(editing) !== key)) || (!notes[block.document] && !loadErrors[block.document])}
         onClick={(event) => openNote(block, event.currentTarget)}
         dangerouslySetInnerHTML={{ __html: messageSquareIcon }} />, block.element, key);
     })}
@@ -206,7 +217,7 @@ export default function ComponentNoteDrawer() {
       <Drawer.VirtualKeyboardProvider>
         <Drawer.Portal>
           <Drawer.Backdrop className="dev-component-note-backdrop" />
-          <Drawer.Viewport className="dev-component-note-viewport">
+          <Drawer.Viewport ref={viewport} className="dev-component-note-viewport">
             <Drawer.Popup className="dev-component-note-drawer dev-surface" initialFocus={field} finalFocus={() => editing?.trigger || false} aria-busy={saving} aria-describedby={error ? 'component-note-error' : undefined}>
               <Drawer.Title className="sr-only">Note</Drawer.Title>
               <Drawer.Close className="dev-component-note-handle" aria-label="Close note" disabled={saving}><span /></Drawer.Close>
