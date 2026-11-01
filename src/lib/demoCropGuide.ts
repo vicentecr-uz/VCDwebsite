@@ -1,6 +1,7 @@
 import type { createDemoImageCrop } from './demoImageCrop';
 import { CustomEase } from 'gsap/CustomEase';
 import gsap from 'gsap';
+import { createDemoIndicatorLayer } from './demoIndicatorLayer';
 import { createDemoCursorInteraction } from './demoCursorInteraction';
 
 gsap.registerPlugin(CustomEase);
@@ -35,6 +36,7 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     const box = iframe.getBoundingClientRect();
     return { x: box.left + point.x * box.width / Math.max(1, iframe.offsetWidth), y: box.top + point.y * box.height / Math.max(1, iframe.offsetHeight) };
   };
+  const indicators = createDemoIndicatorLayer(root);
   const overlay = document.createElement('div');
   overlay.className = 'hint demo-crop-guide';
   overlay.hidden = true;
@@ -43,7 +45,7 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
   fingers.forEach((finger) => { finger.classList.add('hint-pointer'); finger.setAttribute('aria-hidden', 'true'); overlay.append(finger); });
   cursor?.setAttribute('aria-hidden', 'true');
   if (cursor) overlay.append(cursor);
-  document.body.append(overlay);
+  indicators.element.append(overlay);
 
   let generation = 0;
   let frame: number | null = null;
@@ -221,5 +223,5 @@ export function createDemoCropGuide({ root, host, trigger, fingers, crop, onFini
     childWindow.addEventListener('pagehide', () => stop(), { signal });
     childDocument.addEventListener('visibilitychange', () => { if (childDocument.visibilityState === 'hidden') stop(); }, { signal });
   }
-  return { play, stop, destroy() { if (destroyed) return; destroyed = true; stop(); lifecycle.abort(); interaction.destroy(); overlay.remove(); } };
+  return { play, stop, destroy() { if (destroyed) return; destroyed = true; stop(); lifecycle.abort(); interaction.destroy(); indicators.destroy(); } };
 }

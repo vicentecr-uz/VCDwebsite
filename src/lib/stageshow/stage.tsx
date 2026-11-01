@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import './stage.css'
+import '../../styles/demoIndicators.css'
+import { createPortal } from 'react-dom'
+import { createDemoIndicatorLayer } from '../demoIndicatorLayer'
 import { checkSeam, createAct, Stopped, type Script } from './act'
 import { Cursor, ripple as spawnRipple, type CursorKind, type CursorStyle } from './cursor'
 import { Keycaps, type Keys, type KeysAt } from './keys'
@@ -131,6 +134,16 @@ export function Stage<S extends object>({
   const fitRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const cursorRef = useRef<HTMLDivElement>(null)
+  const indicatorRef = useRef<ReturnType<typeof createDemoIndicatorLayer> | null>(null)
+  const [indicatorHost, setIndicatorHost] = useState<HTMLElement | null>(null)
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const layer = createDemoIndicatorLayer(root, 'element')
+    indicatorRef.current = layer
+    setIndicatorHost(layer.element)
+    return () => { layer.destroy(); indicatorRef.current = null }
+  }, [])
   const reduced = useReducedMotion()
   const still = !script || reduced
 
@@ -149,7 +162,7 @@ export function Stage<S extends object>({
   const ripple = (at: Point) => {
     const root = rootRef.current
     if (!root || reduced) return
-    spawnRipple(root, at)
+    if (indicatorRef.current) spawnRipple(indicatorRef.current.element, at)
   }
   const kindRef = useRef(kind)
   kindRef.current = kind
@@ -158,6 +171,12 @@ export function Stage<S extends object>({
   const keysRef = useRef(keys)
   keysRef.current = keys
   const pos = useRef<Point>({ x: 0, y: 0 })
+  useLayoutEffect(() => {
+    const el = cursorRef.current
+    if (!el) return
+    el.style.transform = `translate(${pos.current.x}px, ${pos.current.y}px)`
+    if (script && !cursor?.still) el.setAttribute('data-idle', '')
+  }, [indicatorHost])
   // The cursor's kind follows what's under it after every commit too, so a
   // hand doesn't linger when the link it was over slides away. Not mid-drag:
   // the drag owns the kind until release.
@@ -294,6 +313,7 @@ export function Stage<S extends object>({
       moved.current = true
       firstMove.current ??= performance.now() - loopAt.current
     }
+    indicatorRef.current?.sync()
     pos.current = p
     active.current = performance.now()
     const el = cursorRef.current
@@ -604,7 +624,7 @@ export function Stage<S extends object>({
           <LookContext.Provider value={look}>{children(state, rectFor, layout)}</LookContext.Provider>
         </StillContext.Provider>
         {script && <Keycaps rows={[lastKeys, keys]} at={typeof keysAt === 'string' ? keysAt : keysAt[layout]} />}
-        {showCursor && <Cursor cursorRef={cursorRef} style={cursor!.style} kind={kind} />}
+        {showCursor && indicatorHost && createPortal(<Cursor cursorRef={cursorRef} style={cursor!.style} kind={kind} />, indicatorHost)}
       </div>
     </div>
   )
