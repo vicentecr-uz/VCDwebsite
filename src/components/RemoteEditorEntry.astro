@@ -1,280 +1,255 @@
 ---
-interface Props {
-  isDev?: boolean;
-}
-
+import Button from './ui/Button.astro';
+interface Props { isDev?: boolean }
 const { isDev = false } = Astro.props;
+const entering = isDev && Astro.url.searchParams.has('edit');
 ---
 
-<dialog class="remote-editor-entry" data-remote-editor-entry data-is-dev={isDev ? 'true' : 'false'} aria-labelledby="remote-editor-entry-title">
-  <form method="dialog" class="remote-editor-entry__form" data-remote-editor-form>
-    <h2 id="remote-editor-entry-title" class="remote-editor-entry__title">Edit</h2>
-    <input class="remote-editor-entry__username" type="text" value="anto" autocomplete="username" tabindex="-1" aria-hidden="true" />
-    <label class="remote-editor-entry__label" for="remote-editor-password">Password</label>
-    <input id="remote-editor-password" class="remote-editor-entry__password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" minlength="1" />
-    <p class="remote-editor-entry__error" data-remote-editor-error aria-live="polite"></p>
-    <div class="remote-editor-entry__actions">
-      <button type="button" class="dev-btn dev-btn--soft dev-btn--align-center dev-btn--fill" data-remote-editor-cancel>Cancel</button>
-      <button type="submit" class="dev-btn dev-btn--filled dev-btn--align-center dev-btn--fill" data-remote-editor-submit>Enter</button>
+<dialog class="remote-entry" data-remote-entry data-is-dev={String(isDev)} aria-label="Edit">
+  <form method="post" action="/api/remote-editor/login" class="remote-entry__form">
+    <input class="remote-entry__username" name="username" type="text" value="anto" autocomplete="username" tabindex="-1" aria-hidden="true" />
+    <label class="remote-entry__label" for="remote-editor-password">Password</label>
+    <div class="dev-field__value remote-entry__field">
+      <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-describedby="remote-editor-error" required />
+    </div>
+    <p id="remote-editor-error" class="remote-entry__error" aria-live="polite" hidden></p>
+    <div class="remote-entry__actions">
+      <Button label="Cancel" emphasis="soft" width="fill" data-remote-cancel />
+      <Button label="Enter" emphasis="filled" width="fill" type="submit" data-remote-submit />
     </div>
   </form>
 </dialog>
-<div class="remote-editor-entry__reveal" data-remote-editor-reveal hidden aria-hidden="true"></div>
+<div class:list={['remote-entry__reveal', { 'is-visible': entering }]} data-remote-reveal hidden={!entering} aria-hidden="true"></div>
 
 <script>
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
 
   const dispose = onPageLoad(() => {
-    const scope = createPageScope();
     const trigger = document.querySelector<HTMLElement>('[data-remote-editor-trigger]');
-    const dialog = document.querySelector<HTMLDialogElement>('[data-remote-editor-entry]');
-    const form = dialog?.querySelector<HTMLFormElement>('[data-remote-editor-form]');
-    const password = dialog?.querySelector<HTMLInputElement>('[data-remote-editor-password]');
-    const error = dialog?.querySelector<HTMLElement>('[data-remote-editor-error]');
-    const submit = dialog?.querySelector<HTMLButtonElement>('[data-remote-editor-submit]');
-    const cancel = dialog?.querySelector<HTMLButtonElement>('[data-remote-editor-cancel]');
-    const reveal = document.querySelector<HTMLElement>('[data-remote-editor-reveal]');
-    if (!trigger || !dialog || !form || !password || !error || !submit || !cancel || !reveal) return;
-
+    const dialog = document.querySelector<HTMLDialogElement>('[data-remote-entry]');
+    if (!trigger || !dialog) return;
+    const scope = createPageScope();
+    const form = dialog.querySelector<HTMLFormElement>('form')!;
+    const password = form.elements.namedItem('password') as HTMLInputElement;
+    const error = dialog.querySelector<HTMLElement>('#remote-editor-error')!;
+    const submit = dialog.querySelector<HTMLButtonElement>('[data-remote-submit]')!;
+    const cancel = dialog.querySelector<HTMLButtonElement>('[data-remote-cancel]')!;
+    const reveal = document.querySelector<HTMLElement>('[data-remote-reveal]')!;
     const isDev = dialog.dataset.isDev === 'true';
-    let authenticated = false;
-    let tapCount = 0;
+    let authenticated = isDev;
+    let count = 0;
     let firstTap = 0;
     let lastTap = 0;
-    let downX = 0;
-    let downY = 0;
-    let lastFocus: HTMLElement | null = trigger;
+    let pointer: { id: number; x: number; y: number } | null = null;
+    let closing = 0;
     let authRequest: AbortController | null = null;
+    let sessionRequest: AbortController | null = null;
+    const initialUrl = new URL(location.href);
+    let enterIntent = isDev && (initialUrl.searchParams.has('edit') || initialUrl.searchParams.has('login'));
 
     const setError = (message: string) => {
       error.textContent = message;
-      password.setAttribute('aria-invalid', message ? 'true' : 'false');
-      if (message) password.setAttribute('aria-describedby', error.id || 'remote-editor-entry-error');
-      else password.removeAttribute('aria-describedby');
+      error.hidden = !message;
+      password.setAttribute('aria-invalid', String(Boolean(message)));
     };
-    error.id = 'remote-editor-entry-error';
-
+    const setBusy = (busy: boolean) => {
+      submit.disabled = busy;
+      password.readOnly = busy;
+      submit.textContent = busy ? 'Entering…' : 'Enter';
+      form.setAttribute('aria-busy', String(busy));
+    };
     const updateViewport = () => {
       const viewport = window.visualViewport;
-      const height = viewport?.height || window.innerHeight;
-      const top = viewport?.offsetTop || 0;
-      dialog.style.setProperty('--remote-editor-viewport-height', `${height}px`);
-      dialog.style.setProperty('--remote-editor-viewport-top', `${top}px`);
+      dialog.style.setProperty('--entry-height', `${viewport?.height ?? window.innerHeight}px`);
+      dialog.style.setProperty('--entry-top', `${viewport?.offsetTop ?? 0}px`);
     };
-
-    const closeDialog = () => {
-      authRequest?.abort();
-      authRequest = null;
-      dialog.classList.remove('is-visible');
-      if (dialog.open) dialog.close();
-      setError('');
-      submit.disabled = false;
-      password.readOnly = false;
-      if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
-    };
-
-    const openDialog = (message = '', focusInput = true) => {
-      lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : trigger;
-      setError(message);
-      if (!dialog.open) dialog.showModal();
-      updateViewport();
-      requestAnimationFrame(() => dialog.classList.add('is-visible'));
-      if (focusInput) password.focus();
-    };
-
-    const requestMode = (active = true) => {
-      window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active } }));
-    };
-
-    const revealEdit = () => {
-      if (!isDev) return;
-      reveal.hidden = false;
-      reveal.classList.add('is-visible');
-      requestMode(true);
-      scope.timeout(() => {
-        reveal.classList.remove('is-visible');
-        scope.timeout(() => { reveal.hidden = true; }, 200);
-      }, 20);
-    };
-
-    const currentIntent = () => {
-      const url = new URL(window.location.href);
-      return { login: url.searchParams.has('login'), edit: url.searchParams.has('edit') };
-    };
-
     const stripIntent = () => {
-      const url = new URL(window.location.href);
+      const url = new URL(location.href);
       url.searchParams.delete('login');
       url.searchParams.delete('edit');
-      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      history.replaceState(history.state, '', url);
+    };
+    const closeDialog = () => {
+      authRequest?.abort();
+      dialog.classList.remove('is-visible');
+      dialog.classList.add('is-closing');
+      closing = scope.timeout(() => {
+        dialog.close();
+        dialog.classList.remove('is-closing');
+        password.value = '';
+        setBusy(false);
+        setError('');
+        trigger.focus({ preventScroll: true });
+      }, 160);
+    };
+    const openDialog = (message = '', focus = true) => {
+      clearTimeout(closing);
+      dialog.classList.remove('is-closing');
+      setError(message);
+      updateViewport();
+      if (!dialog.open) dialog.showModal();
+      scope.frame(() => dialog.classList.add('is-visible'));
+      if (focus) password.focus({ preventScroll: true });
+    };
+    const requestMode = (active: boolean) => window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active } }));
+    const requestIntent = () => { if (enterIntent) requestMode(true); };
+    const navigateToEditor = () => {
+      const url = new URL(location.href);
+      url.searchParams.delete('login');
+      url.searchParams.set('edit', '1');
+      location.assign(url);
+    };
+    const checkSession = async () => {
+      if (sessionRequest) return;
+      const request = new AbortController();
+      sessionRequest = request;
+      const timeout = scope.timeout(() => request.abort(), 10000);
+      try {
+        const response = await fetch('/api/remote-editor/session', { cache: 'no-store', signal: request.signal });
+        if (!response.ok) return;
+        authenticated = (await response.json()).authenticated === true;
+        if (!authenticated && isDev && document.documentElement.classList.contains('is-dev-mode')) openDialog('Session expired', false);
+      } catch { /* Keep the current page and pending edits during a network interruption. */ }
+      finally { clearTimeout(timeout); sessionRequest = null; }
     };
 
-    const login = async (event: SubmitEvent) => {
+    scope.listen(form, 'submit', async (event) => {
       event.preventDefault();
       if (submit.disabled) return;
-      submit.disabled = true;
-      password.readOnly = true;
+      setBusy(true);
       setError('');
-      authRequest?.abort();
-      authRequest = new AbortController();
-      const timeout = window.setTimeout(() => authRequest?.abort(), 15000);
+      const request = new AbortController();
+      authRequest = request;
+      const timeout = scope.timeout(() => request.abort(), 15000);
       try {
-        const response = await fetch('/api/remote-editor/login', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ password: password.value }),
-          signal: authRequest.signal,
-          credentials: 'same-origin',
-        });
-        const payload = await response.json().catch(() => ({}));
+        const response = await fetch(form.action, { method: 'POST', body: new URLSearchParams({ username: 'anto', password: password.value }), signal: request.signal });
         if (!response.ok) {
-          if (response.status === 429) setError('Too many attempts. Try again later.');
-          else { setError(typeof payload.error === 'string' ? payload.error : 'Incorrect password'); password.value = ''; }
-          submit.disabled = false;
-          password.readOnly = false;
-          password.focus();
+          if (response.status === 401) { password.value = ''; setError('Incorrect password'); }
+          else if (response.status === 429) setError('Too many attempts. Try again later.');
+          else setError("Couldn't connect. Try again.");
+          setBusy(false);
+          password.focus({ preventScroll: true });
           return;
         }
         authenticated = true;
-        closeDialog();
+        password.value = '';
         if (isDev) {
+          closeDialog();
           requestMode(true);
           stripIntent();
-        } else {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('login');
-          url.searchParams.set('edit', '1');
-          window.location.assign(url.toString());
-        }
-      } catch (cause) {
-        if ((cause as Error).name !== 'AbortError') setError("Couldn't connect. Try again.");
-        submit.disabled = false;
-        password.readOnly = false;
-      } finally {
-        window.clearTimeout(timeout);
-        authRequest = null;
-      }
-    };
-
-    const checkSession = async () => {
-      try {
-        const response = await fetch('/api/remote-editor/session', { credentials: 'same-origin', cache: 'no-store' });
-        const payload = await response.json() as { authenticated?: boolean };
-        const wasAuthenticated = authenticated;
-        authenticated = Boolean(payload.authenticated);
-        if (wasAuthenticated && !authenticated && document.documentElement.classList.contains('is-dev-mode')) {
-          openDialog('Session expired', false);
-        }
-        return authenticated;
+        } else navigateToEditor();
       } catch {
-        return authenticated;
+        if (dialog.open && !dialog.classList.contains('is-closing') && !scope.signal.aborted) setError("Couldn't connect. Try again.");
+      } finally {
+        clearTimeout(timeout);
+        if (authRequest === request) authRequest = null;
+        setBusy(false);
       }
-    };
-
-    const enterFromIntent = async () => {
-      const intent = currentIntent();
-      if (!intent.login && !intent.edit) return;
-      if (await checkSession()) {
-        if (intent.edit) {
-          if (isDev) revealEdit();
-          stripIntent();
-        }
-      } else if (intent.login) {
-        openDialog('', false);
-      }
-    };
-
-    const registerTap = (event: PointerEvent) => {
-      if (event.pointerType === 'mouse' && event.button !== 0) return;
-      const distance = Math.hypot(event.clientX - downX, event.clientY - downY);
-      const now = performance.now();
-      if (distance > 10 || now - lastTap > 400) tapCount = 0;
-      if (!tapCount) firstTap = now;
-      tapCount += 1;
-      lastTap = now;
-      if (now - firstTap > 2000) tapCount = 1;
-      if (tapCount < 5) return;
-      tapCount = 0;
-      if (authenticated && isDev) {
-        requestMode(!document.documentElement.classList.contains('is-dev-mode'));
-      } else {
-        openDialog('', true);
-      }
-    };
-
-    scope.listen(trigger, 'pointerdown', (event) => {
-      downX = event.clientX;
-      downY = event.clientY;
     });
-    scope.listen(trigger, 'pointerup', registerTap);
+    scope.listen(document, 'pointerdown', (event) => {
+      if (!trigger.contains(event.target as Node)) { count = 0; pointer = null; }
+    });
+    scope.listen(trigger, 'pointerdown', (event) => {
+      if (event.isPrimary && event.button === 0) pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    scope.listen(trigger, 'pointercancel', () => { count = 0; pointer = null; });
+    scope.listen(trigger, 'pointerup', (event) => {
+      const start = pointer;
+      pointer = null;
+      if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10) { count = 0; return; }
+      const now = performance.now();
+      if (now - lastTap > 400 || now - firstTap > 2000) count = 0;
+      if (count === 0) firstTap = now;
+      lastTap = now;
+      if (++count !== 5) return;
+      count = 0;
+      if (authenticated && isDev) requestMode(!document.documentElement.classList.contains('is-dev-mode'));
+      else openDialog();
+    });
     scope.listen(trigger, 'contextmenu', (event) => event.preventDefault());
-    scope.listen(form, 'submit', login);
     scope.listen(cancel, 'click', closeDialog);
     scope.listen(dialog, 'cancel', (event) => { event.preventDefault(); closeDialog(); });
-    scope.listen(dialog, 'click', (event) => {
-      if (event.target === dialog && !password.value) closeDialog();
-    });
-    scope.listen(window, 'resize', updateViewport);
+    scope.listen(dialog, 'click', (event) => { if (event.target === dialog && !password.value) closeDialog(); });
     scope.listen(window.visualViewport, 'resize', updateViewport);
     scope.listen(window.visualViewport, 'scroll', updateViewport);
+    scope.listen(window, 'resize', updateViewport);
     scope.listen(window, 'focus', () => { void checkSession(); });
     scope.listen(document, 'visibilitychange', () => { if (document.visibilityState === 'visible') void checkSession(); });
     scope.listen(window, 'keydown', (event) => {
-      if (event.code !== 'KeyE' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || authenticated) return;
+      if (event.code !== 'KeyE' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (authenticated && isDev)) return;
       event.preventDefault();
-      openDialog('', true);
+      event.stopImmediatePropagation();
+      openDialog();
     }, true);
-    scope.listen(window, 'vcd:dev-mode-ready', () => {
-      if (currentIntent().edit && authenticated) revealEdit();
-    });
+    scope.listen(window, 'vcd:dev-mode-ready', requestIntent);
     scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
-      if (event.detail?.active && reveal.classList.contains('is-visible')) return;
+      if (!enterIntent || !event.detail?.active) return;
+      enterIntent = false;
+      stripIntent();
+      scope.frame(() => {
+        reveal.classList.remove('is-visible');
+        scope.timeout(() => { reveal.hidden = true; }, 200);
+      });
     }) as EventListener);
-
-    void enterFromIntent();
-    void checkSession();
-    if (isDev) window.dispatchEvent(new Event('vcd:remote-editor-entry-ready'));
+    requestIntent();
+    if (!isDev && (initialUrl.searchParams.has('login') || initialUrl.searchParams.has('edit'))) {
+      openDialog('', false);
+      void checkSession().then(() => { if (authenticated && !scope.signal.aborted) navigateToEditor(); });
+    } else void checkSession();
 
     return () => {
+      scope.destroy();
       authRequest?.abort();
-      authRequest = null;
+      sessionRequest?.abort();
       if (dialog.open) dialog.close();
     };
   });
-
   import.meta.hot?.dispose(dispose);
 </script>
 
 <style>
-  .remote-editor-entry {
+  .remote-entry {
     position: fixed;
-    inset: var(--remote-editor-viewport-top, 0px) 0 auto;
+    top: calc(var(--entry-top, 0px) + var(--entry-height, 100svh) / 2);
+    left: 50%;
+    right: auto;
+    bottom: auto;
     width: min(320px, calc(100vw - 48px));
-    margin: 0 auto;
-    min-height: 0;
-    border: 0;
+    max-height: calc(var(--entry-height, 100svh) - 32px);
+    margin: 0;
     padding: 0;
+    border: 0;
     background: transparent;
-    color: var(--sys-color-ink);
+    color: var(--ref-palette-grey-150);
+    color-scheme: light;
+    translate: -50% -50%;
     opacity: 0;
     transform: translateY(8px);
     transition: opacity 200ms ease, transform 200ms ease;
-    translate: 0 calc((var(--remote-editor-viewport-height, 100vh) - 100%) / 2);
+    --comp-button-label: var(--ref-palette-grey-150);
+    --comp-button-soft-container: var(--ref-palette-grey-950);
+    --comp-button-soft-container-hover: var(--ref-palette-grey-900);
+    --comp-button-soft-container-pressed: var(--ref-palette-grey-800);
+    --comp-button-filled-container: var(--ref-palette-grey-150);
+    --comp-button-filled-container-hover: var(--ref-palette-grey-300);
+    --comp-button-filled-label: var(--ref-palette-grey-1000);
+    --comp-field-container: var(--ref-palette-grey-950);
+    --sys-color-on-srf: var(--ref-palette-grey-150);
   }
-  .remote-editor-entry::backdrop { background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
-  .remote-editor-entry.is-visible { opacity: 1; transform: translateY(0); }
-  .remote-editor-entry.is-visible::backdrop { opacity: 1; }
-  .remote-editor-entry__form { display: grid; gap: 8px; }
-  .remote-editor-entry__title { margin: 0 0 8px; font: inherit; font-weight: 700; }
-  .remote-editor-entry__label { font: inherit; }
-  .remote-editor-entry__password { box-sizing: border-box; width: 100%; height: 48px; padding: 0 12px; font: inherit; font-size: max(16px, 1em); border: 1px solid currentColor; border-radius: 0; background: transparent; color: inherit; }
-  .remote-editor-entry__username { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-  .remote-editor-entry__error { min-height: 1.2em; margin: 0; color: var(--sys-color-ink); }
-  .remote-editor-entry__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-  .remote-editor-entry__actions .dev-btn { min-height: 48px; }
-  .remote-editor-entry__reveal { position: fixed; inset: 0; z-index: 1000; background: rgb(255 255 255 / 90%); opacity: 0; pointer-events: none; transition: opacity 200ms ease; }
-  .remote-editor-entry__reveal.is-visible { opacity: 1; }
-  @media (prefers-reduced-motion: reduce) {
-    .remote-editor-entry { transform: none; }
-  }
+  .remote-entry::backdrop { background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
+  .remote-entry.is-visible { opacity: 1; transform: translateY(0); }
+  .remote-entry.is-visible::backdrop { opacity: 1; }
+  .remote-entry.is-closing, .remote-entry.is-closing::backdrop { transition-duration: 160ms; }
+  .remote-entry__form { display: grid; gap: 8px; }
+  .remote-entry__label { font-family: var(--font-sans); font-size: var(--text-footer-size); font-weight: var(--text-footer-weight); letter-spacing: var(--text-footer-tracking); }
+  .remote-entry__field { min-height: 48px; }
+  .remote-entry__field:focus-within { outline: 2px solid var(--ref-palette-grey-500); outline-offset: 2px; }
+  .remote-entry__field input { height: 48px; font-size: 16px; }
+  .remote-entry__username { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .remote-entry__error { margin: 0; font-size: 14px; line-height: 1.4; }
+  .remote-entry__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .remote-entry__actions :global(button) { min-height: 48px; --dev-btn-hit-inset: 0px; }
+  .remote-entry__reveal { position: fixed; inset: 0; z-index: 1000; background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
+  .remote-entry__reveal.is-visible { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .remote-entry { transform: none; } }
 </style>
