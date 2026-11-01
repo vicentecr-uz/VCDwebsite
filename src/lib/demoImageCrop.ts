@@ -28,6 +28,7 @@ const isValidAspect = (value: unknown): value is string => {
 };
 
 const viewports = IMAGE_VIEWPORTS;
+const activeCropProperties = ['--project-image-ratio', '--project-image-ratio-num', '--project-content-w', '--project-content-cx', '--project-content-cy'] as const;
 
 const isValidCrop = (value: unknown): value is ImageVariant => {
   if (!value || typeof value !== 'object') return false;
@@ -163,6 +164,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
       const colon = declaration.indexOf(':');
       host.style.setProperty(declaration.slice(0, colon), declaration.slice(colon + 1));
     }
+    for (const property of activeCropProperties) host.style.setProperty(property, `var(${property}-${viewport})`);
     const nextAspectValue = String(aspectValue());
     const aspectChanged = aspect !== renderedAspect;
     const aspectValueChanged = nextAspectValue !== renderedAspectValue;
@@ -448,6 +450,7 @@ export function createDemoImageCrop({ host, controls, sourceAspect: initialSourc
     lifecycle.abort();
     bitmap.destroy();
     stage.remove(); ghost.remove();
+    for (const property of activeCropProperties) host.style.removeProperty(property);
     host.classList.remove('dev-crop-stage-host');
   } };
 }
