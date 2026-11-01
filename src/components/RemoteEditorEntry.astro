@@ -83,11 +83,25 @@ const entering = isDev && Astro.url.searchParams.has('edit');
       setError(message);
       updateViewport();
       if (!dialog.open) dialog.showModal();
+      void dialog.offsetWidth;
       scope.frame(() => dialog.classList.add('is-visible'));
       if (focus) password.focus({ preventScroll: true });
     };
     const requestMode = (active: boolean) => window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active } }));
-    const requestIntent = () => { if (enterIntent) requestMode(true); };
+    const finishIntent = () => {
+      if (!enterIntent) return;
+      enterIntent = false;
+      stripIntent();
+      scope.frame(() => {
+        reveal.classList.remove('is-visible');
+        scope.timeout(() => { reveal.hidden = true; }, 200);
+      });
+    };
+    const requestIntent = () => {
+      if (!enterIntent) return;
+      if (document.documentElement.classList.contains('is-dev-mode')) finishIntent();
+      else requestMode(true);
+    };
     const navigateToEditor = () => {
       const url = new URL(location.href);
       url.searchParams.delete('login');
@@ -178,13 +192,7 @@ const entering = isDev && Astro.url.searchParams.has('edit');
     }, true);
     scope.listen(window, 'vcd:dev-mode-ready', requestIntent);
     scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
-      if (!enterIntent || !event.detail?.active) return;
-      enterIntent = false;
-      stripIntent();
-      scope.frame(() => {
-        reveal.classList.remove('is-visible');
-        scope.timeout(() => { reveal.hidden = true; }, 200);
-      });
+      if (event.detail?.active) finishIntent();
     }) as EventListener);
     requestIntent();
     if (!isDev && (initialUrl.searchParams.has('login') || initialUrl.searchParams.has('edit'))) {
