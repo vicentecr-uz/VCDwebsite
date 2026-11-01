@@ -116,13 +116,17 @@ function Take({ kind }: { kind: string }) {
     const comparison = kind !== 'playground';
     await a.wait(500);
     if (comparison) { await a.click({ at: 'before', x: .85, y: .55 }); demo.choose('before'); }
-    await a.click({ at: 'field', x: .65, y: .5 });
-    demo.begin();
+    const target = demo.caretTarget(.65);
+    await a.click({ at: 'field', x: target.x, y: .5 });
+    demo.begin(target.offset);
+    await a.wait(150);
     // Select all explains replacing the sample without a visible rewind.
     a.mark('keyboard');
-    await a.key('cmd+a');
-    demo.text('A');
-    for (let i = 2; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
+    await a.key('cmd+a', async () => { demo.selectAll(); await a.wait(400); });
+    await a.wait(200);
+    await a.key('backspace', async () => { demo.text(''); await a.wait(120); });
+    await a.wait(250);
+    for (let i = 1; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
     if (comparison) {
       await a.key('left');
       for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
@@ -168,7 +172,7 @@ function Take({ kind }: { kind: string }) {
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
       script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="bottom" cursor={kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
+      palette="mono" fidelity="realistic" keys="bottom" cursor={manual || kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
       tokens={{ '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
         '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
         '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>

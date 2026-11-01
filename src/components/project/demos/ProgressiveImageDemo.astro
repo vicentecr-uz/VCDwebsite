@@ -145,6 +145,7 @@ const showPrototypeControls = false;
   import { imageLensBounds } from '../../../lib/imageLensBounds';
   import { createEaseOut, inWall, LENS_INERTIA, stepContact } from '../../../lib/imageLensInertia';
   import { LiquidGlass } from '@ybouane/liquidglass';
+  import { createDemoIndicatorLayer } from '../../../lib/demoIndicatorLayer';
   import { createImagePreviewUpgrade } from '../../../lib/imagePreviewUpgrade';
   class ProgressiveImageDemo extends HTMLElement {
     private dispose?: () => void;
@@ -183,6 +184,8 @@ const showPrototypeControls = false;
     const thumbnail = stack.querySelector<HTMLImageElement>('img[data-progressive-image]')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
     const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
+    const indicators = createDemoIndicatorLayer(host);
+    if (hint) indicators.element.append(hint);
     const context = source.getContext('2d');
     const mask = document.createElement('canvas');
     const maskContext = mask.getContext('2d');
@@ -627,7 +630,7 @@ const showPrototypeControls = false;
         x: (0.3 + Math.random() * 0.4) * diameter,
         y: (0.3 + Math.random() * 0.4) * diameter,
       };
-      const origin = hint.getBoundingClientRect();
+      const origin = { left: 0, top: 0 };
       const rootBox = root.getBoundingClientRect();
       const overlayOf = (pos) => ({
         x: pos.x + grip.x + rootBox.left - origin.left,
@@ -1115,6 +1118,8 @@ const showPrototypeControls = false;
       theme.disconnect();
       hideTooltip();
       host.append(lensTooltip);
+      if (hint) host.append(hint);
+      indicators.destroy();
       cancelAnimationFrame(frame);
       upgrade?.destroy();
       glass?.destroy();
