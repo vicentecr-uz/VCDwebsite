@@ -4795,13 +4795,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const positionFormatBar = (range: Range) => {
+      const viewport = window.visualViewport;
+      const viewportLeft = viewport?.offsetLeft ?? 0;
+      const viewportTop = viewport?.offsetTop ?? 0;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight);
+      const pad = 8;
       const owner = findBlockState(range.commonAncestorContainer)?.state.element ?? null;
       const endpointLineRect = owner
         ? getFormatEndpointLineRect(range, savedFormatFocusEdge, owner)
         : null;
       const endpointLineOffscreen = Boolean(
         endpointLineRect
-        && (endpointLineRect.bottom <= 0 || endpointLineRect.top >= window.innerHeight),
+        && (endpointLineRect.bottom <= viewportTop || endpointLineRect.top >= viewportBottom),
       );
 
       if (endpointLineOffscreen) {
@@ -4859,6 +4865,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ? Number.parseFloat(surfaceStyle.borderTopWidth) + Number.parseFloat(surfaceStyle.borderBottomWidth)
         : 2;
       const flexGap = surfaceStyle ? Number.parseFloat(surfaceStyle.rowGap || surfaceStyle.gap) || 4 : 4;
+      // Measure the wrapped controls independently of the previous surface width.
+      formatBar.style.setProperty('--dev-format-content-width', `${Math.max(0, viewportWidth - 2 * pad - padX - borderX)}px`);
       const buttonsRect = buttons?.getBoundingClientRect();
       const buttonsH = buttonsRect?.height ?? 32;
       const buttonsW = buttonsRect?.width ?? 0;
@@ -4868,30 +4876,27 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const closedHeight = buttonsH + padY + borderY;
       const openHeight = closedHeight + flexGap + linkPanelHeight;
 
-      const spaceAbove = rect.top;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const preferAbove = spaceAbove >= openHeight + FORMAT_BAR_GAP || spaceAbove >= spaceBelow;
+      const slotHeight = window.matchMedia('(max-width: 40em)').matches && !linkPanelOpen
+        ? closedHeight
+        : openHeight;
+      const spaceAbove = rect.top - viewportTop;
+      const spaceBelow = viewportBottom - rect.bottom;
+      const preferAbove = spaceAbove >= slotHeight + FORMAT_BAR_GAP || spaceAbove >= spaceBelow;
 
       formatPlacement = preferAbove ? 'above' : 'below';
       formatBar.dataset.placement = formatPlacement;
 
       /*
-        The surface always flows buttons then link row. The closed bar occupies
-        the top of one fixed-width, open-height slot, so Link reveals downward
-        without moving the controls. Left never changes because link content
-        cannot participate in toolbar width.
+        Link content never participates in toolbar width. Desktop reserves its
+        open height; phones use only the visible rows to leave room for the caret.
       */
       let slotTop = preferAbove
-        ? rect.top - openHeight - FORMAT_BAR_GAP
+        ? rect.top - slotHeight - FORMAT_BAR_GAP
         : rect.bottom + FORMAT_BAR_GAP;
 
-      const pad = 8;
       let slotLeft = rect.left + rect.width / 2 - slotWidth / 2;
-      slotLeft = Math.min(Math.max(pad, slotLeft), window.innerWidth - slotWidth - pad);
-      slotTop = Math.min(
-        Math.max(pad, slotTop),
-        window.innerHeight - openHeight - pad,
-      );
+      slotLeft = Math.max(viewportLeft + pad, Math.min(slotLeft, viewportLeft + viewportWidth - slotWidth - pad));
+      slotTop = Math.max(viewportTop + pad, Math.min(slotTop, viewportBottom - slotHeight - pad));
       formatBar.style.top = `${Math.round(slotTop)}px`;
       formatBar.style.left = `${Math.round(slotLeft)}px`;
       syncFormatSelectionOverlay();
@@ -5443,6 +5448,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       scheduleFormatBarUpdate();
     }, { capture: true, signal: editorSignal });
     window.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
+    window.visualViewport?.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
+    window.visualViewport?.addEventListener('scroll', scheduleFormatBarUpdate, { signal: editorSignal });
     // Dismiss even while the link URL field is focused / open.
     document.addEventListener(
       'pointerdown',
@@ -6675,8 +6682,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-text-format__buttons {
     display: flex;
+    flex-wrap: wrap;
+    flex-shrink: 0;
     align-items: center;
     gap: 4px;
+    width: max-content;
+    max-width: var(--dev-format-content-width, calc(100vw - 28px));
   }
 
   .dev-text-format__inline {
@@ -6733,6 +6744,39 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     align-items: center;
     justify-content: center;
     cursor: pointer;
+  }
+
+  @media (max-width: 40em) {
+    .dev-text-format__buttons {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr));
+      width: var(--dev-format-content-width, calc(100vw - 28px));
+    }
+
+    .dev-text-format__buttons > .dev-hairline {
+      display: none;
+    }
+
+    .dev-text-format .dev-field,
+    .dev-text-format .dev-field__value,
+    .dev-text-format .dev-field__input--select {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .dev-text-format .dev-field__input--select {
+      min-height: 44px;
+    }
+
+    .dev-text-format__inline {
+      grid-column: 1 / -1;
+      justify-content: space-evenly;
+    }
+
+    .dev-text-format__buttons button[data-dev-format] {
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 
   .dev-text-format__buttons button[data-dev-format]:hover {
