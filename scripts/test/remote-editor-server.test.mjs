@@ -51,6 +51,29 @@ test('login cookie is secure, tamper resistant, expires, and enforces CSRF', asy
   assert.equal((await request(port, '/api/content-text', { headers: { cookie: bad } })).status, 401);
 });
 
+test('public build assets keep their source after login while editor pages use the upstream', async () => {
+  const port = gateway.server.address().port;
+  await fs.mkdir(path.join(root, '_astro'));
+  await fs.writeFile(path.join(root, '_astro/layout.hash.js'), 'export const ready = true;');
+  await fs.writeFile(path.join(root, '_astro/layout.hash.css'), 'body { color: black; }');
+  const { cookie } = await login(port);
+  for (const headers of [{}, { cookie }]) {
+    for (const [file, mime] of [['layout.hash.js', 'text/javascript'], ['layout.hash.css', 'text/css']]) {
+      const response = await request(port, `/_astro/${file}`, { headers });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get('content-type'), new RegExp(mime));
+      assert.equal(await response.text(), await fs.readFile(path.join(root, '_astro', file), 'utf8'));
+    }
+    assert.equal((await request(port, '/_astro/missing.js', { headers })).status, 404);
+  }
+  const head = await request(port, '/_astro/layout.hash.js', { method: 'HEAD', headers: { cookie } });
+  assert.equal(head.status, 200);
+  assert.equal(await head.text(), '');
+  assert.equal(await (await request(port, '/building-sabi?edit=1', { headers: { cookie } })).text(), 'upstream:/building-sabi?edit=1');
+  assert.equal(await (await request(port, '/src/layouts/Layout.astro?astro&type=script', { headers: { cookie } })).text(), 'upstream:/src/layouts/Layout.astro?astro&type=script');
+  assert.equal((await request(port, '/src/layouts/Layout.astro?astro&type=script')).status, 404);
+});
+
 test('rate limits six failed logins while preserving static GETs', async () => {
   const port = gateway.server.address().port;
   for (let i = 0; i < 5; i++) assert.equal((await request(port, '/api/remote-editor/login', { method: 'POST', headers: { origin: 'https://edit.example.test', 'content-type': 'application/json' }, body: JSON.stringify({ password: 'wrong' }) })).status, 401);
