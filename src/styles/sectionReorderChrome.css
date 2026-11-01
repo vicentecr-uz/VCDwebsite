@@ -122,16 +122,25 @@
   }
 
   /*
-    Below 40em the gutter is 16px but a chip plus its gap needs ~36px, so the
-    outward translate pushes the handle off-screen (and its right-hand twin,
-    .dev-section-delete, pushes the document's scroll width out with it) —
-    issue #100. Flip the chip inside the media box instead. The bridge goes
-    with it: it exists only to keep hover alive across the gutter gap, and
-    there is no gap once the chip sits on the block.
+    Below 40em full-bleed media has no external gutter, so keep its handle
+    inside the media box. Text blocks start after the page gutter, so their
+    handle can occupy that gutter without overlapping the prose.
   */
   @media (max-width: 40em) {
     .dev-section-drag-handle {
-      transform: translate(0.55em, -50%);
+      --dev-section-handle-mobile-transform: translate(0.55em, -50%);
+      --dev-section-handle-mobile-active-transform: translate(0.55em, -50%) scale(1.08);
+      transform: var(--dev-section-handle-mobile-transform);
+    }
+
+    [data-dev-section-reorderable].project-block--text > .dev-section-drag-handle {
+      left: 0;
+      width: var(--page-gutter, 2rem);
+      height: 44px;
+      padding: 0;
+      box-sizing: border-box;
+      --dev-section-handle-mobile-transform: translate(-100%, -50%);
+      --dev-section-handle-mobile-active-transform: translate(-100%, -50%);
     }
 
     .dev-section-drag-bridge {
@@ -181,7 +190,7 @@
     html.is-section-reorder-holding
       [data-dev-section-reorderable].is-section-lifted-session
       > .dev-section-drag-handle {
-      transform: translate(0.55em, -50%) scale(1.08);
+      transform: var(--dev-section-handle-mobile-active-transform);
     }
   }
 
