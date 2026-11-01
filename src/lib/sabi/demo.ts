@@ -25,7 +25,7 @@ export function mountSabiDemo(root: HTMLElement) {
       example.setAttribute('aria-label', `Selection handle clipping illustration: ${button.textContent?.trim()}`);
       setButtons(button.dataset.choice!);
     }, { signal }));
-    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, begin: () => {}, finish: () => {} };
+    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, selectAll: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, caretTarget: (x: number) => ({ x, offset: 0 }), begin: (_offset?: number) => {}, finish: () => {} };
   }
 
   const input = root.querySelector<HTMLInputElement>('input')!;
@@ -67,6 +67,7 @@ export function mountSabiDemo(root: HTMLElement) {
   const cancelFrames = () => { cancelAnimationFrame(frame); cancelAnimationFrame(fadeFrame); };
   const stop = () => {
     auto = false;
+    delete input.dataset.demoSelected;
     caret.hidden = true;
     cancelFrames();
   };
@@ -94,6 +95,7 @@ export function mountSabiDemo(root: HTMLElement) {
     else if (x - strip.scrollLeft < inset) strip.scrollLeft = x - inset;
     else if (x - strip.scrollLeft > strip.clientWidth - inset) strip.scrollLeft = x - strip.clientWidth + inset;
     caret.style.left = `${x}px`;
+    caret.getAnimations?.().forEach((animation) => { animation.currentTime = 0; });
     fades();
   };
   const renderBefore = () => {
@@ -135,8 +137,36 @@ export function mountSabiDemo(root: HTMLElement) {
 
   return {
     choose,
-    begin() { auto = true; caret.hidden = false; },
+    caretTarget(at: number) {
+      const field = input.closest<HTMLElement>('.sabi-demo-field') ?? strip;
+      const box = field.getBoundingClientRect();
+      const scale = (field.offsetWidth && box.width / field.offsetWidth) || 1;
+      const inputLeft = input.getBoundingClientRect().left;
+      const x = (box.left + box.width * at - inputLeft) / scale;
+      let offset = 0;
+      let distance = Math.abs(x);
+      for (let i = 1; i <= input.value.length; i++) {
+        const next = Math.abs(width(input.value.slice(0, i)) - x);
+        if (next >= distance) break;
+        distance = next;
+        offset = i;
+      }
+      return { x: (inputLeft - box.left + width(input.value.slice(0, offset)) * scale) / box.width, offset };
+    },
+    begin(offset?: number) {
+      auto = true;
+      caret.hidden = false;
+      if (offset !== undefined) input.setSelectionRange(offset, offset);
+      position(input.selectionEnd ?? 0, geometry().safeInset);
+    },
+    selectAll() {
+      input.setSelectionRange(0, input.value.length);
+      input.dataset.demoSelected = '';
+      caret.hidden = true;
+    },
     text(value: string) {
+      delete input.dataset.demoSelected;
+      caret.hidden = !auto;
       input.value = value;
       input.style.width = `${width(value) + 2}px`;
       input.setSelectionRange(value.length, value.length);

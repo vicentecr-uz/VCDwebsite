@@ -85,6 +85,7 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
 
 <script>
   import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
+  import { createDemoIndicatorLayer } from '../../../lib/demoIndicatorLayer';
   import { createDemoBlockGuide } from '../../../lib/demoBlockGuide';
   import { createDemoGapSpacing } from '../../../lib/demoGapSpacing';
 
@@ -147,11 +148,13 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
       }, { signal });
       if (actionControls) this.ownerDocument.body.append(actionControls);
       if (resetControls) this.ownerDocument.body.append(resetControls);
-      this.ownerDocument.body.append(cursor);
+      const indicators = createDemoIndicatorLayer(this);
+      indicators.element.append(cursor);
       this.dispose = () => {
         if (actionControls) this.append(actionControls);
         if (resetControls) this.append(resetControls);
         this.append(cursor);
+        indicators.destroy();
         life.abort(); guide.destroy(); syncBar = () => {}; reorder.destroy(); gaps.destroy(); trigger.remove();
         image.classList.remove('dev-image-edit-target');
       };

@@ -1,22 +1,12 @@
 ---
-import arrowCursor from '../../../assets/demo-cursors/arrow.svg?url';
-import pointingCursor from '../../../assets/demo-cursors/pointing.svg?url';
-import openCursor from '../../../assets/demo-cursors/open.svg?url';
-import grabbingCursor from '../../../assets/demo-cursors/grabbing.svg?url';
+import { demoCursorGlyphs } from '../../../lib/demoCursorGlyphs';
+import '../../../styles/demoIndicators.css';
 const { ...attrs } = Astro.props;
 ---
 <span class="block-demo-cursor" aria-hidden="true" {...attrs}>
-  <span data-cursor-glyph="arrow"><img src={arrowCursor} alt="" draggable="false" /></span>
-  <span data-cursor-glyph="pointer"><img src={pointingCursor} alt="" draggable="false" /></span>
-  <span data-cursor-glyph="grab"><img src={openCursor} alt="" draggable="false" /></span>
-  <span data-cursor-glyph="grabbing"><img src={grabbingCursor} alt="" draggable="false" /></span>
+  {Object.entries(demoCursorGlyphs).map(([kind, glyph]) => (
+    <span data-cursor-glyph={kind} style={`left:${-glyph.x}px;top:${-glyph.y}px`}>
+      <img src={glyph.src} width={glyph.width} height={glyph.height} alt="" draggable="false" />
+    </span>
+  ))}
 </span>
-<style>
-  .block-demo-cursor { position: fixed; left: 0; top: 0; width: 24px; height: 24px; z-index: 150; opacity: 0; pointer-events: none; transform-origin: 0 0; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.2)); }
-  .block-demo-cursor [data-cursor-glyph] { display: none; position: absolute; inset: 0; width: 24px; height: 24px; color: #171717; }
-  .block-demo-cursor [data-cursor-glyph] img { display: block; max-width: none; }
-  .block-demo-cursor [data-cursor-glyph="arrow"] { left: -3px; top: -2px; }
-  .block-demo-cursor [data-cursor-glyph="pointer"] { left: -17.5px; top: -18.75px; width: 32px; height: 33px; transform: scale(1.25); transform-origin: 0 0; }
-  .block-demo-cursor [data-cursor-glyph="grab"], .block-demo-cursor [data-cursor-glyph="grabbing"] { left: -20px; top: -21.25px; width: 32px; height: 32px; transform: scale(1.25); transform-origin: 0 0; }
-  .block-demo-cursor[data-cursor-state="arrow"] [data-cursor-glyph="arrow"], .block-demo-cursor[data-cursor-state="pointer"] [data-cursor-glyph="pointer"], .block-demo-cursor[data-cursor-state="grab"] [data-cursor-glyph="grab"], .block-demo-cursor[data-cursor-state="grabbing"] [data-cursor-glyph="grabbing"] { display: block; }
-</style>
