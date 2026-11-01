@@ -128,10 +128,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
             return url.pathname.endsWith('.css') || url.searchParams.get('type') === 'style';
           } catch { return false; }
         });
-        Promise.all(styleModules.map((script) => new Promise<void>((resolve) => {
-          script.addEventListener('load', () => resolve(), { once: true });
-          script.addEventListener('error', () => resolve(), { once: true });
-        }))).then(initializeLayout);
+        Promise.all(styleModules.map((script) => import(/* @vite-ignore */ script.src).catch(() => undefined))).then(initializeLayout);
       }
     </script>
     <Analytics />
