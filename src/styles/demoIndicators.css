@@ -1,0 +1,32 @@
+.demo-indicator-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+  overflow: visible;
+}
+.demo-indicator-layer[hidden] { display: none; }
+.demo-indicator-layer * { pointer-events: none !important; }
+.demo-indicator-space { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; overflow: visible; }
+.demo-indicator-space[data-mark='keyboard'] .ss-cursor { visibility: hidden; }
+.block-demo-cursor { position: fixed; left: 0; top: 0; width: 24px; height: 24px; z-index: 150; opacity: 0; pointer-events: none; transform-origin: 0 0; }
+.block-demo-cursor [data-cursor-glyph] { display: none; position: absolute; color: #171717; }
+.block-demo-cursor img { display: block; max-width: none; }
+.block-demo-cursor[data-cursor-state='arrow'] [data-cursor-glyph='arrow'],
+.block-demo-cursor[data-cursor-state='pointer'] [data-cursor-glyph='pointer'],
+.block-demo-cursor[data-cursor-state='grab'] [data-cursor-glyph='grab'],
+.block-demo-cursor[data-cursor-state='grabbing'] [data-cursor-glyph='grabbing'] { display: block; }
+.block-demo-cursor, .ss-cursor__glyph { filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.2)); }
+.ss-cursor__dot, .ss-ripple { --demo-indicator-size: calc(44px * var(--ss-cursor-size, 1)); }
+.hint-finger, .ss-cursor__dot, .ss-ripple {
+  width: var(--demo-indicator-size, 44px);
+  height: var(--demo-indicator-size, 44px);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent), 0 6px 18px rgb(0 0 0 / 0.16);
+}
+
+.ss-ripple { border: 0; margin: calc(var(--demo-indicator-size) / -2) 0 0 calc(var(--demo-indicator-size) / -2); }
+.demo-indicator-space[data-placing] * { transition: none !important; }
+.demo-indicator-space[data-still] * { transition: none !important; animation: none !important; }
+.demo-indicator-space[data-offscreen] * { transition: none !important; animation-play-state: paused !important; }

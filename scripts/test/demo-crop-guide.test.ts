@@ -33,7 +33,7 @@ function setup(reduced = false, frameStep = 16, coarse = false, scaled = false, 
     const target = trigger.getBoundingClientRect();
     return x >= target.left && x <= target.right && y >= target.top && y <= target.bottom ? trigger : host;
   }, configurable: true });
-  Object.defineProperty(win, 'getComputedStyle', { value: (element: Element) => ({ cursor: element === trigger ? 'pointer' : 'default' }), configurable: true });
+  Object.defineProperty(win, 'getComputedStyle', { value: (element: Element) => ({ cursor: element === trigger ? 'pointer' : 'default', getPropertyValue: () => '' }), configurable: true });
   const pans: Array<[number, number]> = [];
   const zooms: Array<number> = [];
   const zoomCenters: Array<[number, number]> = [];

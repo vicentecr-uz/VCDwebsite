@@ -42,6 +42,10 @@ const contentGitOptions = () => contentGitArgs(process.cwd());
  */
 const RENDERING_PATHS = [
   'src/lib/craftDemos.ts',
+  'src/lib/demoIndicatorLayer.ts',
+  'src/lib/demoCursorGlyphs.ts',
+  'src/styles/demoIndicators.css',
+  'src/styles/demoFinger.css',
   'src/lib/sabi/',
   'src/lib/stageshow/',
   'src/pages/preview/[sabi].astro',

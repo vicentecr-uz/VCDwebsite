@@ -6,7 +6,10 @@
   .sabi-demo-field .sabi-before { position: relative; display: flex; overflow: auto hidden; scrollbar-width: none; padding-inline: var(--sabi-edge-gutter); scroll-padding: 0; }
   .sabi-demo-field .sabi-before::-webkit-scrollbar { display: none; }
   .sabi-demo-field .sabi-before input { flex: none; min-width: 0; padding: 0; border: 0; background: transparent; font: inherit; letter-spacing: inherit; color: inherit; }
-  .sabi-demo-field .sabi-auto-caret { position: absolute; width: 1.5px; height: 28px; top: 18px; background: currentColor; pointer-events: none; margin: 0; opacity: 1; }
+  .sabi-demo-field input[data-demo-selected] { background: Highlight; color: HighlightText; }
+  .sabi-demo-field .sabi-auto-caret { position: absolute; width: 1.5px; height: 28px; top: 18px; background: currentColor; pointer-events: none; margin: 0; opacity: 1; animation: sabi-caret-blink 1s step-end infinite; }
+  @keyframes sabi-caret-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .sabi-demo-field .sabi-auto-caret { animation: none; } }
   .sabi-scene .sabi-choices { width: max-content; max-width: 100%; border-radius: 999px; --dev-control-padding: 5px; }
   .sabi-scene .sabi-choices .dev-btn { border-radius: 999px; padding: 8px 16px; min-height: 40px; }
   .sabi-caption { font-size: 0.8rem; color: var(--sys-color-on-srf-variant); margin: -2rem 0 0; }
@@ -43,8 +46,6 @@
   .sabi-demo .sabi-replay:hover { color: var(--comp-button-label); }
 }
 .sabi-show .ss-stage { overflow: visible; }
-.sabi-show[data-manual] .ss-cursor { visibility: hidden; }
-.sabi-show .ss-stage[data-mark='keyboard'] .ss-cursor { visibility: hidden; }
 .sabi-show .ss-keys { top: calc(var(--sabi-field-bottom) + var(--space-unit)); bottom: auto; transform: translate(-50%, 6px) scale(.96); }
 .sabi-show .ss-keys[data-show='true'] { transform: translate(-50%, 0) scale(1); }
 

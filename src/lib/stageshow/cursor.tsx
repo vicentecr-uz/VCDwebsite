@@ -1,9 +1,8 @@
 import type { ReactNode, Ref } from 'react'
-import { MacCrosshair, MacGrab, MacIbeam, MacOpenHand, MacResizeEW, MacResizeNESW, MacResizeNS, MacResizeNWSE, MacWait } from './cursors'
+import { MacCrosshair, MacIbeam, MacResizeEW, MacResizeNESW, MacResizeNS, MacResizeNWSE, MacWait } from './cursors'
 import type { Point } from './measure'
 import './cursor.css'
-import arrowCursor from '../../assets/demo-cursors/arrow.svg?url'
-import pointingCursor from '../../assets/demo-cursors/pointing.svg?url'
+import { demoCursorGlyphs } from '../demoCursorGlyphs'
 
 // The cursor a stage draws: the glyph for each kind, where its hotspot sits,
 // the five styles, and the ripple a click can send out.
@@ -24,13 +23,16 @@ export type CursorKind = 'pointer' | 'ibeam' | 'crosshair' | 'hand' | 'open' | '
  */
 export type CursorStyle = 'real' | 'large' | 'circle' | 'touch' | 'arrow'
 
+const imageGlyph = (glyph: typeof demoCursorGlyphs.arrow) => () =>
+  <img src={glyph.src} width={glyph.width} height={glyph.height} alt="" draggable={false} />
+
 const GLYPHS: Record<CursorKind, () => ReactNode> = {
-  pointer: () => <img src={arrowCursor} width={24} height={24} alt="" draggable={false} />,
+  pointer: imageGlyph(demoCursorGlyphs.arrow),
   ibeam: MacIbeam,
   crosshair: MacCrosshair,
-  hand: () => <img src={pointingCursor} style={{ width: 40, height: 41.25 }} alt="" draggable={false} />,
-  open: MacOpenHand,
-  grab: MacGrab,
+  hand: imageGlyph(demoCursorGlyphs.pointer),
+  open: imageGlyph(demoCursorGlyphs.grab),
+  grab: imageGlyph(demoCursorGlyphs.grabbing),
   wait: MacWait,
   'resize-ns': MacResizeNS,
   'resize-ew': MacResizeEW,
@@ -40,12 +42,12 @@ const GLYPHS: Record<CursorKind, () => ReactNode> = {
 
 // Where each glyph's hotspot sits inside its box, so the point is the click.
 const HOTSPOT: Record<CursorKind, Point> = {
-  pointer: { x: 3, y: 2 },
+  pointer: demoCursorGlyphs.arrow,
   ibeam: { x: 5, y: 8 },
   crosshair: { x: 8.5, y: 8.5 },
-  hand: { x: 17.5, y: 18.75 },
-  open: { x: 11.7, y: 10.4 },
-  grab: { x: 12, y: 12 },
+  hand: demoCursorGlyphs.pointer,
+  open: demoCursorGlyphs.grab,
+  grab: demoCursorGlyphs.grabbing,
   wait: { x: 8, y: 8 },
   'resize-ns': { x: 10.5, y: 10.5 },
   'resize-ew': { x: 10.5, y: 10.5 },
