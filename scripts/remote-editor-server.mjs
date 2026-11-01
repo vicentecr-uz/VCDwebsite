@@ -1,6 +1,5 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
-import fssync from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { URL } from 'node:url';
@@ -34,15 +33,15 @@ function parseCookie(req, name) {
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let size = 0; const chunks = [];
-    req.on('data', (chunk) => { size += chunk.length; if (size > MAX_BODY) { reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })); req.destroy(); return; } chunks.push(chunk); });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
+    let size = 0; const chunks = []; let tooLarge = false;
+    req.on('data', (chunk) => { size += chunk.length; if (size > MAX_BODY) tooLarge = true; else chunks.push(chunk); });
+    req.on('end', () => tooLarge ? reject(Object.assign(new Error('too large'), { code: 'TOO_LARGE' })) : resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
 function contentType(file) {
   const ext = path.extname(file).toLowerCase();
-  return ({ '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.mp4': 'video/mp4' })[ext] || 'application/octet-stream';
+  return ({ '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.mp4': 'video/mp4', '.webm': 'video/webm', '.avif': 'image/avif', '.txt': 'text/plain; charset=utf-8', '.webmanifest': 'application/manifest+json' })[ext] || 'application/octet-stream';
 }
 
 export function createRemoteEditorServer(options = {}) {
@@ -51,6 +50,7 @@ export function createRemoteEditorServer(options = {}) {
   const publicHost = options.publicHost || 'edit.vicentecr.uz';
   const staticDir = options.staticDir ? path.resolve(options.staticDir) : null;
   const upstream = new URL(options.upstream || 'http://127.0.0.1:4830');
+  if (upstream.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(upstream.hostname)) throw new Error('upstream must be loopback http');
   const sessionSecret = Buffer.from(String(options.sessionSecret || ''), 'utf8');
   const passwordHash = String(options.passwordHash || '');
   const rate = new Map(); // Bounded in-memory ceiling; replace with shared storage if the gateway is scaled.
@@ -61,16 +61,17 @@ export function createRemoteEditorServer(options = {}) {
     hashParts = { salt: match[1], digest: Buffer.from(match[2], 'hex') };
   }
   if (sessionSecret.length < 32) throw new Error('sessionSecret must be at least 32 bytes');
+  if (!hashParts) throw new Error('passwordHash is required');
 
   function hostAllowed(req) {
     const value = String(req.headers.host || '').split(':')[0].toLowerCase();
-    return value === publicHost.toLowerCase() || value === 'localhost' || value === '127.0.0.1';
+    return value === publicHost.toLowerCase();
   }
   function csrfAllowed(req) {
     const origin = req.headers.origin;
-    if (origin && origin !== `https://${publicHost}`) return false;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method || '') && origin !== `https://${publicHost}`) return false;
     if (String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') return false;
-    return !origin || origin === `https://${publicHost}`;
+    return origin === `https://${publicHost}` || ['GET', 'HEAD', 'OPTIONS'].includes(req.method || '');
   }
   function sessionCookie(value) {
     const mac = crypto.createHmac('sha256', sessionSecret).update(value).digest('base64url');
@@ -82,7 +83,8 @@ export function createRemoteEditorServer(options = {}) {
     const value = cookie.slice(0, at); const sig = cookie.slice(at + 1);
     if (!constantEqual(sig, crypto.createHmac('sha256', sessionSecret).update(value).digest('base64url'))) return false;
     const timestamp = Number(value.split('.')[0]);
-    return Number.isFinite(timestamp) && timestamp > Math.floor(Date.now() / 1000) - SESSION_TTL;
+    const now = Math.floor(Date.now() / 1000);
+    return Number.isFinite(timestamp) && timestamp <= now && timestamp > now - SESSION_TTL;
   }
   async function passwordMatches(password) {
     if (!hashParts || typeof password !== 'string' || Buffer.byteLength(password) > 1024) return false;
@@ -99,7 +101,7 @@ export function createRemoteEditorServer(options = {}) {
   function failed(req) { const key = clientKey(req); const item = rate.get(key) || { count: 0, until: Date.now() + 60000 }; item.count += 1; rate.set(key, item); }
   async function serveStatic(req, res, pathname) {
     if (!staticDir || pathname.startsWith('/api/') || pathname.startsWith('/@') || pathname.includes('/node_modules') || pathname.includes('/src/') || pathname.includes('/scripts/')) return false;
-    const clean = decodeURIComponent(pathname);
+    let clean; try { clean = decodeURIComponent(pathname); } catch { return false; }
     if (clean.split('/').some((part) => part === '..' || part.startsWith('.'))) return false;
     let relative = clean === '/' ? '/index.html' : clean;
     let target = path.resolve(staticDir, `.${relative}`);
@@ -108,17 +110,19 @@ export function createRemoteEditorServer(options = {}) {
     try { stat = await fs.stat(target); } catch { stat = null; }
     if (!stat || !stat.isFile()) {
       if (path.extname(clean)) return false;
-      target = path.join(staticDir, 'index.html');
+      target = path.join(staticDir, clean.replace(/\/$/, ''), 'index.html');
       try { stat = await fs.stat(target); } catch { return false; }
     }
-    const data = await fs.readFile(target);
-    send(res, 200, data, { ...commonHeaders(), 'content-type': contentType(target) });
+    const rootReal = await fs.realpath(staticDir).catch(() => null); const real = await fs.realpath(target).catch(() => null);
+    if (!rootReal || !real || !real.startsWith(`${rootReal}${path.sep}`)) return false;
+    const data = await fs.readFile(real);
+    send(res, 200, req.method === 'HEAD' ? null : data, { ...commonHeaders(), 'content-type': contentType(real) });
     return true;
   }
-  function proxy(req, res, authenticated) {
+  function proxy(req, res, authenticated, requestPath = req.url) {
     const headers = { ...req.headers, host: upstream.host };
     delete headers.authorization; delete headers.cookie;
-    const request = http.request({ protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port, path: req.url, method: req.method, headers }, (up) => {
+    const request = http.request({ protocol: upstream.protocol, hostname: upstream.hostname, port: upstream.port, path: requestPath, method: req.method, headers }, (up) => {
       const out = { ...commonHeaders() }; for (const [k, v] of Object.entries(up.headers)) if (!['set-cookie', 'cache-control', 'x-robots-tag'].includes(k)) out[k] = v;
       res.writeHead(up.statusCode || 502, out); up.pipe(res);
     });
@@ -129,11 +133,13 @@ export function createRemoteEditorServer(options = {}) {
     Object.entries(commonHeaders()).forEach(([key, value]) => res.setHeader(key, value));
     try {
       if (!hostAllowed(req)) return json(res, 404, { error: 'Not found' }, commonHeaders());
-      const url = new URL(req.url || '/', `https://${publicHost}`); const pathname = url.pathname;
-      if (pathname === '/__open-in-editor' || pathname.startsWith('/__open-in-editor/')) return json(res, 404, { error: 'Not found' }, commonHeaders());
+      const url = new URL(req.url || '/', `https://${publicHost}`); const pathname = url.pathname; let decodedPath;
+      try { decodedPath = decodeURIComponent(pathname); } catch { return json(res, 400, { error: 'Invalid path.' }, commonHeaders()); }
+      const routePath = path.posix.normalize(decodedPath.replace(/\/+/g, '/'));
+      if (routePath === '/__open-in-editor' || routePath.startsWith('/__open-in-editor/')) return json(res, 404, { error: 'Not found' }, commonHeaders());
       const cookie = parseCookie(req, '__Host-vcd_editor'); const authenticated = validSession(cookie);
-      if (pathname === '/api/remote-editor/session' && req.method === 'GET') return json(res, 200, { authenticated }, commonHeaders());
-      if (pathname === '/api/remote-editor/login' && req.method === 'POST') {
+      if (routePath === '/api/remote-editor/session' && req.method === 'GET') return json(res, 200, { authenticated }, commonHeaders());
+      if (routePath === '/api/remote-editor/login' && req.method === 'POST') {
         if (!csrfAllowed(req)) return json(res, 403, { error: 'Forbidden' }, commonHeaders());
         if (limited(req)) return json(res, 429, { error: 'Too many attempts.' }, commonHeaders());
         let body; try { body = await readBody(req); } catch (e) { return json(res, e.code === 'TOO_LARGE' ? 413 : 400, { error: 'Invalid request.' }, commonHeaders()); }
@@ -143,15 +149,15 @@ export function createRemoteEditorServer(options = {}) {
         const value = `${Math.floor(Date.now() / 1000)}.${crypto.randomBytes(18).toString('base64url')}`;
         return json(res, 200, { ok: true }, { ...commonHeaders(), 'set-cookie': `__Host-vcd_editor=${sessionCookie(value)}; Max-Age=${SESSION_TTL}; Path=/; Secure; HttpOnly; SameSite=Strict` });
       }
-      if (pathname === '/api/remote-editor/logout' && req.method === 'POST') { if (!csrfAllowed(req)) return json(res, 403, { error: 'Forbidden' }, commonHeaders()); return json(res, 200, { ok: true }, { ...commonHeaders(), 'set-cookie': '__Host-vcd_editor=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict' }); }
-      if (pathname.startsWith('/api/')) {
+      if (routePath === '/api/remote-editor/logout' && req.method === 'POST') { if (!csrfAllowed(req)) return json(res, 403, { error: 'Forbidden' }, commonHeaders()); return json(res, 200, { ok: true }, { ...commonHeaders(), 'set-cookie': '__Host-vcd_editor=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict' }); }
+      if (routePath.startsWith('/api/')) {
         if (!authenticated) return json(res, 401, { error: 'Session expired' }, commonHeaders());
         if (!csrfAllowed(req)) return json(res, 403, { error: 'Forbidden' }, commonHeaders());
-        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && MUTATING_BLOCK.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return json(res, 403, { error: 'Publishing is disabled.' }, commonHeaders());
-        return proxy(req, res, true);
+        if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && MUTATING_BLOCK.some((prefix) => routePath === prefix || routePath.startsWith(`${prefix}/`))) return json(res, 403, { error: 'Publishing is disabled.' }, commonHeaders());
+        return proxy(req, res, true, routePath + url.search);
       }
       if (req.headers.upgrade?.toLowerCase() === 'websocket') { if (!authenticated || !csrfAllowed(req)) return json(res, 401, { error: 'Session expired' }, commonHeaders()); return proxy(req, res, true); }
-      if (authenticated) return proxy(req, res, true);
+      if (authenticated) return proxy(req, res, true, routePath + url.search);
       await serveStatic(req, res, pathname) || json(res, 401, { error: 'Authentication required.' }, commonHeaders());
     } catch { if (!res.headersSent) json(res, 500, { error: 'Request failed.' }, commonHeaders()); else res.destroy(); }
   });
