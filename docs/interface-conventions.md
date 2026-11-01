@@ -107,6 +107,12 @@ Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small contro
 
 Demo cursors keep their native proportions relative to the featured control. Share the control’s enlargement factor with every cursor kind, including the I-beam: a control enlarged by 47% needs a cursor at 1.47×. Use one scale setting for the control and cursor, then let stage fitting scale both together. Do not choose an independent large-cursor preset. Sabi uses `--sabi-demo-scale` for its field height and Stageshow’s `--ss-cursor-size`.
 
+Cursors, pointing/grabbing hands, finger circles and click ripples represent the demonstrator using the reader’s screen. By default they belong above the page, outside the demo frame’s clipping and iframe viewport. Use `createDemoIndicatorLayer` (`src/lib/demoIndicatorLayer.ts`) for DOM guides; Stageshow projects its cursor and ripples through this layer automatically. Keep the scene and keypress visualizer inside the frame. The layer preserves coordinate scale, follows scroll/resize, ignores pointer events, and is removed with the guide. Only constrain indicators to a frame when explicitly requested.
+
+Use `demoCursorGlyphs.ts` for the shared artwork, dimensions and hotspots, and `demoIndicators.css` for cursor shadows and finger-circle surfaces. The home intro guide, DOM demos and Stageshow must use the same set. Keep control-relative scaling on top of these shared base dimensions; do not redraw a separate pointer or finger style for a new demo.
+
+At mobile widths below `40em`, omit the frame’s outer drop shadow while retaining its edge strokes and full bleed.
+
 Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the save-bar rings above the content, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
 
 ## Figma
