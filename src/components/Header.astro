@@ -1082,7 +1082,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       (event) => {
         if (isDevEditing()) {
           const target = event.target as Element | null;
-          if (target?.closest('.header-menu__link')) {
+          if (target?.closest('.header-menu__link') && !window.matchMedia('(max-width: 40em)').matches) {
             event.preventDefault();
             return;
           }
@@ -2581,6 +2581,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     --dev-control-height: 24px;
     padding: 4px;
     opacity: 0;
+    visibility: hidden;
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
@@ -2604,14 +2605,18 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     inset-inline-start: 0;
   }
 
-  :global(html.is-dev-mode) .header-menu__item:hover .header-menu__edit-link,
-  :global(html.is-dev-mode) .header-menu__item:focus-within .header-menu__edit-link {
+  :global(html.is-dev-mode) .header-trigger:is(.is-menu-open, :focus-within) .header-menu__edit-link {
+    visibility: visible;
+  }
+
+  :global(html.is-dev-mode) .header-trigger:is(.is-menu-open, :focus-within) .header-menu__item:hover .header-menu__edit-link,
+  :global(html.is-dev-mode) .header-trigger:is(.is-menu-open, :focus-within) .header-menu__item:focus-within .header-menu__edit-link {
     opacity: 1;
     pointer-events: auto;
   }
 
   @media (hover: none), (pointer: coarse) {
-    :global(html.is-dev-mode) .header-menu__edit-link { opacity: 1; pointer-events: auto; }
+    :global(html.is-dev-mode) .header-trigger.is-menu-open .header-menu__edit-link { opacity: 1; pointer-events: auto; }
   }
 
   .header-link-editor {
@@ -2866,6 +2871,24 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
      rather than as the page's largest element. Matches the --space-unit
      breakpoint in global.css. */
   @media (max-width: 40em) {
+    :global(html.is-dev-mode) .header-menu__edit-link {
+      display: none;
+    }
+
+    :global(html.is-dev-mode) .header-menu__item,
+    :global(html.is-dev-mode) .header-trigger--end .header-menu__item {
+      padding-inline: 0;
+    }
+
+    :global(html.is-dev-mode) .header-menu__link-label {
+      cursor: inherit;
+    }
+
+    :global(html.is-dev-mode) .header-menu__link-label::before,
+    :global(html.is-dev-mode) .header-menu__link-label::after {
+      display: none;
+    }
+
     .site-header {
       --header-logo-size: calc(var(--space-unit) * 1.5);
       --header-menu-link-size: var(--text-body-size);

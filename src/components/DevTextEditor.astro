@@ -340,6 +340,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     editorAbortController?.abort();
     editorAbortController = new AbortController();
     const editorSignal = editorAbortController.signal;
+    const phoneEditor = window.matchMedia('(max-width: 40em)');
+    const canEditText = (element: HTMLElement) =>
+      !phoneEditor.matches || element.dataset.devTextDocument !== 'header-settings';
     installHistoryShortcuts(editorSignal);
     bindProjectAwardEditors(editorSignal);
     if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
@@ -2718,7 +2721,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = readValue(state);
           textStates.push(state);
           bindTextState(state);
-          if (isDevContentEditing()) {
+          if (isDevContentEditing() && canEditText(element)) {
             element.setAttribute('contenteditable', state.kind === 'paragraphs' ? 'true' : 'plaintext-only');
             element.setAttribute('spellcheck', 'true');
           } else {
@@ -5606,8 +5609,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const setEditingEnabled = (enabled: boolean) => {
       textStates.forEach(({ element, kind }) => {
-        if (!enabled && document.activeElement === element) element.blur();
-        if (enabled && !element.hidden) {
+        const editable = enabled && !element.hidden && canEditText(element);
+        if (!editable && document.activeElement === element) element.blur();
+        if (editable) {
           element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
           element.setAttribute('spellcheck', 'true');
         } else {
@@ -5628,6 +5632,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
+    phoneEditor.addEventListener('change', () => setEditingEnabled(isDevContentEditing()), { signal: editorSignal });
     window.addEventListener('resize', syncSpacingControlVisibility, { signal: editorSignal });
 
     textStates.forEach(bindTextState);
