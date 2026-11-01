@@ -341,8 +341,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     editorAbortController = new AbortController();
     const editorSignal = editorAbortController.signal;
     const phoneEditor = window.matchMedia('(max-width: 40em)');
+    const siteHeader = document.querySelector<HTMLElement>('.site-header');
+    let headerInertBeforeTyping: boolean | null = null;
     const canEditText = (element: HTMLElement) =>
       !phoneEditor.matches || element.dataset.devTextDocument !== 'header-settings';
+    const syncFormatControlOrder = () => {
+      const row = formatInline.parentElement;
+      if (!row || (phoneEditor.matches ? row.firstElementChild : row.lastElementChild) === formatInline) return;
+      const focused = document.activeElement;
+      if (phoneEditor.matches) row.prepend(formatInline);
+      else row.append(formatInline);
+      if (focused instanceof HTMLElement && formatInline.contains(focused)) focused.focus({ preventScroll: true });
+    };
+    syncFormatControlOrder();
+    phoneEditor.addEventListener('change', syncFormatControlOrder, { signal: editorSignal });
     installHistoryShortcuts(editorSignal);
     bindProjectAwardEditors(editorSignal);
     if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
@@ -1166,10 +1178,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingCaretSuppression = () => {
-      const suppressed = isDevTextCaretActive();
+      const active = document.activeElement;
+      const formatting = isFormatBarTarget(active);
+      const suppressed = isDevTextCaretActive() || formatting;
       document.documentElement.classList.toggle('is-dev-text-caret', suppressed);
+      const mobileTextFocus = phoneEditor.matches && isDevContentEditing()
+        && (formatting || (active instanceof HTMLElement && active.isContentEditable));
+      document.documentElement.classList.toggle('is-dev-mobile-text-focus', mobileTextFocus);
+      if (siteHeader) {
+        if (mobileTextFocus) {
+          headerInertBeforeTyping ??= siteHeader.inert;
+          siteHeader.inert = true;
+        } else if (headerInertBeforeTyping !== null) {
+          siteHeader.inert = headerInertBeforeTyping;
+          headerInertBeforeTyping = null;
+        }
+      }
+      if (!mobileTextFocus) document.documentElement.style.removeProperty('--dev-mobile-format-space');
       if (suppressed) clearGapProximityAll();
     };
+    editorSignal.addEventListener('abort', () => {
+      document.documentElement.classList.remove('is-dev-mobile-text-focus');
+      document.documentElement.style.removeProperty('--dev-mobile-format-space');
+      if (siteHeader && headerInertBeforeTyping !== null) siteHeader.inert = headerInertBeforeTyping;
+    }, { once: true });
+    phoneEditor.addEventListener('change', syncSpacingCaretSuppression, { signal: editorSignal });
 
     const syncSpacingControlVisibility = () => {
       const devEnabled = isDevContentEditing();
@@ -1476,6 +1509,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // focusout fires before the next focus target is active
       pageScope.frame(() => {
         syncSpacingCaretSuppression();
+        scheduleFormatBarUpdate();
         // Drop sticky section chrome when leaving a text field so the drag
         // grip doesn't linger after click-away while controls-visible is set.
         if (!isDevTextCaretActive()) {
@@ -4670,6 +4704,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ? null
         : { id: pointerId, generation, active: true };
       linkPanelOpen = false;
+      document.documentElement.style.removeProperty('--dev-mobile-format-space');
       savedFormatRange = null;
       savedFormatFocusEdge = 'end';
       savedFormatRects = [];
@@ -4794,7 +4829,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncTextWrap();
     };
 
-    const positionFormatBar = (range: Range) => {
+    const positionFormatBar = (range: Range, revealCaret = false) => {
+      const mobile = window.matchMedia('(max-width: 40em)').matches;
       const viewport = window.visualViewport;
       const viewportLeft = viewport?.offsetLeft ?? 0;
       const viewportTop = viewport?.offsetTop ?? 0;
@@ -4810,7 +4846,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         && (endpointLineRect.bottom <= viewportTop || endpointLineRect.top >= viewportBottom),
       );
 
-      if (endpointLineOffscreen) {
+      if (endpointLineOffscreen && !mobile) {
         formatBar.hidden = false;
         if (isFormatBarTarget(document.activeElement)) {
           owner?.focus({ preventScroll: true });
@@ -4876,7 +4912,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const closedHeight = buttonsH + padY + borderY;
       const openHeight = closedHeight + flexGap + linkPanelHeight;
 
-      const slotHeight = window.matchMedia('(max-width: 40em)').matches && !linkPanelOpen
+      const slotHeight = mobile && !linkPanelOpen
         ? closedHeight
         : openHeight;
       const spaceAbove = rect.top - viewportTop;
@@ -4887,22 +4923,32 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       formatBar.dataset.placement = formatPlacement;
 
       /*
-        Link content never participates in toolbar width. Desktop reserves its
-        open height; phones use only the visible rows to leave room for the caret.
+        Desktop follows the selection and reserves link height. Phones dock to
+        the visible viewport so formatting never floats over the writing line.
       */
-      let slotTop = preferAbove
+      let slotTop = mobile ? viewportBottom - slotHeight - pad : preferAbove
         ? rect.top - slotHeight - FORMAT_BAR_GAP
         : rect.bottom + FORMAT_BAR_GAP;
 
-      let slotLeft = rect.left + rect.width / 2 - slotWidth / 2;
+      let slotLeft = mobile ? viewportLeft + pad : rect.left + rect.width / 2 - slotWidth / 2;
       slotLeft = Math.max(viewportLeft + pad, Math.min(slotLeft, viewportLeft + viewportWidth - slotWidth - pad));
       slotTop = Math.max(viewportTop + pad, Math.min(slotTop, viewportBottom - slotHeight - pad));
       formatBar.style.top = `${Math.round(slotTop)}px`;
       formatBar.style.left = `${Math.round(slotLeft)}px`;
+      if (mobile) {
+        document.documentElement.style.setProperty('--dev-mobile-format-space', `${Math.max(0, window.innerHeight - viewportBottom) + slotHeight + 2 * pad}px`);
+        if (revealCaret && owner === document.activeElement && endpointLineRect) {
+          const top = viewportTop + pad;
+          const bottom = slotTop - pad;
+          const delta = endpointLineRect.bottom > bottom ? endpointLineRect.bottom - bottom
+            : endpointLineRect.top < top ? endpointLineRect.top - top : 0;
+          if (delta && bottom - top >= endpointLineRect.height) window.scrollBy({ top: delta, behavior: 'instant' });
+        }
+      } else document.documentElement.style.removeProperty('--dev-mobile-format-space');
       syncFormatSelectionOverlay();
     };
 
-    const updateFormatBar = () => {
+    const updateFormatBar = (revealCaret = false) => {
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       if (!isDevContentEditing()) {
         hideFormatBar();
@@ -4920,7 +4966,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       // Keep the bar while the link panel is focused / open.
       if (linkPanelOpen && savedFormatRange) {
-        positionFormatBar(savedFormatRange);
+        positionFormatBar(savedFormatRange, revealCaret);
         syncFormatButtons();
         return;
       }
@@ -4932,7 +4978,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           syncBlockStyleSelect(block.state);
           syncFormatInlineVisibility(block.state);
         }
-        positionFormatBar(savedFormatRange);
+        positionFormatBar(savedFormatRange, revealCaret);
         syncFormatButtons();
         return;
       }
@@ -4961,11 +5007,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!linkPanelOpen) setLinkPanelOpen(false);
       syncBlockStyleSelect(block.state);
       syncFormatInlineVisibility(block.state);
-      positionFormatBar(savedFormatRange);
+      positionFormatBar(savedFormatRange, revealCaret);
       syncFormatButtons();
     };
 
-    const scheduleFormatBarUpdate = () => {
+    let mobileCaretRevealPending = false;
+    const scheduleFormatBarUpdate = (revealCaret = false) => {
+      mobileCaretRevealPending ||= revealCaret;
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       cancelAnimationFrame(formatRaf);
       const generation = formatDismissGeneration;
@@ -4976,7 +5024,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           || isFormatBarDismissing()
           || formatDismissPointer?.active
         ) return;
-        updateFormatBar();
+        const reveal = mobileCaretRevealPending;
+        mobileCaretRevealPending = false;
+        updateFormatBar(reveal);
       });
     };
 
@@ -5360,6 +5410,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       scheduleFormatBarUpdate();
     };
 
+    formatBar.addEventListener('pointerdown', (event) => {
+      if (event.target instanceof Element && event.target.closest('[data-dev-format]')) event.preventDefault();
+    }, { signal: editorSignal });
     formatBar.addEventListener('mousedown', (event) => {
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
@@ -5440,16 +5493,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     document.addEventListener('selectionchange', () => {
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       if (document.activeElement === linkInput) return;
-      scheduleFormatBarUpdate();
+      scheduleFormatBarUpdate(Boolean(window.getSelection()?.isCollapsed));
     }, { signal: editorSignal });
+    document.addEventListener('input', () => scheduleFormatBarUpdate(true), { signal: editorSignal });
+    document.addEventListener('focusin', () => scheduleFormatBarUpdate(true), { signal: editorSignal });
     window.addEventListener('scroll', (event) => {
       const target = event.target;
       if (target instanceof Node && isFormatBarTarget(target)) return;
       scheduleFormatBarUpdate();
     }, { capture: true, signal: editorSignal });
-    window.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
-    window.visualViewport?.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
-    window.visualViewport?.addEventListener('scroll', scheduleFormatBarUpdate, { signal: editorSignal });
+    let formatViewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    let formatKeyboardInset = 0;
+    const onFormatViewportResize = () => {
+      const viewport = window.visualViewport;
+      const width = viewport?.width ?? window.innerWidth;
+      const inset = Math.max(0, window.innerHeight - (viewport?.height ?? window.innerHeight) - (viewport?.offsetTop ?? 0));
+      const reveal = Math.abs(inset - formatKeyboardInset) > 1 || Math.abs(width - formatViewportWidth) > 1;
+      formatKeyboardInset = inset;
+      formatViewportWidth = width;
+      scheduleFormatBarUpdate(reveal && (!viewport || viewport.scale === 1));
+    };
+    window.addEventListener('resize', onFormatViewportResize, { signal: editorSignal });
+    window.visualViewport?.addEventListener('resize', onFormatViewportResize, { signal: editorSignal });
+    window.visualViewport?.addEventListener('scroll', () => scheduleFormatBarUpdate(), { signal: editorSignal });
     // Dismiss even while the link URL field is focused / open.
     document.addEventListener(
       'pointerdown',
@@ -5636,6 +5702,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         document.documentElement.classList.remove('is-dev-text-caret');
         hideFormatBar();
       }
+      syncSpacingCaretSuppression();
       updateActions();
     };
 
@@ -6748,29 +6815,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   @media (max-width: 40em) {
     .dev-text-format__buttons {
-      display: grid;
-      grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr));
+      flex-wrap: nowrap;
       width: var(--dev-format-content-width, calc(100vw - 28px));
+      overflow-x: auto;
+      border-radius: var(--dev-radius-control);
+      scrollbar-width: none;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
     }
+
+    .dev-text-format__buttons::-webkit-scrollbar { display: none; }
+
+    .dev-text-format__buttons > * { flex-shrink: 0; }
 
     .dev-text-format__buttons > .dev-hairline {
       display: none;
     }
 
-    .dev-text-format .dev-field,
-    .dev-text-format .dev-field__value,
-    .dev-text-format .dev-field__input--select {
-      width: 100%;
-      min-width: 0;
-    }
-
     .dev-text-format .dev-field__input--select {
       min-height: 44px;
-    }
-
-    .dev-text-format__inline {
-      grid-column: 1 / -1;
-      justify-content: space-evenly;
     }
 
     .dev-text-format__buttons button[data-dev-format] {
