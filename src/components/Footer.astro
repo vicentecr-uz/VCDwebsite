@@ -1,13 +1,16 @@
 ---
 import DevThemeToggle from './DevThemeToggle.astro';
+import RemoteEditorEntry from './RemoteEditorEntry.astro';
 const year = new Date().getFullYear();
 const showDevTools = import.meta.env.DEV;
+const showRemoteEditor = import.meta.env.PUBLIC_REMOTE_EDITOR === '1';
 ---
 
 <footer class="mt-auto" style="padding: var(--space-unit) 0; display: flex; align-items: center; justify-content: space-between; gap: var(--space-unit);">
-  <p class="footer-text" style="font-family: var(--font-sans); font-weight: var(--text-footer-weight); letter-spacing: var(--text-footer-tracking); font-size: var(--text-footer-size); line-height: 1;">
+  <p class="footer-text" data-remote-editor-trigger={showRemoteEditor ? true : undefined} tabindex={showRemoteEditor ? -1 : undefined} style="font-family: var(--font-sans); font-weight: var(--text-footer-weight); letter-spacing: var(--text-footer-tracking); font-size: var(--text-footer-size); line-height: 1;">
     © Vicente Cruz {year}
   </p>
+  {showRemoteEditor && <RemoteEditorEntry isDev={showDevTools} />}
   {showDevTools && (
     <div style="display: flex; align-items: center; gap: var(--space-unit);">
       <DevThemeToggle />
