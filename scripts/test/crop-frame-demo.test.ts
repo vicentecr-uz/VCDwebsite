@@ -473,6 +473,43 @@ test('responsive variants edit independently and restore atomically', () => {
   h.api.destroy();
 });
 
+test('viewport switch selects the frame and image pose in the same render as the ghost', () => {
+  const variants = {
+    desktop: { aspect: '3:2', cx: 0.4, cy: 0.3, w: 0.6 },
+    tablet: { aspect: '4:3', cx: 0.7, cy: 0.4, w: 0.5 },
+    mobile: { aspect: '1:1', cx: 0.35, cy: 0.6, w: 0.4 },
+  } as const;
+  const h = setup({ initialState: {
+    source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
+    crop: variants.desktop,
+    variants: structuredClone(variants),
+    locked: false,
+  } });
+  const ghost = h.host.querySelector<HTMLElement>('.dev-crop-ghost')!;
+  const ghostImage = ghost.querySelector<HTMLImageElement>('img')!;
+  const activeProperties = ['--project-image-ratio', '--project-image-ratio-num', '--project-content-w', '--project-content-cx', '--project-content-cy'];
+  const checkPose = (viewport: keyof typeof variants) => {
+    const pose = variants[viewport];
+    for (const property of activeProperties) expect(h.host.style.getPropertyValue(property)).toBe(`var(${property}-${viewport})`);
+    expect(h.host.style.getPropertyValue(`--project-image-ratio-${viewport}`)).toBe(pose.aspect.replace(':', ' / '));
+    for (const property of ['w', 'cx', 'cy'] as const) {
+      expect(h.host.style.getPropertyValue(`--project-content-${property}-${viewport}`)).toBe(String(pose[property]));
+      expect(ghost.style.getPropertyValue(`--project-content-${property}`)).toBe(String(pose[property]));
+      expect(ghostImage.style.getPropertyValue(`--project-content-${property}`)).toBe(String(pose[property]));
+    }
+  };
+  checkPose('desktop');
+  h.api.setViewport('tablet');
+  checkPose('tablet');
+  h.api.setViewport('mobile');
+  checkPose('mobile');
+  h.api.setViewport('desktop');
+  checkPose('desktop');
+  h.api.destroy();
+  for (const property of activeProperties) expect(h.host.style.getPropertyValue(property)).toBe('');
+  expect(h.host.style.getPropertyValue('--project-content-w-desktop')).toBe(String(variants.desktop.w));
+});
+
 test('restore returns every saved pose and keeps the selected viewport', () => {
   const h = setup({ initialState: {
     source: { src: '/saved.jpg', width: 1200, height: 800, alt: 'Saved source' },
