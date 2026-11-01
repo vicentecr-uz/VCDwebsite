@@ -345,6 +345,8 @@ import '../styles/site-annotation-editor.css';
         return;
       }
 
+      if (window.matchMedia('(max-width: 40em)').matches) return;
+
       const editTrigger = target.closest<HTMLButtonElement>('[data-dev-edit-trigger]');
       if (editTrigger && devMode && !isSectionEditor()) {
         event.preventDefault();
@@ -426,7 +428,7 @@ import '../styles/site-annotation-editor.css';
     pageScope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
         // Alt+M types 'µ' in an editable — never intercept it there.
-        if (!devMode || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
+        if (!devMode || window.matchMedia('(max-width: 40em)').matches || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
         event.preventDefault();
         toggleLauncher();
         return;
@@ -448,7 +450,7 @@ import '../styles/site-annotation-editor.css';
         // same shortcut toggling both ways made it too easy to drop the whole
         // layer with a stray press, and the section-nav branch below has
         // always behaved this way.
-        if (!hasSectionNav()) {
+        if (!hasSectionNav() || window.matchMedia('(max-width: 40em)').matches) {
           setSectionEditor(false);
           if (!devMode) setDevMode(true);
           return;
@@ -464,6 +466,7 @@ import '../styles/site-annotation-editor.css';
       }
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyN') {
+        if (window.matchMedia('(max-width: 40em)').matches) return;
         const gridEl = document.querySelector('[data-dev-project-grid]');
         if (!gridEl) return;
         if (isTypingTarget(event.target as HTMLElement | null)) return;
@@ -518,6 +521,12 @@ import '../styles/site-annotation-editor.css';
       if (event.detail?.active === false) removeLauncher();
     }) as EventListener);
 
+    pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (!window.matchMedia('(max-width: 40em)').matches) return;
+      if (event.detail?.panel) event.detail.panel.hidden = true;
+      event.stopImmediatePropagation();
+      syncTunerOpenClass();
+    }) as EventListener, true);
     pageScope.listen(window, 'vcd:dev-edit-open', syncTunerOpenClass);
     pageScope.listen(window, 'vcd:dev-edit-close', syncTunerOpenClass);
     syncTunerOpenClass();

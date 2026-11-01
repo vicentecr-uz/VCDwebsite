@@ -68,6 +68,7 @@ import { awardBlockSizeWriter } from './scripts/award-block-size-writer.mjs';
 import { carouselDragTuningWriter } from './scripts/carousel-drag-tuning-writer.mjs';
 import { signupDevApi } from './scripts/signup-dev-api.mjs';
 import { annotationDevWriter } from './scripts/dev-annotations.mjs';
+import { componentNotesDevApi } from './scripts/dev-component-notes.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
@@ -2779,6 +2780,7 @@ export default defineConfig({
       styleTokenDevWriter(),
       contentTextDevWriter(),
       annotationDevWriter(),
+      componentNotesDevApi(),
       contentSpacingDevWriter(),
       contentSectionDevWriter(),
       contentBatchDevWriter(),
