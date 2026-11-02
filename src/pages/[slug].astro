@@ -1,5 +1,6 @@
 ---
 import ProjectLayout from '../components/ProjectLayout.astro';
+import WriteupLayout from '../components/WriteupLayout.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
 import LegacyProjectSections from '../components/project/legacy/LegacyProjectSections.astro';
 import DevImageDrop from '../components/DevImageDrop.astro';
@@ -10,6 +11,7 @@ import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 import { pageColumnStyle } from '../lib/pageColumn';
 import {
   getProjectSlugsForBuild,
+  isWriteupProject,
   loadProjectBySlug,
   shouldIncludeProjectInBuild,
 } from '../lib/projects';
@@ -39,6 +41,7 @@ const listingCover = Object.values(project.listings ?? {})
   .map((listing) => listing?.image)
   .find((image): image is string => Boolean(image));
 const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
+const PageLayout = isWriteupProject(project) ? WriteupLayout : ProjectLayout;
 ---
 
 {project.stack === 'legacy' ? (
@@ -46,7 +49,7 @@ const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undef
     <LegacyProjectSections sections={sections} documentKey={slug} />
   </ProjectLayout>
 ) : (
-<ProjectLayout
+<PageLayout
   title={project.title}
   description={project.description}
   outline={outline}
@@ -66,5 +69,5 @@ const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undef
     </div>
     <DevImageDrop documentKey={slug} />
   </TeaserGate>
-</ProjectLayout>
+</PageLayout>
 )}
