@@ -43,7 +43,8 @@ export function installPersistentNavigation(hooks: Hooks) {
     if (event.defaultPrevented) return;
     navigation = event;
     swapped = false;
-    const preserveTitleMotionForNavigation = headerVisibleForTitleMotion();
+    const fadeHeader = (event.sourceElement as HTMLElement | undefined)?.hasAttribute('data-header-navigation-fade');
+    const preserveTitleMotionForNavigation = !fadeHeader && headerVisibleForTitleMotion();
     preserveTitleMotion = preserveTitleMotionForNavigation;
     if (event.formData) { event.preventDefault(); return; }
     if (document.documentElement.dataset.devTransition === 'visible') event.to.searchParams.set('dev-transition', 'visible');
