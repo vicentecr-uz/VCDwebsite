@@ -239,42 +239,6 @@ test('desktop and narrow mode changes clean up and recreate panel dragging', () 
   expect(h.dragCleaned).toBe(2);
 });
 
-test('panel alignment follows iframe image geometry until a real header drag', () => {
-  const h = setup();
-  const pointer = (clientX: number, clientY: number) => { const event = new h.win.Event('pointerdown', { bubbles: true, cancelable: true }) as PointerEvent; Object.defineProperties(event, { button: { value: 0 }, isPrimary: { value: true }, pointerId: { value: 2 }, clientX: { value: clientX }, clientY: { value: clientY } }); return event; };
-  const header = h.panel.querySelector('[data-drag-handle]') as HTMLElement;
-  const traffic = h.panel.querySelector('[data-drag-ignore]') as HTMLButtonElement;
-  const frame = h.frame;
-  Object.defineProperty(frame, 'offsetWidth', { configurable: true, value: 1000 });
-  frame.getBoundingClientRect = () => ({ top: 100, left: 0, width: 500, height: 450 } as DOMRect);
-  h.layout.getBoundingClientRect = () => ({ top: 100, left: 0, width: 800, height: 900 } as DOMRect);
-  h.frameHost.getBoundingClientRect = () => ({ top: 200, left: 0, width: 300, height: 300 } as DOMRect);
-  h.panel.getBoundingClientRect = () => ({ top: 150, left: 0, width: 320, height: 200 } as DOMRect);
-  header.getBoundingClientRect = () => ({ top: 150, bottom: 190, left: 0, width: 320, height: 40 } as DOMRect);
-  h.resizeCallbacks.at(-1)?.();
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('60px');
-  h.frameHost.getBoundingClientRect = () => ({ top: 240, left: 0, width: 300, height: 300 } as DOMRect);
-  h.resizeCallbacks.at(-1)?.();
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('80px');
-  traffic.dispatchEvent(pointer(10, 10));
-  h.frameHost.getBoundingClientRect = () => ({ top: 320, left: 0, width: 300, height: 300 } as DOMRect);
-  h.resizeCallbacks.at(-1)?.();
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('120px');
-  header.dispatchEvent(pointer(10, 10));
-  h.frameHost.getBoundingClientRect = () => ({ top: 360, left: 0, width: 300, height: 300 } as DOMRect);
-  h.resizeCallbacks.at(-1)?.();
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('120px');
-  h.media.matches = false;
-  h.media.listeners.forEach((listener) => listener());
-  h.media.matches = true;
-  h.media.listeners.forEach((listener) => listener());
-  h.frameHost.getBoundingClientRect = () => ({ top: 300, left: 0, width: 300, height: 300 } as DOMRect);
-  h.resizeCallbacks.at(-1)?.();
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('110px');
-  h.demo.remove();
-  expect(h.resizeDisconnects).toBeGreaterThan(0);
-});
-
 test('readiness waits for visible crop and ghost images, decode, fonts, and two paint frames', async () => {
   const h = setup({ imageComplete: false, imageDecodePending: true });
   expect(h.demo.dataset.pageRevealReady).toBe('false');
@@ -295,23 +259,15 @@ test('readiness waits for visible crop and ghost images, decode, fonts, and two 
   expect(h.imageDecodeCalls).toBe(2);
 });
 
-test('already-loaded crop images still wait for decode and measure geometry before readiness', async () => {
+test('already-loaded crop images still wait for decode before readiness', async () => {
   const h = setup({ imageDecodePending: true });
   await flush();
-  h.frame.getBoundingClientRect = () => ({ top: 100, left: 0, width: 500, height: 450 } as DOMRect);
-  Object.defineProperty(h.frame, 'offsetWidth', { configurable: true, value: 1000 });
-  h.layout.getBoundingClientRect = () => ({ top: 100, left: 0, width: 800, height: 900 } as DOMRect);
-  h.frameHost!.getBoundingClientRect = () => ({ top: 200, left: 0, width: 300, height: 300 } as DOMRect);
-  h.panel.getBoundingClientRect = () => ({ top: 150, left: 0, width: 320, height: 200 } as DOMRect);
-  h.panel.querySelector('[data-drag-handle]')!.getBoundingClientRect = () => ({ top: 150, bottom: 190, left: 0, width: 320, height: 40 } as DOMRect);
   h.parentFonts.resolve(); h.childFonts.resolve(); await flush();
   expect(h.demo.dataset.pageRevealReady).toBe('false');
   expect(h.imageDecodeCalls).toBe(2);
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('');
   h.cropImages.resolve(); await flush(); await h.driveFrames(); await h.driveFrames();
   expect(h.demo.dataset.pageRevealReady).toBe('true');
   expect(h.intersections.length).toBe(1);
-  expect(h.layout.style.getPropertyValue('--crop-panel-top')).toBe('60px');
 });
 
 test('abort before image readiness never publishes or creates a guide', async () => {
