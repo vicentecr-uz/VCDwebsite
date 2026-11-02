@@ -70,7 +70,13 @@ export type ProjectGridListing = {
   srcWidth?: number;
   srcHeight?: number;
   mobileInset?: boolean;
+  /** Destination renders with WriteupLayout (no site header). */
+  writeup?: boolean;
 };
+
+/** Digital-page projects read as single-column write-ups; the rest keep the header layout. */
+export const isWriteupProject = (project: ProjectDocument) =>
+  project.stack !== 'legacy' && Boolean(project.listings?.play);
 
 const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   '../content/projects/*.json',
@@ -252,6 +258,7 @@ function listingCardForGrid(
     srcWidth: listing.srcWidth,
     srcHeight: listing.srcHeight,
     mobileInset: listing.mobileInset,
+    writeup: isWriteupProject(project),
   };
 }
 
