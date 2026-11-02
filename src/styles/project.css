@@ -41,12 +41,14 @@
   margin-top: var(--project-stack-margin, var(--space-related));
 }
 
-/* A title over a boxed block: end the title's box at its baseline, so the gap
-   reads like the related gap between the block's own boxes rather than adding
-   the line's leading and descender space. Browsers without text-box keep the box. */
+/* A title over a boxed block: pull the block up by the line's space below the
+   baseline, so the gap reads like the related gap between the block's own
+   boxes. For Hanken Grotesk (ascender 1000, descender 303, cap 697; see Header)
+   that space is exactly half of line-height minus cap height. Re-measure if the
+   typeface changes. text-box-trim would do this generically, but the title's
+   min-height: 1lh holds its box open, and Firefox lacks it. */
 .project-stack--precede-related:has(+ :is(.code-block, .sabi-example)) .project-section-title {
-  text-box-trim: trim-end;
-  text-box-edge: text alphabetic;
+  margin-bottom: calc((1cap - 1lh) / 2);
 }
 
 .project-page__main > .project-stack--related,
