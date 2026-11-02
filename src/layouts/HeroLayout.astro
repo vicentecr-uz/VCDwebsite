@@ -1,0 +1,26 @@
+---
+// Hero page: the site header, then one centred column of blocks led by a
+// productHero block, which carries the page's h1.
+import Layout from './Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/project.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  columnStyle?: string;
+}
+
+const { title, description, columnStyle } = Astro.props;
+---
+
+<Layout persistentNavigation title={title} description={description} columnStyle={columnStyle}>
+  <div data-page-shell class="project-page hero-page flex flex-col min-h-dvh">
+    <Header />
+    <main id="main-content" class="project-page__main flex-1">
+      <slot />
+    </main>
+    <Footer />
+  </div>
+</Layout>

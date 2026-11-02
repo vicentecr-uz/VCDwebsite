@@ -1,0 +1,90 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import '../../styles/dev-chrome.css';
+import '../../lib/sabi/styles.css';
+import './sabi-page.css';
+
+interface Props {
+  title: string;
+  tagline: string;
+  links: Array<{ label: string; href: string }>;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const { title, tagline, links, documentKey, sectionPath, spacing = 'group', sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+const textAttrs = (...path: Array<string | number>) => editable ? {
+  'data-dev-text-document': documentKey,
+  'data-dev-text-path': JSON.stringify([...sectionPath, ...path]),
+  'data-dev-text-kind': 'text',
+} : {};
+---
+
+<header
+  id={sectionId}
+  class:list={['project-block', 'product-hero', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={editable ? 'productHero' : undefined}
+>
+  <h1 class="product-hero__title" {...textAttrs('title')}>{title}</h1>
+  <p class="product-hero__tagline" {...textAttrs('tagline')}>{tagline}</p>
+  <label class="sabi-page-field product-hero__field">
+    <sabi-input>
+      <span>https://</span>
+      <input aria-label="URL" value="example.com/a/long/path/that/runs/past/the/edge/of/the/field" />
+    </sabi-input>
+  </label>
+  <div class="product-hero__links">
+    {links.map(({ label, href }, index) => (
+      <a
+        class:list={['dev-btn', index === 0 ? 'dev-btn--filled' : 'dev-btn--soft', 'dev-btn--align-center']}
+        href={href}
+        {...textAttrs('links', index, 'label')}
+      >{label}</a>
+    ))}
+  </div>
+</header>
+
+<script>
+  import { define } from '../../lib/sabi/core';
+  define();
+</script>
+
+<style>
+  .product-hero {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .product-hero__title {
+    margin: 0;
+    font-size: var(--text-display-size, 2.5em);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+
+  .product-hero__tagline {
+    margin: 0.5em 0 0;
+    font-size: var(--text-body-size);
+    color: var(--sys-color-on-srf-variant);
+    text-wrap: balance;
+  }
+
+  .product-hero__field {
+    width: min(100%, 22em);
+    margin-block: 2em;
+    text-align: start;
+  }
+
+  .product-hero__links {
+    display: flex;
+    gap: 0.5em;
+  }
+</style>

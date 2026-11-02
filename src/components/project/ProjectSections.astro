@@ -13,6 +13,9 @@ import ProjectDetails from './ProjectDetails.astro';
 import ProjectAward from './ProjectAward.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import ProjectSignup from './ProjectSignup.astro';
+import ProjectProductHero from './ProjectProductHero.astro';
+import ProjectCodeBlock from './ProjectCodeBlock.astro';
+import ProjectSabiExample from './ProjectSabiExample.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
@@ -151,6 +154,18 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         annotations={section.annotations}
       />
     );
+  }
+
+  if (type === 'productHero') {
+    return <ProjectProductHero title={String(section.title ?? '')} tagline={String(section.tagline ?? '')} links={(section.links ?? []) as never} documentKey={documentKey} sectionPath={path} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} />;
+  }
+
+  if (type === 'codeBlock') {
+    return <ProjectCodeBlock options={(section.options ?? []) as never} documentKey={documentKey} sectionPath={path} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} />;
+  }
+
+  if (type === 'sabiExample') {
+    return <ProjectSabiExample example={String(section.example ?? '')} documentKey={documentKey} sectionPath={path} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} />;
   }
 
   if (type === 'signup') {
