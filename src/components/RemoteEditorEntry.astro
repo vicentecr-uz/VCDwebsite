@@ -1,0 +1,250 @@
+---
+import '../styles/dev-chrome.css';
+interface Props { isDev?: boolean }
+const { isDev = false } = Astro.props;
+const entering = isDev && Astro.url.searchParams.has('edit');
+---
+
+<dialog class="remote-entry" data-remote-entry data-is-dev={String(isDev)} aria-label="Edit">
+  <form method="post" action="/api/remote-editor/login" class="remote-entry__form">
+    <input name="username" type="hidden" value="anto" autocomplete="username" />
+    <div class="dev-field__value remote-entry__field">
+      <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Password" placeholder="Password" aria-describedby="remote-editor-error" required />
+    </div>
+    <p id="remote-editor-error" class="remote-entry__error" aria-live="polite" hidden></p>
+    <button type="submit" data-remote-submit hidden>Enter</button>
+    <button type="button" class="remote-entry__close" data-remote-close>Close</button>
+  </form>
+</dialog>
+<div class:list={['remote-entry__reveal', { 'is-visible': entering }]} data-remote-reveal hidden={!entering} aria-hidden="true"></div>
+
+<script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const trigger = document.querySelector<HTMLElement>('[data-remote-editor-trigger]');
+    const dialog = document.querySelector<HTMLDialogElement>('[data-remote-entry]');
+    if (!trigger || !dialog) return;
+    const scope = createPageScope();
+    const form = dialog.querySelector<HTMLFormElement>('form')!;
+    const password = form.elements.namedItem('password') as HTMLInputElement;
+    const error = dialog.querySelector<HTMLElement>('#remote-editor-error')!;
+    const submit = dialog.querySelector<HTMLButtonElement>('[data-remote-submit]')!;
+    const reveal = document.querySelector<HTMLElement>('[data-remote-reveal]')!;
+    const isDev = dialog.dataset.isDev === 'true';
+    let authenticated = isDev;
+    let count = 0;
+    let firstTap = 0;
+    let lastTap = 0;
+    let pointer: { id: number; x: number; y: number } | null = null;
+    let closing = 0;
+    let authRequest: AbortController | null = null;
+    let sessionRequest: AbortController | null = null;
+    const initialUrl = new URL(location.href);
+    let enterIntent = isDev && (initialUrl.searchParams.has('edit') || initialUrl.searchParams.has('login'));
+
+    const setError = (message: string) => {
+      error.textContent = message;
+      error.hidden = !message;
+      password.setAttribute('aria-invalid', String(Boolean(message)));
+    };
+    const setBusy = (busy: boolean) => {
+      submit.disabled = busy;
+      password.readOnly = busy;
+      form.setAttribute('aria-busy', String(busy));
+    };
+    const updateViewport = () => {
+      const viewport = window.visualViewport;
+      dialog.style.setProperty('--entry-height', `${viewport?.height ?? window.innerHeight}px`);
+      dialog.style.setProperty('--entry-top', `${viewport?.offsetTop ?? 0}px`);
+    };
+    const stripIntent = () => {
+      const url = new URL(location.href);
+      url.searchParams.delete('login');
+      url.searchParams.delete('edit');
+      history.replaceState(history.state, '', url);
+    };
+    const closeDialog = () => {
+      authRequest?.abort();
+      dialog.classList.remove('is-visible');
+      dialog.classList.add('is-closing');
+      closing = scope.timeout(() => {
+        dialog.close();
+        dialog.classList.remove('is-closing');
+        password.value = '';
+        setBusy(false);
+        setError('');
+        trigger.focus({ preventScroll: true });
+      }, 160);
+    };
+    const openDialog = (message = '', focus = true) => {
+      clearTimeout(closing);
+      dialog.classList.remove('is-closing');
+      setError(message);
+      updateViewport();
+      if (!dialog.open) dialog.showModal();
+      void dialog.offsetWidth;
+      scope.frame(() => dialog.classList.add('is-visible'));
+      if (focus) password.focus({ preventScroll: true });
+    };
+    const requestMode = (active: boolean) => window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active } }));
+    const finishIntent = () => {
+      if (!enterIntent) return;
+      enterIntent = false;
+      stripIntent();
+      scope.frame(() => {
+        reveal.classList.remove('is-visible');
+        scope.timeout(() => { reveal.hidden = true; }, 200);
+      });
+    };
+    const requestIntent = () => {
+      if (!enterIntent) return;
+      if (document.documentElement.classList.contains('is-dev-mode')) finishIntent();
+      else requestMode(true);
+    };
+    const navigateToEditor = () => {
+      const url = new URL(location.href);
+      url.searchParams.delete('login');
+      url.searchParams.set('edit', '1');
+      location.assign(url);
+    };
+    const checkSession = async () => {
+      if (sessionRequest) return;
+      const request = new AbortController();
+      sessionRequest = request;
+      const timeout = scope.timeout(() => request.abort(), 10000);
+      try {
+        const response = await fetch('/api/remote-editor/session', { cache: 'no-store', signal: request.signal });
+        if (!response.ok) return;
+        authenticated = (await response.json()).authenticated === true;
+        if (!authenticated && isDev && document.documentElement.classList.contains('is-dev-mode')) openDialog('Session expired', false);
+      } catch { /* Keep the current page and pending edits during a network interruption. */ }
+      finally { clearTimeout(timeout); sessionRequest = null; }
+    };
+
+    scope.listen(form, 'submit', async (event) => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      setBusy(true);
+      setError('');
+      const request = new AbortController();
+      authRequest = request;
+      const timeout = scope.timeout(() => request.abort(), 15000);
+      try {
+        const response = await fetch(form.action, { method: 'POST', body: new URLSearchParams({ username: 'anto', password: password.value }), signal: request.signal });
+        if (!response.ok) {
+          if (response.status === 401) { password.value = ''; setError('Incorrect password'); }
+          else if (response.status === 429) setError('Too many attempts. Try again later.');
+          else setError("Couldn't connect. Try again.");
+          setBusy(false);
+          password.focus({ preventScroll: true });
+          return;
+        }
+        authenticated = true;
+        password.value = '';
+        if (isDev) {
+          closeDialog();
+          requestMode(true);
+          stripIntent();
+        } else navigateToEditor();
+      } catch {
+        if (dialog.open && !dialog.classList.contains('is-closing') && !scope.signal.aborted) setError("Couldn't connect. Try again.");
+      } finally {
+        clearTimeout(timeout);
+        if (authRequest === request) authRequest = null;
+        setBusy(false);
+      }
+    });
+    scope.listen(document, 'pointerdown', (event) => {
+      if (!trigger.contains(event.target as Node)) { count = 0; pointer = null; }
+    });
+    scope.listen(trigger, 'pointerdown', (event) => {
+      if (event.isPrimary && event.button === 0) pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    });
+    scope.listen(trigger, 'pointercancel', () => { count = 0; pointer = null; });
+    scope.listen(trigger, 'pointerup', (event) => {
+      const start = pointer;
+      pointer = null;
+      if (!start || start.id !== event.pointerId || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 10) { count = 0; return; }
+      const now = performance.now();
+      if (now - lastTap > 400 || now - firstTap > 2000) count = 0;
+      if (count === 0) firstTap = now;
+      lastTap = now;
+      if (++count !== 5) return;
+      count = 0;
+      if (authenticated && isDev) requestMode(!document.documentElement.classList.contains('is-dev-mode'));
+      else openDialog();
+    });
+    scope.listen(trigger, 'contextmenu', (event) => event.preventDefault());
+    scope.listen(dialog.querySelector('[data-remote-close]'), 'click', closeDialog);
+    scope.listen(dialog, 'cancel', (event) => { event.preventDefault(); closeDialog(); });
+    scope.listen(dialog, 'click', (event) => { if (event.target === dialog) closeDialog(); });
+    scope.listen(window.visualViewport, 'resize', updateViewport);
+    scope.listen(window.visualViewport, 'scroll', updateViewport);
+    scope.listen(window, 'resize', updateViewport);
+    scope.listen(window, 'focus', () => { void checkSession(); });
+    scope.listen(document, 'visibilitychange', () => { if (document.visibilityState === 'visible') void checkSession(); });
+    scope.listen(window, 'keydown', (event) => {
+      if (event.code !== 'KeyE' || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || (authenticated && isDev)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      openDialog();
+    }, true);
+    scope.listen(window, 'vcd:dev-mode-ready', requestIntent);
+    scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active) finishIntent();
+    }) as EventListener);
+    requestIntent();
+    if (!isDev && (initialUrl.searchParams.has('login') || initialUrl.searchParams.has('edit'))) {
+      openDialog('', false);
+      void checkSession().then(() => { if (authenticated && !scope.signal.aborted) navigateToEditor(); });
+    } else void checkSession();
+
+    return () => {
+      scope.destroy();
+      authRequest?.abort();
+      sessionRequest?.abort();
+      if (dialog.open) dialog.close();
+    };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .remote-entry {
+    position: fixed;
+    top: calc(var(--entry-top, 0px) + var(--entry-height, 100svh) / 2);
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: min(320px, calc(100vw - 48px));
+    max-height: calc(var(--entry-height, 100svh) - 32px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ref-palette-grey-150);
+    color-scheme: light;
+    translate: -50% -50%;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 200ms ease, transform 200ms ease;
+    --comp-field-container: var(--ref-palette-grey-950);
+    --sys-color-on-srf: var(--ref-palette-grey-150);
+  }
+  .remote-entry::backdrop { background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
+  .remote-entry.is-visible { opacity: 1; transform: translateY(0); }
+  .remote-entry.is-visible::backdrop { opacity: 1; }
+  .remote-entry.is-closing, .remote-entry.is-closing::backdrop { transition-duration: 160ms; }
+  .remote-entry__form { display: grid; gap: 8px; }
+  .remote-entry__field { min-height: 48px; }
+  .remote-entry__field:focus-within { outline: 2px solid var(--ref-palette-grey-500); outline-offset: 2px; }
+  .remote-entry__field input { height: 48px; font-size: 16px; }
+  .remote-entry__error { margin: 0; font-size: 14px; line-height: 1.4; }
+  .remote-entry__close { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .remote-entry__close:focus-visible { position: static; width: auto; height: auto; clip-path: none; }
+  .remote-entry__form[aria-busy="true"] input { opacity: 0.5; }
+  .remote-entry__reveal { position: fixed; inset: 0; z-index: 1000; background: rgb(255 255 255 / 90%); opacity: 0; transition: opacity 200ms ease; }
+  .remote-entry__reveal.is-visible { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .remote-entry { transform: none; } }
+</style>
