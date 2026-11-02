@@ -219,15 +219,15 @@
   }
 
   .dev-section-lift-backdrop {
-    --section-lift-card-inset: 0.75em;
+    --section-lift-card-inset: 0.375em;
     position: absolute;
-    inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    inset: calc(-1 * var(--section-lift-card-inset, 0.375em));
     /* Hug the media box, not the full-width section: a constrained or
        height-capped image is narrower than its column, and the card belongs to
        the image, not the empty gutter beside it. Vars from syncDragHandleAnchor;
        0 for full-width blocks, so those are unchanged. */
-    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.75em));
-    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.75em));
+    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.375em));
+    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.375em));
     z-index: -1;
     /* Page background token — tracks light/dark when --sys-color-srf changes. */
     background: var(--section-lift-background, var(--sys-color-srf));
@@ -244,6 +244,16 @@
   .dev-section-lift-backdrop.is-visible {
     opacity: 1;
     box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
+  }
+
+  /* The card is inserted on pointer-down and made visible a frame later; if the
+     browser hasn't styled it in between there is nothing to transition from and
+     it pops in. Starting from transparent guarantees the fade. */
+  @starting-style {
+    .dev-section-lift-backdrop.is-visible {
+      opacity: 0;
+      box-shadow: none;
+    }
   }
 
   /* Shadow fade-out on drop is WAAPI-synced with scale in sectionReorder.ts.
@@ -273,10 +283,10 @@
   .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving::before {
     content: '';
     position: absolute;
-    inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    inset: calc(-1 * var(--section-lift-card-inset, 0.375em));
     /* Same media hug as the lift card. */
-    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.75em));
-    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.75em));
+    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.375em));
+    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.375em));
     z-index: -1;
     background: var(--section-lift-background, var(--sys-color-srf));
     border-radius: var(--radius-control-smooth, 0.35em);
@@ -285,7 +295,7 @@
 
   .project-interactive-demo > .dev-section-lift-backdrop,
   .is-dev-mode .project-interactive-demo.is-section-flip-moving::before {
-    border-radius: calc(var(--radius-control-smooth) + var(--section-lift-card-inset, 0.75em));
+    border-radius: calc(var(--radius-control-smooth) + var(--section-lift-card-inset, 0.375em));
   }
 
   html.is-section-reorder-dragging {
@@ -402,7 +412,7 @@
   }
 
   .dev-section-drop-indicator {
-    --section-lift-card-inset: 0.75em;
+    --section-lift-card-inset: 0.375em;
     position: relative;
     display: grid;
     grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
@@ -440,17 +450,17 @@
   .dev-section-drop-indicator__body::after {
     content: '';
     position: absolute;
-    inset: calc(-1 * var(--section-lift-card-inset, 0.75em) + var(--section-slot-card-inset, 2px));
+    inset: calc(-1 * var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px));
     /* Mirrors the lifted block's media hug — vars copied onto the indicator in
        enterLift, since the slot lives outside the section it stands in for. */
     left: calc(
       var(--dev-section-inset, 0px)
-      - var(--section-lift-card-inset, 0.75em)
+      - var(--section-lift-card-inset, 0.375em)
       + var(--section-slot-card-inset, 2px)
     );
     right: calc(
       var(--dev-section-inset-end, 0px)
-      - var(--section-lift-card-inset, 0.75em)
+      - var(--section-lift-card-inset, 0.375em)
       + var(--section-slot-card-inset, 2px)
     );
     box-sizing: border-box;
