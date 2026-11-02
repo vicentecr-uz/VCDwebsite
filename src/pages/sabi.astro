@@ -1,0 +1,19 @@
+---
+import HeroLayout from '../layouts/HeroLayout.astro';
+import ProjectSections from '../components/project/ProjectSections.astro';
+import { loadPageDocument } from '../lib/projects';
+import { pageColumnStyle } from '../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
+
+const page = loadPageDocument('sabi');
+---
+
+<HeroLayout title={page.title ?? 'Sabi'} description={page.description} columnStyle={pageColumnStyle(page.sections)}>
+  <div data-dev-project-drop-zone>
+    <ProjectSections documentKey="sabi" sections={page.sections} />
+    <div
+      class:list={[projectStackClass(page.trailingSpacing ?? 'none')]}
+      {...(spacingDevAttrs('sabi', ['sections', page.sections.length], page.trailingSpacing ?? 'none', { writePath: ['trailingSpacing'] }) ?? {})}
+    />
+  </div>
+</HeroLayout>

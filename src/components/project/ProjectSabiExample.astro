@@ -1,0 +1,112 @@
+---
+import { Code } from 'astro:components';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import '../../styles/dev-chrome.css';
+import '../../lib/sabi/styles.css';
+import './sabi-page.css';
+
+interface Props {
+  example: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const { example, documentKey, sectionPath, spacing = 'group', sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+
+const title = 'A long title that runs past the edge of the field';
+const field = (input: string, { dir, before = '', after = '' }: { dir?: string; before?: string; after?: string } = {}) =>
+  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
+
+// Each option's markup is both the live preview and the code shown under it.
+const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
+  compare: [
+    { label: 'Sabi', html: field(`<input aria-label="Title" value="${title}" />`) },
+    { label: 'Native', html: `<label class="sabi-page-field">\n  <input aria-label="Title" value="${title}" />\n</label>` },
+  ],
+  affixes: [
+    { label: 'Prefix', html: field('<input aria-label="URL" value="example.com/a/long/path/that/runs/past/the/edge" />', { before: '    <span>https://</span>\n' }) },
+    { label: 'Suffix', html: field('<input aria-label="File name" value="a-post-with-a-surprisingly-long-title" />', { after: '    <span>.md</span>\n' }) },
+  ],
+  direction: [
+    { label: 'Right to left', html: field('<input aria-label="כותרת" value="השועל החום המהיר קופץ מעל הכלב העצלן בזמן שהחתול צופה מרחוק" />', { dir: 'rtl' }) },
+    { label: 'Mixed', html: field('<input aria-label="חיפוש" dir="auto" value="הזמנה מספר 48213 עבור Acme Corporation נשלחה ל-London" />', { dir: 'rtl', before: '    <span>חיפוש:</span>\n' }) },
+  ],
+  fade: [
+    { label: 'Default', html: field(`<input aria-label="Title" value="${title}" />`) },
+    { label: 'Wide', html: field(`<input aria-label="Title" value="${title}" />`).replace('<sabi-input>', '<sabi-input style="--sabi-fade-width: 48px">') },
+  ],
+};
+const options = SABI_EXAMPLES[example] ?? [];
+---
+
+<div
+  id={sectionId}
+  class:list={['project-block', 'sabi-example', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={editable ? 'sabiExample' : undefined}
+  data-options
+>
+  <div class="dev-segmented sabi-example__options" role="group" aria-label="Example">
+    {options.map(({ label }, index) => (
+      <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-center" aria-pressed={String(index === 0)}>{label}</button>
+    ))}
+  </div>
+  {options.map(({ html }, index) => (
+    <figure class="sabi-example__panel" data-option-panel hidden={index > 0}>
+      <div class="sabi-example__preview" set:html={html} />
+      <Code code={html} lang="html" theme="github-light" />
+    </figure>
+  ))}
+</div>
+
+<script>
+  import './optionPanels';
+  import { define } from '../../lib/sabi/core';
+  define();
+</script>
+
+<style>
+  .sabi-example {
+    /* Edit mode's lift card sits concentric with the panel's corners. */
+    --section-content-radius: var(--radius-card);
+  }
+
+  .sabi-example:has(> .dev-segmented) {
+    --section-content-radius-top: var(--dev-radius-control-in-container);
+  }
+
+  .sabi-example__options {
+    width: fit-content;
+    margin-bottom: var(--space-related);
+  }
+
+  .sabi-example__panel {
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--radius-card);
+    background: var(--sys-color-srf-container-low);
+  }
+
+  .sabi-example__preview {
+    display: grid;
+    place-items: center;
+    min-height: 10em;
+    padding: 2em 1em;
+    background: var(--sys-color-srf);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-bottom: 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+  }
+
+  .sabi-example :global(.astro-code) {
+    margin: 0;
+    padding: 1em 1.25em;
+    background: none !important;
+    font: 0.875rem/1.6 var(--font-mono);
+  }
+</style>

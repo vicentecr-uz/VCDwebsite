@@ -1,0 +1,88 @@
+---
+import { Code } from 'astro:components';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import copyIcon from 'lucide-static/icons/copy.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import '../../styles/dev-chrome.css';
+
+interface Props {
+  options: Array<{ label?: string; lang: string; code: string }>;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const { options, documentKey, sectionPath, spacing = 'group', sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+---
+
+<div
+  id={sectionId}
+  class:list={['project-block', 'code-block', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={editable ? 'codeBlock' : undefined}
+  data-options
+>
+  {options.length > 1 && (
+    <div class="dev-segmented code-block__options" role="group" aria-label="Language">
+      {options.map(({ label }, index) => (
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-center" aria-pressed={String(index === 0)}>{label}</button>
+      ))}
+    </div>
+  )}
+  {options.map(({ lang, code }, index) => (
+    <div class="code-block__panel" data-option-panel hidden={index > 0}>
+      <Code code={code.trim()} lang={lang as never} theme="github-light" />
+      {!code.includes('\n') && (
+        <button type="button" class="dev-btn dev-btn--ghost code-block__copy" aria-label="Copy" title="Copy" data-copy-code={code.trim()}>
+          <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
+        </button>
+      )}
+    </div>
+  ))}
+</div>
+
+<script>
+  import './optionPanels';
+</script>
+
+<style>
+  .code-block {
+    /* Edit mode's lift card sits concentric with the panel's corners. */
+    --section-content-radius: var(--radius-card);
+  }
+
+  .code-block:has(> .dev-segmented) {
+    --section-content-radius-top: var(--dev-radius-control-in-container);
+  }
+
+  .code-block__options {
+    width: fit-content;
+    margin-bottom: var(--space-related);
+  }
+
+  /* Corners on the panel, at the block's font size, so they match the
+     --section-content-radius above; the code itself is set smaller. */
+  .code-block__panel {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-card);
+  }
+
+  .code-block :global(.astro-code) {
+    margin: 0;
+    padding: 1em 1.25em;
+    background: var(--sys-color-srf-container-low) !important;
+    font: 0.875rem/1.6 var(--font-mono);
+  }
+
+  .code-block__copy {
+    position: absolute;
+    top: 50%;
+    right: 0.5em;
+    translate: 0 -50%;
+  }
+</style>

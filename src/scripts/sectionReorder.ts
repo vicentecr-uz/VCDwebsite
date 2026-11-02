@@ -808,7 +808,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
     ghost.style.opacity = String(opacity);
-    ['--dev-section-inset', '--dev-section-inset-end', '--section-lift-card-inset', '--section-slot-card-inset']
+    ['--dev-section-inset', '--dev-section-inset-end', '--section-lift-card-inset', '--section-slot-card-inset', '--section-content-radius', '--section-content-radius-top']
       .forEach((property) => ghost.style.setProperty(property, computed.getPropertyValue(property)));
     (host.getDropZone() ?? document.body).appendChild(ghost);
     activeFadeGhosts.push(ghost);

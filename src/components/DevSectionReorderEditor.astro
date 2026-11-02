@@ -229,6 +229,12 @@ import '../styles/sectionReorderChrome.css';
         '--dev-section-inset-end',
         `${Math.max(0, zoneRect.right - rootRect.right) + innerInset('--dev-section-inset-end')}px`,
       );
+      // The slot lives outside the block, so carry its corner radius for a concentric card.
+      const computed = getComputedStyle(dragItem);
+      for (const property of ['--section-content-radius', '--section-content-radius-top']) {
+        const value = computed.getPropertyValue(property);
+        if (value) indicator.style.setProperty(property, value);
+      }
     },
     moveIndicatorWithFlip: false,
     classes: {
