@@ -11,6 +11,7 @@ import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 import { pageColumnStyle } from '../lib/pageColumn';
 import {
   getProjectSlugsForBuild,
+  isWriteupProject,
   loadProjectBySlug,
   shouldIncludeProjectInBuild,
 } from '../lib/projects';
@@ -40,8 +41,7 @@ const listingCover = Object.values(project.listings ?? {})
   .map((listing) => listing?.image)
   .find((image): image is string => Boolean(image));
 const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
-// Digital-page projects read as single-column write-ups; the rest keep the header layout.
-const PageLayout = project.listings?.play ? WriteupLayout : ProjectLayout;
+const PageLayout = isWriteupProject(project) ? WriteupLayout : ProjectLayout;
 ---
 
 {project.stack === 'legacy' ? (

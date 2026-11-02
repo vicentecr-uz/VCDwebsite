@@ -80,8 +80,11 @@ const hoverDark = item.hoverDark ?? item.dark;
 const showHoverImg = item.hoverImage || projectEditable;
 const showAwardBadge = item.slug === 'goodhome-painting-tools' || (isDev && item.slug === '__template__');
 const normalizedItemHref = item.href?.replace(/\/+$/, '') || '';
+const ownPage = Boolean(item.slug) && normalizedItemHref === `/${item.slug}`;
+// Write-ups have no header, so it fades out with the page instead of retitling.
+const fadeHeader = ownPage && item.writeup;
 const navigationTitle = normalizedItemHref === '/styles' ? 'Design System' :
-  item.slug && normalizedItemHref === `/${item.slug}` ? item.title : undefined;
+  ownPage && !fadeHeader ? item.title : undefined;
 ---
 
 <li
@@ -231,7 +234,7 @@ const navigationTitle = normalizedItemHref === '/styles' ? 'Design System' :
       </div>
     </div>
   ) : (
-    <a href={item.href} class="project-grid__card block" data-header-navigation-title={navigationTitle}>
+    <a href={item.href} class="project-grid__card block" data-header-navigation-title={navigationTitle} data-header-navigation-fade={fadeHeader || undefined}>
       <div
         class:list={[
           'project-grid__cover',
