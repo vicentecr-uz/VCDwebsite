@@ -56,6 +56,8 @@ interface Props {
    * Project pages pass their own cover; everything else gets the site default.
    */
   ogImage?: string;
+  /** Absolute canonical URL, when the page is served somewhere other than its path on `site`. */
+  canonicalUrl?: string;
   /**
    * Candidate inline style for #site-wrapper. ADAPTIVE_PAGE_COLUMNS_ENABLED
    * controls whether Layout applies it and mounts the dev/HMR synchronizer.
@@ -68,12 +70,13 @@ const {
   persistentNavigation = false,
   description = 'Born in Rome, IT. Based in London, UK.',
   ogImage = DEFAULT_OG_IMAGE,
+  canonicalUrl,
   columnStyle,
 } = Astro.props;
 
 // Astro.site comes from `site` in astro.config.mjs. Absolute URLs are required:
 // og:image and canonical are both ignored by scrapers when relative.
-const canonical = new URL(Astro.url.pathname, Astro.site);
+const canonical = canonicalUrl ? new URL(canonicalUrl) : new URL(Astro.url.pathname, Astro.site);
 const ogImageUrl = new URL(ogImage, Astro.site);
 const showDevTools = import.meta.env.DEV;
 const pageHtml = await Astro.slots.render('default') ?? '';
