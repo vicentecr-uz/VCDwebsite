@@ -41,14 +41,23 @@
   margin-top: var(--project-stack-margin, var(--space-related));
 }
 
-/* A title over a boxed block: pull the block up by the line's space below the
-   baseline, so the gap reads like the related gap between the block's own
+/* A title over a boxed block: pull the block up by the title line's space below
+   the baseline, so the gap reads like the related gap between the block's own
    boxes. For Hanken Grotesk (ascender 1000, descender 303, cap 697; see Header)
-   that space is exactly half of line-height minus cap height. Re-measure if the
-   typeface changes. text-box-trim would do this generically, but the title's
-   min-height: 1lh holds its box open, and Firefox lacks it. */
-.project-stack--precede-related:has(+ :is(.code-block, .sabi-example)) .project-section-title {
-  margin-bottom: calc((1cap - 1lh) / 2);
+   that space is (line-height - 0.697em) / 2. Re-measure if the typeface changes.
+   It lives in the block's own margin-top, the margin the reorder engine
+   measures and gives the drop slot, so a lifted block settles where it was.
+   text-box-trim can't do this: the title's min-height: 1lh holds its box open. */
+.project-stack--precede-related:has(> h2.project-section-title) + :is(.code-block, .sabi-example) {
+  --title-pull: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
+}
+
+.project-stack--precede-related:has(> h3.project-section-title) + :is(.code-block, .sabi-example) {
+  --title-pull: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
+}
+
+.project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + :is(.code-block, .sabi-example) {
+  margin-top: calc(var(--project-stack-margin, var(--space-related)) - var(--title-pull, 0px));
 }
 
 .project-page__main > .project-stack--related,
