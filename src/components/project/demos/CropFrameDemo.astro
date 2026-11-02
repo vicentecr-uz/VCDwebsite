@@ -87,7 +87,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
   :global(.project-interactive-demo:has(vcd-crop-frame-demo)) { z-index: 1; }
   /* Side placement only when the panel fits in the right gutter (set by the script); otherwise it sits under the image. */
   .crop-frame-demo__panel { position: relative; width: min(100%, 22rem); margin-inline: auto; z-index: 60; }
-  vcd-crop-frame-demo[data-crop-panel-side] .crop-frame-demo__panel { position: absolute; top: var(--crop-panel-top, calc(var(--space-unit) * 2)); left: calc(100% + var(--space-unit) * 2); width: 20rem; margin: 0; }
+  vcd-crop-frame-demo[data-crop-panel-side] .crop-frame-demo__panel { position: absolute; top: 0; left: calc(100% + var(--space-unit) * 2); width: 20rem; margin: 0; }
   vcd-crop-frame-demo[data-page-reveal-ready='false'] .crop-frame-demo__panel { visibility: hidden; }
   vcd-crop-frame-demo[data-crop-panel-side] .crop-frame-demo__panel :global(.dev-overlay) { position: absolute; left: 0; top: 0; width: 100%; max-height: calc(100 * var(--vh-safe, 1svh) - (var(--space-unit) * 2)); }
   vcd-crop-frame-demo:not([data-crop-panel-side]) .crop-frame-demo__panel :global(.dev-overlay) { position: relative; inset: auto; max-height: none; }
@@ -255,29 +255,6 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
       // Side placement needs the panel (20rem), its gap and a matching outer margin beside a centred full-width layout.
       const sideSpaceRem = 20 + 4;
       const modeQuery = window.matchMedia(`(min-width: calc(${parseFloat(window.getComputedStyle(layout).maxWidth)}px + ${2 * sideSpaceRem}rem))`);
-      let userPositioned = false;
-      let observedHost: HTMLElement | undefined;
-      const measurePanelTop = () => {
-        if (userPositioned || !modeQuery.matches || !host) return;
-        const iframeRect = iframe.getBoundingClientRect();
-        const hostRect = host.getBoundingClientRect();
-        const layoutRect = layout.getBoundingClientRect();
-        const scale = iframe.offsetWidth ? iframeRect.width / iframe.offsetWidth : 0;
-        const header = panel.querySelector<HTMLElement>('[data-drag-handle]');
-        const panelRect = panel.getBoundingClientRect();
-        const headerRect = header?.getBoundingClientRect();
-        if (!scale || !headerRect || !Number.isFinite(hostRect.top)) return;
-        const imageTop = iframeRect.top + hostRect.top * scale;
-        const headerOffset = headerRect.bottom - panelRect.top;
-        layout.style.setProperty('--crop-panel-top', `${Math.max(0, imageTop - layoutRect.top - headerOffset)}px`);
-      };
-      const geometryObserver = new ResizeObserver(measurePanelTop);
-      geometryObserver.observe(previewColumn);
-      const markUserPositioned = (event: PointerEvent) => {
-        const target = event.target as Element | null;
-        if (modeQuery.matches && event.button === 0 && target?.closest('[data-drag-handle]') && !target.closest('[data-drag-ignore]')) userPositioned = true;
-      };
-      panel.addEventListener('pointerdown', markUserPositioned, { signal });
       const syncDragMode = () => {
         this.toggleAttribute('data-crop-panel-side', modeQuery.matches);
         cropGuide?.stop();
@@ -291,12 +268,7 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
           draggable.style.translate = 'none';
           draggable.style.position = modeQuery.matches ? 'absolute' : 'relative';
         }
-        userPositioned = false;
-        layout.style.removeProperty('--crop-panel-top');
-        if (modeQuery.matches && draggable) {
-          dragCleanup = createDevPanelDrag(draggable);
-          measurePanelTop();
-        }
+        if (modeQuery.matches && draggable) dragCleanup = createDevPanelDrag(draggable);
       };
       modeQuery.addEventListener?.('change', syncDragMode, { signal });
       syncDragMode();
@@ -329,13 +301,9 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         replacement.destroy();
         crop?.destroy();
         host = nextHost;
-        if (observedHost) geometryObserver.unobserve(observedHost);
-        observedHost = host;
-        geometryObserver.observe(host);
         crop = createDemoImageCrop({ host, controls: panel, initialAspect: '4:3', initialState });
         if (previousState) crop.restore(previousState);
         if (viewport) crop.setViewport(viewport.getViewport());
-        measurePanelTop();
         const localCrop = crop;
         let controlsReady = true;
         let authoringReady: Promise<void> = Promise.resolve();
@@ -392,7 +360,6 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
           first = window.requestAnimationFrame(() => { second = window.requestAnimationFrame(finish); });
         });
         if (!current()) return;
-        measurePanelTop();
         panel.inert = false;
         publishReady();
         if (!controlsReady) return;
@@ -452,7 +419,6 @@ const catalog = suppliedCatalog ?? (!canvasOnly && import.meta.env.DEV ? await r
         cropGuide?.destroy();
         viewport?.destroy();
         dragCleanup();
-        geometryObserver.disconnect();
         visibility.disconnect();
       };
     }
