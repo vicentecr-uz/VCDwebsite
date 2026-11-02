@@ -6665,9 +6665,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .is-dev-mode [data-dev-text-document]::before {
     content: '';
     position: absolute;
-    inset: -0.5em;
+    /* Rings and wash hug the text and stay concentric with its 0.15em corners. */
+    inset: -0.25em;
     border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
-    border-radius: 0.5em;
+    border-radius: 0.4em;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
@@ -6676,10 +6677,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .is-dev-mode [data-dev-text-document]::after {
     content: '';
     position: absolute;
-    inset: -0.3em;
+    inset: -0.15em;
     z-index: -1;
     border-radius: 0.3em;
-    background: var(--comp-button-ghost-container-hover);
+    background: color-mix(in srgb, currentColor 5%, transparent);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
@@ -6696,23 +6697,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   /*
-    Adaptive edit wash: tint toward the field’s own text color so dirty
-    stays readable on light page copy and dark embeds (e.g. Reddit comments).
-    Focused (selected) uses the same fill as ghost-button hover — lighter,
-    untinted. Dirty keeps the current-color mix, including while focused.
+    Adaptive edit wash: a translucent tint of the field’s own text color, so
+    it stays readable on light page copy, dark embeds (e.g. Reddit comments)
+    and filled buttons, whose ground shows through. Focused (selected) is the
+    lighter tint; dirty is stronger, including while focused.
     Dirty + unfocused: wash only — a persistent dashed ring reads as a
     tiny “grid” chrome icon at the top-left corner after click-away.
   */
   html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting)
     [data-dev-text-document]:focus::after {
     opacity: 1;
-    background: var(--comp-button-ghost-container-hover);
+    background: color-mix(in srgb, currentColor 5%, transparent);
   }
 
   html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting)
     [data-dev-text-document].is-dev-text-dirty::after {
     opacity: 1;
-    background: color-mix(in srgb, currentColor 10%, var(--sys-color-srf-container-low));
+    background: color-mix(in srgb, currentColor 14%, transparent);
   }
 
 
