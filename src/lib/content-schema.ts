@@ -51,6 +51,9 @@ const modern: Record<string, z.ZodRawShape> = {
   redditCommentCarousel: { items: z.array(object.extend({ author: text, paragraphs: strings, score: z.union([number, text]) })) },
   placeholder: { label: text.optional() },
   projectGrid: { variant: z.enum(['home', 'play']).optional() },
+  productHero: { title: text, tagline: text, links: z.array(object.extend({ label: text, href: text })) },
+  codeBlock: { options: z.array(object.extend({ label: text.optional(), lang: text, code: text })).min(1) },
+  sabiExample: { example: z.enum(['compare', 'affixes', 'direction', 'fade']) },
 };
 const legacy: Record<string, z.ZodRawShape> = {
   ...shared,

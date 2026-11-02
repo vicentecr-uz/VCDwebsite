@@ -1,33 +1,32 @@
 @layer sabi {
   /* The element is the scrolling text strip, not the field box: the mask fades
      everything it paints, so put backgrounds, borders and focus rings on a parent. */
+  /* The --sabi-* properties default through var() fallbacks rather than being set
+     here, so they can be set on any ancestor. Defaults: fade width 22px, fade solid
+     8px, caret penetration 4px, edge gutter 8px (core.ts reads the same). */
   sabi-input {
-    --sabi-fade-width: 22px;
-    --sabi-fade-solid: 8px;
-    --sabi-caret-penetration: 4px;
-    --sabi-edge-gutter: 8px;
     position: relative;
     display: flex;
     align-items: center;
     min-width: 0;
-    padding-inline: var(--sabi-edge-gutter);
+    padding-inline: var(--sabi-edge-gutter, 8px);
     /* The strip clips what overflows it, iOS selection handles included; taking
        the field box's corners makes that clip match the box. */
     border-radius: inherit;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
-    scroll-padding-inline: calc(var(--sabi-fade-width) - var(--sabi-caret-penetration));
+    scroll-padding-inline: calc(var(--sabi-fade-width, 22px) - var(--sabi-caret-penetration, 4px));
     cursor: text;
     /* iOS draws its tap flash over the whole input, overflow included, past the clip and fade. */
     -webkit-tap-highlight-color: transparent;
     /* Each fade runs from the fully hidden edge to full opacity, eased along a
        smoothstep curve in eight steps, so it has no visible start or end. */
-    --_sabi-l0: calc(var(--sabi-fade-solid) * var(--sabi-fade-left-progress, 0));
-    --_sabi-ls: calc((var(--sabi-fade-width) - var(--sabi-fade-solid)) * var(--sabi-fade-left-progress, 0));
-    --_sabi-r0: calc(100% - var(--sabi-fade-solid) * var(--sabi-fade-right-progress, 0));
-    --_sabi-rs: calc((var(--sabi-fade-width) - var(--sabi-fade-solid)) * var(--sabi-fade-right-progress, 0));
-    mask-image: linear-gradient(
+    --_sabi-l0: calc(var(--sabi-fade-solid, 8px) * var(--sabi-fade-left-progress, 0));
+    --_sabi-ls: calc((var(--sabi-fade-width, 22px) - var(--sabi-fade-solid, 8px)) * var(--sabi-fade-left-progress, 0));
+    --_sabi-r0: calc(100% - var(--sabi-fade-solid, 8px) * var(--sabi-fade-right-progress, 0));
+    --_sabi-rs: calc((var(--sabi-fade-width, 22px) - var(--sabi-fade-solid, 8px)) * var(--sabi-fade-right-progress, 0));
+    --_sabi-mask: linear-gradient(
       to right,
       rgb(0 0 0 / 0) var(--_sabi-l0),
       rgb(0 0 0 / 0.043) calc(var(--_sabi-l0) + var(--_sabi-ls) * 0.125),
@@ -48,6 +47,19 @@
       rgb(0 0 0 / 0.043) calc(var(--_sabi-r0) - var(--_sabi-rs) * 0.125),
       rgb(0 0 0 / 0) var(--_sabi-r0)
     );
+    /* Prefixed for Chrome before 120 and Safari before 15.4. */
+    -webkit-mask-image: var(--_sabi-mask);
+    mask-image: var(--_sabi-mask);
+  }
+
+  /* Set from the input's own `dir` (core.ts). In the layer, so a `direction` set on
+     the element itself still wins. */
+  sabi-input[data-dir="rtl"] {
+    direction: rtl;
+  }
+
+  sabi-input[data-dir="ltr"] {
+    direction: ltr;
   }
 
   sabi-input::-webkit-scrollbar {

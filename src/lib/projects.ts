@@ -77,7 +77,7 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
-export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics';
+export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics' | 'sabi';
 
 export type PageDocument = {
   examples?: StylesExamples;

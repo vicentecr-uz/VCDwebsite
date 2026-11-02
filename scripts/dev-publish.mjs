@@ -65,6 +65,8 @@ const RENDERING_PATHS = [
   'src/components/home/HomeIntroController.astro',
   'src/scripts/homeIntro.ts',
   'src/pages/play.astro',
+  'src/pages/sabi.astro',
+  'src/layouts/HeroLayout.astro',
   'src/pages/digital.astro',
   'src/pages/about.astro',
   'src/pages/[slug].astro',
