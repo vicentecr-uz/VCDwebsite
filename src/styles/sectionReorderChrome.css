@@ -231,7 +231,11 @@
     z-index: -1;
     /* Page background token — tracks light/dark when --sys-color-srf changes. */
     background: var(--section-lift-background, var(--sys-color-srf));
-    border-radius: var(--radius-control-smooth, 0.35em);
+    /* Concentric with the block's own corners when it declares
+       --section-content-radius (code blocks, demos), with --section-content-radius-top
+       when its top edge differs (a selector over a panel); otherwise
+       --radius-control-smooth. */
+    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em));
     /* Visibility is toggled with .is-visible so fade-out can wait until after settle. */
     opacity: 0;
     box-shadow: none;
@@ -289,13 +293,8 @@
     right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.375em));
     z-index: -1;
     background: var(--section-lift-background, var(--sys-color-srf));
-    border-radius: var(--radius-control-smooth, 0.35em);
+    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em));
     pointer-events: none;
-  }
-
-  .project-interactive-demo > .dev-section-lift-backdrop,
-  .is-dev-mode .project-interactive-demo.is-section-flip-moving::before {
-    border-radius: calc(var(--radius-control-smooth) + var(--section-lift-card-inset, 0.375em));
   }
 
   html.is-section-reorder-dragging {
@@ -465,7 +464,8 @@
     );
     box-sizing: border-box;
     border: 1px dashed transparent;
-    border-radius: var(--radius-control-smooth, 0.35em);
+    /* Concentric with the block's corners, a slot inset inside the lift card. */
+    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px));
     background: transparent;
     pointer-events: none;
     transition:
