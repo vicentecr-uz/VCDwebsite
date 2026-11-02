@@ -148,6 +148,10 @@ Both trailing-slash variants are reserved for each referral link, so these slugs
 
 Production output prunes pages that no link reaches, so `UNLINKED_ROUTES` in `scripts/public-site-output.mjs` keeps it shipping. Keep it unlinked; never add a public link to make it reachable.
 
+## Sabi subdomain
+
+`/sabi` is a hero page served at [sabi.vicentecr.uz](https://sabi.vicentecr.uz), so it ships through `UNLINKED_ROUTES` rather than a link from Home. `functions/_middleware.ts` serves it at the subdomain's root and redirects any `/sabi` path on either host to the subdomain; `public/_routes.json` limits the middleware to those paths, `/` and the existing `/api/*`, so other requests skip it. Its canonical URL is the subdomain.
+
 ## Key implementation files
 
 - `src/components/DevTextEditor.astro` — text/spacing Save bar, section changes, pending media batches, content/style publish UI

@@ -6,8 +6,9 @@ import { parse } from 'parse5';
 
 const GENERATED_EXTENSIONS = new Set(['.html', '.css', '.js']);
 const URL_ATTRIBUTES = new Set(['src', 'href', 'poster', 'data', 'action', 'srcset']);
-// Owner-only pages that ship without being linked; see docs/dev-authoring.md → Analytics opt-out page.
-const UNLINKED_ROUTES = ['/analytics/'];
+// Pages that ship without being linked; see docs/dev-authoring.md → Unlinked pages.
+// /analytics/ is owner-only; /sabi/ is served at sabi.vicentecr.uz (functions/_middleware.ts).
+const UNLINKED_ROUTES = ['/analytics/', '/sabi/'];
 
 /** @param {string} dir @returns {Promise<string[]>} */
 async function listFiles(dir) {
