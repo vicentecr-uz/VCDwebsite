@@ -117,14 +117,24 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
 
   .home-intro-surface__column {
     min-height: 100%;
+    padding-top: var(--page-top-offset);
     padding-inline: var(--page-gutter);
+  }
+
+  /* Top-aligned at the shared offset, not centred by the intro-height air. */
+  #home-intro-surface :global(.project-intro-air--start) {
+    display: none;
+  }
+
+  /* Name + role line gets the same gap below it as the write-up masthead. */
+  #home-intro-surface :global(.project-block--intro .project-body-text > :is(p, div):first-child + :is(p, div)) {
+    margin-top: var(--page-masthead-gap);
   }
 
   .home-intro-surface__column > .listing-main > :global([data-dev-project-drop-zone]:has(> .project-block--intro:first-child)) {
     min-height: calc(var(--vh-safe, 1svh) * var(--home-intro-height, 75));
     display: flex;
     flex-direction: column;
-    justify-content: center;
   }
 
   #home-intro-surface .home-intro-surface__column > .listing-main > :global([data-dev-project-drop-zone] > .project-block--intro:first-child) {
