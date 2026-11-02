@@ -50,19 +50,31 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 </script>
 
 <style>
+  .code-block {
+    /* Edit mode's lift card sits concentric with the panel's corners. */
+    --section-content-radius: var(--radius-card);
+  }
+
+  .code-block:has(> .dev-segmented) {
+    --section-content-radius-top: var(--dev-radius-control-in-container);
+  }
+
   .code-block__options {
     width: fit-content;
     margin-bottom: var(--space-related);
   }
 
+  /* Corners on the panel, at the block's font size, so they match the
+     --section-content-radius above; the code itself is set smaller. */
   .code-block__panel {
     position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-card);
   }
 
   .code-block :global(.astro-code) {
     margin: 0;
     padding: 1em 1.25em;
-    border-radius: var(--radius-card);
     background: var(--sys-color-srf-container-low) !important;
     font: 0.875rem/1.6 var(--font-mono);
   }
