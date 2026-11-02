@@ -20,6 +20,7 @@ const authoringComponents = new Set([
   'DevSectionReorderEditor.astro',
   'DevShortcutsHelp.astro',
   'DevTextEditor.astro',
+  'DevComponentNotes.astro',
   'DevThemeToggle.astro',
   'StyleColorTokenEditor.astro',
   'archive/ArchivedDevPanels.astro',

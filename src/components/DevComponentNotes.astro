@@ -1,0 +1,19 @@
+---
+import '../styles/dev-chrome.css';
+import '../styles/dev-component-notes.css';
+---
+<div data-dev-component-notes-root></div>
+<script>
+  import { createElement } from 'react';
+  import { createRoot } from 'react-dom/client';
+  import ComponentNoteDrawer from './dev/ComponentNoteDrawer';
+  import { onPageLoad } from '../lib/pageLifecycle';
+  const dispose = onPageLoad(() => {
+    const host = document.querySelector<HTMLElement>('[data-dev-component-notes-root]');
+    if (!host) return;
+    const root = createRoot(host);
+    root.render(createElement(ComponentNoteDrawer));
+    return () => root.unmount();
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
