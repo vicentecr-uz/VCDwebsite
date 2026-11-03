@@ -1,4 +1,6 @@
 ---
+import Menu from './ui/Menu.astro';
+
 interface Props {
   contents: Array<{ id: string; label: string }>;
 }
@@ -8,11 +10,13 @@ const { contents } = Astro.props;
 {contents.length > 0 && (
   <nav class="documentation-contents" aria-label="On this page" data-documentation-contents>
     <p>On this page</p>
-    <ul>
-      {contents.map(({ id, label }) => (
-        <li><a href={`#${id}`}>{label}</a></li>
-      ))}
-    </ul>
+    <div class="documentation-contents__outline">
+      <Menu as="ul" backplate={false}>
+        {contents.map(({ id, label }) => (
+          <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href={`#${id}`}>{label}</a></li>
+        ))}
+      </Menu>
+    </div>
   </nav>
 )}
 
@@ -57,10 +61,8 @@ const { contents } = Astro.props;
 <style>
   .documentation-contents { color: var(--sys-color-on-srf-variant); font-size: 0.875rem; line-height: 1.6; }
   p { color: var(--sys-color-on-srf); margin: 0 0 1rem; }
-  ul { display: grid; gap: 0; padding: 0 0 0 1rem; margin: 0; list-style: none; border-left: 1px solid var(--sys-color-outline-variant); }
-  a { position: relative; display: flex; align-items: center; min-height: 40px; padding: 0.5rem; margin-inline: -0.5rem; box-sizing: border-box; border-radius: var(--radius-control); color: inherit; text-decoration: none; }
-  a:hover { color: var(--sys-color-on-srf); background: var(--comp-button-ghost-container-hover); }
-  a:active { background: var(--comp-button-ghost-container-pressed); }
-  a[aria-current='location'] { color: var(--sys-color-on-srf); }
-  a[aria-current='location']::before { content: ''; position: absolute; left: calc(-0.5rem - 1px); top: 0.5rem; bottom: 0.5rem; width: 2px; background: var(--sys-color-on-srf-variant); pointer-events: none; }
+  .documentation-contents__outline { padding-left: 4px; border-left: 1px solid var(--sys-color-outline-variant); }
+  a { white-space: normal; text-align: left; color: var(--sys-color-on-srf-variant); }
+  a:hover, a[aria-current='location'] { color: var(--sys-color-on-srf); }
+  a[aria-current='location']::after { content: ''; position: absolute; left: calc(-0.5rem - 1px); top: 0.5rem; bottom: 0.5rem; width: 2px; background: var(--sys-color-on-srf-variant); pointer-events: none; }
 </style>

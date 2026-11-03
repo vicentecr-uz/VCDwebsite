@@ -6,12 +6,14 @@ import '../../styles/dev-chrome.css';
 // size="page" is for menus opened from page-sized buttons (16px rows).
 interface Props {
   size?: 'dev' | 'page';
+  as?: 'div' | 'ul';
+  backplate?: boolean;
   [key: string]: any;
 }
 
-const { size = 'dev', class: className, ...rest } = Astro.props;
+const { size = 'dev', as: Tag = 'div', backplate = true, class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['dev-menu', size === 'page' && 'dev-menu--page', className]} {...rest}>
+<Tag class:list={['dev-menu', size === 'page' && 'dev-menu--page', !backplate && 'dev-menu--bare', className]} {...rest}>
   <slot />
-</div>
+</Tag>
