@@ -1,4 +1,4 @@
-import { contentHmrGate } from '../content-hmr-gate.mjs';
+import { contentHmrGate } from '../content-hmr-gate.mjs?test=content-hmr-gate';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import test from 'node:test';
