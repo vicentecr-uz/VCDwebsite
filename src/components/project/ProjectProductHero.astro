@@ -111,9 +111,10 @@ const agents = [
         menu.togglePopover(open);
         if (open) place();
       };
-      // A top-layer popover, centred 6px under the button.
+      // A top-layer popover, centred 6px under the button and at least as wide.
       const place = () => {
         const rect = trigger.getBoundingClientRect();
+        menu.style.minWidth = `${rect.width}px`;
         clampToViewport(menu, rect.left + (rect.width - menu.offsetWidth) / 2, rect.bottom + 6);
       };
       window.addEventListener('scroll', () => isOpen() && place(), { capture: true, signal });
@@ -181,8 +182,12 @@ const agents = [
 </script>
 
 <style>
+  /* minmax(0, 1fr) caps the column at the page width: WebKit sizes an auto
+     column by the URL field's unclamped text, centring everything in a column
+     wider than the page. */
   .product-hero {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     justify-items: center;
     text-align: center;
   }
@@ -260,7 +265,6 @@ const agents = [
   }
 
   .product-hero__menu {
-    min-width: 11em;
     text-align: start;
   }
 
