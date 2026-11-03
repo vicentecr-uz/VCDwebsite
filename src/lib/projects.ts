@@ -42,6 +42,7 @@ export type ProjectDocument = {
   description?: string;
   status?: ProjectStatus;
   stack?: ProjectStack;
+  layout?: 'case-study' | 'writeup';
   listings?: Partial<Record<'home' | 'play', ProjectListingCard>>;
   teaser?: ProjectTeaserConfig;
   trailingSpacing?: ProjectStackSpacing;
@@ -74,9 +75,9 @@ export type ProjectGridListing = {
   writeup?: boolean;
 };
 
-/** Digital-page projects read as single-column write-ups; the rest keep the header layout. */
+/** Modern projects may explicitly choose a write-up or case-study layout; legacy defaults and old play listings retain their existing behavior. */
 export const isWriteupProject = (project: ProjectDocument) =>
-  project.stack !== 'legacy' && Boolean(project.listings?.play);
+  project.stack !== 'legacy' && (project.layout === 'writeup' || (project.layout !== 'case-study' && Boolean(project.listings?.play)));
 
 const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   '../content/projects/*.json',
