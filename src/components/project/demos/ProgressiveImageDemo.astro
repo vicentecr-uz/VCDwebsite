@@ -353,8 +353,9 @@ const showPrototypeControls = false;
         return;
       }
       const stackRect = stack.getBoundingClientRect();
-      const progress = Number.parseFloat(getComputedStyle(reveal).getPropertyValue('--preview-reveal-y')) / 100;
-      const feather = 0.22;
+      const revealStyle = getComputedStyle(reveal);
+      const progress = Number.parseFloat(revealStyle.getPropertyValue('--preview-reveal-y')) / 100;
+      const feather = Number.parseFloat(revealStyle.getPropertyValue('--preview-reveal-feather')) / 100;
       const mask = `linear-gradient(to bottom, #000 ${(progress - feather) * 100}%, transparent ${(progress + feather) * 100}%)`;
       const inverse = `linear-gradient(to bottom, transparent ${(progress - feather) * 100}%, #000 ${(progress + feather) * 100}%)`;
       const position = (badge: HTMLElement) => {
@@ -426,9 +427,10 @@ const showPrototypeControls = false;
       const low = stack.querySelector<HTMLImageElement>('[data-preview-thumb]') ?? image;
       context.drawImage(reveal ? low : image, 0, 0, imageWidth, imageHeight);
       if (reveal?.complete && reveal.naturalWidth) {
-        // Mirror the shared loader's 22% feather; replace this adapter if its mask changes.
+        // Mirror the shared loader's computed feather so the canvas stays aligned with the DOM wipe.
         const revealStyle = getComputedStyle(reveal);
         const progress = parseFloat(revealStyle.getPropertyValue('--preview-reveal-y')) / 100;
+        const feather = parseFloat(revealStyle.getPropertyValue('--preview-reveal-feather')) / 100;
         maskContext.resetTransform();
         maskContext.clearRect(0, 0, mask.width, mask.height);
         maskContext.globalCompositeOperation = 'source-over';
@@ -439,7 +441,7 @@ const showPrototypeControls = false;
         if (reducedMotion.matches) {
           maskContext.fillStyle = `rgba(0, 0, 0, ${revealStyle.opacity})`;
         } else {
-          const gradient = maskContext.createLinearGradient(0, (progress - 0.22) * imageHeight, 0, (progress + 0.22) * imageHeight);
+          const gradient = maskContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
           gradient.addColorStop(0, '#000');
           gradient.addColorStop(1, 'transparent');
           maskContext.fillStyle = gradient;
@@ -472,7 +474,7 @@ const showPrototypeControls = false;
         const badgeReveal = reveal && reveal.getAttribute('data-preview-reveal') !== null ? getComputedStyle(reveal) : null;
         if (badgeReveal && !reducedMotion.matches) {
           const progress = Number.parseFloat(badgeReveal.getPropertyValue('--preview-reveal-y')) / 100;
-          const feather = 0.22;
+          const feather = Number.parseFloat(badgeReveal.getPropertyValue('--preview-reveal-feather')) / 100;
           badgeContext.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
           const highGradient = badgeContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
           highGradient.addColorStop(0, '#000'); highGradient.addColorStop(1, 'transparent');
