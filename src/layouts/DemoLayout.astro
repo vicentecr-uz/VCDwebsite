@@ -30,9 +30,7 @@ const policy = [
     <title>{title}</title>
   </head>
   <body>
-    {scrolling ? <div class="demo-scroll-viewport">
-      <main class="demo-page demo-page--scrolling" data-page-viewport><slot /></main>
-    </div> : <main class="demo-page"><slot /></main>}
+    {scrolling ? <main class="demo-page demo-page--scrolling"><slot /></main> : <main class="demo-page"><slot /></main>}
   </body>
 </html>
 
@@ -44,11 +42,14 @@ const policy = [
     background: var(--comp-demo-frame-container);
   }
 
-  html:has(.demo-page--scrolling),
+  html:has(.demo-page--scrolling) {
+    overflow-y: auto;
+    overscroll-behavior: auto;
+  }
+
   body:has(.demo-page--scrolling) {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
+    overflow: visible;
+    overscroll-behavior: auto;
   }
 
   .demo-page {
@@ -64,42 +65,31 @@ const policy = [
     width: 100%;
   }
 
-  .demo-scroll-viewport {
-    position: fixed;
-    inset: 0;
-    overflow: hidden;
-    /* A stationary containing block keeps fixed drag lifts in the content mask. */
-    transform: translateZ(0);
-    /* Keep the native scrollbar visible through the content veil at the far right. */
-    mask-image: linear-gradient(to bottom,
-      transparent 0.5rem,
-      rgb(0 0 0 / 0.04) 0.8rem,
-      rgb(0 0 0 / 0.18) 1.1rem,
-      rgb(0 0 0 / 0.5) 1.5rem,
-      rgb(0 0 0 / 0.82) 1.9rem,
-      rgb(0 0 0 / 0.96) 2.2rem,
-      black 2.5rem,
-      black calc(100% - 2.5rem),
-      rgb(0 0 0 / 0.96) calc(100% - 2.2rem),
-      rgb(0 0 0 / 0.82) calc(100% - 1.9rem),
-      rgb(0 0 0 / 0.5) calc(100% - 1.5rem),
-      rgb(0 0 0 / 0.18) calc(100% - 1.1rem),
-      rgb(0 0 0 / 0.04) calc(100% - 0.8rem),
-      transparent calc(100% - 0.5rem)),
-      linear-gradient(black, black);
-    mask-size: 100% 100%, 1.25rem 100%;
-    mask-position: center, right;
-    mask-repeat: no-repeat;
-  }
-
   .demo-page--scrolling {
     display: block;
-    height: 100%;
-    min-height: 0;
     padding-block: calc(var(--space-unit) * 5);
-    overflow-x: hidden;
-    overflow-y: auto;
     overflow-anchor: none;
+  }
+
+  .demo-page--scrolling::before,
+  .demo-page--scrolling::after {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: 2.5rem;
+    z-index: 99;
+    pointer-events: none;
+  }
+
+  .demo-page--scrolling::before {
+    top: 0;
+    background: linear-gradient(to bottom, var(--comp-demo-frame-container) 0.5rem, transparent 2.5rem);
+  }
+
+  .demo-page--scrolling::after {
+    bottom: 0;
+    background: linear-gradient(to top, var(--comp-demo-frame-container) 0.5rem, transparent 2.5rem);
   }
 
   .demo-page.demo-page--scrolling :global(.demo-controls) {
