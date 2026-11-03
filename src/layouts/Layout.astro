@@ -818,6 +818,20 @@ const initialThemeColor = resolveToken('sys.color.srf');
         document.documentElement.removeAttribute('data-header-navigation');
       };
 
+      const revealWithoutVeil = () => {
+        invalidate();
+        if (readinessMarker) readinessMarker.hidden = true;
+        overlay.style.animation = 'none';
+        overlay.style.opacity = '0';
+        overlay.hidden = true;
+        delete overlay.dataset.loading;
+        overlay.dataset.vcdInitialReveal = 'complete';
+        bindImagePreviewUpgrade();
+        emitTransitionMilestone('preview-gate-open');
+        openImagePreviewUpgrade();
+        window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
+      };
+
       installPersistentNavigation({
         cover: () => {
           const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
@@ -836,8 +850,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
             });
           });
         },
-        reveal: () => { bindImagePreviewUpgrade(); void revealPage(); },
-        cancel: () => { clearHeaderNavigationState(); void revealPage(); },
+        reveal: (skipVeil = false) => { if (skipVeil) revealWithoutVeil(); else { bindImagePreviewUpgrade(); void revealPage(); } },
+        cancel: (skipVeil = false) => { clearHeaderNavigationState(); if (skipVeil) revealWithoutVeil(); else void revealPage(); },
         beforeSwap: resetImagePreviewUpgrade,
       });
 
