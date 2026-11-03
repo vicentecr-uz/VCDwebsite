@@ -1,4 +1,6 @@
 ---
+import chevronDownIcon from 'lucide-static/icons/chevron-down.svg?raw';
+import { sizeIcon } from '../../lib/icons';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import '../../styles/dev-chrome.css';
 import '../../lib/sabi/styles.css';
@@ -23,6 +25,17 @@ const textAttrs = (...path: Array<string | number>) => editable ? {
   'data-dev-text-path': JSON.stringify([...sectionPath, ...path]),
   'data-dev-text-kind': 'text',
 } : {};
+
+// The first link is the docs, set under the buttons; the rest stay buttons beside Install.
+const [docs, ...buttons] = links;
+const installPrompt = "Install Sabi (npm package `sabi-input`) in this project. Follow the setup at https://github.com/vicentecr-uz/sabi#readme: add it with the project's package manager, register it once (or use the React component in a React app), then wrap the text inputs whose values can run past the field's edge, such as URLs, titles, search and passwords. Leave `type=\"email\"` and `type=\"number\"` fields as they are; if a long email address needs the fades, follow the README's link to Email and number fields.";
+const q = encodeURIComponent(installPrompt);
+// Each opens the agent's desktop app with the prompt in the composer, unsent.
+const agents = [
+  { label: 'Claude Code', href: `claude://code/new?q=${q}` },
+  { label: 'Codex', href: `codex://new?prompt=${q}` },
+  { label: 'Cursor', href: `cursor://anysphere.cursor-deeplink/prompt?text=${q}` },
+];
 ---
 
 <header
@@ -40,13 +53,27 @@ const textAttrs = (...path: Array<string | number>) => editable ? {
     </sabi-input>
   </label>
   <div class="product-hero__links">
-    {links.map(({ label, href }, index) => (
-      <a
-        class:list={['dev-btn', index === 0 ? 'dev-btn--filled' : 'dev-btn--soft', 'dev-btn--align-center']}
-        href={href}
-      ><span {...textAttrs('links', index, 'label')}>{label}</span></a>
+    <div class="product-hero__install" data-install-menu>
+      <button
+        type="button"
+        class="dev-btn dev-btn--filled dev-btn--raised dev-btn--align-center"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        aria-controls="product-hero-install-menu"
+      >Install<span class="dev-btn__icon" set:html={sizeIcon(chevronDownIcon, 16)} /></button>
+      <div class="product-hero__menu" id="product-hero-install-menu" role="menu" aria-label="Install with">
+        {agents.map(({ label, href }) => (
+          <a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="menuitem" tabindex="-1" href={href}>{label}</a>
+        ))}
+        <span class="dev-hairline" role="separator" />
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="menuitem" tabindex="-1" data-copy-prompt={installPrompt}>Copy prompt</button>
+      </div>
+    </div>
+    {buttons.map(({ label, href }, index) => (
+      <a class="dev-btn dev-btn--soft dev-btn--raised dev-btn--align-center" href={href}><span {...textAttrs('links', index + 1, 'label')}>{label}</span></a>
     ))}
   </div>
+  {docs && <a class="product-hero__docs" href={docs.href}>Documentation</a>}
 </header>
 
 <script>
@@ -57,12 +84,94 @@ const textAttrs = (...path: Array<string | number>) => editable ? {
   // so this runs before the page-transition listener on the link (as in Header).
   document.addEventListener('click', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    if ((event.target as Element).closest('.product-hero__links a')) event.preventDefault();
+    if ((event.target as Element).closest('.product-hero__links > a, .product-hero__docs')) event.preventDefault();
   }, true);
+
+  let lifecycle: AbortController | undefined;
+  document.addEventListener('astro:page-load', () => {
+    lifecycle?.abort();
+    lifecycle = new AbortController();
+    const { signal } = lifecycle;
+
+    for (const root of document.querySelectorAll<HTMLElement>('[data-install-menu]')) {
+      const trigger = root.querySelector<HTMLButtonElement>('[aria-haspopup]')!;
+      const items = [...root.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+      const isOpen = () => trigger.getAttribute('aria-expanded') === 'true';
+      // Opened by a mouse passing over, it closes when the mouse leaves; a click pins it.
+      let hoverOpened = false;
+      let closeTimer = 0;
+      const setOpen = (open: boolean) => {
+        clearTimeout(closeTimer);
+        if (!open) hoverOpened = false;
+        trigger.setAttribute('aria-expanded', String(open));
+      };
+      const focusItem = (index: number) => items.at(index % items.length)?.focus();
+
+      root.addEventListener('pointerenter', (event) => {
+        if (event.pointerType !== 'mouse') return;
+        clearTimeout(closeTimer);
+        if (!isOpen()) {
+          hoverOpened = true;
+          setOpen(true);
+        }
+      }, { signal });
+      root.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'mouse' && hoverOpened) closeTimer = window.setTimeout(() => setOpen(false), 200);
+      }, { signal });
+
+      trigger.addEventListener('click', (event) => {
+        if (hoverOpened) {
+          hoverOpened = false;
+          return;
+        }
+        setOpen(!isOpen());
+        if (isOpen() && event.detail === 0) focusItem(0);
+      }, { signal });
+      trigger.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        setOpen(true);
+        focusItem(event.key === 'ArrowDown' ? 0 : -1);
+      }, { signal });
+
+      root.addEventListener('keydown', (event) => {
+        const index = items.indexOf(document.activeElement as HTMLElement);
+        if (event.key === 'Escape' && isOpen()) {
+          setOpen(false);
+          trigger.focus();
+        } else if (event.key === 'Tab') {
+          setOpen(false);
+        } else if (index !== -1 && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          focusItem({ ArrowDown: index + 1, ArrowUp: index - 1, Home: 0, End: -1 }[event.key]!);
+        }
+      }, { signal });
+
+      document.addEventListener('pointerdown', (event) => {
+        if (isOpen() && !root.contains(event.target as Node)) setOpen(false);
+      }, { signal });
+
+      for (const item of items) {
+        item.addEventListener('click', async () => {
+          const prompt = item.dataset.copyPrompt;
+          if (prompt === undefined) return setOpen(false);
+          await navigator.clipboard.writeText(prompt);
+          item.textContent = 'Copied';
+          window.setTimeout(() => {
+            item.textContent = 'Copy prompt';
+            setOpen(false);
+          }, 1000);
+        }, { signal });
+      }
+    }
+  });
 </script>
 
 <style>
+  /* Every project block isolates, so later blocks paint over this one's Install
+     menu unless the hero sits a layer up. */
   .product-hero {
+    z-index: 1;
     display: grid;
     justify-items: center;
     text-align: center;
@@ -92,5 +201,106 @@ const textAttrs = (...path: Array<string | number>) => editable ? {
   .product-hero__links {
     display: flex;
     gap: 0.5em;
+  }
+
+  /* Hero-sized, as on Sonner: 40px tall, 152px wide, labels the size of the
+     Documentation link below. */
+  .product-hero__links > a,
+  .product-hero__install > button {
+    min-width: 152px;
+    min-height: 40px;
+    padding-inline: 1.5em;
+    font-size: 1rem;
+    font-weight: 500;
+  }
+
+  .product-hero__install {
+    position: relative;
+    z-index: 10;
+  }
+
+  .product-hero__install > button[aria-expanded='true'] .dev-btn__icon {
+    rotate: 180deg;
+  }
+
+  .product-hero__install .dev-btn__icon {
+    margin-inline-end: -2px;
+    transition: rotate 0.2s ease;
+  }
+
+  .product-hero__menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    display: flex;
+    flex-direction: column;
+    min-width: 11em;
+    padding: 4px;
+    border-radius: var(--dev-radius-control-in-container);
+    background: var(--sys-color-srf);
+    box-shadow: var(--elevated-surface-shadow);
+    text-align: start;
+    opacity: 0;
+    visibility: hidden;
+    translate: -50% -4px;
+    transition: opacity var(--motion-press-duration) ease, translate var(--motion-press-duration) ease,
+      visibility 0s var(--motion-press-duration);
+  }
+
+  /* Bridges the gap to the button so a passing mouse keeps the menu open. */
+  .product-hero__menu::before {
+    content: '';
+    position: absolute;
+    inset: -6px 0 100%;
+  }
+
+  .product-hero__install:has([aria-expanded='true']) .product-hero__menu {
+    opacity: 1;
+    visibility: visible;
+    translate: -50% 0;
+    transition-delay: 0s;
+  }
+
+  .product-hero__menu .dev-btn {
+    --dev-btn-hit-inset: 0;
+    color: var(--comp-button-label);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .product-hero__menu .dev-btn:active {
+    transform: none;
+  }
+
+  /* Inset to the options' label edges (4px menu padding + 8px option padding). */
+  .product-hero__menu .dev-hairline {
+    width: auto;
+    margin: 4px 8px;
+    background: var(--sys-color-srf-container);
+  }
+
+  /* The body-text link underline from project.css. */
+  .product-hero__docs {
+    margin-top: 1em;
+    font-size: 1rem;
+    color: var(--sys-color-on-srf-variant);
+    text-decoration: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 10%, transparent);
+    text-decoration-thickness: 0.08em;
+    text-underline-offset: 0.15em;
+    transition: color 0.2s ease, text-decoration-color 150ms ease;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .product-hero__docs:hover {
+      color: var(--sys-color-on-srf);
+      text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .product-hero__menu {
+      translate: -50% 0;
+    }
   }
 </style>
