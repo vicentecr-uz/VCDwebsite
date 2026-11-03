@@ -12,12 +12,13 @@ class CanvasContext {
   transform = [1, 0, 0, 1, 0, 0];
   draws: Array<{ image: Element; transform: number[]; args: number[] }> = [];
   stack: number[][] = [];
+  gradients: number[][] = [];
   resetTransform() { this.transform = [1, 0, 0, 1, 0, 0]; }
   setTransform(...values: number[]) { this.transform = values; }
   save() { this.stack.push([...this.transform]); }
   restore() { this.transform = this.stack.pop()!; }
   clearRect() {} fillRect() {} fill() {} fillText() {} beginPath() {} roundRect() {} clip() {}
-  createLinearGradient() { return { addColorStop() {} }; }
+  createLinearGradient(...coordinates: number[]) { this.gradients.push(coordinates); return { addColorStop() {} }; }
   drawImage(image: Element, ...args: number[]) { this.draws.push({ image, args, transform: [...this.transform] }); }
 }
 class Element extends EventTarget {
@@ -79,13 +80,20 @@ class ResizeObserver {
   observe() {}
   disconnect() {}
 }
-class MutationObserver { observe() {} disconnect() {} }
+const mutationCallbacks = new Map<Element, () => void>();
+class MutationObserver {
+  constructor(private callback: () => void) {}
+  observe(target: Element) { mutationCallbacks.set(target, this.callback); }
+  disconnect() {}
+}
 const html = new Element();
 const canvases: Element[] = [];
 const document = Object.assign(new EventTarget(), { documentElement: html, body: new Element(), fonts: { ready: Promise.resolve() }, createElement: (tag: string) => { const canvas = new Element(); if (tag === 'canvas') canvases.push(canvas); return canvas; } });
 const window = Object.assign(new EventTarget(), { setTimeout, clearTimeout });
 const media = Object.assign(new EventTarget(), { matches: false });
-const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', opacity: '1', getPropertyValue: (name: string) => name === '--preview-reveal-y' ? '122%' : '#f9f9fb' });
+let revealFeather = '22%';
+let revealPosition = '122%';
+const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', opacity: '1', getPropertyValue: (name: string) => name === '--preview-reveal-y' ? revealPosition : name === '--preview-reveal-feather' ? revealFeather : '#f9f9fb' });
 const source = readFileSync(new URL('../../src/components/project/demos/ProgressiveImageDemo.astro', import.meta.url), 'utf8').match(/<script>([^]*?)<\/script>/)![1]
   .replace(/^\s*import .*;\s*$/gm, '')
   .replace(/import\.meta\.env\.DEV/g, 'false');
@@ -159,6 +167,19 @@ resizeCallbacks.forEach(callback => callback());
 assert.ok(sourceCanvas.context.draws.some(draw => draw.image === low), 'handoff samples the retained low-resolution layer instead of the upgraded original');
 assert.deepEqual(sourceCanvas.context.operations, ['destination-out', 'lighter', 'source-over', 'destination-over', 'source-over'], 'remove the matching thumbnail coverage, add the reveal, then paint the background behind the isolated image');
 delete host.nodes['[data-image-root]'].nodes['[data-preview-thumb]'];
+reveal.getAttribute = (name: string) => name === 'data-preview-reveal' ? '' : null;
+revealFeather = '35%';
+revealPosition = '50%';
+mutationCallbacks.get(host.nodes['[data-image-root]'])!();
+resizeCallbacks.forEach(callback => callback());
+const imageHeight = host.nodes['.glass-root'].rect.height;
+const expectedStops = [0, (0.5 - 0.35) * imageHeight, 0, (0.5 + 0.35) * imageHeight];
+assert.deepEqual(mask.context.gradients.at(-1), expectedStops, 'the photo lens reads a changed feather token');
+assert.deepEqual(canvases[1].context.gradients.slice(-2), [expectedStops, expectedStops], 'both badge masks read the same changed feather token');
+const domBadgeMask = host.nodes['[data-image-root]'].nodes['.image-quality-badge--high'].style.maskImage;
+assert.ok(domBadgeMask.includes('85%'), 'the DOM badge uses the changed feather too');
+revealFeather = '22%';
+revealPosition = '122%';
 delete host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'];
 resizeCallbacks.forEach(callback => callback());
 const finalImageDraw = sourceCanvas.context.draws.filter((draw) => draw.image === baseImage).at(-1)!;
