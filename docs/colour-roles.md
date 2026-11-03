@@ -1,6 +1,6 @@
 # Colour roles
 
-Choose ink by the job the text does. Required reading, readable supporting content and optional metadata are separate roles. Optional metadata stays readable; its token is not a general "make it lighter" colour.
+Choose ink by the job the text does. Required reading, readable supporting content and optional metadata are separate roles. Optional metadata uses a lighter ink; its token is not a general "make it lighter" colour for required reading.
 
 ## Text
 
@@ -8,7 +8,7 @@ Choose ink by the job the text does. Required reading, readable supporting conte
 | --- | --- | --- |
 | Primary reading | `--sys-color-on-srf` | Body paragraphs, field labels, current navigation and text needed to understand or complete a task. |
 | Readable supporting content | `--sys-color-on-srf-variant` | Secondary content that still needs to be read, including supporting copy and functional labels. |
-| Optional metadata | `--sys-color-on-srf-subtle` | Attribution, navigation group headings and pagination captions whose omission would leave the content and actions understandable. |
+| Optional metadata | `--sys-color-on-srf-subtle` | Publishing dates, attribution, navigation group headings and pagination captions whose omission would leave the content and actions understandable. |
 
 Use this decision flow for text on the page ground:
 
@@ -28,7 +28,9 @@ Use `--sys-color-on-srf` for a body paragraph or form field label. Use `--sys-co
 
 ## Metadata and hairlines
 
-`sys.color.on-srf-subtle` uses `ref.palette.grey.450` in light mode (`#767676`, about 4.54:1 against white) and `ref.palette.grey.600` in dark mode (`#aeaeaf`). Regular text requires at least 4.5:1 contrast against its background, including optional metadata.
+`sys.color.on-srf-subtle` uses `ref.palette.grey.500` in light mode (`#888888`, about 3.54:1 against white) and `ref.palette.grey.600` in dark mode (`#aeaeaf`). The lighter light-mode metadata is an explicit visual choice and does not meet the usual 4.5:1 contrast target for regular small text. Keep it to optional metadata; use the supporting or primary role whenever the text is needed to understand content or complete an action.
+
+The editor’s **Subtle** inline style (`.text-subtle`) uses this semantic token. Dates remain ordinary authored text, with no date schema or formatting token. The light-mode choice is the closest existing palette grey to the effective `#999999` used for publishing dates on [benji.org](https://benji.org/stageshow), rather than a new copied colour.
 
 - Text metadata uses `--sys-color-on-srf-subtle`.
 - Editorial dividers and rules use `--sys-color-outline`, or the existing `Hairline` component.
