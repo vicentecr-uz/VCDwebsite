@@ -230,30 +230,10 @@ export function initSelectFields() {
     clampToViewport(listbox, parseFloat(listbox.style.left), parseFloat(listbox.style.top));
   };
 
-  const closeTimeouts = new WeakMap<HTMLUListElement, number>();
-  const closeListeners = new WeakMap<HTMLUListElement, (event: TransitionEvent) => void>();
-
-  const cancelPendingClose = (listbox: HTMLUListElement) => {
-    const pending = closeTimeouts.get(listbox);
-    if (pending != null) {
-      window.clearTimeout(pending);
-      closeTimeouts.delete(listbox);
-    }
-    const listener = closeListeners.get(listbox);
-    if (listener) {
-      listbox.removeEventListener('transitionend', listener);
-      closeListeners.delete(listbox);
-    }
-  };
-
   const openListbox = (parts: Parts) => {
     const { trigger, listbox, select } = parts;
     if (trigger.disabled) return;
     ensureInstance(parts);
-    if (listbox.classList.contains('is-closing')) {
-      listbox.classList.remove('is-closing');
-      cancelPendingClose(listbox);
-    }
     listbox.classList.remove('is-keyboard');
     syncFromSelect(parts);
     listbox.showPopover();
@@ -267,9 +247,8 @@ export function initSelectFields() {
   const closeListbox = (parts: Parts, { returnFocus = true } = {}) => {
     const { trigger, listbox } = parts;
     if (!listbox.matches(':popover-open')) return;
-    if (listbox.classList.contains('is-closing')) return;
 
-    listbox.classList.add('is-closing');
+    listbox.hidePopover();
     listbox.classList.remove('is-keyboard');
     trigger.setAttribute('aria-expanded', 'false');
     setActiveOption(parts, null);
@@ -279,26 +258,6 @@ export function initSelectFields() {
       instance.typeaheadBuffer = '';
     }
     if (returnFocus) trigger.focus({ preventScroll: true });
-
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      cancelPendingClose(listbox);
-      if (!listbox.classList.contains('is-closing')) return;
-      if (listbox.matches(':popover-open')) listbox.hidePopover();
-      listbox.classList.remove('is-closing');
-    };
-
-    const onTransitionEnd = (event: TransitionEvent) => {
-      if (event.propertyName !== 'opacity') return;
-      finish();
-    };
-
-    listbox.addEventListener('transitionend', onTransitionEnd);
-    closeListeners.set(listbox, onTransitionEnd);
-    const timeoutId = window.setTimeout(finish, 200);
-    closeTimeouts.set(listbox, timeoutId);
   };
 
   const commitOption = (parts: Parts, li: HTMLLIElement) => {
@@ -331,7 +290,7 @@ export function initSelectFields() {
       if (!parts || parts.trigger.disabled) return;
       ensureInstance(parts);
       syncFromSelect(parts);
-      if (!parts.listbox.matches(':popover-open') || parts.listbox.classList.contains('is-closing')) openListbox(parts);
+      if (!parts.listbox.matches(':popover-open')) openListbox(parts);
       else closeListbox(parts, { returnFocus: false });
       return;
     }
@@ -435,7 +394,7 @@ export function initSelectFields() {
     const parts = getParts(trigger);
     if (!parts) return;
 
-    if (!parts.listbox.matches(':popover-open') || parts.listbox.classList.contains('is-closing')) {
+    if (!parts.listbox.matches(':popover-open')) {
       if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         openListbox(parts);
@@ -552,9 +511,8 @@ export function initSelectFields() {
   }, { signal });
 
   const dismissImmediately = (parts: Parts) => {
-    cancelPendingClose(parts.listbox);
     if (parts.listbox.matches(':popover-open')) parts.listbox.hidePopover();
-    parts.listbox.classList.remove('is-closing', 'is-keyboard');
+    parts.listbox.classList.remove('is-keyboard');
     parts.trigger.setAttribute('aria-expanded', 'false');
     setActiveOption(parts, null);
     const instance = instances.get(parts.wrapper);
