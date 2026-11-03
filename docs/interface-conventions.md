@@ -23,7 +23,7 @@ In the popover's CSS, reset the UA defaults (`inset: auto; margin: 0; border: 0;
 
 ### Menus
 
-Every dropdown menu and listbox is a `Menu` (`src/components/ui/Menu.astro`, `.dev-menu`). Assemble it from `.dev-menu__item` rows (ghost `Button`, align start, width fill) and `Hairline` separators, then place it with `src/lib/floatingLayer.ts`. The component owns the rest: padding equal to the 4px row gap, concentric corners (row radius + padding), separator inset and colour, the selected-row fill with hover one step darker, and the top-layer popover fade. Never set menu padding, gap, radius or separator spacing at the call site; change `.dev-menu` in `dev-chrome.css` so every menu moves together. The same test fails when a top-layer menu or listbox lacks `.dev-menu`.
+Every dropdown menu and listbox is a `Menu` (`src/components/ui/Menu.astro`, `.dev-menu`). Assemble it from `.dev-menu__item` rows (ghost `Button`, align start, width fill) and `Hairline` separators, then place it with `src/lib/floatingLayer.ts`. The component owns the rest: padding equal to the 4px row gap, concentric corners (row radius + padding), separator inset and colour, the selected-row fill with hover one step darker, and opening and closing in the top layer instantly (menus are frequent, often keyboard-driven tools, so they don't fade). Never set menu padding, gap, radius or separator spacing at the call site; change `.dev-menu` in `dev-chrome.css` so every menu moves together. The same test fails when a top-layer menu or listbox lacks `.dev-menu`.
 
 ## Page width and viewport height
 
