@@ -414,8 +414,6 @@ const showPrototypeControls = false;
       source.style.transform = `translate(${position.x - padding}px, ${position.y - padding}px)`;
       context.resetTransform();
       context.clearRect(0, 0, source.width, source.height);
-      context.fillStyle = background;
-      context.fillRect(0, 0, source.width, source.height);
       context.save();
       const zoomScale = scale * config.zoom;
       const offsetX = source.width / 2 - (position.x + diameter / 2) * zoomScale;
@@ -424,8 +422,9 @@ const showPrototypeControls = false;
       context.beginPath();
       context.roundRect(0, 0, imageWidth, imageHeight, radii);
       context.clip();
-      context.drawImage(image, 0, 0, imageWidth, imageHeight);
       const reveal = stack.querySelector('[data-preview-reveal]');
+      const low = stack.querySelector<HTMLImageElement>('[data-preview-thumb]') ?? image;
+      context.drawImage(reveal ? low : image, 0, 0, imageWidth, imageHeight);
       if (reveal?.complete && reveal.naturalWidth) {
         // Mirror the shared loader's 22% feather; replace this adapter if its mask changes.
         const revealStyle = getComputedStyle(reveal);
@@ -445,10 +444,15 @@ const showPrototypeControls = false;
           gradient.addColorStop(1, 'transparent');
           maskContext.fillStyle = gradient;
         }
+        context.globalCompositeOperation = 'destination-out';
+        context.fillStyle = maskContext.fillStyle;
+        context.fillRect(0, 0, imageWidth, imageHeight);
         maskContext.fillRect(0, 0, imageWidth, imageHeight);
         maskContext.globalCompositeOperation = 'source-over';
         context.resetTransform();
+        context.globalCompositeOperation = 'lighter';
         context.drawImage(mask, 0, 0);
+        context.globalCompositeOperation = 'source-over';
       }
       if (badgeContext) {
         const renderBadge = (badge: HTMLElement, gradient: CanvasGradient | null, alpha = 1) => {
@@ -486,6 +490,11 @@ const showPrototypeControls = false;
         }
       }
       context.restore();
+      context.resetTransform();
+      context.globalCompositeOperation = 'destination-over';
+      context.fillStyle = background;
+      context.fillRect(0, 0, source.width, source.height);
+      context.globalCompositeOperation = 'source-over';
       glass?.markChanged(source);
     }
 

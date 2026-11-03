@@ -5,6 +5,10 @@ import * as inertia from '../../src/lib/imageLensInertia';
 
 // Exercise the real controller without a browser, rendering, or synthetic UI interaction.
 class CanvasContext {
+  operations: string[] = [];
+  private composite = 'source-over';
+  get globalCompositeOperation() { return this.composite; }
+  set globalCompositeOperation(value: string) { this.composite = value; this.operations.push(value); }
   transform = [1, 0, 0, 1, 0, 0];
   draws: Array<{ image: Element; transform: number[]; args: number[] }> = [];
   stack: number[][] = [];
@@ -92,7 +96,7 @@ const frames = new Map<number, (time: number) => void>();
 const advance = (ms: number) => { time += ms; const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(time)); };
 const upgradeAttempts: Array<{ image: Element; destroy(): void; bind(): void; open(): void }> = [];
 const createImagePreviewUpgrade = () => { const image = host.nodes['[data-image-root]'].nodes['active-image']; const attempt = { image, destroy() {}, bind() {}, open() {} }; upgradeAttempts.push(attempt); return attempt; };
-const initialize = new Function('imageLensBounds', 'inertia', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', 'createImagePreviewUpgrade', `${javascript}; return initializeDemo;`)(imageLensBounds, inertia, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time }, createImagePreviewUpgrade);
+const initialize = new Function('imageLensBounds', 'inertia', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', 'createImagePreviewUpgrade', 'createDemoIndicatorLayer', `${javascript}; return initializeDemo;`)(imageLensBounds, inertia, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time }, createImagePreviewUpgrade, () => ({ element: new Element(), sync() {}, destroy() {} }));
 const dispose = initialize(host);
 resizeCallbacks.forEach(callback => callback());
 const pointer = (type: string, x: number, y: number) => lens.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }));
@@ -148,6 +152,13 @@ assert.deepEqual(latestBaseDraw.transform, revealDraw.transform, 'thumb and reve
 assert.equal(mask.width, sourceCanvas.width, 'reveal crop retains the full source pixel density');
 assert.equal(mask.height, sourceCanvas.height);
 assert.deepEqual(sourceCanvas.context.draws.at(-1)!.args, [0, 0], 'composite the reveal without another rescale');
+const low = new Element();
+host.nodes['[data-image-root]'].nodes['[data-preview-thumb]'] = low;
+sourceCanvas.context.operations = [];
+resizeCallbacks.forEach(callback => callback());
+assert.ok(sourceCanvas.context.draws.some(draw => draw.image === low), 'handoff samples the retained low-resolution layer instead of the upgraded original');
+assert.deepEqual(sourceCanvas.context.operations, ['destination-out', 'lighter', 'source-over', 'destination-over', 'source-over'], 'remove the matching thumbnail coverage, add the reveal, then paint the background behind the isolated image');
+delete host.nodes['[data-image-root]'].nodes['[data-preview-thumb]'];
 delete host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'];
 resizeCallbacks.forEach(callback => callback());
 const finalImageDraw = sourceCanvas.context.draws.filter((draw) => draw.image === baseImage).at(-1)!;
