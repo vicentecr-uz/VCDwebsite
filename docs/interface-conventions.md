@@ -21,6 +21,10 @@ In the popover's CSS, reset the UA defaults (`inset: auto; margin: 0; border: 0;
 
 `bun test scripts/test/top-layer-floating.test.ts` fails when an element with `role="menu"`, `"listbox"` or `"tooltip"` renders without `popover`. A layer that genuinely never sits inside a block, such as an inline toolbar row or a node appended to `<body>`, goes on the test's exemption list with a reason. Do not add an exemption for a layer that renders inside a block.
 
+### Menus
+
+Every dropdown menu and listbox is a `Menu` (`src/components/ui/Menu.astro`, `.dev-menu`). Assemble it from `.dev-menu__item` rows (ghost `Button`, align start, width fill) and `Hairline` separators, then place it with `src/lib/floatingLayer.ts`. The component owns the rest: padding equal to the 4px row gap, concentric corners (row radius + padding), separator inset and colour, the selected-row fill with hover one step darker, and the top-layer popover fade. Never set menu padding, gap, radius or separator spacing at the call site; change `.dev-menu` in `dev-chrome.css` so every menu moves together. The same test fails when a top-layer menu or listbox lacks `.dev-menu`.
+
 ## Page width and viewport height
 
 Text and media use separate caps:
@@ -81,6 +85,10 @@ Page navigation starts with `#transition-overlay` opaque. On initial load, a sma
 ## Approved components
 
 Use only components and patterns listed on `/styles`. Ask Anto before introducing something outside that library. Do not copy legacy case-study markup from `src/components/project/legacy/`.
+
+Build UI by assembling existing components and sub-components, not by defining one-off styles. If a needed sub-component does not exist, consider it properly, then add it to the design system and `/styles` rather than hand-styling it in place. Each component should settle a decision once so later work does not re-make it.
+
+Raised buttons (`raised` on `Button`, `.dev-btn--raised`) are opt-in for a filled or soft button that should stand out a little more, such as the Sabi hero CTAs or a Save bar. They do not replace the flat default. A dark fill gets a semi-transparent top highlight only; a light fill gets a bottom shade only, from `--sys-color-surface-shadow`; `light-dark()` swaps them by theme. Pressing flattens the bevel. Do not hand-roll a bevel or drop shadow on a button.
 
 When creating a page, compose its headings, text, and media from the existing content-backed page blocks wherever they fit, so Anto can edit them through in-page Edit. Use the disk-backed page loader and verify Save survives a reload; styled hardcoded text is not equivalent to an editable block.
 
