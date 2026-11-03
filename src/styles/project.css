@@ -1601,6 +1601,8 @@ h3.project-section-title {
 }
 
 .project-details {
+  /* Keep block controls at the heading; row controls own the gutter below. */
+  --dev-section-anchor-y: calc(var(--text-body-size) * var(--text-body-leading) / 2);
   width: min(100%, 65ch);
   font-size: var(--text-body-size);
   font-weight: var(--text-body-weight);
@@ -1638,7 +1640,9 @@ h3.project-section-title {
 .project-details__add,
 .project-details__actions { display: none; }
 .project-details__add { font: inherit; font-size: 0.8125rem; color: var(--sys-color-on-srf-variant); padding: 0.5rem; cursor: pointer; margin-top: var(--space-unit); }
-.project-details__actions { position: absolute; inset-inline-end: calc(100% + 4px); top: 0; opacity: 0; }
+.project-details__actions { position: absolute; inset-inline-end: calc(100% + 4px); top: 0; z-index: 3; opacity: 0; }
+/* Bridge above the block drag bridge (z2) so entering the gutter keeps the row hovered. */
+.is-dev-mode .project-details__row::before { content: ''; position: absolute; inset-block: 0; inset-inline-end: 100%; width: 40px; z-index: 3; }
 .project-details__add:focus-visible,
 .project-details__actions:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
 .project-details__add:disabled { opacity: 0.4; cursor: default; }
@@ -1647,10 +1651,14 @@ h3.project-section-title {
 .is-dev-mode .project-details__row:hover .project-details__actions,
 .is-dev-mode .project-details__row:focus-within .project-details__actions { opacity: 1; }
 @media (hover: none) { .is-dev-mode .project-details__actions { opacity: 1; } }
-@media (pointer: coarse) { .project-details__actions { padding: 10px; } }
+@media (pointer: coarse) {
+  .project-details__actions { padding: 10px; }
+  .is-dev-mode .project-details__row::before { width: 44px; }
+}
 
 @media (max-width: 40em) {
   .project-details__row { display: block; }
+  .is-dev-mode .project-details__row::before { content: none; }
   .project-details__actions { inset-inline-end: 0; }
   .is-dev-mode .project-details__label { padding-inline-end: 44px; }
   .project-details__value { margin-top: 0.25em; }

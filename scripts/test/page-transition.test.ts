@@ -1597,3 +1597,59 @@ test('navigation during the inline fade keeps the outgoing veil visible', async 
   assert.equal(f.overlay.hidden, false);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'cancelled');
 });
+
+test('marked return-to-site links cover before same-tab external navigation with ClientRouter enabled', () => {
+  const f = fixture();
+  const query = f.document.querySelector;
+  f.document.querySelector = (selector: string) => selector === '[name="astro-view-transitions-enabled"]' ? {} : query(selector);
+  Object.assign(f.anchors[0].attributes, { href: 'https://vicentecr.uz', target: '_self', 'data-page-transition': '', 'data-astro-reload': '' });
+  assert.equal(f.click().defaultPrevented, true);
+  assert.deepEqual(f.destinations, []);
+  assert.equal(f.overlay.hidden, false);
+  assert.equal(f.tweens.at(-1).vars.opacity, 1);
+  assert.equal(f.tweens.at(-1).vars.duration, 0.25);
+  f.tweens.at(-1).finish();
+  assert.deepEqual(f.destinations, ['https://vicentecr.uz/']);
+});
+
+test('new page return links bind once after repeated Astro page loads', () => {
+  const f = fixture();
+  const anchor = new Anchor('https://vicentecr.uz', { target: '_self', 'data-page-transition': '', 'data-astro-reload': '' });
+  f.anchors.push(anchor);
+  assert.equal(anchor.count('click'), 0);
+  f.document.emit('astro:page-load');
+  f.document.emit('astro:page-load');
+  assert.equal(anchor.count('click'), 1);
+  assert.equal(f.anchors[0].count('click'), 1);
+  assert.equal(f.click(2).defaultPrevented, true);
+  f.tweens.at(-1).finish();
+  assert.deepEqual(f.destinations, ['https://vicentecr.uz/']);
+});
+
+for (const properties of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }, { defaultPrevented: true }]) {
+  test(`marked return links preserve native click semantics: ${JSON.stringify(properties)}`, () => {
+    const f = fixture();
+    Object.assign(f.anchors[0].attributes, { href: 'https://vicentecr.uz', target: '_self', 'data-page-transition': '' });
+    f.click(0, properties);
+    assert.equal(f.tweens.length, 0);
+    assert.deepEqual(f.destinations, []);
+  });
+}
+
+for (const attributes of [{ href: 'mailto:test@example.test' }, { href: 'javascript:alert(1)' }, { href: 'https://vicentecr.uz/#about' }, { download: '' }, { target: '_blank' }]) {
+  test(`marked return links preserve native attribute safeguards: ${JSON.stringify(attributes)}`, () => {
+    const f = fixture();
+    Object.assign(f.anchors[0].attributes, { href: 'https://vicentecr.uz', target: '_self', 'data-page-transition': '', ...attributes });
+    assert.equal(f.click().defaultPrevented, false);
+    assert.equal(f.tweens.length, 0);
+  });
+}
+
+test('ordinary external links remain native with ClientRouter enabled', () => {
+  const f = fixture();
+  const query = f.document.querySelector;
+  f.document.querySelector = (selector: string) => selector === '[name="astro-view-transitions-enabled"]' ? {} : query(selector);
+  f.anchors[0].setAttribute('href', 'https://vicentecr.uz');
+  assert.equal(f.click().defaultPrevented, false);
+  assert.equal(f.tweens.length, 0);
+});
