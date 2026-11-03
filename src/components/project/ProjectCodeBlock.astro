@@ -17,6 +17,26 @@ interface Props {
 const { options, documentKey, sectionPath, spacing = 'group', sectionId, contentId } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+
+// Three greys, after sonner.emilkowal.ski: names carry the ink, keywords,
+// strings and attributes recede, punctuation and comments recede further.
+const theme = {
+  name: 'vcd-mono',
+  type: 'light',
+  fg: 'var(--code-ink)',
+  bg: 'transparent',
+  settings: [
+    { settings: { foreground: 'var(--code-ink)' } },
+    {
+      scope: ['keyword', 'storage', 'string', 'constant.numeric', 'constant.language', 'entity.other.attribute-name', 'support.type.property-name', 'punctuation.definition.string'],
+      settings: { foreground: 'var(--code-ink-muted)' },
+    },
+    {
+      scope: ['punctuation', 'comment', 'keyword.operator', 'meta.brace'],
+      settings: { foreground: 'var(--code-ink-faint)' },
+    },
+  ],
+};
 ---
 
 <div
@@ -35,7 +55,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   )}
   {options.map(({ lang, code }, index) => (
     <div class="code-block__panel" data-option-panel hidden={index > 0}>
-      <Code code={code.trim()} lang={lang as never} theme="github-light" />
+      <Code code={code.trim()} lang={lang as never} theme={theme as never} />
       {!code.includes('\n') && (
         <button type="button" class="dev-btn dev-btn--ghost code-block__copy" aria-label="Copy" title="Copy" data-copy-code={code.trim()}>
           <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
@@ -73,6 +93,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .code-block :global(.astro-code) {
+    --code-ink: var(--sys-color-on-srf);
+    --code-ink-muted: var(--sys-color-on-srf-variant);
+    --code-ink-faint: color-mix(in oklab, var(--sys-color-on-srf-variant) 70%, var(--sys-color-srf-container-low));
     margin: 0;
     padding: 1em 1.25em;
     background: var(--sys-color-srf-container-low) !important;
