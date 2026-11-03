@@ -1,0 +1,63 @@
+---
+interface Props {
+  contents: Array<{ id: string; label: string }>;
+}
+
+const { contents } = Astro.props;
+---
+
+{contents.length > 0 && (
+  <details class="documentation-contents" open>
+    <summary>On this page</summary>
+    <nav aria-label="On this page">
+      <ul>
+        {contents.map(({ id, label }) => (
+          <li><a href={`#${id}`}>{label}</a></li>
+        ))}
+      </ul>
+    </nav>
+  </details>
+)}
+
+<style>
+  .documentation-contents {
+    color: var(--sys-color-on-srf-variant);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+  }
+
+  summary {
+    cursor: pointer;
+    color: var(--sys-color-on-srf);
+    margin-bottom: var(--space-related);
+  }
+
+  ul {
+    display: grid;
+    gap: calc(var(--space-unit) * 0.5);
+    padding: 0 0 0 var(--space-unit);
+    margin: 0;
+    list-style: none;
+    border-left: 1px solid var(--sys-color-outline-variant);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--sys-color-on-srf);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+
+  @media (min-width: 80em) {
+    summary {
+      display: block;
+      list-style: none;
+    }
+
+    summary::-webkit-details-marker { display: none; }
+  }
+</style>

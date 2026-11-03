@@ -1,0 +1,25 @@
+---
+import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import { loadPageDocument } from '../../lib/projects';
+
+const pages = [
+  { slug: 'getting-started', key: 'sabi-getting-started', label: 'Getting started', group: 'Basics' },
+  { slug: 'api', key: 'sabi-api', label: 'Sabi', group: 'API' },
+  { slug: 'styling', key: 'sabi-styling', label: 'Styling', group: 'Guides' },
+] as const;
+export function getStaticPaths() {
+  return ['getting-started', 'api', 'styling'].map(page => ({ params: { page } }));
+}
+const index = pages.findIndex(page => page.slug === Astro.params.page);
+const current = pages[index];
+const page = loadPageDocument(current.key);
+const links = pages.map(({ slug, label, group }) => ({ href: `/sabi/${slug}`, label, group }));
+const contents = page.sections.filter(section => section.type === 'sectionTitle' && section.sectionId)
+  .map(section => ({ id: String(section.sectionId), label: String(section.title) }));
+---
+<DocumentationLayout title={page.title ?? current.label} documentKey={current.key} canonicalUrl={`https://sabi.vicentecr.uz/${current.slug}`} description={page.description} pages={links} contents={contents} previous={links[index - 1]} next={links[index + 1]}>
+  <div data-dev-project-drop-zone>
+    <ProjectSections documentKey={current.key} sections={page.sections} />
+  </div>
+</DocumentationLayout>

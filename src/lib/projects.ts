@@ -83,7 +83,7 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
-export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics' | 'sabi';
+export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics' | 'sabi' | 'sabi-getting-started' | 'sabi-api' | 'sabi-styling';
 
 export type PageDocument = {
   examples?: StylesExamples;

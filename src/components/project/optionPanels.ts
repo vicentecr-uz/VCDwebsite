@@ -13,5 +13,22 @@ document.addEventListener('click', (event) => {
 
 document.addEventListener('click', (event) => {
   const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
-  if (button) void navigator.clipboard.writeText(button.dataset.copyCode!);
+  if (!button) return;
+  void navigator.clipboard.writeText(button.dataset.copyCode!).then(() => {
+    button.setAttribute('aria-label', 'Copied');
+    button.title = 'Copied';
+    const status = document.createElement('span');
+    status.className = 'sr-only';
+    status.setAttribute('role', 'status');
+    status.textContent = 'Code copied';
+    button.append(status);
+    window.setTimeout(() => {
+      status.remove();
+      button.setAttribute('aria-label', 'Copy');
+      button.title = 'Copy';
+    }, 1500);
+  }).catch(() => {
+    button.setAttribute('aria-label', 'Copy failed. Select the code to copy it.');
+    button.title = 'Copy failed. Select the code to copy it.';
+  });
 });
