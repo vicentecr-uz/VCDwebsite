@@ -1,13 +1,17 @@
+/** The site's project-page iframe hosting this demo window, if any. */
+export function demoHostFrame(win: Window): HTMLIFrameElement | null {
+  try {
+    // Only the site's same-origin demo embeds can project onto their parent page.
+    const candidate = win.frameElement as HTMLIFrameElement | null;
+    return candidate?.closest('project-demo-content') ? candidate : null;
+  } catch { return null; /* A foreign embed keeps its chrome in its own document. */ }
+}
+
 /** Keep presentation-only input indicators outside demo content and its iframe. */
 export function createDemoIndicatorLayer(anchor: HTMLElement, coordinates: 'element' | 'viewport' = 'viewport') {
   const source = anchor.ownerDocument;
   const win = source.defaultView!;
-  let frame: HTMLIFrameElement | null = null;
-  try {
-    // Only the site's same-origin demo embeds can project onto their parent page.
-    const candidate = win.frameElement as HTMLIFrameElement | null;
-    if (candidate?.closest('project-demo-content')) frame = candidate;
-  } catch { /* A foreign embed keeps its indicators in its own document. */ }
+  const frame = demoHostFrame(win);
   const document = frame?.ownerDocument ?? source;
   const parent = document.defaultView!;
   const layer = document.createElement('div');

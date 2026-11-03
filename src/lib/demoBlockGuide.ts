@@ -1,6 +1,7 @@
 import type { DemoBlockReorderHandle } from './demoBlockReorder';
 import type { createDemoGapSpacing } from './demoGapSpacing';
 import { createDemoCursorInteraction } from './demoCursorInteraction';
+import { demoHostFrame } from './demoIndicatorLayer';
 
 type Point = { x: number; y: number };
 type CursorState = Point & { scale: number; opacity: number };
@@ -53,7 +54,9 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   });
   const center = (element: Element): Point => {
     const rect = element.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    // Controls handed to the host frame report host coordinates; shift them back into the demo's.
+    const origin = element.ownerDocument === document ? null : demoHostFrame(win)?.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2 - (origin?.left ?? 0), y: rect.top + rect.height / 2 - (origin?.top ?? 0) };
   };
   const viewport = (): DOMRect => {
     const pageViewport = root.closest<HTMLElement>('[data-page-viewport]');
