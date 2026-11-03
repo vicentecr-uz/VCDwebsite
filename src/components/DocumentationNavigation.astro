@@ -1,0 +1,47 @@
+---
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import githubIcon from './ui/Github.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
+interface Props {
+  pages: Array<{ href: string; label: string; group: string }>;
+}
+const { pages } = Astro.props;
+const groups = [...new Set(pages.map((page) => page.group))];
+const currentPath = Astro.url.pathname.replace(/\/$/, '');
+---
+
+<div class="documentation-navigation">
+  <nav aria-label="Documentation">
+    {groups.map((group) => (
+      <section class="documentation-navigation__group">
+        <h2>{group}</h2>
+        <ul>
+          {pages.filter((page) => page.group === group).map(({ href, label }) => (
+            <li><a href={href} aria-current={currentPath === href.replace(/\/$/, '') ? 'page' : undefined}>{label}</a></li>
+          ))}
+        </ul>
+      </section>
+    ))}
+  </nav>
+  <nav class="documentation-external" aria-label="External links">
+    <a href="https://vicentecr.uz" aria-label="Vicente Cruz's website" set:html={sizeIcon(globeIcon, 20)} />
+    <a href="https://github.com/vicentecr-uz/sabi" aria-label="Sabi on GitHub" set:html={sizeIcon(githubIcon, 20)} />
+  </nav>
+</div>
+
+<style>
+  .documentation-navigation { display: flex; flex: 1; flex-direction: column; min-height: 0; font-size: 0.875rem; }
+  .documentation-navigation > nav:first-child { display: grid; gap: 2rem; padding-bottom: 2rem; }
+  .documentation-navigation__group + .documentation-navigation__group { border-top: 1px solid var(--sys-color-outline-variant); padding-top: 2rem; }
+  h2 { color: var(--sys-color-on-srf-variant); font: inherit; margin: 0 0 0.5rem; }
+  ul { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+  li a { display: block; padding: 0.25rem 0.5rem; margin-inline: -0.5rem; border-radius: var(--radius-control); }
+  a[aria-current='page'] { background: var(--sys-color-srf-container-low); }
+  .documentation-external { display: flex; gap: 1.5rem; margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--sys-color-outline-variant); }
+  .documentation-external a { position: relative; color: var(--sys-color-on-srf-variant); }
+  .documentation-external a:hover { color: var(--sys-color-on-srf); }
+  .documentation-external a::after { content: ''; position: absolute; inset: -8px; }
+</style>
