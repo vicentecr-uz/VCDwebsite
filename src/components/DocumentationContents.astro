@@ -22,6 +22,7 @@ const { contents } = Astro.props;
 )}
 
 <script>
+  import { activeSectionId } from '../lib/activeSection';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
 
   onPageLoad(() => {
@@ -37,12 +38,11 @@ const { contents } = Astro.props;
     let scheduled = false;
     const update = () => {
       scheduled = false;
-      let current = entries[0];
-      for (const entry of entries) {
-        const offset = parseFloat(getComputedStyle(entry.heading).scrollMarginTop) || 0;
-        if (entry.heading.getBoundingClientRect().top <= offset + 1) current = entry;
-      }
-      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) current = entries.at(-1)!;
+      const selectedId = activeSectionId(
+        entries.map(({ heading }) => ({ id: heading.id, top: heading.getBoundingClientRect().top + window.scrollY })),
+        { scrollY: window.scrollY, viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight },
+      );
+      const current = entries.find(({ heading }) => heading.id === selectedId) ?? entries[0];
       for (const entry of entries) {
         if (entry === current) entry.link.setAttribute('aria-current', 'location');
         else entry.link.removeAttribute('aria-current');

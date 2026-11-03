@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { activeSectionId } from '../../src/lib/activeSection';
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
 
 const globals = ['window', 'document', 'AbortController', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame'];
@@ -47,7 +48,7 @@ function fixture(settle = true) {
     const marker = outline.querySelector<HTMLElement>('[data-contents-marker]')!;
     let reads = 0;
     ids.forEach((id, index) => {
-      win.document.getElementById(id)!.getBoundingClientRect = () => { reads++; return { top: tops[index] } as DOMRect; };
+      win.document.getElementById(id)!.getBoundingClientRect = () => { reads++; return { top: tops[index] - scrollY } as DOMRect; };
     });
     return {
       tops, rows, marker,
@@ -59,7 +60,7 @@ function fixture(settle = true) {
   const source = readFileSync(new URL('../../src/components/DocumentationContents.astro', import.meta.url), 'utf8');
   const script = source.match(/<script>\s*([\s\S]*?)<\/script>/)![1];
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(script.replace(/^\s*import .*?;\s*$/gm, ''));
-  new Function('createPageScope', 'onPageLoad', compiled)(createPageScope, (mount: Parameters<typeof onPageLoad>[0]) => { dispose = onPageLoad(mount); });
+  new Function('activeSectionId', 'createPageScope', 'onPageLoad', compiled)(activeSectionId, createPageScope, (mount: Parameters<typeof onPageLoad>[0]) => { dispose = onPageLoad(mount); });
   const flush = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); };
   if (settle) flush();
   return {
@@ -83,19 +84,22 @@ test('initial outline marks only the first heading current', () => {
   expect(f.pending()).toBe(0);
 });
 
-test('scroll advances at the heading scroll margin and clears the previous current link', () => {
+test('scroll advances through the project layout activation threshold in both directions', () => {
   const f = fixture();
-  f.page.tops.splice(0, 3, -200, 50, 400);
+  f.setScroll(249);
   f.event('scroll'); f.flush();
   expect(f.page.current()).toEqual(['#installation']);
-  f.page.tops[1] = 49;
+  f.setScroll(250);
   f.event('scroll'); f.flush();
   expect(f.page.current()).toEqual(['#input-types']);
   expect(f.page.marker.style.transform).toBe('translateY(48px) scaleY(32)');
-  f.page.tops[2] = 0;
+  f.setScroll(650);
   f.event('scroll'); f.flush();
   expect(f.page.current()).toEqual(['#sync']);
   expect(f.page.marker.style.transform).toBe('translateY(100px) scaleY(16)');
+  f.setScroll(249);
+  f.event('scroll'); f.flush();
+  expect(f.page.current()).toEqual(['#installation']);
 });
 
 test('document bottom selects the final heading even if it has not reached the top margin', () => {
@@ -111,7 +115,7 @@ test('scroll, resize and hashchange bursts share one pending measurement frame',
   for (const type of ['scroll', 'scroll', 'resize', 'hashchange', 'resize']) f.event(type);
   expect(f.pending()).toBe(1);
   expect(f.page.reads()).toBe(initialReads);
-  f.page.tops.splice(0, 3, -200, 20, 400);
+  f.setScroll(250);
   f.flush();
   expect(f.page.reads() - initialReads).toBe(3);
   expect(f.page.current()).toEqual(['#input-types']);
@@ -135,7 +139,7 @@ test('page teardown cancels pending work and listeners; replacement mounts once'
   f.pageEvent('astro:page-load');
   expect(next.reads()).toBe(3);
   f.flush();
-  next.tops.splice(0, 3, -200, 20, 400);
+  f.setScroll(250);
   for (const type of ['scroll', 'resize', 'hashchange']) f.event(type);
   expect(f.pending()).toBe(1);
   f.flush();
