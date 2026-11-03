@@ -3,6 +3,7 @@ import { Code } from 'astro:components';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import copyIcon from 'lucide-static/icons/copy.svg?raw';
 import { sizeIcon } from '../../lib/icons';
+import { codeTheme } from '../../lib/codeTheme';
 import '../../styles/dev-chrome.css';
 
 interface Props {
@@ -35,7 +36,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   )}
   {options.map(({ lang, code }, index) => (
     <div class="code-block__panel" data-option-panel hidden={index > 0}>
-      <Code code={code.trim()} lang={lang as never} theme="github-light" />
+      <Code code={code.trim()} lang={lang as never} theme={codeTheme} />
       {!code.includes('\n') && (
         <button type="button" class="dev-btn dev-btn--ghost code-block__copy" aria-label="Copy" title="Copy" data-copy-code={code.trim()}>
           <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
