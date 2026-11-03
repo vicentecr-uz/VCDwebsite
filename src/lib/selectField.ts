@@ -1,3 +1,5 @@
+import { clampToViewport } from './floatingLayer';
+
 export function initSelectFields() {
   const controller = new AbortController();
   const { signal } = controller;
@@ -225,14 +227,7 @@ export function initSelectFields() {
       listbox.style.top = `${valueRect.bottom + 4}px`;
     }
 
-    let top = parseFloat(listbox.style.top);
-    const listboxHeight = listbox.offsetHeight;
-    if (top < margin) top = margin;
-    if (top + listboxHeight > window.innerHeight - margin) {
-      top = Math.max(margin, window.innerHeight - margin - listboxHeight);
-    }
-    listbox.style.top = `${top}px`;
-    listbox.style.left = `${Math.max(margin, Math.min(parseFloat(listbox.style.left), window.innerWidth - margin - listbox.offsetWidth))}px`;
+    clampToViewport(listbox, parseFloat(listbox.style.left), parseFloat(listbox.style.top));
   };
 
   const closeTimeouts = new WeakMap<HTMLUListElement, number>();
