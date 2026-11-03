@@ -23,28 +23,29 @@ interface Props {
   next?: AdjacentPage;
 }
 const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next } = Astro.props;
+const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
 ---
 
 <Layout persistentNavigation title={`${title} · ${product}`} description={description} canonicalUrl={canonicalUrl}>
   <div class="documentation-page" data-page-shell data-documentation-page>
     <header class="documentation-mobile-header">
-      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href="https://vicentecr.uz" target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
+      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
       <Button label="" emphasis="ghost" aria-label="Open documentation navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="documentation-drawer" data-documentation-open>
         <span slot="icon" set:html={sizeIcon(menuIcon, 20)} />
       </Button>
     </header>
     <aside class="documentation-sidebar">
-      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href="https://vicentecr.uz" target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
-      <DocumentationNavigation pages={pages} />
+      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
+      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
     </aside>
     <dialog id="documentation-drawer" class="documentation-drawer" aria-label="Documentation navigation">
       <div class="documentation-drawer__heading">
-        <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href="https://vicentecr.uz" target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
+        <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
         <Button label="" emphasis="ghost" aria-label="Close documentation navigation" data-documentation-close autofocus>
           <span slot="icon" set:html={sizeIcon(closeIcon, 20)} />
         </Button>
       </div>
-      <DocumentationNavigation pages={pages} />
+      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
     </dialog>
     <main id="main-content" class="documentation-main">
       <header class="documentation-heading"><h1 data-dev-text-document={import.meta.env.DEV ? documentKey : undefined} data-dev-text-path={documentKey ? JSON.stringify(['title']) : undefined} data-dev-text-kind={documentKey ? 'text' : undefined}>{title}</h1></header>
