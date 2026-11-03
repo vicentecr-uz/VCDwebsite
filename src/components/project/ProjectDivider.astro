@@ -1,0 +1,32 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
+
+interface Props {
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+  annotations?: unknown;
+}
+
+const { documentKey, sectionPath, spacing = 'group', sectionId, contentId, annotations } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-block--text', 'project-divider', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-dev-section-deletable={editable ? 'divider' : undefined}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+>
+  <hr />
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+</section>
+
+<style>
+  hr { margin: 0; border: 0; border-top: 1px solid var(--sys-color-outline-variant); }
+</style>
