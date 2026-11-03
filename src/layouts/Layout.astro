@@ -855,67 +855,76 @@ const initialThemeColor = resolveToken('sys.color.srf');
         beforeSwap: resetImagePreviewUpgrade,
       });
 
-      document.querySelectorAll('a').forEach((link) => {
-        const anchor = link as HTMLAnchorElement;
-        link.addEventListener('click', (e) => {
-          if (document.querySelector('[name="astro-view-transitions-enabled"]')) return;
-          if (
-            e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
-          ) return;
-          const rawHref = anchor.getAttribute('href');
-          if (!rawHref || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
-          let target: URL;
-          try {
-            target = new URL(rawHref, window.location.href);
-          } catch {
-            return;
-          }
-          if (target.origin !== window.location.origin || target.href.includes('#')) return;
-          if (!overlay) return;
-          e.preventDefault();
-          if (suspended || destinationLocked) return;
-          invalidate();
-          delete overlay.dataset.loading;
-          const current = generation;
-          destinationLocked = true;
-          if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
-          overlay.style.animation = 'none';
-          const navigate = () => {
-            if (current !== generation || !destinationLocked) return;
+      const transitionLinks = new WeakSet<HTMLAnchorElement>();
+      const bindPageTransitionLinks = () => {
+        document.querySelectorAll('a').forEach((link) => {
+          const anchor = link as HTMLAnchorElement;
+          if (transitionLinks.has(anchor)) return;
+          transitionLinks.add(anchor);
+          link.addEventListener('click', (e) => {
+            const explicitTransition = anchor.hasAttribute('data-page-transition');
+            if (!explicitTransition && document.querySelector('[name="astro-view-transitions-enabled"]')) return;
+            if (
+              e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey
+            ) return;
+            const rawHref = anchor.getAttribute('href');
+            if (!rawHref || anchor.hasAttribute('download') || (anchor.target && anchor.target !== '_self')) return;
+            let target: URL;
             try {
-              // Recover a canceled or stalled navigation attempt after a bounded wait.
-              navigationWatchdog = setTimeout(() => {
-                if (current !== generation) return;
+              target = new URL(rawHref, window.location.href);
+            } catch {
+              return;
+            }
+            if (!['http:', 'https:'].includes(target.protocol) || target.href.includes('#')) return;
+            if (target.origin !== window.location.origin && !explicitTransition) return;
+            if (!overlay) return;
+            e.preventDefault();
+            if (suspended || destinationLocked) return;
+            invalidate();
+            delete overlay.dataset.loading;
+            const current = generation;
+            destinationLocked = true;
+            if (visibleTransition) target.searchParams.set('dev-transition', 'visible');
+            overlay.style.animation = 'none';
+            const navigate = () => {
+              if (current !== generation || !destinationLocked) return;
+              try {
+                // Recover a canceled or stalled navigation attempt after a bounded wait.
+                navigationWatchdog = setTimeout(() => {
+                  if (current !== generation) return;
+                  clearHeaderNavigationState();
+                  void revealPage();
+                }, MAX_WAIT_MS);
+                window.location.href = target.href;
+              } catch {
                 clearHeaderNavigationState();
                 void revealPage();
-              }, MAX_WAIT_MS);
-              window.location.href = target.href;
+              }
+            };
+            const finishExit = () => {
+              if (current !== generation || !destinationLocked) return;
+              if (!visibleTransition) overlay.dataset.loading = 'true';
+              navigate();
+            };
+            if (visibleTransition) { finishExit(); return; }
+            try {
+              const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
+              overlay.hidden = false;
+              activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, {
+                opacity: 1,
+                duration: 0.25,
+                ease: REVEAL_EASE,
+                onComplete: finishExit,
+              });
             } catch {
               clearHeaderNavigationState();
-              void revealPage();
+              navigate();
             }
-          };
-          const finishExit = () => {
-            if (current !== generation || !destinationLocked) return;
-            if (!visibleTransition) overlay.dataset.loading = 'true';
-            navigate();
-          };
-          if (visibleTransition) { finishExit(); return; }
-          try {
-            const startOpacity = overlay.hidden ? 0 : Number(getComputedStyle(overlay).opacity);
-            overlay.hidden = false;
-            activeTween = gsap.fromTo(overlay, { opacity: startOpacity }, {
-              opacity: 1,
-              duration: 0.25,
-              ease: REVEAL_EASE,
-              onComplete: finishExit,
-            });
-          } catch {
-            clearHeaderNavigationState();
-            navigate();
-          }
+          });
         });
-      });
+      };
+      bindPageTransitionLinks();
+      document.addEventListener('astro:page-load', bindPageTransitionLinks);
 
       window.addEventListener('pagehide', () => {
         invalidate();

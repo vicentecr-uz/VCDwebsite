@@ -19,7 +19,7 @@ export async function onRequest({ request, next, env }: PagesContext): Promise<R
   }
   if (url.hostname === SABI_HOST) {
     const path = url.pathname.replace(/\/$/, '') || '/';
-    if (['/', '/getting-started', '/api', '/styling'].includes(path)) {
+    if (['/', '/getting-started', '/api', '/email-and-number-fields', '/styling'].includes(path)) {
       const asset = new URL(path === '/' ? '/sabi/' : `/sabi${path}/`, url);
       asset.search = url.search;
       return env.ASSETS.fetch(asset);
