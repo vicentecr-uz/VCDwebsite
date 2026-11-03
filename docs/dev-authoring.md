@@ -139,6 +139,7 @@ These links all go to the homepage with `utm_medium=social&utm_campaign=profile`
 | [https://vicentecr.uz/x](https://vicentecr.uz/x) | `x` |
 | [https://vicentecr.uz/threads](https://vicentecr.uz/threads) | `threads` |
 | [https://vicentecr.uz/yc](https://vicentecr.uz/yc) | `ycombinator` |
+| [https://vicentecr.uz/github](https://vicentecr.uz/github) | `github` |
 
 Both trailing-slash variants are reserved for each referral link, so these slugs cannot be used for project pages. Other existing page and project routes remain unavailable: New page and rename already reject an existing `src/pages/{slug}.astro` file or project JSON. The source of truth is `public/_redirects` plus the fallback pages in `src/pages`; update this table whenever a referral is added, renamed, or removed.
 
