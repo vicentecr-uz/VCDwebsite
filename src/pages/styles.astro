@@ -286,10 +286,10 @@ const componentCatalog: ComponentEntry[] = [
     name: 'Menu',
     category: 'ui-primitives',
     purpose: 'The one surface for dropdown menus and listboxes. Owns padding (equal to the gap between rows), concentric corners, separator inset, row size and opening and closing instantly; callers only assemble rows and place it. size="page" gives 16px rows for menus opened from page-sized buttons.',
-    classRef: '.dev-menu / .dev-menu--page / .dev-menu__item / .dev-menu > .dev-hairline',
+    classRef: '.dev-menu / .dev-menu--page / .dev-menu--bare / .dev-menu__item / .dev-menu > .dev-hairline',
     source: 'src/components/ui/Menu.astro',
-    props: 'size? (dev | page, default dev), ...rest (role, popover, id); rows are Button with class="dev-menu__item" (ghost, align start, width fill), separators are Hairline',
-    usedOn: ['Select listbox', 'Project cover visibility menu', 'Sabi hero Install menu'],
+    props: 'size? (dev | page, default dev), as? (div | ul, default div), backplate? (default true; false keeps row geometry without the surface), ...rest (role, popover, id); rows are Button with class="dev-menu__item" (ghost, align start, width fill), separators are Hairline',
+    usedOn: ['Select listbox', 'Project cover visibility menu', 'Sabi hero Install menu', 'Documentation contents'],
     preview: 'ui-menu',
   },
   {
@@ -910,6 +910,10 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
                             <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Codex" />
                             <Hairline />
                             <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Copy prompt" />
+                          </Menu>
+                          <Menu as="ul" backplate={false} style="width: 12em; margin-top: 1em;" aria-label="Bare navigation example">
+                            <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href="#component-ui-menu">Menu</a></li>
+                            <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href="#component-ui-button">Button</a></li>
                           </Menu>
                         </div>
                       )}
