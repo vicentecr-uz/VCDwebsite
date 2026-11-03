@@ -59,8 +59,9 @@ const showDevTools = import.meta.env.DEV;
     display: inline-flex;
     align-items: center;
     gap: calc(var(--space-unit) * 0.5);
-    color: var(--sys-color-on-srf-variant);
+    color: var(--sys-color-on-srf-subtle);
     text-decoration: none;
+    transition: color 150ms ease;
   }
 
   .writeup-backlink::before {
@@ -71,7 +72,6 @@ const showDevTools = import.meta.env.DEV;
 
   .writeup-backlink__icon {
     display: inline-flex;
-    color: var(--sys-color-on-srf-subtle);
   }
 
   :global(.writeup-backlink__icon svg) {
@@ -79,12 +79,14 @@ const showDevTools = import.meta.env.DEV;
     height: 1em;
   }
 
-  .writeup-backlink:hover > .writeup-backlink__label {
-    text-decoration: underline;
-    text-underline-offset: 0.2em;
+  @media (hover: hover) and (pointer: fine) {
+    .writeup-backlink:hover {
+      color: var(--sys-color-on-srf);
+    }
   }
 
   .writeup-backlink:focus-visible {
+    color: var(--sys-color-on-srf);
     outline: 2px solid var(--sys-color-outline);
     outline-offset: 4px;
   }
