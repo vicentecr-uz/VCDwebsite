@@ -81,7 +81,7 @@ export function initSelectFields() {
         const li = document.createElement('li');
         li.setAttribute('role', 'option');
         li.id = `${trigger.id}-option-${index}`;
-        li.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-select__option';
+        li.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item dev-select__option';
         li.dataset.value = optionEl.value;
         li.setAttribute('aria-selected', optionEl.selected ? 'true' : 'false');
         if (optionEl.dataset.iconSvg) {

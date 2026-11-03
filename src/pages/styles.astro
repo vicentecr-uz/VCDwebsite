@@ -28,6 +28,7 @@ import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
 import Badge from '../components/ui/Badge.astro';
 import Hairline from '../components/ui/Hairline.astro';
+import Menu from '../components/ui/Menu.astro';
 import {
   deriveNavFromOutline,
   normalizeOutline,
@@ -65,6 +66,7 @@ type PreviewKey =
   | 'reddit-comment-carousel'
   | 'video'
   | 'ui-button'
+  | 'ui-menu'
   | 'ui-segmented-control'
   | 'ui-dev-panel'
   | 'ui-dev-panel-title'
@@ -262,6 +264,17 @@ const componentCatalog: ComponentEntry[] = [
     props: 'emphasis? (ghost | soft | filled | page | danger, default soft), label, type?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     preview: 'ui-button',
+  },
+  {
+    id: 'component-ui-menu',
+    name: 'Menu',
+    category: 'ui-primitives',
+    purpose: 'The one surface for dropdown menus and listboxes. Owns padding (2 × gap), the gap between rows, concentric corners, separator inset and popover fade; callers only assemble rows and place it.',
+    classRef: '.dev-menu / .dev-menu__item / .dev-menu > .dev-hairline',
+    source: 'src/components/ui/Menu.astro',
+    props: '...rest (role, popover, id); rows are Button with class="dev-menu__item" (ghost, align start, width fill), separators are Hairline',
+    usedOn: ['Select listbox', 'Project cover visibility menu'],
+    preview: 'ui-menu',
   },
   {
     id: 'component-ui-segmented-control',
@@ -858,6 +871,16 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
                           <Button emphasis="filled" label="Filled" />
                           <Button emphasis="page" label="Page" />
                           <Button emphasis="danger" label="Danger" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-menu' && (
+                        <div style="padding: 1em;">
+                          <Menu style="width: 12em;">
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Public" selected />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Image" />
+                            <Hairline />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Draft" />
+                          </Menu>
                         </div>
                       )}
                       {component.preview === 'ui-segmented-control' && (

@@ -79,6 +79,15 @@ test('floating layers render in the top layer via the popover attribute', () => 
   expect(offenders).toEqual([]);
 });
 
+// Menus and listboxes are assembled from the Menu component, which owns their
+// padding, gap, radius and separators; a hand-styled surface is how they drift.
+test('top-layer menus and listboxes use .dev-menu', () => {
+  const offenders = floatingLayers()
+    .filter((layer) => layer.topLayer && /role=["'](?:menu|listbox)["']/.test(layer.text) && !/\bdev-menu\b/.test(layer.text))
+    .map((layer) => `${layer.file}:${layer.line} — menu/listbox without the .dev-menu class (src/components/ui/Menu.astro)`);
+  expect(offenders).toEqual([]);
+});
+
 test('every exemption still matches a floating layer', () => {
   const layers = floatingLayers();
   const stale = EXEMPT.filter((entry) => !layers.some((layer) => !layer.topLayer && exemption(layer) === entry));
