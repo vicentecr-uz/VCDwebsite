@@ -171,6 +171,7 @@ test('Astro lifecycle exposes the image framing link and disconnect cleanup', ()
     createDemoBlockReorder: (root: HTMLElement, options: { onLift?: () => void; onSettle?: () => void }) => { lift = options.onLift; settle = options.onSettle; const list = root.querySelector<HTMLElement>('[data-reorder-demo-list]')!; return { reset() {}, destroy() {}, getOrder: () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')], restore(order: HTMLElement[]) { order.forEach((block) => list.append(block)); }, guideLift: () => false, guideMove() {}, guideDrop: async () => {}, cancel() {}, guideTarget() {} }; },
     createDemoBlockGuide: () => ({ stop() { guideStops += 1; }, play() { guidePlays += 1; }, destroy() {} }),
     createDemoIndicatorLayer: () => ({ element: document.body, destroy() {} }),
+    demoHostFrame: () => null,
   };
   new Function('env', `with (env) { ${compiled} }`)(env);
   const demo = document.querySelector('vcd-gap-spacing-demo') as HTMLElement;

@@ -85,7 +85,7 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
 
 <script>
   import { createDemoBlockReorder } from '../../../lib/demoBlockReorder';
-  import { createDemoIndicatorLayer } from '../../../lib/demoIndicatorLayer';
+  import { createDemoIndicatorLayer, demoHostFrame } from '../../../lib/demoIndicatorLayer';
   import { createDemoBlockGuide } from '../../../lib/demoBlockGuide';
   import { createDemoGapSpacing } from '../../../lib/demoGapSpacing';
 
@@ -149,7 +149,8 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
         guide.stop(); saved = original; gaps.setSavedState(original.gaps); restore(original); guide.play();
       }, { signal });
       if (actionControls) this.ownerDocument.body.append(actionControls);
-      if (resetControls) this.ownerDocument.body.append(resetControls);
+      // Embedded, Reset sits in the host frame so the iframe's overscroll bounce can't carry it.
+      if (resetControls) (demoHostFrame(this.ownerDocument.defaultView!)?.parentElement ?? this.ownerDocument.body).append(resetControls);
       const indicators = createDemoIndicatorLayer(this);
       indicators.element.append(cursor);
       this.dispose = () => {

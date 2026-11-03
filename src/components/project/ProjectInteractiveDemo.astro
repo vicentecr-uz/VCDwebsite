@@ -124,6 +124,22 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     animation-play-state: paused;
   }
 
+  /* Controls an embedded demo hands to its host frame, outside the iframe's scroll. */
+  .project-interactive-demo__content > :global(.demo-controls) {
+    position: absolute;
+    left: var(--space-unit);
+    bottom: var(--space-unit);
+    z-index: 2;
+    display: flex;
+    gap: calc(var(--space-unit) * 2);
+  }
+
+  .project-interactive-demo__content > :global(.demo-controls .dev-btn) { --dev-btn-hit-inset: 8px; }
+
+  @media (pointer: coarse) {
+    .project-interactive-demo__content > :global(.demo-controls .dev-btn) { min-height: 44px; }
+  }
+
   .project-interactive-demo__content[data-demo-loading] iframe {
     opacity: 0;
     visibility: hidden;
