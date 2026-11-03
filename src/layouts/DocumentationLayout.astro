@@ -1,0 +1,127 @@
+---
+import Layout from './Layout.astro';
+import DocumentationContents from '../components/DocumentationContents.astro';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import githubIcon from '../components/ui/Github.svg?raw';
+import { sizeIcon } from '../lib/icons';
+import '../styles/project.css';
+
+interface PageLink { href: string; label: string; group: string }
+interface AdjacentPage { href: string; label: string }
+interface Props {
+  title: string;
+  description?: string;
+  canonicalUrl?: string;
+  documentKey?: string;
+  product?: string;
+  homeHref?: string;
+  pages: PageLink[];
+  contents: Array<{ id: string; label: string }>;
+  previous?: AdjacentPage;
+  next?: AdjacentPage;
+}
+
+const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next } = Astro.props;
+const groups = [...new Set(pages.map((page) => page.group))];
+const currentPath = Astro.url.pathname.replace(/\/$/, '');
+---
+
+<Layout persistentNavigation title={`${title} · ${product}`} description={description} canonicalUrl={canonicalUrl}>
+  <div class="documentation-page" data-page-shell data-documentation-page>
+    <aside class="documentation-sidebar">
+      <p class="documentation-brand">
+        <a href={homeHref}>{product}</a>{' '}
+        <span>by <a href="https://vicentecr.uz">Vicente Cruz</a></span>
+      </p>
+      <details class="documentation-navigation" open>
+        <summary>Documentation</summary>
+        <nav aria-label="Documentation">
+          {groups.map((group) => (
+            <section class="documentation-navigation__group">
+              <h2>{group}</h2>
+              <ul>
+                {pages.filter((page) => page.group === group).map(({ href, label }) => (
+                  <li><a href={href} aria-current={currentPath === href.replace(/\/$/, '') ? 'page' : undefined}>{label}</a></li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </nav>
+      </details>
+      <nav class="documentation-external" aria-label="External links">
+        <a href="https://vicentecr.uz" aria-label="Vicente Cruz's website" set:html={sizeIcon(globeIcon, 20)} />
+        <a href="https://github.com/vicentecr-uz/sabi" aria-label="Sabi on GitHub" set:html={sizeIcon(githubIcon, 20)} />
+      </nav>
+    </aside>
+    <main id="main-content" class="documentation-main">
+      <header class="documentation-heading"><h1 data-dev-text-document={import.meta.env.DEV ? documentKey : undefined} data-dev-text-path={documentKey ? JSON.stringify(["title"]) : undefined} data-dev-text-kind={documentKey ? "text" : undefined}>{title}</h1></header>
+      <div class="documentation-mobile-contents"><DocumentationContents contents={contents} /></div>
+      <div class="project-page__main"><slot /></div>
+      {(previous || next) && (
+        <nav class="documentation-pagination" aria-label="Adjacent pages">
+          {previous ? <a href={previous.href}><span>Previous</span>{previous.label}</a> : <span />}
+          {next && <a href={next.href}><span>Next</span>{next.label}</a>}
+        </nav>
+      )}
+    </main>
+    <aside class="documentation-page-contents"><DocumentationContents contents={contents} /></aside>
+  </div>
+</Layout>
+
+<style>
+  :global(#site-wrapper:has(> [data-documentation-page])) {
+    --page-max-width: 90em;
+    --page-media-max-width: var(--page-text-max-width);
+  }
+
+  .documentation-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: calc(var(--space-unit) * 3);
+    padding-block: calc(var(--space-unit) * 2) calc(var(--space-unit) * 5);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
+  }
+
+  .documentation-sidebar, .documentation-main { min-width: 0; }
+  .documentation-brand { margin: 0 0 calc(var(--space-unit) * 2); }
+  .documentation-brand span { color: var(--sys-color-on-srf-variant); }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+  summary { cursor: pointer; }
+  .documentation-navigation nav { display: grid; gap: calc(var(--space-unit) * 2); padding-top: var(--space-unit); }
+  .documentation-navigation__group + .documentation-navigation__group { border-top: 1px solid var(--sys-color-outline-variant); padding-top: calc(var(--space-unit) * 2); }
+  .documentation-navigation h2 { color: var(--sys-color-on-srf-variant); font: inherit; margin: 0 0 calc(var(--space-unit) * 0.5); }
+  .documentation-navigation ul { display: grid; gap: calc(var(--space-unit) * 0.25); margin: 0; padding: 0; list-style: none; }
+  .documentation-navigation li a { display: block; padding: calc(var(--space-unit) * 0.25) calc(var(--space-unit) * 0.5); margin-inline: calc(var(--space-unit) * -0.5); border-radius: var(--radius-control); }
+  .documentation-navigation a[aria-current='page'] { background: var(--sys-color-srf-container-low); }
+  .documentation-external { display: flex; gap: calc(var(--space-unit) * 2); margin-top: calc(var(--space-unit) * 2); padding-top: calc(var(--space-unit) * 2); border-top: 1px solid var(--sys-color-outline-variant); }
+  .documentation-external a { position: relative; color: var(--sys-color-on-srf-variant); }
+  .documentation-external a:hover { color: var(--sys-color-on-srf); }
+  .documentation-external a::after { content: ''; position: absolute; inset: -8px; }
+  .documentation-heading { margin-bottom: calc(var(--space-unit) * 2); }
+  h1 { margin: 0; font-size: var(--text-heading-1-size); font-weight: var(--text-heading-1-weight); line-height: var(--text-heading-1-leading); letter-spacing: var(--text-heading-1-tracking); }
+  .documentation-main { width: 100%; max-width: var(--page-text-max-width); }
+  .documentation-mobile-contents { padding-bottom: calc(var(--space-unit) * 2); margin-bottom: calc(var(--space-unit) * 2); border-bottom: 1px solid var(--sys-color-outline-variant); }
+  .documentation-page-contents { display: none; }
+  .documentation-pagination { display: flex; justify-content: space-between; gap: var(--space-unit); margin-top: calc(var(--space-unit) * 4); padding-top: calc(var(--space-unit) * 2); border-top: 1px solid var(--sys-color-outline-variant); }
+  .documentation-pagination a { display: grid; }
+  .documentation-pagination a:last-child { text-align: right; }
+  .documentation-pagination span { color: var(--sys-color-on-srf-variant); }
+  .documentation-main :global(pre) { max-width: 100%; overflow-x: auto; }
+  .documentation-main :global(.section-block[id]) { scroll-margin-top: calc(var(--space-unit) * 3); }
+
+  @media (min-width: 60em) {
+    .documentation-page { grid-template-columns: 13em minmax(0, var(--page-text-max-width)); justify-content: center; gap: calc(var(--space-unit) * 4); padding-block-start: calc(var(--space-unit) * 5); }
+    .documentation-sidebar { position: sticky; top: calc(var(--space-unit) * 2); align-self: start; display: flex; flex-direction: column; min-height: calc(var(--vh-safe, 1svh) * 100 - var(--space-unit) * 7); }
+    .documentation-navigation nav { padding-top: 0; }
+    .documentation-external { margin-top: auto; }
+  }
+
+  @media (min-width: 80em) {
+    .documentation-page { grid-template-columns: 13em minmax(0, var(--page-text-max-width)) 12em; }
+    .documentation-mobile-contents { display: none; }
+    .documentation-page-contents { display: block; position: sticky; top: calc(var(--space-unit) * 5); align-self: start; }
+  }
+</style>

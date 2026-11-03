@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
+import DocumentationContents from '../components/DocumentationContents.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
 import ProjectSectionNavEditor from '../components/project/ProjectSectionNavEditor.astro';
 import ProjectImage from '../components/project/ProjectImage.astro';
@@ -55,6 +56,8 @@ type ComponentCategory = 'site' | 'project-shell' | 'project-content' | 'project
 type PreviewKey =
   | 'header'
   | 'footer'
+  | 'documentation-layout'
+  | 'documentation-contents'
   | 'sidebar-nav'
   | 'project-grid'
   | 'project-layout'
@@ -100,6 +103,19 @@ const categoryLabels: Record<ComponentCategory, string> = {
 };
 
 const componentCatalog: ComponentEntry[] = [
+  {
+    id: 'component-documentation-layout', name: 'DocumentationLayout', category: 'project-shell',
+    purpose: 'Documentation template with product navigation, editable page blocks and section contents.',
+    classRef: '.documentation-page', source: 'src/layouts/DocumentationLayout.astro',
+    props: 'title, description?, product?, homeHref?, pages[], contents[], previous?, next?',
+    usedOn: ['/sabi/getting-started', '/sabi/api', '/sabi/styling'], preview: 'documentation-layout',
+  },
+  {
+    id: 'component-documentation-contents', name: 'DocumentationContents', category: 'site',
+    purpose: 'On this page navigation with native section anchors.',
+    classRef: '.documentation-contents', source: 'src/components/DocumentationContents.astro',
+    props: 'contents[]', usedOn: ['/sabi/getting-started', '/sabi/api', '/sabi/styling'], preview: 'documentation-contents',
+  },
   {
     id: 'component-header',
     name: 'Header',
@@ -806,6 +822,12 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
                       )}
                       {component.preview === 'footer' && (
                         <p class="preview-note">Rendered at the bottom of this page.</p>
+                      )}
+                      {component.preview === 'documentation-layout' && (
+                        <a href="/sabi/getting-started" class="project-inline-link">View the documentation template</a>
+                      )}
+                      {component.preview === 'documentation-contents' && (
+                        <DocumentationContents contents={[{ id: 'component-documentation-layout', label: 'Documentation layout' }, { id: 'component-documentation-contents', label: 'On this page' }]} />
                       )}
                       {component.preview === 'sidebar-nav' && (
                         <p class="preview-note">Fixed nav on the left of this page (desktop).</p>
