@@ -1,6 +1,7 @@
 ---
 import chevronDownIcon from 'lucide-static/icons/chevron-down.svg?raw';
 import { sizeIcon } from '../../lib/icons';
+import Hairline from '../ui/Hairline.astro';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import '../../styles/dev-chrome.css';
 import '../../lib/sabi/styles.css';
@@ -61,12 +62,12 @@ const agents = [
         aria-expanded="false"
         aria-controls="product-hero-install-menu"
       >Install<span class="dev-btn__icon" set:html={sizeIcon(chevronDownIcon, 16)} /></button>
-      <div class="product-hero__menu" id="product-hero-install-menu" role="menu" aria-label="Install with">
+      <div class="dev-menu product-hero__menu" id="product-hero-install-menu" popover="manual" role="menu" aria-label="Install with">
         {agents.map(({ label, href }) => (
-          <a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="menuitem" tabindex="-1" href={href}>{label}</a>
+          <a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" role="menuitem" tabindex="-1" href={href}>{label}</a>
         ))}
-        <span class="dev-hairline" role="separator" />
-        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="menuitem" tabindex="-1" data-copy-prompt={installPrompt}>Copy prompt</button>
+        <Hairline />
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" role="menuitem" tabindex="-1" data-copy-prompt={installPrompt}>Copy prompt</button>
       </div>
     </div>
     {buttons.map(({ label, href }, index) => (
@@ -78,6 +79,7 @@ const agents = [
 
 <script>
   import { define } from '../../lib/sabi/core';
+  import { clampToViewport } from '../../lib/floatingLayer';
   define();
 
   // In Edit mode a link's label is text to edit, so clicks stay on the page. Capture,
@@ -95,6 +97,7 @@ const agents = [
 
     for (const root of document.querySelectorAll<HTMLElement>('[data-install-menu]')) {
       const trigger = root.querySelector<HTMLButtonElement>('[aria-haspopup]')!;
+      const menu = root.querySelector<HTMLElement>('[role="menu"]')!;
       const items = [...root.querySelectorAll<HTMLElement>('[role="menuitem"]')];
       const isOpen = () => trigger.getAttribute('aria-expanded') === 'true';
       // Opened by a mouse passing over, it closes when the mouse leaves; a click pins it.
@@ -104,7 +107,16 @@ const agents = [
         clearTimeout(closeTimer);
         if (!open) hoverOpened = false;
         trigger.setAttribute('aria-expanded', String(open));
+        menu.togglePopover(open);
+        if (open) place();
       };
+      // A top-layer popover, centred 6px under the button.
+      const place = () => {
+        const rect = trigger.getBoundingClientRect();
+        clampToViewport(menu, rect.left + (rect.width - menu.offsetWidth) / 2, rect.bottom + 6);
+      };
+      window.addEventListener('scroll', () => isOpen() && place(), { capture: true, signal });
+      window.addEventListener('resize', () => isOpen() && place(), { signal });
       const focusItem = (index: number) => items.at(index % items.length)?.focus();
 
       root.addEventListener('pointerenter', (event) => {
@@ -135,7 +147,7 @@ const agents = [
       }, { signal });
 
       root.addEventListener('keydown', (event) => {
-        const index = items.indexOf(document.activeElement as HTMLElement);
+        const index = items.indexOf(event.target as HTMLElement);
         if (event.key === 'Escape' && isOpen()) {
           setOpen(false);
           trigger.focus();
@@ -168,10 +180,7 @@ const agents = [
 </script>
 
 <style>
-  /* Every project block isolates, so later blocks paint over this one's Install
-     menu unless the hero sits a layer up. */
   .product-hero {
-    z-index: 1;
     display: grid;
     justify-items: center;
     text-align: center;
@@ -214,11 +223,6 @@ const agents = [
     font-weight: 500;
   }
 
-  .product-hero__install {
-    position: relative;
-    z-index: 10;
-  }
-
   .product-hero__install > button[aria-expanded='true'] .dev-btn__icon {
     rotate: 180deg;
   }
@@ -229,54 +233,8 @@ const agents = [
   }
 
   .product-hero__menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    left: 50%;
-    display: flex;
-    flex-direction: column;
     min-width: 11em;
-    padding: 4px;
-    border-radius: var(--dev-radius-control-in-container);
-    background: var(--sys-color-srf);
-    box-shadow: var(--elevated-surface-shadow);
     text-align: start;
-    opacity: 0;
-    visibility: hidden;
-    translate: -50% -4px;
-    transition: opacity var(--motion-press-duration) ease, translate var(--motion-press-duration) ease,
-      visibility 0s var(--motion-press-duration);
-  }
-
-  /* Bridges the gap to the button so a passing mouse keeps the menu open. */
-  .product-hero__menu::before {
-    content: '';
-    position: absolute;
-    inset: -6px 0 100%;
-  }
-
-  .product-hero__install:has([aria-expanded='true']) .product-hero__menu {
-    opacity: 1;
-    visibility: visible;
-    translate: -50% 0;
-    transition-delay: 0s;
-  }
-
-  .product-hero__menu .dev-btn {
-    --dev-btn-hit-inset: 0;
-    color: var(--comp-button-label);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .product-hero__menu .dev-btn:active {
-    transform: none;
-  }
-
-  /* Inset to the options' label edges (4px menu padding + 8px option padding). */
-  .product-hero__menu .dev-hairline {
-    width: auto;
-    margin: 4px 8px;
-    background: var(--sys-color-srf-container);
   }
 
   /* The body-text link underline from project.css. */
@@ -295,12 +253,6 @@ const agents = [
     .product-hero__docs:hover {
       color: var(--sys-color-on-srf);
       text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .product-hero__menu {
-      translate: -50% 0;
     }
   }
 </style>
