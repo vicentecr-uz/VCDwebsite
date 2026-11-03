@@ -13,7 +13,9 @@ let clock = 0;
 class TestTrack extends EventTarget {
   closest(selector: string) { return selector === '[data-carousel-track]' ? this : null; }
 }
-class TestDocument extends EventTarget {}
+class TestDocument extends EventTarget {
+  createElement() { return new TestImage(); }
+}
 const testDocument = new TestDocument();
 
 class TestImage extends EventTarget {
@@ -40,6 +42,7 @@ class TestImage extends EventTarget {
   onerror: (() => void) | null = null;
   decode: () => Promise<void> = () => Promise.resolve();
   clone?: TestImage;
+  children: TestImage[] = [];
   cloneDecode?: () => Promise<void>;
   animations: FakeAnimation[] = [];
   top = 20;
@@ -49,8 +52,9 @@ class TestImage extends EventTarget {
   removeAttribute(name: string) { this.attributes.delete(name); }
   hasAttribute(name: string) { return this.attributes.has(name); }
   getBoundingClientRect() { return { top: this.top, left: 20, bottom: this.top + 200, right: 320 }; }
-  cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); if (this.cloneDecode) clone.decode = this.cloneDecode; return clone; }
+  cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); if (this.cloneDecode) clone.decode = () => clone.hasAttribute('data-preview-reveal') ? this.cloneDecode!() : Promise.resolve(); return clone; }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
+  append(...nodes: TestImage[]) { this.children.push(...nodes); }
   remove() { this.isConnected = false; }
   closest() { return null; }
   getAnimations() { return this.animations; }
@@ -231,6 +235,7 @@ try {
   await flush();
   const staleClone = revealing.image.clone!;
   assert.ok(staleClone.isConnected);
+  assert.equal(revealing.image.classes.has('image-preview-pair-covered'), false, 'the original stays visible before the pair is ready');
   revealReplacement.cancel(revealing.image as unknown as HTMLImageElement);
   revealing.image.src = '/new.webp';
   assert.equal(staleClone.isConnected, false, 'replacement removes the old reveal overlay immediately');
@@ -260,7 +265,7 @@ try {
   for (let frame = 0; frame < 2; frame++) {
     const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0));
   }
-  assert.equal(cold.image.clone!.classes.has('is-revealing'), true);
+  assert.equal(cold.image.clone!.children.some((child) => child.classes.has('is-revealing')), true);
   runTimer(600);
   assert.equal(cold.image.src, '/cold-clone.webp', 'source changes only behind the decoded reveal');
   coldUpgrade.destroy();
@@ -418,9 +423,31 @@ try {
     await flush();
     runFrames();
     const animation = new FakeAnimation();
-    image.clone!.animations = [animation];
-    return { image, animation, upgrade };
+    const thumbAnimation = new FakeAnimation();
+    image.clone!.children[0].animations = [thumbAnimation];
+    image.clone!.children[1].animations = [animation];
+    return { image, animation, thumbAnimation, upgrade };
   };
+  const handoff = await startReveal('/handoff.webp');
+  const pair = handoff.image.clone!;
+  assert.equal(handoff.image.classes.has('image-preview-pair-covered'), true, 'the original is hidden during the paired reveal');
+  assert.equal(pair.children[0].hasAttribute('data-preview-thumb'), true);
+  assert.equal(pair.children[1].hasAttribute('data-preview-reveal'), true);
+  let finishHandoff!: () => void;
+  handoff.image.decode = () => new Promise(resolve => { finishHandoff = resolve; });
+  runTimer(600);
+  assert.equal(handoff.image.src, '/handoff.webp');
+  assert.equal(handoff.image.classes.has('image-preview-pair-covered'), true, 'the original remains hidden while its new source decodes');
+  assert.equal(pair.isConnected, true, 'the high-res pair covers the source handoff');
+  finishHandoff();
+  await flush();
+  assert.equal(pair.isConnected, true, 'decoded source must paint before removing the pair');
+  runFrames();
+  await flush();
+  assert.equal(pair.isConnected, false, 'handoff removes the entire pair after painting');
+  assert.equal(handoff.image.classes.has('image-preview-pair-covered'), false, 'handoff restores the original atomically');
+  handoff.upgrade.destroy();
+
   const touch = (type: string, track: TestTrack, identifier = 1) =>
     dispatchDocumentEvent(type, track, [], [{ identifier }]);
   const track = new TestTrack();
@@ -428,6 +455,7 @@ try {
   clock += 100;
   touch('touchstart', track);
   assert.equal(active.animation.playState, 'paused');
+  assert.equal(active.thumbAnimation.playState, 'paused', 'both masks pause on the same carousel interaction');
   assert.equal([...timerDelays.values()].includes(600), false, 'pause cancels the completion fallback');
   clock += 2000;
   assert.equal(active.image.src, '/thumb.webp', 'a long held swipe does not swap the original image');
@@ -441,6 +469,7 @@ try {
   touch('touchcancel', track);
   runTimer(200);
   assert.equal(active.animation.playState, 'running', 'touchcancel without scrollend eventually resumes');
+  assert.equal(active.thumbAnimation.playState, 'running', 'the inverse mask resumes with the reveal');
   assert.equal(active.animation.currentTime, 312, 'resume does not restart the wipe');
   runTimer(500);
   assert.equal(active.image.src, '/paused-reveal.webp', 'only the remaining fallback time runs after resume');
@@ -476,6 +505,9 @@ try {
     if (!destroy) runTimer(200);
     assert.equal(cancelled.animation.playState, 'idle', 'resume cannot restart a cancelled animation');
     assert.equal(cancelled.image.src, '/thumb.webp');
+    assert.equal(cancelled.image.classes.has('image-preview-pair-covered'), false, 'cancel and destroy restore original visibility');
+    assert.equal(cancelled.image.clone!.isConnected, false, 'cancel and destroy remove the entire blend group');
+    assert.equal(cancelled.thumbAnimation.playState, 'idle', 'the inverse mask is cancelled too');
     cancelled.upgrade.destroy();
     assert.equal(timers.size, 0);
   }
