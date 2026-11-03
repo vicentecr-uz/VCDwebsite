@@ -176,6 +176,10 @@ for (const file of await readdir(path.join(root, 'src/content/projects'))) {
   blocks.forEach((block, index) => {
     const registered = craftDemo(demos[index].demo);
     assert.equal(attr(block, 'data-demo-frame'), registered.frame ?? 'default', `${file}: shared default unless explicitly opted out in the registry`);
+    const frames = allNodes(block).filter((node) => attr(node, 'class')?.split(/\s+/).includes('demo-frame'));
+    assert.equal(frames.length, 1, `${file}: exactly one shared visual frame`);
+    assert.equal(frames[0] === block, registered.id !== 'image-framing', `${file}: cropper frames the canvas; other demos frame the block`);
+    if (registered.id === 'image-framing') assert.ok(attr(frames[0], 'class').split(/\s+/).includes('crop-frame-demo__preview-shell'), `${file}: shared frame surrounds the crop canvas`);
     assert.ok(!attr(block, 'class').split(/\s+/).includes('dev-surface'), `${file}: outer frame is not an elevated editor surface`);
   });
   checkedProjects++;
