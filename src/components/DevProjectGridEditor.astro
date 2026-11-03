@@ -115,6 +115,7 @@ const visibilityOptions = [
   } from '../scripts/coverLuminance';
   import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+  import { placeBeside } from '../lib/floatingLayer';
   import { isAcceptedImageFile, isHeicUpload } from '../lib/imageUpload.mjs';
   import 'color-dialog-box';
   import { createPageScope } from '../lib/pageLifecycle';
@@ -126,6 +127,7 @@ const visibilityOptions = [
   window.__vcdCreateHistory = createHistory;
   window.__vcdRegisterHistoryScope = registerHistoryScope;
 
+  window.__vcdPlaceBeside = placeBeside;
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
   window.__vcdIsAcceptedImageFile = isAcceptedImageFile;
   window.__vcdIsHeicUpload = isHeicUpload;
@@ -1534,9 +1536,18 @@ const visibilityOptions = [
     return cover instanceof HTMLElement ? cover : null;
   };
 
+  const placeStatusMenu = (menu) => {
+    window.__vcdPlaceBeside(menu, menu.closest('.project-grid__status-wrap'), 'right', 0.35 * parseFloat(getComputedStyle(menu).fontSize));
+  };
+  const placeOpenStatusMenus = () => {
+    document.querySelectorAll('[data-dev-status-menu]:popover-open').forEach(placeStatusMenu);
+  };
+  scope.listen(window, 'scroll', placeOpenStatusMenus, { capture: true });
+  scope.listen(window, 'resize', placeOpenStatusMenus);
+
   const closeAllStatusMenus = () => {
-    document.querySelectorAll('[data-dev-status-menu]').forEach((menu) => {
-      if (menu instanceof HTMLElement) menu.hidden = true;
+    document.querySelectorAll('[data-dev-status-menu]:popover-open').forEach((menu) => {
+      if (menu instanceof HTMLElement) menu.hidePopover();
     });
     document.querySelectorAll('[data-dev-project-status]').forEach((btn) => {
       btn.setAttribute('aria-expanded', 'false');
@@ -1612,10 +1623,11 @@ const visibilityOptions = [
       event.stopPropagation();
       const wrap = statusBtn.closest('.project-grid__status-wrap');
       const menu = wrap?.querySelector('[data-dev-status-menu]');
-      const open = menu instanceof HTMLElement && menu.hidden;
+      const open = menu instanceof HTMLElement && !menu.matches(':popover-open');
       closeAllStatusMenus();
       if (open && menu instanceof HTMLElement) {
-        menu.hidden = false;
+        menu.showPopover();
+        placeStatusMenu(menu);
         statusBtn.setAttribute('aria-expanded', 'true');
       }
       return;
