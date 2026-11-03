@@ -92,6 +92,7 @@ const serializeNode = (node: Node, preserveWrap = true): string => {
   const inner = [...node.childNodes].map((child) => serializeNode(child, preserveWrap)).join('');
   if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
   if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
+  if (tag === 'CODE') return inner ? `<code>${inner}</code>` : '';
   if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
   if (tag === 'SPAN' && node.getAttribute('data-text-right-tab') === 'true') {
     const className = node.classList.contains('text-emphasis') ? ' class="text-emphasis"'
