@@ -143,6 +143,36 @@
   background: var(--comp-button-filled-container-selected);
 }
 
+/* Raised: a slight bevel for a filled or soft button that should stand out a
+   little more (the Sabi hero's CTAs; a candidate for the Save bar). It is an
+   opt-in, not the default look of dev chrome. Dark fills catch a highlight on
+   their top edge and light fills shade their bottom edge; light-dark() swaps
+   the two because filled and soft trade ink between themes. */
+.dev-btn--raised {
+  --dev-btn-raised-highlight: rgb(255 255 255 / 0.3);
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease,
+    transform var(--motion-press-duration) ease-out;
+}
+
+.dev-btn--raised.dev-btn--filled {
+  box-shadow:
+    inset 0 1px 0 light-dark(var(--dev-btn-raised-highlight), transparent),
+    inset 0 -1px 0 light-dark(transparent, var(--sys-color-surface-shadow)),
+    0 1px 2px var(--sys-color-surface-shadow);
+}
+
+.dev-btn--raised.dev-btn--soft {
+  box-shadow:
+    inset 0 1px 0 light-dark(transparent, var(--dev-btn-raised-highlight)),
+    inset 0 -1px 0 light-dark(var(--sys-color-surface-shadow), transparent),
+    0 1px 2px var(--sys-color-surface-shadow);
+}
+
+/* Pressed, the bevel flattens into the page. */
+.dev-btn--raised:is(:active, [data-demo-pressed='true']):not(:disabled) {
+  box-shadow: inset 0 1px 0 transparent, inset 0 -1px 0 transparent, 0 0 0 transparent;
+}
+
 .dev-btn--page {
   background: var(--comp-button-page-container);
   color: var(--comp-button-label);
