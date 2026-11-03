@@ -571,8 +571,16 @@
   transform: none;
 }
 
-.dev-menu__item[aria-selected='true'] {
-  background: var(--comp-button-ghost-container-selected);
+/* The selected row holds the hover fill (a ghost button's own selected fill is
+   transparent), and hovering it steps one darker so the pointer still reads. */
+.dev-menu__item:is(.is-selected, [aria-selected='true']) {
+  background: var(--comp-button-ghost-container-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dev-menu__item:is(.is-selected, [aria-selected='true']):hover {
+    background: var(--comp-button-ghost-container-pressed);
+  }
 }
 
 /* Separators inset to the items' label edge, in the quieter fill. */
