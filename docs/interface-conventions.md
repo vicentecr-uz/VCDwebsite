@@ -45,6 +45,8 @@ Do not reimplement safe viewport height per component.
 
 ## Ground, ink, and edit affordances
 
+Choose text and rule tokens by purpose using [Colour roles](colour-roles.md): primary reading, readable supporting content, or optional metadata at the hairline tone.
+
 Light/dark variants are named for the **ground**, not the ink. `on-dark` is the white-icon set because it sits on a dark ground. Listing `dark` and `hoverDark` flags likewise describe the cover. Project-grid chip palettes are `--chip-{ink,fill,ring,press}-on-{light,dark}`; the ring is always one step darker than its fill on both grounds.
 
 Gallery title/meta ink flips from one shared threshold: `HOVER_LUMA_THRESHOLD` in `src/scripts/coverLuminance.ts`, used by `adaptiveMediaInk` and `bindGalleryMediaInk`. Higher keeps dark ink over more mid-tones; lower switches to light ink sooner. Do not tune this in CSS or `ProjectGrid.astro`.
