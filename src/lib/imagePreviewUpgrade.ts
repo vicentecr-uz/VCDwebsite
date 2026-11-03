@@ -5,8 +5,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   const frames = new Set<number>();
   const timers = new Set<number>();
   const preloads = new Set<HTMLImageElement>();
-  const clones = new Set<HTMLImageElement>();
-  const revealClones = new Map<HTMLImageElement, HTMLImageElement>();
+  const revealPairs = new Map<HTMLImageElement, { pair: HTMLElement; thumb: HTMLImageElement; high: HTMLImageElement }>();
   const bound = new Set<HTMLImageElement>();
   const nextFrame = (callback: FrameRequestCallback) => {
     const id = requestAnimationFrame((time) => {
@@ -96,7 +95,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     carouselPaused = true;
     pauseRevealCompletions();
     revealCompletions.forEach(({ target }) => {
-      target.getAnimations?.().forEach((animation) => {
+      const pair = [...revealPairs.values()].find(({ high, thumb }) => high === target || thumb === target);
+      const animationTargets = pair ? [pair.thumb, pair.high] : [target];
+      animationTargets.forEach((animationTarget) => animationTarget.getAnimations?.().forEach((animation) => {
         const frames = (animation.effect as KeyframeEffect | null)?.getKeyframes() || [];
         const owned = frames.some((frame) =>
           Object.keys(frame).some((property) => property === '--preview-reveal-y' || property === 'opacity'),
@@ -104,9 +105,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         if (!owned) return;
         if (animation.playState === 'running' || animation.pending) {
           animation.pause();
-          pausedAnimations.set(animation, target);
+          pausedAnimations.set(animation, animationTarget);
         }
-      });
+      }));
     });
   }
   function resumeCarouselTransitions(): void {
@@ -215,20 +216,24 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     });
   }
 
+  function removeRevealPair(img: HTMLImageElement): void {
+    const pair = revealPairs.get(img);
+    if (!pair) return;
+    discardReveal(pair.thumb);
+    discardReveal(pair.high);
+    pair.pair.remove();
+    revealPairs.delete(img);
+    img.classList.remove('image-preview-pair-covered');
+  }
+
   function cancel(img: HTMLImageElement): void {
     cleanupCandidate(img);
     previewLoaded.delete(img);
     const state = previewStates.get(img);
     cancelTimer(state?.retryTimer);
     previewStates.delete(img);
-    const clone = revealClones.get(img);
     discardReveal(img);
-    if (clone) {
-      discardReveal(clone);
-      clone.remove();
-      clones.delete(clone);
-      revealClones.delete(img);
-    }
+    removeRevealPair(img);
     img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
   }
 
@@ -298,9 +303,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     clone?: HTMLImageElement,
   ): Promise<void> {
     if (!current(img, preview)) {
-      clone?.remove();
-      if (clone) clones.delete(clone);
-      if (revealClones.get(img) === clone) revealClones.delete(img);
+      if (revealPairs.get(img)?.high === clone) removeRevealPair(img);
       return;
     }
     freezeInFlowBox(img);
@@ -311,24 +314,20 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     candidates.delete(img);
     swapObserver?.unobserve(img);
 
-    // WebKit (Edge iOS / Safari) blanks the bitmap the moment `src` changes,
-    // even when the preview is already in cache from the preload Image().
-    // Hold the wipe clone until this element has decoded and painted, or the
-    // thumb disappears for a frame after the reveal finishes.
-    if (clone) {
+    const pair = revealPairs.get(img);
+    if (pair) {
+      // WebKit can blank the original on src changes; retain the pair until it paints.
       await Promise.race([
         decodeImage(img, preview),
         new Promise<void>((resolve) => later(resolve, 2000)),
       ]);
       await afterNextPaint();
       const cleanup = () => {
-        if (signal.aborted || revealClones.get(img) !== clone) return;
-        clone.remove();
-        clones.delete(clone);
-        revealClones.delete(img);
+        if (signal.aborted || revealPairs.get(img) !== pair) return;
+        removeRevealPair(img);
         delete img.dataset.imagePreviewRevealing;
       };
-      if (carouselPaused) deferredRevealCompletions.set(clone, cleanup);
+      if (carouselPaused) deferredRevealCompletions.set(pair.high, cleanup);
       else cleanup();
       return;
     }
@@ -544,41 +543,49 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   }
 
   function revealWithClone(img: HTMLImageElement, preview: string): void {
-    const clone = img.cloneNode(false) as HTMLImageElement;
-    clones.add(clone);
-    revealClones.set(img, clone);
-    clone.className = img.className;
-    clone.removeAttribute('data-image-preview');
-    clone.removeAttribute('data-image-preview-bound');
-    clone.setAttribute('data-preview-reveal', '');
-    clone.alt = '';
-    clone.setAttribute('aria-hidden', 'true');
-    for (const attribute of ['data-image-original', 'tabindex', 'role', 'aria-label']) clone.removeAttribute(attribute);
-    clone.src = preview;
+    const pair = document.createElement('span');
+    pair.setAttribute('data-preview-pair', '');
+    pair.setAttribute('aria-hidden', 'true');
+    pair.className = 'image-preview-pair';
 
-    for (const attr of ['sizes', 'srcset', 'width', 'height', 'decoding'] as const) {
-      const value = img.getAttribute(attr);
-      if (value) clone.setAttribute(attr, value);
-    }
+    const makeClone = (src: string, marker: string) => {
+      const clone = img.cloneNode(false) as HTMLImageElement;
+      clone.className = img.className;
+      clone.removeAttribute('data-image-preview');
+      clone.removeAttribute('data-image-preview-bound');
+      clone.alt = '';
+      clone.setAttribute('aria-hidden', 'true');
+      for (const attribute of ['id', 'data-image-original', 'data-progressive-image', 'data-preview-reveal', 'data-preview-thumb', 'tabindex', 'role', 'aria-label']) {
+        clone.removeAttribute(attribute);
+      }
+      clone.setAttribute(marker, '');
+      clone.src = src;
+      pair.append(clone);
+      pinCloneToThumb(img, clone);
+      return clone;
+    };
 
-    img.insertAdjacentElement('afterend', clone);
-    pinCloneToThumb(img, clone);
+    const thumb = makeClone(img.currentSrc || img.src, 'data-preview-thumb');
+    const high = makeClone(preview, 'data-preview-reveal');
+    revealPairs.set(img, { pair, thumb, high });
+    img.insertAdjacentElement('afterend', pair);
 
     let finished = false;
     const done = () => {
-      if (finished || !current(img, preview) || revealClones.get(img) !== clone) return;
+      if (finished || !current(img, preview) || revealPairs.get(img)?.high !== high) return;
       if (carouselPaused) {
-        deferredRevealCompletions.set(clone, done);
+        deferredRevealCompletions.set(high, done);
         return;
       }
       finished = true;
-      cancelRevealCompletion(clone);
-      clone.removeEventListener('transitionend', onEnd);
-      void finishUpgrade(img, preview, clone);
+      cancelRevealCompletion(high);
+      thumb.removeEventListener('transitionend', onEnd);
+      high.removeEventListener('transitionend', onEnd);
+      void finishUpgrade(img, preview, high);
     };
 
     const onEnd = (event: TransitionEvent) => {
-      if (event.target !== clone) return;
+      if (event.target !== high && event.target !== thumb) return;
       if (event.propertyName !== 'opacity'
         && event.propertyName !== '--preview-reveal-y'
         && !event.propertyName.includes('mask')) return;
@@ -588,25 +595,29 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     // The preload and the visible clone have separate decode lifetimes.
     // Keep the thumbnail until the actual reveal layer has pixels.
     const failedDecode = later(() => {
-      if (!current(img, preview) || revealClones.get(img) !== clone) return;
+      if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
       cancel(img);
       delete img.dataset.imagePreviewRevealing;
       options.onError?.(img);
     }, PREVIEW_TIMEOUT_MS);
-    void decodeImage(clone, preview).then(() => {
-      if (!current(img, preview) || revealClones.get(img) !== clone) return;
-      if (!clone.complete || !clone.naturalWidth) return;
+    void Promise.all([decodeImage(thumb), decodeImage(high, preview)]).then(() => {
+      if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
+      if (!thumb.complete || !thumb.naturalWidth || !high.complete || !high.naturalWidth) return;
       cancelTimer(failedDecode);
-      clone.addEventListener('transitionend', onEnd, { signal });
+      thumb.addEventListener('transitionend', onEnd, { signal });
+      high.addEventListener('transitionend', onEnd, { signal });
       nextFrame(() => {
         nextFrame(() => {
-          if (!current(img, preview) || revealClones.get(img) !== clone) return;
+          if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
           const startReveal = () => {
-            if (!current(img, preview) || revealClones.get(img) !== clone) return;
-            clone.classList.add('is-revealing');
-            scheduleRevealCompletion(clone, done, REVEAL_DURATION_MS + 100);
+            if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
+            img.classList.add('image-preview-pair-covered');
+            pair.classList.add('is-revealing');
+            thumb.classList.add('is-revealing');
+            high.classList.add('is-revealing');
+            scheduleRevealCompletion(high, done, REVEAL_DURATION_MS + 100);
           };
-          if (carouselPaused) deferredRevealStarts.set(clone, startReveal);
+          if (carouselPaused) deferredRevealStarts.set(high, startReveal);
           else startReveal();
         });
       });
@@ -743,15 +754,14 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         image.src = '';
       }
       preloads.clear();
-      clones.forEach((clone) => clone.remove());
-      clones.clear();
-      revealClones.clear();
+      for (const image of revealPairs.keys()) removeRevealPair(image);
       previewQueue.clear();
       for (const image of bound) {
         delete image.dataset.imagePreviewBound;
         delete image.dataset.imagePreviewUpgrading;
         delete image.dataset.imagePreviewRevealing;
         image.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
+        image.classList.remove('image-preview-pair-covered');
       }
       bound.clear();
       candidates.clear();

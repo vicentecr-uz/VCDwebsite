@@ -256,7 +256,9 @@
   stored values pick the same slice at any frame size.
 */
 .project-cropped > img,
-.project-cropped > .project-crop-clip > img {
+.project-cropped > .project-crop-clip > img,
+.project-cropped > .image-preview-pair > img,
+.project-cropped > .project-crop-clip > .image-preview-pair > img {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -2945,24 +2947,76 @@ h3.project-section-title {
 
 /* ── Preview sharpen reveal (thumb → preview) ─────────────── */
 
+:root {
+  --preview-reveal-feather: 22%;
+}
+
+/* During a transparent-image upgrade both bitmaps live in one isolated
+   cross-fade group. The original image remains in flow but is covered once
+   both replacement layers have decoded. */
+.image-preview-pair {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  isolation: isolate;
+  visibility: hidden;
+}
+
+.image-preview-pair.is-revealing {
+  visibility: visible;
+}
+
+img.image-preview-pair-covered {
+  -webkit-mask-image: linear-gradient(transparent, transparent) !important;
+  mask-image: linear-gradient(transparent, transparent) !important;
+}
+
+img[data-preview-thumb],
+img[data-preview-reveal] {
+  --preview-reveal-y: calc(0% - var(--preview-reveal-feather));
+  transition: --preview-reveal-y 0.5s ease !important;
+}
+
+img[data-preview-thumb] {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--preview-reveal-y) - var(--preview-reveal-feather)),
+    #000 calc(var(--preview-reveal-y) + var(--preview-reveal-feather))
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--preview-reveal-y) - var(--preview-reveal-feather)),
+    #000 calc(var(--preview-reveal-y) + var(--preview-reveal-feather))
+  );
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+img[data-preview-reveal] {
+  mix-blend-mode: plus-lighter;
+}
+
+img[data-preview-thumb].is-revealing {
+  --preview-reveal-y: calc(100% + var(--preview-reveal-feather));
+}
+
 @property --preview-reveal-y {
   syntax: '<percentage>';
   inherits: false;
-  initial-value: -22%;
+  initial-value: 0%;
 }
 
 img[data-preview-reveal] {
   pointer-events: none;
-  --preview-reveal-y: -22%;
   -webkit-mask-image: linear-gradient(
     to bottom,
-    #000 calc(var(--preview-reveal-y) - 22%),
-    transparent calc(var(--preview-reveal-y) + 22%)
+    #000 calc(var(--preview-reveal-y) - var(--preview-reveal-feather)),
+    transparent calc(var(--preview-reveal-y) + var(--preview-reveal-feather))
   );
   mask-image: linear-gradient(
     to bottom,
-    #000 calc(var(--preview-reveal-y) - 22%),
-    transparent calc(var(--preview-reveal-y) + 22%)
+    #000 calc(var(--preview-reveal-y) - var(--preview-reveal-feather)),
+    transparent calc(var(--preview-reveal-y) + var(--preview-reveal-feather))
   );
   -webkit-mask-size: 100% 100%;
   mask-size: 100% 100%;
@@ -2970,7 +3024,7 @@ img[data-preview-reveal] {
 }
 
 img[data-preview-reveal].is-revealing {
-  --preview-reveal-y: 122%;
+  --preview-reveal-y: calc(100% + var(--preview-reveal-feather));
 }
 
 /* Wipe clones inherit the thumb's layout (crop transform / stack inset).
@@ -2988,6 +3042,29 @@ img.area-photo.image-preview-reveal--fade-only.is-revealing {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .image-preview-pair > img[data-preview-thumb],
+  .image-preview-pair > img[data-preview-reveal] {
+    -webkit-mask-image: none;
+    mask-image: none;
+    transition: opacity 0.5s ease !important;
+  }
+
+  .image-preview-pair > img[data-preview-thumb] {
+    opacity: 1;
+  }
+
+  .image-preview-pair > img[data-preview-reveal] {
+    opacity: 0;
+  }
+
+  .image-preview-pair.is-revealing > img[data-preview-thumb] {
+    opacity: 0;
+  }
+
+  .image-preview-pair.is-revealing > img[data-preview-reveal] {
+    opacity: 1;
+  }
+
   img[data-preview-reveal] {
     -webkit-mask-image: none;
     mask-image: none;
