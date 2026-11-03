@@ -13,6 +13,14 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 
 Scrollable content needs a clear edge treatment. For grouped controls, cards, and other contained UI, put the existing radius token on the actual overflow viewport and clip its contents to that rounded shape, as with the clipped areas of the Asset manager. For text-like content that continues past its edge, use a gradient alpha mask to fade the text, as with overflowing text fields. Preserve native scrolling and visible keyboard focus in both cases. Reuse the existing dev controls and styling patterns rather than introducing a new overflow abstraction. Hiding scrollbars is a local choice for a specific control; this pattern does not make it a global rule.
 
+## Floating layers
+
+Menus, dropdowns, listboxes, popovers and tooltips open in the native top layer: put `popover="manual"` on the floating element, open it with `showPopover()`, and place it with `position: fixed` in viewport coordinates using `placeBeside()` / `clampToViewport()` from `src/lib/floatingLayer.ts` (`SelectField` keeps its own glyph-aligned placement and uses the same clamp). Every `.project-block` is a stacking context (`isolation: isolate` from `site-annotations.css`) and, through `container-type: inline-size`, the containing block for `position: fixed`. So a layer inside one block paints under the next block whatever its `z-index`, and `position: fixed` alone does not escape. Never fix draw order by raising a block's `z-index`.
+
+In the popover's CSS, reset the UA defaults (`inset: auto; margin: 0; border: 0; overflow: visible`) and set `display` only under `:popover-open`, so the closed popover stays `display: none`. The element stays in its DOM position, so `:has()`, `:hover`, inheritance and event delegation still work; ancestor `opacity` no longer applies to it.
+
+`bun test scripts/test/top-layer-floating.test.ts` fails when an element with `role="menu"`, `"listbox"` or `"tooltip"` renders without `popover`. A layer that genuinely never sits inside a block, such as an inline toolbar row or a node appended to `<body>`, goes on the test's exemption list with a reason. Do not add an exemption for a layer that renders inside a block.
+
 ## Page width and viewport height
 
 Text and media use separate caps:
