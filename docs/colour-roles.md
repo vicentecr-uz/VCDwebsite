@@ -1,6 +1,6 @@
 # Colour roles
 
-Choose ink by the job the text does. Required reading, readable supporting content and optional metadata are separate roles. Faint metadata is not a general "make it lighter" colour.
+Choose ink by the job the text does. Required reading, readable supporting content and optional metadata are separate roles. Optional metadata stays readable; its token is not a general "make it lighter" colour.
 
 ## Text
 
@@ -20,7 +20,7 @@ Can the reader skip it without losing content or an action's meaning?
    └─ Main reading, a field label or current navigation → on-srf
 ```
 
-Use the component's existing role for functional links. Documentation's inactive contents links use `--documentation-navigation-muted`; their current state uses `--sys-color-on-srf`. An inactive link remains an action, so it must not use the faint metadata role.
+Use the component's existing role for functional links. Documentation's inactive contents links use `--documentation-navigation-muted`; their current text and section marker use `--sys-color-on-srf`. An inactive link remains an action, so it must not use the optional metadata role.
 
 In documentation, "by Vicente Cruz", "Basics", "API", "Guides", "On this page", "Previous" and "Next" use `--sys-color-on-srf-subtle`. The linked page titles beside Previous and Next remain readable navigation. The attribution is optional even when the author's name is a link.
 
@@ -28,13 +28,13 @@ Use `--sys-color-on-srf` for a body paragraph or form field label. Use `--sys-co
 
 ## Metadata and hairlines
 
-`sys.color.on-srf-subtle` aliases `{sys.color.outline}` in both modes. This keeps optional metadata at the same tone as the default horizontal `Hairline`, while callers still choose the token by semantic purpose.
+`sys.color.on-srf-subtle` uses `ref.palette.grey.450` in light mode (`#767676`, about 4.54:1 against white) and `ref.palette.grey.600` in dark mode (`#aeaeaf`). Regular text requires at least 4.5:1 contrast against its background, including optional metadata.
 
 - Text metadata uses `--sys-color-on-srf-subtle`.
 - Editorial dividers and rules use `--sys-color-outline`, or the existing `Hairline` component.
 - Drawer borders and component frame edges may use `--sys-color-outline-variant`. Keep each primitive's existing edge treatment; a Menu-owned separator does not become an editorial divider.
 
-Do not use `--sys-color-outline` as text ink just because it resolves to the same colour. The alias owns the shared tone, so future token changes keep text and rules connected without conflating their roles.
+Text and decorative rules have separate contrast requirements. Do not use `--sys-color-outline` as text ink: a hairline can be fainter than readable text. The same numeric colour also has different optical weight in a rule and antialiased letterforms, so choose each role for its purpose rather than matching their values.
 
 ## Example
 
@@ -56,9 +56,9 @@ These rules apply on the page ground. Inverse surfaces, media overlays and galle
 
 ## Sources
 
-- `tokens/design-tokens.json` defines the three text roles and the outline alias.
+- `tokens/design-tokens.json` defines the three text roles and separate outline roles.
 - `src/styles/global.css` contains the generated CSS variables.
 - `src/components/ui/Hairline.astro` and `.dev-hairline` in `src/styles/dev-chrome.css` supply the default horizontal hairline.
 - `DocumentationLayout.astro`, `DocumentationNavigation.astro` and `DocumentationContents.astro` under `src/layouts/` or `src/components/` contain the documentation call sites.
 
-The role alias and documentation examples are defined in [PR #177](https://github.com/vicentecr-uz/VCDwebsite/pull/177).
+The metadata role and documentation examples are defined in [PR #177](https://github.com/vicentecr-uz/VCDwebsite/pull/177).
