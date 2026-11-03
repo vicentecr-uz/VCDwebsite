@@ -9,6 +9,12 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 - **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. Content Heading 2 uses the body size, leading, and tracking with bold weight 700; body emphasis stays at 500. It remains a heading block in the editor and rendered document.
 - **Page ground:** Use `--sys-color-srf` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
 
+## Text links
+
+Inline text links follow the home intro’s Kingfisher link: an underline at 10% of the current text colour, `0.08em` thick and `0.15em` below the text; pointer hover strengthens it to 30% over 150ms. Use the shared `.text-link` class outside body-text blocks. Body-text links, the existing `.project-inline-link` alias and the home intro action share the same rules in `global.css`; do not recreate the underline at call sites. The editor’s explicit underline-off formatting remains supported. Navigation, cards, media hit areas and filled buttons retain their own component treatment.
+
+The write-up Index control is a native link to `/digital`, styled as a quiet text control: label and return icon both use `on-srf-subtle`, darken together to `on-srf` on hover or keyboard focus, and never underline. Keep this single-use treatment in `WriteupLayout` until another real caller needs it.
+
 ## Scrollable overflow
 
 Scrollable content needs a clear edge treatment. For grouped controls, cards, and other contained UI, put the existing radius token on the actual overflow viewport and clip its contents to that rounded shape, as with the clipped areas of the Asset manager. For text-like content that continues past its edge, use a gradient alpha mask to fade the text, as with overflowing text fields. Preserve native scrolling and visible keyboard focus in both cases. Reuse the existing dev controls and styling patterns rather than introducing a new overflow abstraction. Hiding scrollbars is a local choice for a specific control; this pattern does not make it a global rule.
