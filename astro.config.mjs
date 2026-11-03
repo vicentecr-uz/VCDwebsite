@@ -2791,7 +2791,7 @@ export default defineConfig({
       ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter()]),
     ],
     optimizeDeps: {
-      include: ['gsap', 'color-dialog-box'],
+      include: ['gsap', 'gsap/SplitText', 'color-dialog-box'],
     },
     server: {
       watch: {
