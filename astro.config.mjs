@@ -1686,6 +1686,7 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'bodyText',
   'sectionTitle',
   'projectDetails',
+  'divider',
   'award',
   'image',
   'imageGrid',
@@ -2282,6 +2283,12 @@ export function contentSectionDevWriter() {
               spacing: insertSpacing,
               paragraphs: [''],
               ...(intro ? { intro: true } : {}),
+            };
+          } else if (type === 'divider') {
+            section = {
+              type: 'divider',
+              id: `divider-${Date.now().toString(36)}`,
+              spacing: body.spacing === undefined ? 'group' : insertSpacing,
             };
           } else if (type === 'projectDetails') {
             const id = `details-${Date.now().toString(36)}`;

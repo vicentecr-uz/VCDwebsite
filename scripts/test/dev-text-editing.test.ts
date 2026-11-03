@@ -8,11 +8,11 @@ import { createHistory } from '../../src/lib/devHistory';
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const start = source.indexOf('    const bindTextState =');
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, source.indexOf('    const TRASH_ICON', start)) + '\nreturn bindTextState;');
-const toneScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
-  const markSelector = { emphasis: '.text-emphasis', subtle: '.text-subtle', bold: 'strong, b', italic: 'em, i', underline: 'u' };
-  ${source.slice(source.indexOf('    const applyEmphasisMark ='), source.indexOf('    const applyEmphasisStyle ='))}
-  return applyEmphasisMark;
-`);
+const inlineMarkSource = readFileSync(new URL('../../src/lib/devInlineMarks.ts', import.meta.url), 'utf8');
+const toneScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+  inlineMarkSource.replace(/^import .*;$/m, '').replaceAll('export ', '')
+  + '\nreturn (range, tone) => applyInlineMark(range, { tone });',
+);
 
 function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle', includeParagraph = false) {
   const window = new Window();

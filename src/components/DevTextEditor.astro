@@ -14,7 +14,11 @@ import '../styles/gapSpacingControl.css';
 import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
 import ProjectAward from './project/ProjectAward.astro';
+import ProjectDivider from './project/ProjectDivider.astro';
+import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
 import SaveBar from './ui/SaveBar.astro';
+import Menu from './ui/Menu.astro';
+import Button from './ui/Button.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
@@ -27,6 +31,16 @@ const formatPilcrowSvg = sizeIcon(pilcrowIcon, 16);
 const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 ---
+
+<template data-divider-template><ProjectDivider documentKey="divider-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-project-details-trigger-template><Button label="" emphasis="ghost" class="project-details__actions" data-project-details-actions data-dev-mode-only aria-label="Row actions" aria-haspopup="menu" aria-expanded="false"><span slot="icon" aria-hidden="true" set:html={sizeIcon(ellipsisIcon, 16)} /></Button></template>
+<template data-project-details-menu-template>
+  <Menu class="dev-menu project-details-row-menu" role="menu" aria-label="Row actions" popover="manual">
+    <Button label="Move up" emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" data-details-row-action="up" />
+    <Button label="Move down" emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" data-details-row-action="down" />
+    <Button label="Remove row" emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" data-details-row-action="remove" />
+  </Menu>
+</template>
 
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
 
@@ -77,6 +91,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ]}
       />
       <SelectField
+        class="dev-text-format__font-style"
+        hideLabel
+        label="Font style"
+        data-dev-font-style
+        value="default"
+        options={[
+          { value: 'default', label: 'Default' },
+          { value: 'monospace', label: 'Monospace' },
+        ]}
+      />
+      <SelectField
         class="dev-text-format__wrap-style"
         hideLabel
         label="Wrapping"
@@ -120,10 +145,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
+  import { placeBeside } from '../lib/floatingLayer';
+  import { applyInlineMark } from '../lib/devInlineMarks';
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
-  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, explicitParagraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, readPlainDomText, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
+  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, readPlainDomText, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { insertRightIndentTab, removeRightIndentTab, breakRightIndentTab } from '../lib/devTextRightTab';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
@@ -212,7 +239,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'divider' | 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
@@ -311,6 +338,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
     const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
     const emphasisStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-emphasis-style]');
+    const fontStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-font-style]');
+    const fontStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__font-style');
     const wrapStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-wrap-style]');
     const emphasisStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__emphasis-style');
     const wrapStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__wrap-style');
@@ -326,7 +355,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
-    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !wrapStyleSelect || !emphasisStyleField || !formatInline) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !fontStyleSelect || !fontStyleField || !wrapStyleSelect || !emphasisStyleField || !formatInline) return;
 
     const isFormatBarTarget = (node: Node | null) => {
       if (!node) return false;
@@ -790,6 +819,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="award">Award</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="divider">Divider</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
@@ -2385,7 +2415,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const buildInsertedSection = (
-      type: InsertableSectionType,
+      type: Exclude<InsertableSectionType, 'divider'>,
       documentKey: string,
       index: number,
       spacing: SpacingValue,
@@ -2842,7 +2872,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -2850,7 +2880,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const introHeight = options?.intro
         ? (spacingStates.find((candidate) => candidate.document === documentKey && candidate.introHeight)?.introHeight?.currentValue ?? 75)
         : undefined;
-      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
+      const buildDivider = () => {
+        const template = document.querySelector<HTMLTemplateElement>('[data-divider-template]')!;
+        const root = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+        root.className = `project-block project-block--text project-divider ${projectStackClassName(newSpacing, false)}`;
+        root.dataset.devSpacingDocument = documentKey;
+        root.dataset.devSpacingPath = JSON.stringify(['sections', insertIndex, 'spacing']);
+        root.dataset.devSpacingValue = newSpacing;
+        root.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(newSpacing));
+        root.dataset.devSectionDeletable = 'divider';
+        root.dataset.siteAnnotationSectionId = sectionId;
+        root.dataset.siteAnnotationDocument = documentKey;
+        root.tabIndex = -1;
+        root.setAttribute('aria-label', 'Divider');
+        return { root, textElement: null, textKind: null, textPath: null };
+      };
+      const built = type === 'divider' ? buildDivider() : buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       built.root.dataset.devContentId = sectionId;
       if (type === 'bodyText' || type === 'sectionTitle') {
         built.root.dataset.siteAnnotationSectionId = sectionId;
@@ -2865,20 +2910,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         wireSectionAddMenu(spacingState);
       }
 
-      const textState: EditableTextState = {
+      const textState: EditableTextState | null = built.textElement && built.textPath && built.textKind ? {
         element: built.textElement,
         document: documentKey,
         path: built.textPath,
         kind: built.textKind,
         savedValue: built.textKind === 'paragraphs' ? [''] : type === 'award' ? '' : 'Section title',
-      };
+      } : null;
       if (type === 'projectDetails') {
         registerTextStates(built.root);
-      } else {
+      } else if (textState) {
         textStates.push(textState);
         bindTextState(textState);
       }
-      if (isDevContentEditing() && type !== 'award') {
+      if (built.textElement && isDevContentEditing() && type !== 'award') {
         built.textElement.setAttribute(
           'contenteditable',
           built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -2905,7 +2950,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacing: newSpacing,
         sectionId,
         root: built.root,
-        textStates: type === 'projectDetails' ? textStates.filter((state) => built.root.contains(state.element)) : [textState],
+        textStates: type === 'projectDetails' ? textStates.filter((state) => built.root.contains(state.element)) : textState ? [textState] : [],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
       });
@@ -2921,7 +2966,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             type,
             id: sectionId,
             sectionId,
-            title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title',
+            ...(type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
           },
           ...(type === 'sectionTitle' ? { outlineEntries: [] } : {}),
         },
@@ -2930,6 +2975,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncPageTopSpacingControls();
       updateActions();
       pageScope.frame(() => {
+        if (!built.textElement) { built.root.focus({ preventScroll: true }); return; }
         if (type === 'award') {
           built.root.querySelector<HTMLButtonElement>('[data-award-edit]')?.focus({ preventScroll: true });
           return;
@@ -3026,7 +3072,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacing: 'related',
         intro: root.dataset.devIntro === 'true',
       });
-      if (!built) return;
+      if (!built?.textElement) return;
 
       if (payloadParagraphs.length) {
         built.textElement.replaceChildren(...payloadParagraphs);
@@ -3126,7 +3172,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails' && type !== 'award') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
@@ -3159,8 +3205,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (state) state.path = path;
         }
       });
-      root.querySelectorAll<HTMLButtonElement>('[data-project-details-remove]').forEach((button) => {
-        button.disabled = detailsSnapshot(root).rows.length <= 1;
+      detailsSnapshot(root).rows.forEach((row, index) => {
+        const trigger = row.querySelector<HTMLButtonElement>('[data-project-details-actions]');
+        if (trigger) trigger.setAttribute('aria-label', `Row actions for ${row.querySelector('dt')?.textContent?.trim() || `row ${index + 1}`}`);
       });
       const add = root.querySelector<HTMLButtonElement>('[data-project-details-add]');
       if (add) add.disabled = detailsSnapshot(root).rows.length >= 100;
@@ -3227,53 +3274,112 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         field.textContent = name === 'label' ? 'Detail' : '';
         row.append(field);
       }
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'project-details__remove';
-      remove.dataset.projectDetailsRemove = '';
-      remove.dataset.devModeOnly = '';
-      remove.setAttribute('aria-label', 'Remove detail');
-      remove.textContent = 'Remove';
-      row.append(remove);
+      const trigger = (root.querySelector<HTMLButtonElement>('[data-project-details-actions]') ?? document.querySelector<HTMLTemplateElement>('[data-project-details-trigger-template]')!.content.firstElementChild)!.cloneNode(true) as HTMLButtonElement;
+      trigger.setAttribute('aria-expanded', 'false');
+      row.append(trigger);
       return row;
+    };
+    const detailsMenuTemplate = document.querySelector<HTMLTemplateElement>('[data-project-details-menu-template]');
+    const detailsMenu = detailsMenuTemplate?.content.firstElementChild?.cloneNode(true) as HTMLElement | undefined;
+    if (detailsMenu) document.body.append(detailsMenu);
+    let detailsMenuTarget: { root: HTMLElement; row: HTMLElement; trigger: HTMLButtonElement } | null = null;
+    const closeDetailsMenu = (returnFocus = false) => {
+      const target = detailsMenuTarget;
+      detailsMenuTarget = null;
+      if (detailsMenu?.matches(':popover-open')) detailsMenu.hidePopover();
+      target?.trigger.setAttribute('aria-expanded', 'false');
+      if (returnFocus && target?.trigger.isConnected) target.trigger.focus();
+    };
+    pageScope.add(() => { closeDetailsMenu(); detailsMenu?.remove(); });
+    const changeDetailsRows = (root: HTMLElement, action: 'add' | 'up' | 'down' | 'remove', row?: HTMLElement) => {
+      if (!isDevContentEditing() || actionsBusy || pageHistory.busy) return;
+      const before = detailsSnapshot(root);
+      const index = row ? before.rows.indexOf(row) : -1;
+      if (action === 'add' && before.rows.length >= 100) return;
+      if (action !== 'add' && index < 0) return;
+      if (action === 'remove' && before.rows.length <= 1) return;
+      if (action === 'up' && index === 0) return;
+      if (action === 'down' && index === before.rows.length - 1) return;
+      closeDetailsMenu();
+      captureFieldHistory();
+      pageHistory.breakGroup();
+      if (!detailsBaselines.has(root)) detailsBaselines.set(root, before);
+      if (action === 'add') {
+        const added = createDetailsRow(root);
+        root.querySelector('dl')!.append(added);
+        syncProjectDetailsRowPaths(root);
+        registerTextStates(added);
+      } else if (action === 'remove') {
+        detachSectionStates(row!);
+        row!.remove();
+      } else if (action === 'up') before.rows[index - 1].before(row!);
+      else before.rows[index + 1].after(row!);
+      syncProjectDetailsRowPaths(root);
+      const after = detailsSnapshot(root);
+      const restore = (snapshot: DetailsSnapshot) => {
+        closeDetailsMenu();
+        restoreDetailsSnapshot(root, snapshot);
+        stageProjectDetailsRows(root);
+      };
+      const label = action === 'add' ? 'Add detail' : action === 'remove' ? 'Remove detail' : 'Move detail';
+      pageHistory.push({ label, undo: () => restore(before), redo: () => restore(after) });
+      stageProjectDetailsRows(root);
+      if (action === 'add') after.rows.at(-1)?.querySelector<HTMLElement>('dt')?.focus();
+      else (action === 'remove' ? after.rows[Math.min(index, after.rows.length - 1)] : row)?.querySelector<HTMLButtonElement>('[data-project-details-actions]')?.focus();
     };
     document.addEventListener('click', (event) => {
       if (!isDevContentEditing() || actionsBusy || pageHistory.busy) return;
       const target = event.target;
       if (!(target instanceof Element)) return;
+      const item = target.closest<HTMLButtonElement>('[data-details-row-action]');
+      if (item && detailsMenu?.contains(item) && detailsMenuTarget) {
+        event.preventDefault();
+        if (!item.disabled) changeDetailsRows(detailsMenuTarget.root, item.dataset.detailsRowAction as 'up' | 'down' | 'remove', detailsMenuTarget.row);
+        return;
+      }
       const root = target.closest<HTMLElement>('[data-dev-project-details]');
       if (!root) return;
-      const add = target.closest('[data-project-details-add]');
-      const remove = target.closest('[data-project-details-remove]');
-      if (!add && !remove) return;
-      event.preventDefault();
-      captureFieldHistory();
-      pageHistory.breakGroup();
-      const before = detailsSnapshot(root);
-      if (!detailsBaselines.has(root)) detailsBaselines.set(root, before);
-      if (add) {
-        if (before.rows.length >= 100) return;
-        const row = createDetailsRow(root);
-        root.querySelector('dl')!.append(row);
-        syncProjectDetailsRowPaths(root);
-        registerTextStates(row);
-      } else {
-        if (before.rows.length <= 1) return;
-        const row = target.closest<HTMLElement>('[data-project-details-row]');
-        if (!row) return;
-        detachSectionStates(row);
-        row.remove();
+      if (target.closest('[data-project-details-add]')) {
+        event.preventDefault(); changeDetailsRows(root, 'add'); return;
       }
+      const trigger = target.closest<HTMLButtonElement>('[data-project-details-actions]');
+      const row = trigger?.closest<HTMLElement>('[data-project-details-row]');
+      if (!trigger || !row || !detailsMenu) return;
+      event.preventDefault();
+      if (detailsMenuTarget?.trigger === trigger) { closeDetailsMenu(true); return; }
+      closeDetailsMenu();
       syncProjectDetailsRowPaths(root);
-      const after = detailsSnapshot(root);
-      const restore = (snapshot: DetailsSnapshot) => {
-        restoreDetailsSnapshot(root, snapshot);
-        stageProjectDetailsRows(root);
-      };
-      pageHistory.push({ label: add ? 'Add detail' : 'Remove detail', undo: () => restore(before), redo: () => restore(after) });
-      stageProjectDetailsRows(root);
-      if (add) after.rows.at(-1)?.querySelector<HTMLElement>('dt')?.focus();
+      const rows = detailsSnapshot(root).rows;
+      detailsMenu.querySelectorAll<HTMLButtonElement>('[data-details-row-action]').forEach((button) => {
+        const action = button.dataset.detailsRowAction;
+        button.disabled = action === 'up' ? rows[0] === row : action === 'down' ? rows.at(-1) === row : rows.length <= 1;
+      });
+      detailsMenuTarget = { root, row, trigger };
+      trigger.setAttribute('aria-expanded', 'true');
+      detailsMenu.showPopover();
+      placeBeside(detailsMenu, trigger);
+      detailsMenu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
     }, { signal: editorSignal });
+    document.addEventListener('pointerdown', (event) => {
+      if (detailsMenuTarget && event.target instanceof Node && !detailsMenu?.contains(event.target) && !detailsMenuTarget.trigger.contains(event.target)) closeDetailsMenu();
+    }, { signal: editorSignal });
+    document.addEventListener('keydown', (event) => {
+      if (!detailsMenuTarget) return;
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeDetailsMenu(true); return; }
+      if (event.key === 'Tab') { closeDetailsMenu(); return; }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const items = [...detailsMenu!.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+      items[next]?.focus();
+    }, { signal: editorSignal, capture: true });
+    pageScope.listen(window, 'vcd:dev-mode-change', (event) => {
+      if (!(event as CustomEvent<{ active: boolean }>).detail?.active) closeDetailsMenu();
+    });
+    pageScope.listen(window, 'vcd:dev-section-structure-changed', () => closeDetailsMenu());
+    pageScope.listen(window, 'resize', () => closeDetailsMenu());
+    pageScope.listen(window, 'scroll', () => closeDetailsMenu(), { capture: true });
     syncIntroRunControls();
     window.addEventListener('vcd:dev-section-reordered', ((event: CustomEvent<{
       document?: string;
@@ -4272,6 +4378,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const hidden = state.kind !== 'paragraphs';
       formatInline.hidden = hidden;
       emphasisStyleField.hidden = hidden;
+      fontStyleField.hidden = hidden;
       if (wrapStyleField) wrapStyleField.hidden = hidden;
     };
 
@@ -4826,6 +4933,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       syncEmphasisStyle();
+      syncFontStyle();
       syncTextWrap();
     };
 
@@ -5086,6 +5194,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       bold: 'strong, b',
       italic: 'em, i',
       underline: 'u',
+      code: 'code',
     } as const;
 
     const markCoversRange = (range: Range, mark: keyof typeof markSelector) => {
@@ -5130,6 +5239,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         : markCoversRange(savedFormatRange, 'emphasis')
           ? 'emphasis'
           : 'default';
+    };
+
+    let syncingFontStyle = false;
+    const syncFontStyle = () => {
+      const range = savedFormatRange;
+      const allCode = range && markCoversRange(range, 'code');
+      const start = range?.startContainer instanceof Element ? range.startContainer : range?.startContainer.parentElement;
+      const end = range?.endContainer instanceof Element ? range.endContainer : range?.endContainer.parentElement;
+      const someCode = range && (start?.closest('code') || end?.closest('code') || range.cloneContents().querySelector('code'));
+      fontStyleSelect.value = allCode ? 'monospace' : someCode ? '' : 'default';
+      fontStyleSelect.dataset.emptyLabel = someCode && !allCode ? 'Mixed' : '';
+      syncingFontStyle = true;
+      fontStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      syncingFontStyle = false;
     };
 
     const paragraphsInRange = (range: Range, state: EditableTextState): HTMLElement[] => {
@@ -5185,162 +5308,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     };
 
-    type EmphasisTone = 'emphasis' | 'default' | 'subtle';
-    type InlineMarks = {
-      emphasis: boolean;
-      subtle: boolean;
-      bold: boolean;
-      italic: boolean;
-      underline: boolean;
-      link: { href: string; underlineOff: boolean } | null;
-    };
-    type InlineAtom = {
-      kind: 'text' | 'break';
-      text: string;
-      marks: InlineMarks;
-      selected: boolean;
-    };
-
-    const applyEmphasisMark = (range: Range, tone: EmphasisTone) => {
-      const startElement = range.startContainer instanceof Element
-        ? range.startContainer
-        : range.startContainer.parentElement;
-      const endElement = range.endContainer instanceof Element
-        ? range.endContainer
-        : range.endContainer.parentElement;
-      const paragraph = startElement?.closest<HTMLElement>('p, div');
-      if (!paragraph || paragraph !== endElement?.closest('p, div')) return null;
-      const paragraphWrap = explicitParagraphTextWrap(paragraph);
-
-      const startBoundary = document.createElement('span');
-      const endBoundary = document.createElement('span');
-      startBoundary.hidden = true;
-      endBoundary.hidden = true;
-      const endRange = range.cloneRange();
-      endRange.collapse(false);
-      endRange.insertNode(endBoundary);
-      const startRange = range.cloneRange();
-      startRange.collapse(true);
-      startRange.insertNode(startBoundary);
-
-      const atoms: InlineAtom[] = [];
-      let selected = false;
-      const visit = (node: Node, inherited: InlineMarks) => {
-        if (node === startBoundary) {
-          selected = true;
-          return;
-        }
-        if (node === endBoundary) {
-          selected = false;
-          return;
-        }
-        if (node instanceof Text) {
-          if (node.data) atoms.push({ kind: 'text', text: node.data, marks: inherited, selected });
-          return;
-        }
-        if (!(node instanceof HTMLElement)) return;
-        const marks = { ...inherited };
-        if (node.matches(markSelector.emphasis)) marks.emphasis = true;
-        if (node.matches(markSelector.subtle)) marks.subtle = true;
-        if (node.matches(markSelector.bold)) marks.bold = true;
-        if (node.matches(markSelector.italic)) marks.italic = true;
-        if (node.matches(markSelector.underline)) marks.underline = true;
-        if (node instanceof HTMLAnchorElement) {
-          marks.link = {
-            href: node.getAttribute('href') || '',
-            underlineOff: node.classList.contains('is-underline-off'),
-          };
-        }
-        if (node instanceof HTMLBRElement) {
-          atoms.push({ kind: 'break', text: '', marks, selected });
-          return;
-        }
-        [...node.childNodes].forEach((child) => visit(child, marks));
-      };
-      const emptyMarks: InlineMarks = {
-        emphasis: false,
-        subtle: false,
-        bold: false,
-        italic: false,
-        underline: false,
-        link: null,
-      };
-      [...paragraph.childNodes].forEach((child) => visit(child, emptyMarks));
-      const selectedAtoms = atoms.filter((atom) => atom.selected);
-      if (!selectedAtoms.length) return null;
-      selectedAtoms.forEach((atom) => {
-        atom.marks = {
-          ...atom.marks,
-          emphasis: tone === 'emphasis',
-          subtle: tone === 'subtle',
-        };
-      });
-
-      const keyFor = (atom: InlineAtom) => JSON.stringify({
-        selected: atom.selected,
-        marks: atom.marks,
-      });
-      const groups: InlineAtom[][] = [];
-      atoms.forEach((atom) => {
-        const previous = groups.at(-1);
-        if (previous && keyFor(previous[0]) === keyFor(atom)) previous.push(atom);
-        else groups.push([atom]);
-      });
-
-      const wrap = (content: Node, tag: keyof HTMLElementTagNameMap, className = '') => {
-        const element = document.createElement(tag);
-        if (className) element.className = className;
-        element.append(content);
-        return element;
-      };
-      const renderGroup = (group: InlineAtom[]) => {
-        const content = document.createDocumentFragment();
-        group.forEach((atom) => {
-          content.append(atom.kind === 'break' ? document.createElement('br') : atom.text);
-        });
-        const { marks } = group[0];
-        let rendered: Node = content;
-        if (marks.underline) rendered = wrap(rendered, 'u');
-        if (marks.italic) rendered = wrap(rendered, 'em');
-        if (marks.bold) rendered = wrap(rendered, 'strong');
-        if (marks.emphasis) rendered = wrap(rendered, 'span', 'text-emphasis');
-        if (marks.subtle) rendered = wrap(rendered, 'span', 'text-subtle');
-        if (marks.link?.href) {
-          const anchor = wrap(rendered, 'a', marks.link.underlineOff ? 'is-underline-off' : '');
-          anchor.setAttribute('href', marks.link.href);
-          rendered = anchor;
-        }
-        return rendered;
-      };
-
-      const fragment = document.createDocumentFragment();
-      const restoredStart = document.createElement('span');
-      const restoredEnd = document.createElement('span');
-      restoredStart.hidden = true;
-      restoredEnd.hidden = true;
-      const firstSelectedGroup = groups.findIndex((group) => group[0].selected);
-      const lastSelectedGroup = groups.findLastIndex((group) => group[0].selected);
-      groups.forEach((group, index) => {
-        if (index === firstSelectedGroup) fragment.append(restoredStart);
-        fragment.append(renderGroup(group));
-        if (index === lastSelectedGroup) fragment.append(restoredEnd);
-      });
-      paragraph.replaceChildren(fragment);
-      if (paragraphWrap) paragraph.setAttribute('data-text-wrap', paragraphWrap);
-      const restored = document.createRange();
-      restored.setStartAfter(restoredStart);
-      restored.setEndBefore(restoredEnd);
-      restoredStart.remove();
-      restoredEnd.remove();
-      return restored;
-    };
 
     const applyEmphasisStyle = (value: string) => {
       if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
       const block = findParagraphState(savedFormatRange.commonAncestorContainer)?.element;
       if (!block) return;
       if (value !== 'emphasis' && value !== 'default' && value !== 'subtle') return;
-      const range = applyEmphasisMark(savedFormatRange, value);
+      pageHistory.breakGroup();
+      const range = applyInlineMark(savedFormatRange, { tone: value });
       if (!range) return;
       const selection = window.getSelection();
       selection?.removeAllRanges();
@@ -5349,6 +5324,24 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       refreshFormatBarAfterCommand();
       updateActions();
+      queueMicrotask(() => pageHistory.breakGroup());
+    };
+
+    const applyFontStyle = (value: string) => {
+      if (value !== 'default' && value !== 'monospace') return;
+      if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
+      if (!findParagraphState(savedFormatRange.commonAncestorContainer)) return;
+      pageHistory.breakGroup();
+      const range = applyInlineMark(savedFormatRange, { code: value === 'monospace' });
+      if (!range) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      captureFormatRange();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      refreshFormatBarAfterCommand();
+      updateActions();
+      queueMicrotask(() => pageHistory.breakGroup());
     };
 
     const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
@@ -5417,7 +5410,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-text-format__wrap-style, .dev-select__listbox, [data-editor-select-popup]')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-text-format__font-style, .dev-text-format__wrap-style, .dev-select__listbox, [data-editor-select-popup]')) {
         return;
       }
       event.preventDefault();
@@ -5430,6 +5423,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     emphasisStyleSelect.addEventListener('change', () => {
       applyEmphasisStyle(emphasisStyleSelect.value);
+    }, { signal: editorSignal });
+
+    fontStyleSelect.addEventListener('change', () => {
+      if (!syncingFontStyle) applyFontStyle(fontStyleSelect.value);
     }, { signal: editorSignal });
 
     wrapStyleSelect.addEventListener('change', () => {
@@ -6649,6 +6646,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 </script>
 
 <style is:global>
+  .project-details-row-menu { position: fixed; inset: auto; margin: 0; border: 0; overflow: visible; }
+  .project-details-row-menu:popover-open { display: flex; }
+
   /*
     Hover/focus ring is a ::before layer at opacity 0 — never mount outline on the
     field itself (browsers flash real outlines for a frame). Opacity eases in on
@@ -6770,12 +6770,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-text-format .dev-text-format__block-style,
   .dev-text-format .dev-text-format__emphasis-style,
+  .dev-text-format .dev-text-format__font-style,
   .dev-text-format .dev-text-format__wrap-style {
     width: auto;
   }
 
   .dev-text-format__block-style .dev-field__value,
   .dev-text-format__emphasis-style .dev-field__value,
+  .dev-text-format__font-style .dev-field__value,
   .dev-text-format__wrap-style .dev-field__value {
     width: auto;
     min-height: var(--dev-control-height);
@@ -6783,6 +6785,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-text-format__block-style .dev-field__input--select,
   .dev-text-format__emphasis-style .dev-field__input--select,
+  .dev-text-format__font-style .dev-field__input--select,
   .dev-text-format__wrap-style .dev-field__input--select {
     margin: 0;
     padding: 8px;

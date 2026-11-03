@@ -1,5 +1,8 @@
 ---
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import Button from '../ui/Button.astro';
+import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
+import { sizeIcon } from '../../lib/icons';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
@@ -60,7 +63,7 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
           data-dev-text-path={editable ? rowPath(index, 'value') : undefined}
           data-dev-text-kind={editable ? 'text' : undefined}
         >{row.value}</dd>
-        {editable && <button type="button" class="project-details__remove" data-project-details-remove data-dev-mode-only disabled={rows.length <= 1} aria-label={`Remove ${row.label || 'detail'}`}>Remove</button>}
+        {editable && <Button label="" emphasis="ghost" class="project-details__actions" data-project-details-actions data-dev-mode-only aria-label={`Row actions for ${row.label || `row ${index + 1}`}`} aria-haspopup="menu" aria-expanded="false"><span slot="icon" aria-hidden="true" set:html={sizeIcon(ellipsisIcon, 16)} /></Button>}
       </div>
     ))}
   </dl>

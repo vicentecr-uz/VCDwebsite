@@ -1,0 +1,206 @@
+---
+import Layout from './Layout.astro';
+import DocumentationContents from '../components/DocumentationContents.astro';
+import DocumentationNavigation from '../components/DocumentationNavigation.astro';
+import Button from '../components/ui/Button.astro';
+import menuIcon from 'lucide-static/icons/menu.svg?raw';
+import { sizeIcon } from '../lib/icons';
+import '../styles/project.css';
+
+interface PageLink { href: string; label: string; group: string }
+interface AdjacentPage { href: string; label: string }
+interface Props {
+  title: string;
+  description?: string;
+  canonicalUrl?: string;
+  documentKey?: string;
+  product?: string;
+  homeHref?: string;
+  pages: PageLink[];
+  contents: Array<{ id: string; label: string }>;
+  previous?: AdjacentPage;
+  next?: AdjacentPage;
+}
+const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next } = Astro.props;
+const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
+---
+
+<Layout persistentNavigation title={`${title} · ${product}`} description={description} canonicalUrl={canonicalUrl}>
+  <div class="documentation-page" data-page-shell data-documentation-page>
+    <header class="documentation-mobile-header">
+      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
+      <Button label="" emphasis="ghost" aria-label="Open documentation navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="documentation-drawer" data-documentation-open>
+        <span slot="icon" set:html={sizeIcon(menuIcon, 20)} />
+      </Button>
+    </header>
+    <aside class="documentation-sidebar">
+      <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
+      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
+    </aside>
+    <dialog id="documentation-drawer" class="documentation-drawer" aria-label="Documentation navigation">
+      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
+    </dialog>
+    <main id="main-content" class="documentation-main">
+      <header class="documentation-heading"><h1 data-dev-text-document={import.meta.env.DEV ? documentKey : undefined} data-dev-text-path={documentKey ? JSON.stringify(['title']) : undefined} data-dev-text-kind={documentKey ? 'text' : undefined}>{title}</h1></header>
+      <div class="project-page__main"><slot /></div>
+      {(previous || next) && (
+        <nav class="documentation-pagination" aria-label="Adjacent pages">
+          {previous ? <a href={previous.href}><span>Previous</span>{previous.label}</a> : <span />}
+          {next && <a href={next.href}><span>Next</span>{next.label}</a>}
+        </nav>
+      )}
+    </main>
+    <aside class="documentation-page-contents"><DocumentationContents contents={contents} /></aside>
+  </div>
+</Layout>
+
+<script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const root = document.querySelector('[data-documentation-page]');
+    const dialog = root?.querySelector<HTMLDialogElement>('#documentation-drawer');
+    const opener = root?.querySelector<HTMLButtonElement>('[data-documentation-open]');
+    if (!dialog || !opener) return;
+    const scope = createPageScope();
+    const desktop = window.matchMedia('(min-width: 64em)');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let generation = 0;
+    let previousOverflow: string | undefined;
+    const unlock = () => {
+      if (previousOverflow === undefined) return;
+      document.documentElement.style.overflow = previousOverflow;
+      opener.setAttribute('aria-expanded', 'false');
+      previousOverflow = undefined;
+    };
+    const closeImmediately = () => {
+      generation++;
+      delete dialog.dataset.closing;
+      if (dialog.open) dialog.close();
+      unlock();
+    };
+    const close = () => {
+      if (!dialog.open || dialog.dataset.closing) return;
+      if (reducedMotion.matches) { closeImmediately(); return; }
+      const current = ++generation;
+      dialog.dataset.closing = 'true';
+      getComputedStyle(dialog).transform;
+      const animations = dialog.getAnimations?.({ subtree: true }) ?? [];
+      void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+        if (current === generation && !scope.signal.aborted) closeImmediately();
+      });
+    };
+    scope.listen(opener, 'click', () => {
+      if (dialog.open) {
+        if (dialog.dataset.closing) { generation++; delete dialog.dataset.closing; }
+        return;
+      }
+      previousOverflow = document.documentElement.style.overflow;
+      dialog.showModal();
+      opener.setAttribute('aria-expanded', 'true');
+      document.documentElement.style.overflow = 'hidden';
+    });
+    scope.listen(dialog, 'close', () => { if (!dialog.open) { generation++; delete dialog.dataset.closing; unlock(); } });
+    scope.listen(dialog, 'cancel', event => { event.preventDefault(); close(); });
+    scope.listen(dialog, 'click', (event) => {
+      const target = event.target as Element;
+      if (target.closest('a')) { closeImmediately(); return; }
+      if (target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
+    });
+    scope.listen(desktop, 'change', () => { if (desktop.matches) closeImmediately(); });
+    scope.listen(reducedMotion, 'change', () => { if (reducedMotion.matches && dialog.dataset.closing) closeImmediately(); });
+    scope.add(closeImmediately);
+    return () => scope.destroy();
+  });
+</script>
+
+<style>
+  :global(#site-wrapper:has(> [data-documentation-page])) { padding-inline: 0; }
+  .documentation-page {
+    --documentation-navigation-muted: var(--ref-palette-grey-450);
+    --text-body-size: 1rem;
+    --text-body-leading: 1.6;
+    --text-heading-2-size: var(--text-body-size);
+    --text-heading-2-leading: var(--text-body-leading);
+    --space-section: 4rem;
+    --space-group: 1.5rem;
+    --page-text-max-width: 42rem;
+    --page-media-max-width: var(--page-text-max-width);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
+  }
+  a { color: inherit; text-decoration: none; }
+  a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+  .documentation-brand { margin: 0; font-size: 1rem; line-height: 1.6; white-space: nowrap; }
+  .documentation-brand span { color: var(--sys-color-on-srf-subtle); }
+  .documentation-brand span a:is(:hover, :focus-visible) { color: var(--sys-color-on-srf); }
+  .documentation-mobile-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.5rem 1rem; padding-top: var(--page-top-offset); border-bottom: 1px solid var(--sys-color-outline); }
+  .documentation-sidebar { display: none; }
+  .documentation-drawer {
+    --text-body-size: 1rem;
+    --text-body-leading: 1.6;
+    --documentation-drawer-duration: 500ms;
+    --documentation-drawer-easing: cubic-bezier(0.32, 0.72, 0, 1);
+    transform: translateX(calc(100% + 8px));
+    opacity: 0;
+    transition: transform var(--documentation-drawer-duration) var(--documentation-drawer-easing), opacity var(--documentation-drawer-duration) var(--documentation-drawer-easing);
+    inset: 8px 8px 8px auto;
+    margin: 0;
+    width: min(260px, calc(100% - 16px));
+    max-width: none;
+    height: calc(var(--vh-safe, 1svh) * 100 - 16px);
+    max-height: none;
+    padding: 1rem;
+    border: 1px solid var(--sys-color-outline-variant);
+    border-radius: var(--radius-card);
+    background: var(--sys-color-srf);
+    color: var(--sys-color-on-srf);
+    overflow-y: auto;
+  }
+  .documentation-drawer[open] { display: flex; flex-direction: column; }
+  .documentation-drawer[data-closing] { --documentation-drawer-duration: 400ms; }
+  .documentation-drawer[open]:not([data-closing]) { transform: none; opacity: 1; }
+  .documentation-drawer::backdrop { background: color-mix(in srgb, var(--sys-color-on-srf) 25%, transparent); opacity: 0; transition: opacity var(--documentation-drawer-duration) var(--documentation-drawer-easing); }
+  .documentation-drawer[open]:not([data-closing])::backdrop { opacity: 1; }
+  @starting-style {
+    .documentation-drawer[open]:not([data-closing]) { transform: translateX(calc(100% + 8px)); opacity: 0; }
+    .documentation-drawer[open]:not([data-closing])::backdrop { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .documentation-drawer, .documentation-drawer::backdrop { transition: none; }
+  }
+  .documentation-main { min-width: 0; width: calc(100% - 2rem); max-width: var(--page-text-max-width); justify-self: center; padding-block: 3rem 5rem; }
+  .documentation-heading { margin-bottom: 1.5rem; }
+  h1 { margin: 0; font-size: var(--text-heading-1-size); font-weight: var(--text-heading-1-weight); line-height: var(--text-heading-1-leading); letter-spacing: var(--text-heading-1-tracking); }
+  .documentation-page-contents { display: none; }
+  .documentation-pagination { display: flex; justify-content: space-between; gap: 1rem; margin-top: 4rem; padding-top: 2rem; border-top: 1px solid var(--sys-color-outline); }
+  .documentation-pagination a { display: grid; }
+  .documentation-pagination a:last-child { text-align: right; }
+  .documentation-pagination span { color: var(--sys-color-on-srf-subtle); }
+  .documentation-main :global(h2.project-section-title) {
+    font-size: var(--text-heading-2-size);
+    font-weight: var(--text-heading-2-weight);
+    letter-spacing: var(--text-heading-2-tracking);
+    line-height: var(--text-heading-2-leading);
+  }
+  .documentation-main :global(pre) { max-width: 100%; overflow-x: auto; }
+  .documentation-main :global(.section-block[id]) { scroll-margin-top: 3rem; }
+  @media (min-width: 40em) { .documentation-main { padding-top: 5rem; width: calc(100% - 4rem); } }
+  @media (min-width: 64em) {
+    .documentation-page { grid-template-columns: 240px minmax(0, 1fr); }
+    .documentation-mobile-header { display: none; }
+    .documentation-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 1; width: 240px; display: flex; flex-direction: column; padding: 1.5rem 1rem; background: var(--sys-color-srf); border-right: 1px solid var(--sys-color-outline); overflow-y: auto; }
+    .documentation-sidebar > .documentation-brand { margin-bottom: 3rem; }
+    .documentation-main { grid-column: 2; }
+  }
+  @media (min-width: 80em) {
+    .documentation-page { grid-template-columns: 240px minmax(2rem, 1fr) minmax(0, 42rem) 3rem 12rem minmax(2rem, 1fr); }
+    .documentation-main { grid-column: 3; width: 100%; }
+    .documentation-page-contents { display: block; grid-column: 5; position: sticky; top: 5rem; align-self: start; margin-top: 5rem; padding: 0 0 2rem; max-height: calc(var(--vh-safe, 1svh) * 100 - 7rem); overflow-y: auto; }
+  }
+</style>

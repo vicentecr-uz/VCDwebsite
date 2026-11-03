@@ -5,8 +5,8 @@ import { setIntroFoldOffsets } from '../lib/safeVh';
 
 type Hooks = {
   cover: () => Promise<void>;
-  reveal: () => void;
-  cancel: () => void;
+  reveal: (skipVeil?: boolean) => void;
+  cancel: (skipVeil?: boolean) => void;
   beforeSwap: () => void;
 };
 
@@ -14,6 +14,7 @@ export function installPersistentNavigation(hooks: Hooks) {
   if (!document.querySelector('[name="astro-view-transitions-enabled"]')) return;
   let navigation: TransitionBeforePreparationEvent | undefined;
   let swapped = false;
+  let skipVeil = false;
   let preserveTitleMotion = false;
   const headerVisibleForTitleMotion = () => {
     const header = document.querySelector<HTMLElement>('.site-header');
@@ -33,6 +34,7 @@ export function installPersistentNavigation(hooks: Hooks) {
     try { return sessionStorage.getItem('vcd:home-intro-seen') !== 'true'; } catch { return true; }
   };
   const announceTitle = (title?: string, animateTitle = preserveTitleMotion) => {
+    if (!document.querySelector('.site-header-slot')) return;
     const visible = document.querySelector('.header-trigger__wordmark[aria-hidden="false"]');
     document.dispatchEvent(new CustomEvent('header:navigation-start', {
       detail: { animateTitle, pending: { title: visible?.textContent?.trim(), targetTitle: title } },
@@ -43,7 +45,7 @@ export function installPersistentNavigation(hooks: Hooks) {
     if (event.defaultPrevented) return;
     navigation = event;
     swapped = false;
-    const fadeHeader = (event.sourceElement as HTMLElement | undefined)?.hasAttribute('data-header-navigation-fade');
+    const fadeHeader = event.sourceElement instanceof HTMLElement && event.sourceElement.hasAttribute('data-header-navigation-fade');
     const preserveTitleMotionForNavigation = !fadeHeader && headerVisibleForTitleMotion();
     preserveTitleMotion = preserveTitleMotionForNavigation;
     if (event.formData) { event.preventDefault(); return; }
@@ -52,28 +54,35 @@ export function installPersistentNavigation(hooks: Hooks) {
     else document.documentElement.removeAttribute('data-header-navigation');
     const title = (event.sourceElement as HTMLElement | undefined)?.dataset.headerNavigationTitle;
     announceTitle(title, preserveTitleMotionForNavigation);
-    const covered = hooks.cover();
+    const outgoingDocs = Boolean(document.querySelector('[data-page-shell][data-documentation-page]'));
+    let covered = outgoingDocs ? undefined : hooks.cover();
+    const cancel = () => hooks.cancel(!covered);
     queueMicrotask(() => {
-      if (event.defaultPrevented && navigation === event) hooks.cancel();
+      if (event.defaultPrevented && navigation === event) cancel();
     });
     const loader = event.loader;
     event.loader = async () => {
       try {
         await loader();
         if (event.signal.aborted || event.defaultPrevented) return;
+        const incomingDocs = Boolean(event.newDocument.querySelector('[data-page-shell][data-documentation-page]'));
+        if (!incomingDocs && !covered) covered = hooks.cover();
+        if (outgoingDocs && covered) await covered;
+        if (event.signal.aborted || event.defaultPrevented) return;
         const parts = persistentPageParts(event.newDocument);
         // Only lifecycle-supported editor islands join the retained public shell.
-        if (!parts || !supportsPersistentPage(event.newDocument)) {
+        if (!parts || !supportsPersistentPage(document) || !supportsPersistentPage(event.newDocument)) {
           event.preventDefault(); return;
         }
-        if (!title) announceTitle(parts.header.querySelector('.header-trigger__wordmark--page')?.textContent?.trim(), preserveTitleMotionForNavigation);
-        await covered;
+        if (!title && parts.header) announceTitle(parts.header.querySelector('.header-trigger__wordmark--page')?.textContent?.trim(), preserveTitleMotionForNavigation);
+        if (!outgoingDocs) await covered;
+        skipVeil = outgoingDocs && incomingDocs;
       } catch (error) {
-        if (!event.signal.aborted) { hooks.cancel(); event.preventDefault(); }
+        if (!event.signal.aborted) { cancel(); event.preventDefault(); }
       }
     };
     event.signal.addEventListener('abort', () => {
-      queueMicrotask(() => { if (navigation === event && !swapped) hooks.cancel(); });
+      queueMicrotask(() => { if (navigation === event && !swapped) cancel(); });
     }, { once: true });
   }) as EventListener);
 
@@ -93,7 +102,7 @@ export function installPersistentNavigation(hooks: Hooks) {
       else document.documentElement.removeAttribute('data-header-navigation');
       swapFunctions.swapHeadElements(event.newDocument);
       swapPageContent(document, event.newDocument);
-      document.dispatchEvent(new CustomEvent('header:navigation-commit', { detail: { header: nextHeader, url: event.to } }));
+      if (nextHeader) document.dispatchEvent(new CustomEvent('header:navigation-commit', { detail: { header: nextHeader, url: event.to } }));
       swapped = true;
     };
   }) as EventListener);
@@ -104,6 +113,8 @@ export function installPersistentNavigation(hooks: Hooks) {
     setIntroFoldOffsets();
     document.documentElement.dataset.introLayoutReady = 'true';
     window.dispatchEvent(new Event('vcd:intro-layout-ready'));
-    queueMicrotask(hooks.reveal);
+    const silent = skipVeil;
+    skipVeil = false;
+    queueMicrotask(() => hooks.reveal(silent));
   });
 }

@@ -200,6 +200,7 @@ const easingOptions = [
 }
 
 <script>
+  import { activeSectionId } from '../lib/activeSection';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
   const parseNumber = (value, fallback) => {
     const n = Number(value);
@@ -1419,46 +1420,15 @@ const easingOptions = [
       scrollToBlock(scrollTarget, href);
     });
 
-    const getActiveSectionId = () => {
-      const sections = getSections();
-      const viewportHeight = window.innerHeight;
-      const docHeight = document.documentElement.scrollHeight;
-      const maxScroll = Math.max(docHeight - viewportHeight, 1);
-      const currentScroll = Math.min(Math.max(window.scrollY, 0), maxScroll);
-
-      const earlyRampDistance = viewportHeight * earlyRampVh;
-      const holdOffset = viewportHeight * holdVh;
-      const endRampDistance = viewportHeight * endRampVh;
-      const endRampStart = Math.max(maxScroll - endRampDistance, earlyRampDistance);
-      const endOffset = Math.max(viewportHeight - 12, holdOffset);
-
-      let activationOffset = holdOffset;
-      if (currentScroll <= earlyRampDistance) {
-        const t = earlyRampDistance === 0 ? 1 : currentScroll / earlyRampDistance;
-        activationOffset = holdOffset * t;
-      } else if (currentScroll >= endRampStart) {
-        const distance = Math.max(maxScroll - endRampStart, 1);
-        const t = (currentScroll - endRampStart) / distance;
-        activationOffset = holdOffset + (endOffset - holdOffset) * t;
-      }
-
-      const pivot = window.scrollY + activationOffset;
-      let activeId = sections[0]?.id;
-
-      for (const section of sections) {
-        if (section.offsetTop <= pivot) {
-          activeId = section.id;
-        } else {
-          break;
-        }
-      }
-
-      if (window.scrollY + viewportHeight >= docHeight - 2) {
-        return sections[sections.length - 1]?.id;
-      }
-
-      return activeId;
-    };
+    const getActiveSectionId = () => activeSectionId(
+      getSections().map(section => ({ id: section.id, top: section.offsetTop })),
+      {
+        scrollY: window.scrollY,
+        viewportHeight: window.innerHeight,
+        documentHeight: document.documentElement.scrollHeight,
+        earlyRampVh, holdVh, endRampVh,
+      },
+    );
 
     scope.listen(window, 'vcd:section-nav-editor-change', ((event) => {
       const active = Boolean(event.detail?.active);
