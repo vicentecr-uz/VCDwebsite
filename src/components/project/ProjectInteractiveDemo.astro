@@ -158,9 +158,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     .project-interactive-demo[data-demo-frame='default']::before {
       content: '';
       display: block;
-      position: sticky;
-      /* Clear the header with the ring's outer edge, not its sticky box. */
-      top: calc(var(--site-header-visible-height, var(--site-header-height, 0px)) + var(--smooth-ring-width));
+      position: relative;
       z-index: 3;
       width: 100%;
       height: 4px;
@@ -168,6 +166,13 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       pointer-events: none;
       box-shadow: var(--surface-stroke-shadow);
       clip-path: inset(calc(-1 * var(--smooth-ring-width)) 0 calc(100% - var(--smooth-ring-width)) 0);
+    }
+
+    /* The edge sticks under the site header, so it only sticks on pages that render one. */
+    :global([data-page-shell]:has(.site-header)) .project-interactive-demo[data-demo-frame='default']::before {
+      position: sticky;
+      /* Clear the header with the ring's outer edge, not its sticky box. */
+      top: calc(var(--site-header-visible-height, var(--site-header-height)) + var(--smooth-ring-width));
     }
 
     .project-interactive-demo[data-demo-frame='default']::after {
