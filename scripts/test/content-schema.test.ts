@@ -16,6 +16,9 @@ test('accepts modern and legacy documents while preserving extensions', () => {
   const legacy = { title: 'Legacy', stack: 'legacy', sections: [{ type: 'tagline', text: 'Hello' }] };
   assert.equal((validateProjectDocument(modern, 'modern.json') as typeof modern).sections[0].extra, 1);
   assert.equal((validateProjectDocument(legacy, 'legacy.json') as typeof legacy).stack, 'legacy');
+  assert.equal(validateProjectDocument({ title: 'Case study', layout: 'case-study', sections: [] }, 'case-study.json').layout, 'case-study');
+  assert.equal(validateProjectDocument({ title: 'Write-up', layout: 'writeup', sections: [] }, 'writeup.json').layout, 'writeup');
+  assert.equal(validateProjectDocument({ title: 'Default', sections: [] }, 'default.json').layout, undefined);
 });
 
 test('rejects unknown types, stack mismatches, and invalid nested fields with paths', () => {
@@ -28,6 +31,7 @@ test('rejects unknown types, stack mismatches, and invalid nested fields with pa
   assert.throws(() => validateProjectDocument({ title: 'x', schemaVersion: 2, sections: [] }, 'sample.json'), /sample\.json: schemaVersion/);
   assert.throws(() => validateProjectDocument({ title: 'x', stack: 'modern', sections: [{ type: 'pressQuoteTicker', items: [{ quote: 'q' }] }] }, 'sample.json'), /sample\.json: sections\[0\]\.items\[0\]/);
   assert.throws(() => validateProjectDocument({ title: 'x', stack: 'modern', sections: [{ type: 'redditCommentCarousel', items: [{ author: 'a', paragraphs: [42], score: 1 }] }] }, 'sample.json'), /sample\.json: sections\[0\]\.items\[0\]/);
+  assert.throws(() => validateProjectDocument({ title: 'x', layout: 'poster', sections: [] }, 'sample.json'), /sample\.json: layout/);
 });
 
 test('validates pages, settings, and schema versions', () => {
