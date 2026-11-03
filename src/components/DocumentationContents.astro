@@ -6,7 +6,7 @@ const { contents } = Astro.props;
 ---
 
 {contents.length > 0 && (
-  <nav class="documentation-contents" aria-label="On this page">
+  <nav class="documentation-contents" aria-label="On this page" data-documentation-contents>
     <p>On this page</p>
     <ul>
       {contents.map(({ id, label }) => (
@@ -16,10 +16,51 @@ const { contents } = Astro.props;
   </nav>
 )}
 
+<script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const navigation = document.querySelector('[data-documentation-contents]');
+    if (!navigation) return;
+    const entries = [...navigation.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]
+      .map(link => ({ link, heading: document.getElementById(link.getAttribute('href')!.slice(1)) }))
+      .filter((entry): entry is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(entry.heading));
+    if (!entries.length) return;
+    const scope = createPageScope();
+    let scheduled = false;
+    const update = () => {
+      scheduled = false;
+      let current = entries[0];
+      for (const entry of entries) {
+        const offset = parseFloat(getComputedStyle(entry.heading).scrollMarginTop) || 0;
+        if (entry.heading.getBoundingClientRect().top <= offset + 1) current = entry;
+      }
+      if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1) current = entries.at(-1)!;
+      for (const entry of entries) {
+        if (entry === current) entry.link.setAttribute('aria-current', 'location');
+        else entry.link.removeAttribute('aria-current');
+      }
+    };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      scope.frame(update);
+    };
+    scope.listen(window, 'scroll', schedule, { passive: true });
+    scope.listen(window, 'resize', schedule);
+    scope.listen(window, 'hashchange', schedule);
+    update();
+    return () => scope.destroy();
+  });
+</script>
+
 <style>
   .documentation-contents { color: var(--sys-color-on-srf-variant); font-size: 0.875rem; line-height: 1.6; }
   p { color: var(--sys-color-on-srf); margin: 0 0 1rem; }
-  ul { display: grid; gap: 0.5rem; padding: 0 0 0 1rem; margin: 0; list-style: none; border-left: 1px solid var(--sys-color-outline-variant); }
-  a { color: inherit; text-decoration: none; }
-  a:hover { color: var(--sys-color-on-srf); text-decoration: underline; text-underline-offset: 0.2em; }
+  ul { display: grid; gap: 0; padding: 0 0 0 1rem; margin: 0; list-style: none; border-left: 1px solid var(--sys-color-outline-variant); }
+  a { position: relative; display: flex; align-items: center; min-height: 40px; padding: 0.5rem; margin-inline: -0.5rem; box-sizing: border-box; border-radius: var(--radius-control); color: inherit; text-decoration: none; }
+  a:hover { color: var(--sys-color-on-srf); background: var(--comp-button-ghost-container-hover); }
+  a:active { background: var(--comp-button-ghost-container-pressed); }
+  a[aria-current='location'] { color: var(--sys-color-on-srf); }
+  a[aria-current='location']::before { content: ''; position: absolute; left: calc(-0.5rem - 1px); top: 0.5rem; bottom: 0.5rem; width: 2px; background: var(--sys-color-on-srf-variant); pointer-events: none; }
 </style>

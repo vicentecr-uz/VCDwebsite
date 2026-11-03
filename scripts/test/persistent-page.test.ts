@@ -164,7 +164,7 @@ test('lightbox document handlers dispose before page replacement and rebind exac
 
 test('a fast fetch waiting on the cover is released when a newer navigation kills that cover', async () => {
   const source = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
-  const cover = source.slice(source.indexOf('        cover: () => {'), source.indexOf('        reveal: () => {'));
+  const cover = source.slice(source.indexOf('        cover: () => {'), source.indexOf('        reveal:'));
   let current: { kill: () => void; finish: () => void };
   const gsap = { fromTo(_target: unknown, _from: unknown, options: { onComplete: () => void; onInterrupt: () => void }) {
     current = { kill: options.onInterrupt, finish: options.onComplete }; return current;
@@ -378,4 +378,139 @@ test('persistent title motion snapshots hidden Back navigation and recovers on t
   expect(f.starts.at(-1)?.animateTitle).toBe(false);
   f.prepare('/about', 'About');
   expect(f.starts.at(-1)?.animateTitle).toBe(true);
+});
+
+const docsHtml = (name: string) => `<head><title>${name}</title><meta name="astro-view-transitions-enabled" content="true"></head><body><div id="transition-overlay" hidden style="opacity:0"></div><div id="site-wrapper"><div data-page-shell data-documentation-page><aside><a href="/${name}">${name}</a></aside><main id="main-content">${name}</main><nav aria-label="On this page">${name}</nav></div></div></body>`;
+
+function docsNavigationFixture(outgoing = docsHtml('Getting started')) {
+  const win = fixture(); const doc = win.document;
+  doc.write(outgoing);
+  doc.head.insertAdjacentHTML('beforeend', '<meta name="astro-view-transitions-enabled" content="true">');
+  const source = readFileSync(new URL('../../src/scripts/persistentNavigation.ts', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;$/gm, '').replace('export function', 'function'));
+  const covers: number[] = [], reveals: boolean[] = [], cancels: boolean[] = [], titles: string[] = [];
+  for (const type of ['header:navigation-start', 'header:navigation-commit']) doc.addEventListener(type, () => titles.push(type));
+  const hooks = { cover: () => { covers.push(1); return Promise.resolve(); }, reveal: (skip: boolean) => reveals.push(skip), cancel: (skip: boolean) => cancels.push(skip), beforeSwap() {} };
+  const swapFunctions = {
+    deselectScripts() {}, swapRootAttributes() {},
+    swapHeadElements(incoming: Document) { doc.head.innerHTML = incoming.head.innerHTML; },
+  };
+  new Function('document', 'sessionStorage', 'CustomEvent', 'persistentPageParts', 'supportsPersistentPage', 'swapFunctions', 'swapPageContent', 'setIntroFoldOffsets', 'hooks', `${script}; installPersistentNavigation(hooks);`)(doc, { getItem: () => 'true' }, win.CustomEvent, persistentPageParts, supportsPersistentPage, swapFunctions, swapPageContent, () => {}, hooks);
+  const prepare = (markup: string, loader = async () => {}) => {
+    const incoming = new win.DOMParser().parseFromString(markup, 'text/html');
+    const controller = new AbortController();
+    const preparation = new win.Event('astro:before-preparation', { cancelable: true }) as any;
+    Object.assign(preparation, { to: new URL('https://vcd.test/next'), newDocument: incoming, signal: controller.signal, loader });
+    doc.dispatchEvent(preparation);
+    return { preparation, controller, swap() {
+      const event = new win.Event('astro:before-swap') as any;
+      Object.assign(event, { to: preparation.to, newDocument: incoming, viewTransition: { ready: Promise.resolve(), skipTransition() {} } });
+      doc.dispatchEvent(event); event.swap(); doc.dispatchEvent(new win.Event('astro:page-load'));
+    } };
+  };
+  return { win, doc, covers, reveals, cancels, titles, prepare };
+}
+
+test('docs swap without a cover, retain shell and hidden overlay, and replace head, main and sidebar', async () => {
+  const f = docsNavigationFixture();
+  const root = f.doc.getElementById('site-wrapper');
+  const overlay = f.doc.getElementById('transition-overlay');
+  const oldMain = f.doc.getElementById('main-content');
+  let mounts = 0, unmounts = 0;
+  onPageLoad(() => { mounts++; return () => { unmounts++; }; });
+  for (const title of ['API', 'Styling', 'Getting started']) {
+    const nav = f.prepare(docsHtml(title));
+    expect(f.covers).toEqual([]);
+    await nav.preparation.loader(); nav.swap(); await Promise.resolve();
+    expect(f.doc.title).toBe(title);
+    expect(f.doc.querySelector('aside a')?.textContent).toBe(title);
+    expect(f.doc.getElementById('main-content')?.textContent).toBe(title);
+    expect(f.doc.getElementById('site-wrapper')).toBe(root);
+    expect(f.doc.getElementById('transition-overlay')).toBe(overlay);
+    expect(overlay?.hasAttribute('hidden')).toBe(true);
+    expect(overlay?.style.opacity).toBe('0');
+  }
+  expect(oldMain?.isConnected).toBe(false);
+  expect(f.reveals).toEqual([true, true, true]);
+  expect(f.titles).toEqual([]);
+  expect(mounts).toBe(4); expect(unmounts).toBe(3);
+});
+
+test('docs leaving for a standard page defer the cover until the destination is known', async () => {
+  const f = docsNavigationFixture();
+  const nav = f.prepare(html('About'));
+  expect(f.covers).toEqual([]);
+  await nav.preparation.loader(); expect(f.covers).toEqual([1]);
+  nav.swap(); await Promise.resolve();
+  expect(f.reveals).toEqual([false]);
+  expect(f.doc.querySelector('.site-header-slot')).toBeTruthy();
+});
+
+test('standard pages entering docs keep the cover and remove the old header', async () => {
+  const f = docsNavigationFixture(html('About'));
+  const nav = f.prepare(docsHtml('API'));
+  expect(f.covers).toEqual([1]);
+  await nav.preparation.loader(); nav.swap(); await Promise.resolve();
+  expect(f.reveals).toEqual([false]);
+  expect(f.doc.querySelector('.site-header-slot')).toBeNull();
+});
+
+test('headerless non-doc pages remain unsupported and leaving docs covers their fallback', async () => {
+  const f = docsNavigationFixture();
+  const markup = docsHtml('Unsupported').replace('data-documentation-page', '');
+  const nav = f.prepare(markup);
+  await nav.preparation.loader();
+  expect(nav.preparation.defaultPrevented).toBe(true);
+  expect(f.covers).toEqual([1]);
+  expect(persistentPageParts(nav.preparation.newDocument)).toBeNull();
+});
+
+test('failed or aborted docs loading cancels without covering and a later navigation still works', async () => {
+  const f = docsNavigationFixture();
+  const failed = f.prepare(docsHtml('API'), async () => { throw new Error('Fetch failed'); });
+  await failed.preparation.loader();
+  expect(f.cancels).toEqual([true]); expect(f.covers).toEqual([]);
+  const aborted = f.prepare(docsHtml('API'));
+  aborted.controller.abort(); await Promise.resolve();
+  expect(f.cancels).toEqual([true, true]);
+  const next = f.prepare(docsHtml('Styling'));
+  await next.preparation.loader(); next.swap(); await Promise.resolve();
+  expect(f.reveals).toEqual([true]);
+});
+
+test('abort after a deferred outgoing cover uses normal recovery', async () => {
+  const f = docsNavigationFixture(); const nav = f.prepare(html('About'));
+  await nav.preparation.loader(); nav.controller.abort(); await Promise.resolve();
+  expect(f.covers).toEqual([1]); expect(f.cancels).toEqual([false]);
+});
+
+test('silent reveal invalidates old work and opens preview upgrades without raising the veil', () => {
+  const source = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(source.indexOf('      const revealWithoutVeil ='), source.indexOf('      installPersistentNavigation({')) + '\nreturn revealWithoutVeil;');
+  const overlay = { style: { animation: '', opacity: '0' }, hidden: true, dataset: { loading: 'true' } };
+  let invalidated = 0, bound = 0, opened = 0, completed = 0;
+  const reveal = new Function('invalidate', 'readinessMarker', 'overlay', 'bindImagePreviewUpgrade', 'emitTransitionMilestone', 'openImagePreviewUpgrade', 'window', 'Event', script)(() => invalidated++, null, overlay, () => bound++, () => {}, () => opened++, { dispatchEvent() { completed++; } }, Event);
+  reveal();
+  expect(overlay.hidden).toBe(true); expect(overlay.style.opacity).toBe('0');
+  expect(overlay.dataset.loading).toBeUndefined();
+  expect([invalidated, bound, opened, completed]).toEqual([1, 1, 1, 1]);
+});
+
+
+test('headerless non-doc sources cover and fall back before entering a supported docs shell', async () => {
+  const f = docsNavigationFixture(docsHtml('Hero').replace('data-documentation-page', ''));
+  const nav = f.prepare(docsHtml('API'));
+  expect(f.covers).toEqual([1]);
+  await nav.preparation.loader();
+  expect(nav.preparation.defaultPrevented).toBe(true);
+  expect(f.doc.getElementById('main-content')?.textContent).toBe('Hero');
+  expect(f.reveals).toEqual([]);
+  f.doc.body.innerHTML = new f.win.DOMParser().parseFromString(docsHtml('API'), 'text/html').body.innerHTML;
+  const next = f.prepare(docsHtml('Styling'));
+  await next.preparation.loader();
+  expect(next.preparation.defaultPrevented).toBe(false);
+  next.swap(); await Promise.resolve();
+  expect(f.doc.getElementById('main-content')?.textContent).toBe('Styling');
+  expect(f.covers).toEqual([1]);
+  expect(f.reveals).toEqual([true]);
 });
