@@ -3,13 +3,15 @@ import '../../styles/dev-chrome.css';
 
 // Assemble a menu from Button rows (class="dev-menu__item", emphasis ghost,
 // align start, width fill) and Hairline separators; the menu owns the spacing.
+// size="page" is for menus opened from page-sized buttons (16px rows).
 interface Props {
+  size?: 'dev' | 'page';
   [key: string]: any;
 }
 
-const { class: className, ...rest } = Astro.props;
+const { size = 'dev', class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['dev-menu', className]} {...rest}>
+<div class:list={['dev-menu', size === 'page' && 'dev-menu--page', className]} {...rest}>
   <slot />
 </div>

@@ -557,31 +557,18 @@
 }
 
 /* As a popover it opens in the top layer (see src/lib/floatingLayer.ts for
-   placement) and fades. Closed, it must restate display:none: .dev-menu's
-   display:flex would otherwise override the UA closed-popover rule. */
+   placement), instantly in both directions: menus are frequent, often
+   keyboard-driven tools, and a fade only adds wait. Closed, it must restate
+   display:none: .dev-menu's display:flex would otherwise override the UA
+   closed-popover rule. */
 .dev-menu[popover] {
   position: fixed; /* JS sets top/left */
   inset: auto;
   overflow: visible;
-  transition:
-    opacity var(--motion-press-duration) ease,
-    overlay var(--motion-press-duration) ease allow-discrete,
-    display var(--motion-press-duration) ease allow-discrete;
 }
 
 .dev-menu[popover]:not(:popover-open) {
   display: none;
-}
-
-.dev-menu[popover]:not(:popover-open),
-.dev-menu.is-closing {
-  opacity: 0;
-}
-
-@starting-style {
-  .dev-menu[popover]:popover-open {
-    opacity: 0;
-  }
 }
 
 .dev-menu__item {
@@ -599,6 +586,23 @@
 
 .dev-menu__item:active:not(:disabled) {
   transform: none;
+}
+
+/* Page size: for menus opened from page-sized buttons (the Sabi hero's
+   Install), rows take the 16px body size so the menu doesn't shrink below
+   its trigger. 24px leading keeps the row 40px, the hero buttons' height.
+   The editor's menus stay on the dev label size. */
+.dev-menu--page .dev-menu__item {
+  min-height: 40px;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Touch-sized rows on a coarse pointer, so they're easy to tap. */
+@media (pointer: coarse) {
+  .dev-menu .dev-menu__item {
+    min-height: 44px;
+  }
 }
 
 /* The selected row holds the hover fill (a ghost button's own selected fill is
