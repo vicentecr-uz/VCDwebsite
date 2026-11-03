@@ -34,7 +34,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', frame === 'default' && 'demo-frame', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingAttrs ?? {})}>
+  <div class:list={['project-block', 'project-interactive-demo', frame === 'default' && 'demo-frame', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-interactive-demo={demo.id} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is optimized for desktop</p>}
     <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
       {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
@@ -44,7 +44,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
         loading="lazy"
         sandbox={`allow-scripts allow-same-origin${demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
         referrerpolicy="no-referrer"
-        style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`}
       />}
     </project-demo-content>
     {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
@@ -178,6 +177,21 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     .project-interactive-demo__content {
       overflow-x: clip;
     }
+
+    .project-interactive-demo[data-interactive-demo='gap-spacing'] {
+      height: min(var(--demo-narrow-height), calc(var(--vh-safe, 1svh) * 90));
+      display: flex;
+      flex-direction: column;
+    }
+
+    .project-interactive-demo[data-interactive-demo='gap-spacing'] .project-interactive-demo__mobile-notice {
+      flex-shrink: 0;
+    }
+
+    .project-interactive-demo[data-interactive-demo='gap-spacing'] .project-interactive-demo__content {
+      flex: 1;
+      min-height: 0;
+    }
   }
 
   .project-interactive-demo__content iframe {
@@ -192,5 +206,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 
   @media (max-width: 40em) {
     .project-interactive-demo__content iframe { height: var(--demo-narrow-height); }
+    .project-interactive-demo[data-interactive-demo='gap-spacing'] .project-interactive-demo__content iframe { height: 100%; }
   }
 </style>

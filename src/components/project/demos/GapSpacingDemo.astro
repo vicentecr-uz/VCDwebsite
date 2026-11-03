@@ -113,7 +113,9 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
         onLift: () => { gaps.setSuppressed(true); this.toggleAttribute('data-reordering', true); syncBar(); },
         onSettle: () => { gaps.setSuppressed(false); this.removeAttribute('data-reordering'); syncBar(); },
       });
-      const viewport = this.closest<HTMLElement>('[data-page-viewport]')!;
+      const viewport = this.closest<HTMLElement>('[data-page-viewport]')
+        ?? this.ownerDocument.scrollingElement
+        ?? this.ownerDocument.documentElement;
       const revertButton = this.querySelector<HTMLButtonElement>('[data-block-revert]')!;
       const actionBar = this.querySelector<HTMLElement>('[data-block-save-bar]');
       const saveButton = this.querySelector<HTMLButtonElement>('[data-block-save]')!;

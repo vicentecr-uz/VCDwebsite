@@ -170,6 +170,7 @@ test('Astro lifecycle exposes the image framing link and disconnect cleanup', ()
     createDemoGapSpacing: (root: HTMLElement, options: { onChange?: () => void }) => { gapApi = createDemoGapSpacing(root, options); const api = gapApi; return { ...api, setSuppressed(value: boolean) { gapSuppressed = value; api.setSuppressed(value); } }; },
     createDemoBlockReorder: (root: HTMLElement, options: { onLift?: () => void; onSettle?: () => void }) => { lift = options.onLift; settle = options.onSettle; const list = root.querySelector<HTMLElement>('[data-reorder-demo-list]')!; return { reset() {}, destroy() {}, getOrder: () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')], restore(order: HTMLElement[]) { order.forEach((block) => list.append(block)); }, guideLift: () => false, guideMove() {}, guideDrop: async () => {}, cancel() {}, guideTarget() {} }; },
     createDemoBlockGuide: () => ({ stop() { guideStops += 1; }, play() { guidePlays += 1; }, destroy() {} }),
+    createDemoIndicatorLayer: () => ({ element: document.body, destroy() {} }),
   };
   new Function('env', `with (env) { ${compiled} }`)(env);
   const demo = document.querySelector('vcd-gap-spacing-demo') as HTMLElement;
@@ -226,4 +227,13 @@ test('Astro lifecycle exposes the image framing link and disconnect cleanup', ()
   expect(document.querySelector('[data-block-guide-cursor]')?.parentElement).toBe(document.body);
   demo.remove();
   expect(document.querySelector('.block-demo-actions')).toBeNull();
+
+  Object.defineProperty(document, 'scrollingElement', { configurable: true, value: document.documentElement });
+  viewport.removeAttribute('data-page-viewport');
+  let rootScroll = false;
+  document.documentElement.scrollTo = () => { rootScroll = true; };
+  document.body.append(demo);
+  document.querySelector('[data-gap-reset]')?.dispatchEvent(event(win, 'click'));
+  expect(rootScroll).toBe(true);
+  demo.remove();
 });
