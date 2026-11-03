@@ -1,0 +1,81 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
+
+interface Props {
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+  annotations?: unknown;
+}
+
+const { documentKey, sectionPath, spacing = 'group', sectionId, contentId, annotations } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-block--text', 'project-divider', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-dev-section-deletable={editable ? 'divider' : undefined}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+>
+  <hr />
+  {editable && <span class="project-divider__hit-area" aria-hidden="true" />}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+</section>
+
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    if (!import.meta.env.DEV) return;
+    const scope = createPageScope();
+    const parents = new Set<Element>();
+    let scheduled = false;
+    const observer = new ResizeObserver(() => schedule());
+    const measure = () => {
+      scheduled = false;
+      for (const parent of parents) {
+        if (!parent.isConnected) { observer.unobserve(parent); parents.delete(parent); }
+      }
+      for (const divider of document.querySelectorAll<HTMLElement>(".project-divider[data-dev-section-deletable='divider']")) {
+        const parent = divider.parentElement;
+        if (parent && !parents.has(parent)) { parents.add(parent); observer.observe(parent); }
+        const rect = divider.getBoundingClientRect();
+        const previous = divider.previousElementSibling;
+        const next = divider.nextElementSibling;
+        const before = previous ? Math.max(0, rect.top - previous.getBoundingClientRect().bottom) : 0;
+        const after = next ? Math.max(0, next.getBoundingClientRect().top - rect.bottom) : 0;
+        divider.style.setProperty('--divider-hover-before', `${Math.min(20, before / (previous?.classList.contains('project-divider') ? 2 : 1))}px`);
+        divider.style.setProperty('--divider-hover-after', `${Math.min(20, after / (next?.classList.contains('project-divider') ? 2 : 1))}px`);
+      }
+    };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      scope.frame(measure);
+    };
+    scope.listen(window, 'resize', schedule);
+    scope.listen(window, 'vcd:dev-section-structure-changed', schedule);
+    scope.listen(window, 'vcd:dev-section-reordered', schedule);
+    scope.add(() => observer.disconnect());
+    measure();
+    return () => scope.destroy();
+  });
+</script>
+
+<style>
+  .project-divider[data-dev-section-deletable='divider'] { position: relative; }
+  .project-divider__hit-area { display: none; position: absolute; inset-inline: 0; top: calc(-1 * var(--divider-hover-before, 0px)); bottom: calc(-1 * var(--divider-hover-after, 0px)); z-index: 0; }
+  :global(.is-dev-mode) .project-divider__hit-area { display: block; }
+  :global(.is-dev-mode) .project-divider[data-dev-section-deletable='divider']::after,
+  :global(.is-dev-mode) .project-divider[data-dev-section-deletable='divider'] > :global(.dev-section-drag-bridge) {
+    top: calc(-1 * var(--divider-hover-before, 0px));
+    bottom: calc(-1 * var(--divider-hover-after, 0px));
+  }
+  hr { margin: 0; border: 0; border-top: 1px solid var(--sys-color-outline); }
+</style>
