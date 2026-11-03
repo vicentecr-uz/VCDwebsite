@@ -4,7 +4,6 @@ import DocumentationContents from '../components/DocumentationContents.astro';
 import DocumentationNavigation from '../components/DocumentationNavigation.astro';
 import Button from '../components/ui/Button.astro';
 import menuIcon from 'lucide-static/icons/menu.svg?raw';
-import closeIcon from 'lucide-static/icons/x.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import '../styles/project.css';
 
@@ -39,12 +38,6 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
       <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
     </aside>
     <dialog id="documentation-drawer" class="documentation-drawer" aria-label="Documentation navigation">
-      <div class="documentation-drawer__heading">
-        <p class="documentation-brand"><a href={homeHref}>{product}</a>{' '}<span>by <a href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
-        <Button label="" emphasis="ghost" aria-label="Close documentation navigation" data-documentation-close autofocus>
-          <span slot="icon" set:html={sizeIcon(closeIcon, 20)} />
-        </Button>
-      </div>
       <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
     </dialog>
     <main id="main-content" class="documentation-main">
@@ -71,6 +64,8 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
     if (!dialog || !opener) return;
     const scope = createPageScope();
     const desktop = window.matchMedia('(min-width: 64em)');
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let generation = 0;
     let previousOverflow: string | undefined;
     const unlock = () => {
       if (previousOverflow === undefined) return;
@@ -78,28 +73,45 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
       opener.setAttribute('aria-expanded', 'false');
       previousOverflow = undefined;
     };
-    const close = () => {
+    const closeImmediately = () => {
+      generation++;
+      delete dialog.dataset.closing;
       if (dialog.open) dialog.close();
       unlock();
     };
+    const close = () => {
+      if (!dialog.open || dialog.dataset.closing) return;
+      if (reducedMotion.matches) { closeImmediately(); return; }
+      const current = ++generation;
+      dialog.dataset.closing = 'true';
+      getComputedStyle(dialog).transform;
+      const animations = dialog.getAnimations?.({ subtree: true }) ?? [];
+      void Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
+        if (current === generation && !scope.signal.aborted) closeImmediately();
+      });
+    };
     scope.listen(opener, 'click', () => {
-      if (dialog.open) return;
+      if (dialog.open) {
+        if (dialog.dataset.closing) { generation++; delete dialog.dataset.closing; }
+        return;
+      }
       previousOverflow = document.documentElement.style.overflow;
       dialog.showModal();
       opener.setAttribute('aria-expanded', 'true');
       document.documentElement.style.overflow = 'hidden';
     });
-    scope.listen(dialog.querySelector('[data-documentation-close]'), 'click', close);
-    scope.listen(dialog, 'close', unlock);
+    scope.listen(dialog, 'close', () => { if (!dialog.open) { generation++; delete dialog.dataset.closing; unlock(); } });
+    scope.listen(dialog, 'cancel', event => { event.preventDefault(); close(); });
     scope.listen(dialog, 'click', (event) => {
       const target = event.target as Element;
-      if (target.closest('a')) close();
+      if (target.closest('a')) { closeImmediately(); return; }
       if (target !== dialog) return;
       const rect = dialog.getBoundingClientRect();
       if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
     });
-    scope.listen(desktop, 'change', () => { if (desktop.matches) close(); });
-    scope.add(close);
+    scope.listen(desktop, 'change', () => { if (desktop.matches) closeImmediately(); });
+    scope.listen(reducedMotion, 'change', () => { if (reducedMotion.matches && dialog.dataset.closing) closeImmediately(); });
+    scope.add(closeImmediately);
     return () => scope.destroy();
   });
 </script>
@@ -131,6 +143,11 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
   .documentation-drawer {
     --text-body-size: 1rem;
     --text-body-leading: 1.6;
+    --documentation-drawer-duration: 500ms;
+    --documentation-drawer-easing: cubic-bezier(0.32, 0.72, 0, 1);
+    transform: translateX(calc(100% + 8px));
+    opacity: 0;
+    transition: transform var(--documentation-drawer-duration) var(--documentation-drawer-easing), opacity var(--documentation-drawer-duration) var(--documentation-drawer-easing);
     inset: 8px 8px 8px auto;
     margin: 0;
     width: min(260px, calc(100% - 16px));
@@ -145,10 +162,18 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
     overflow-y: auto;
   }
   .documentation-drawer[open] { display: flex; flex-direction: column; }
-  .documentation-drawer::backdrop { background: color-mix(in srgb, var(--sys-color-on-srf) 25%, transparent); }
-  .documentation-drawer__heading { display: flex; align-items: center; justify-content: space-between; gap: 0.25rem; margin-bottom: 2rem; }
-  .documentation-drawer__heading .documentation-brand { white-space: normal; }
-  .documentation-main { min-width: 0; width: calc(100% - 2rem); max-width: var(--page-text-max-width); justify-self: center; padding-block: 3rem 5rem; }
+  .documentation-drawer[data-closing] { --documentation-drawer-duration: 400ms; }
+  .documentation-drawer[open]:not([data-closing]) { transform: none; opacity: 1; }
+  .documentation-drawer::backdrop { background: color-mix(in srgb, var(--sys-color-on-srf) 25%, transparent); opacity: 0; transition: opacity var(--documentation-drawer-duration) var(--documentation-drawer-easing); }
+  .documentation-drawer[open]:not([data-closing])::backdrop { opacity: 1; }
+  @starting-style {
+    .documentation-drawer[open]:not([data-closing]) { transform: translateX(calc(100% + 8px)); opacity: 0; }
+    .documentation-drawer[open]:not([data-closing])::backdrop { opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .documentation-drawer, .documentation-drawer::backdrop { transition: none; }
+  }
+  .documentation-main { min-width: 0; width: calc(100% - 2rem); max-width: var(--page-text-max-width); justify-self: center; padding-block: 5rem 5rem; }
   .documentation-heading { margin-bottom: 1.5rem; }
   h1 { margin: 0; font-size: var(--text-heading-1-size); font-weight: var(--text-heading-1-weight); line-height: var(--text-heading-1-leading); letter-spacing: var(--text-heading-1-tracking); }
   .documentation-page-contents { display: none; }
@@ -164,7 +189,7 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
   }
   .documentation-main :global(pre) { max-width: 100%; overflow-x: auto; }
   .documentation-main :global(.section-block[id]) { scroll-margin-top: 3rem; }
-  @media (min-width: 40em) { .documentation-main { padding-top: 5rem; width: calc(100% - 4rem); } }
+  @media (min-width: 40em) { .documentation-main { width: calc(100% - 4rem); } }
   @media (min-width: 64em) {
     .documentation-page { grid-template-columns: 240px minmax(0, 1fr); }
     .documentation-mobile-header { display: none; }

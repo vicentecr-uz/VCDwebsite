@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import { persistentPageParts, swapPageContent, supportsPersistentPage } from '../../src/lib/persistentPageSwap';
 import { createPageScope, onPageLoad } from '../../src/lib/pageLifecycle';
+import { activeSectionId } from '../../src/lib/activeSection';
 
 const windows: Window[] = [];
 const globals = ['window', 'document', 'Element', 'Node', 'HTMLElement', 'HTMLDetailsElement', 'HTMLInputElement', 'HTMLFormElement', 'Event', 'CustomEvent', 'AbortController', 'MutationObserver', 'ResizeObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'matchMedia', 'getComputedStyle'];
@@ -85,13 +86,15 @@ function componentScript(path: string) {
 
 test('sidebar teardown removes window listeners and remounts the new sidebar once', () => {
   const win = fixture(); const doc = win.document;
+  const errors: unknown[] = [];
+  win.addEventListener('error', event => errors.push(event.error));
   const markup = '<main id="main-content"><section id="first" class="section-block"></section></main><nav class="section-sidebar-nav"><div data-section-sidebar-scroll><ul data-section-sidebar-list><li><a href="#first" class="section-sidebar-nav__link">First</a></li></ul></div></nav>';
   doc.body.innerHTML = markup;
   let reads = 0;
   const oldNav = doc.querySelector('.section-sidebar-nav')!;
   const original = oldNav.querySelectorAll.bind(oldNav);
   oldNav.querySelectorAll = ((selector: string) => { reads++; return original(selector); }) as any;
-  new Function('createPageScope', 'onPageLoad', componentScript('SectionSidebarNav'))(createPageScope, onPageLoad);
+  new Function('activeSectionId', 'createPageScope', 'onPageLoad', componentScript('SectionSidebarNav'))(activeSectionId, createPageScope, onPageLoad);
   expect(oldNav.getAttribute('data-initialized')).toBe('true');
   doc.dispatchEvent(new win.Event('astro:before-swap'));
   const afterDispose = reads;
@@ -100,6 +103,7 @@ test('sidebar teardown removes window listeners and remounts the new sidebar onc
   expect(reads).toBe(afterDispose);
   doc.dispatchEvent(new win.Event('astro:page-load'));
   expect(doc.querySelector('.section-sidebar-nav')?.getAttribute('data-initialized')).toBe('true');
+  expect(errors).toEqual([]);
 });
 
 test('signup aborts an in-flight request on removal, detaches old form handler, and initializes the destination form', async () => {
