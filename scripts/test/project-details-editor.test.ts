@@ -25,6 +25,15 @@ type Harness = {
 function harness(): Harness {
   const dom = new Window();
   const document = dom.document;
+  const template = document.createElement('template');
+  template.dataset.projectDetailsMenuTemplate = '';
+  template.innerHTML = '<div class="dev-menu" popover="manual" role="menu"><button data-details-row-action="up">Move up</button><button data-details-row-action="down">Move down</button><button data-details-row-action="remove">Remove row</button></div>';
+  document.body.append(template);
+  const matches = dom.HTMLElement.prototype.matches;
+  dom.HTMLElement.prototype.matches = function(selector: string) { return selector === ':popover-open' ? this.dataset.open === 'true' : matches.call(this, selector); };
+  dom.HTMLElement.prototype.showPopover = function() { this.dataset.open = 'true'; };
+  dom.HTMLElement.prototype.hidePopover = function() { delete this.dataset.open; };
+
   const root = document.createElement('section');
   root.dataset.devProjectDetails = '';
   root.dataset.devSpacingDocument = 'fixture';
@@ -45,7 +54,9 @@ function harness(): Harness {
       row.append(field);
     }
     const remove = document.createElement('button');
-    remove.dataset.projectDetailsRemove = '';
+    remove.dataset.projectDetailsActions = '';
+    remove.className = 'dev-btn dev-btn--ghost project-details__actions';
+    remove.setAttribute('aria-haspopup', 'menu');
     row.append(remove);
     return row;
   };
@@ -95,13 +106,13 @@ function harness(): Harness {
   const readApiJson = (response: any) => response.json();
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(detailsCode + '\nreturn persistDetailsRows;');
   const run = new Function(
-    'document', 'textStates', 'pendingMedia', 'editorSignal', 'pageHistory', 'registerTextStates',
+    'window', 'placeBeside', 'document', 'textStates', 'pendingMedia', 'editorSignal', 'pageHistory', 'registerTextStates',
     'detachSectionStates', 'renderValue', 'updateActions', 'captureFieldHistory', 'cleanText',
     'isDevContentEditing', 'actionsBusy', 'syncIntroRunControls', 'fetch', 'readApiJson', 'pageScope', 'sectionEditTarget', compiled,
   );
-  const persist = run(document, textStates, pending, editorSignal, pageHistory, registerTextStates, detachSectionStates, renderValue, updateActions, captureFieldHistory, cleanText, isDevContentEditing, actionsBusy, syncIntroRunControls, fetch, readApiJson, { frame: (callback: () => void) => callback() }, sectionEditTarget);
+  const persist = run(dom, () => {}, document, textStates, pending, editorSignal, pageHistory, registerTextStates, detachSectionStates, renderValue, updateActions, captureFieldHistory, cleanText, isDevContentEditing, actionsBusy, syncIntroRunControls, fetch, readApiJson, { frame: (callback: () => void) => callback(), add() {}, listen(target: EventTarget, event: string, listener: EventListener, options?: AddEventListenerOptions) { target.addEventListener(event, listener, options); } }, sectionEditTarget);
   return { dom, root, textStates, pending, history, persist, writes, click(selector) {
-    const target = root.querySelector<HTMLElement>(selector)!;
+    const target = document.querySelector<HTMLElement>(selector)!;
     target.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
   } };
 }
@@ -117,7 +128,8 @@ test('details row add and remove preserve values and undo/redo state references'
   assert.equal(h.root.querySelectorAll('[data-project-details-row]').length, 1);
   h.history.at(-1)!.redo();
   assert.ok(h.textStates.some((state) => state.element === addedField));
-  h.click('[data-project-details-row] [data-project-details-remove]');
+  h.click('[data-project-details-row] [data-project-details-actions]');
+  h.click('[data-details-row-action=remove]');
   h.history.at(-1)!.undo();
   assert.equal(h.root.querySelectorAll('[data-project-details-row]').length, 2);
 });
@@ -161,4 +173,122 @@ test('revert restores the saved rows and values without replacing unrelated cont
   assert.equal(h.root.querySelectorAll('[data-project-details-row]').length, 1);
   assert.equal(h.root.querySelector('dt')!.textContent, 'Role <x>');
   assert.equal(neighbour.textContent, 'Other unsaved text');
+});
+
+
+test('row menu moves edited fields and reindexes paths, with undo and redo', () => {
+  const h = harness();
+  h.click('[data-project-details-add]');
+  const rows = [...h.root.querySelectorAll<HTMLElement>('[data-project-details-row]')];
+  rows[1].querySelector('dt')!.textContent = 'Edited label';
+  rows[1].querySelector('dd')!.textContent = 'Edited value';
+  h.click('[data-project-details-row]:nth-child(2) [data-project-details-actions]');
+  h.click('[data-details-row-action=up]');
+  assert.equal(h.root.querySelector('dt')?.textContent, 'Edited label');
+  assert.deepEqual(h.textStates.find((field) => field.element === rows[1].querySelector('dt'))?.path, ['sections', 1, 'rows', 0, 'label']);
+  h.history.at(-1)!.undo();
+  assert.equal(h.root.querySelector('dt')?.textContent, 'Role <x>');
+  h.history.at(-1)!.redo();
+  assert.equal(h.root.querySelector('dd')?.textContent, 'Edited value');
+  h.click('[data-project-details-row]:first-child [data-project-details-actions]');
+  h.click('[data-details-row-action=down]');
+  assert.equal(h.root.querySelector('dt')?.textContent, 'Role <x>');
+});
+
+test('row menu guards boundaries and last row, and newly created controls match', () => {
+  const h = harness();
+  h.click('[data-project-details-actions]');
+  for (const action of ['up', 'down', 'remove']) {
+    assert.equal(h.dom.document.querySelector<HTMLButtonElement>(`[data-details-row-action=${action}]`)?.disabled, true);
+    h.click(`[data-details-row-action=${action}]`);
+  }
+  assert.equal(h.history.length, 0);
+  h.click('[data-project-details-add]');
+  const buttons = [...h.root.querySelectorAll('[data-project-details-actions]')];
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].className, buttons[1].className);
+  assert.equal(buttons[1].getAttribute('aria-haspopup'), 'menu');
+  assert.match(buttons[1].getAttribute('aria-label')!, /^Row actions for Detail$/);
+});
+
+test('reordered pending rows use the moved section target and revert restores baseline order', () => {
+  const h = harness();
+  h.click('[data-project-details-add]');
+  h.root.querySelectorAll('dt')[1].textContent = 'Second';
+  h.click('[data-project-details-row]:first-child [data-project-details-actions]');
+  h.click('[data-details-row-action=down]');
+  h.root.dataset.devSpacingPath = JSON.stringify(['sections', 9, 'spacing']);
+  const change = [...h.pending.values()][0];
+  assert.equal(change.prepare().index, 9);
+  assert.deepEqual(change.prepare().rows.map((row: {label: string}) => row.label), ['Second', 'Role <x>']);
+  change.revert();
+  assert.equal(h.root.querySelectorAll('[data-project-details-row]').length, 1);
+  assert.equal(h.root.querySelector('dt')?.textContent, 'Role <x>');
+});
+
+test('client Divider insertion registers no text state, emits divider metadata and reverts cleanly', () => {
+  const dom = new Window(); const document = dom.document;
+  document.body.innerHTML = '<template data-divider-template><section class="project-block project-divider" data-dev-section-deletable="divider"><hr></section></template><section data-anchor data-dev-spacing-document="fixture" data-dev-spacing-path=\'["sections",2,"spacing"]\'></section>';
+  const anchor = document.querySelector<HTMLElement>('[data-anchor]')!;
+  const inserts: any[] = [], textStates: any[] = [], spacingStates: any[] = [], deletableSections: any[] = [], events: any[] = [];
+  const start = source.indexOf('    const insertSectionAt =');
+  const end = source.indexOf('    splitBlockAtCaret =', start);
+  const revertStart = source.indexOf('    const revertPendingSectionInserts =');
+  const revertEnd = source.indexOf('    const revertPendingSectionDeletes =', revertStart);
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end) + source.slice(revertStart, revertEnd) + '\nreturn { insertSectionAt, revertPendingSectionInserts };');
+  const environment = {
+    document, HTMLElement: dom.HTMLElement, CustomEvent: dom.CustomEvent,
+    window: { dispatchEvent(event: CustomEvent) { events.push(event.detail); } },
+    spacingStates, textStates, deletableSections, pendingSectionInserts: inserts,
+    closeSectionMenus() {}, reindexDevPaths() {}, projectStackClassName: (spacing: string) => `project-stack--${spacing}`,
+    resolveProjectStackSpacing: (spacing: string) => ({ desktop: spacing, tablet: spacing, mobile: spacing }),
+    buildInsertedSection() { throw new Error('Divider must not become a text block'); },
+    mountSpacingControl: (element: HTMLElement) => ({ element }), wireSectionAddMenu() {},
+    registerTextStates() { throw new Error('Divider must not register editable text'); },
+    bindTextState() { throw new Error('Divider must not bind editable text'); },
+    isDevContentEditing: () => true, mountDeleteButton() {}, syncPageTopSpacingControls() {}, updateActions() {},
+    pageScope: { frame(callback: () => void) { callback(); } },
+  };
+  const commands = new Function('env', `with (env) { ${script} }`)(environment);
+  const built = commands.insertSectionAt(anchor, 'divider');
+  assert.equal(built.textElement, null);
+  assert.equal(built.root.getAttribute('contenteditable'), null);
+  assert.equal(built.root.tabIndex, -1);
+  assert.equal(built.root.getAttribute('aria-label'), 'Divider');
+  assert.equal(built.root.dataset.devSectionDeletable, 'divider');
+  assert.deepEqual(JSON.parse(built.root.dataset.devSpacingPath), ['sections', 2, 'spacing']);
+  assert.equal(built.root.nextElementSibling, anchor);
+  assert.equal(inserts.length, 1);
+  assert.deepEqual(inserts[0].textStates, []);
+  assert.match(inserts[0].sectionId, /^divider-/);
+  assert.equal(textStates.length, 0);
+  assert.equal(events[0].section.type, 'divider');
+  assert.equal('title' in events[0].section, false);
+  commands.revertPendingSectionInserts();
+  assert.equal(inserts.length, 0);
+  assert.equal(built.root.isConnected, false);
+  assert.equal(anchor.isConnected, true);
+  assert.equal(deletableSections.length, 0);
+  assert.equal(spacingStates.length, 0);
+});
+
+
+test('row menu keyboard navigation returns focus on Escape and closes on Edit exit', () => {
+  const h = harness();
+  h.click('[data-project-details-add]');
+  const trigger = h.root.querySelector<HTMLButtonElement>('[data-project-details-actions]')!;
+  h.click('[data-project-details-actions]');
+  const menu = h.dom.document.querySelector<HTMLElement>('[role=menu]')!;
+  assert.equal(menu.dataset.open, 'true');
+  h.dom.document.dispatchEvent(new h.dom.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  assert.equal(h.dom.document.activeElement?.textContent, 'Remove row');
+  const escape = new h.dom.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+  h.dom.document.dispatchEvent(escape);
+  assert.equal(escape.defaultPrevented, true);
+  assert.equal(menu.dataset.open, undefined);
+  assert.equal(h.dom.document.activeElement, trigger);
+  h.click('[data-project-details-actions]');
+  h.dom.dispatchEvent(new h.dom.CustomEvent('vcd:dev-mode-change', { detail: { active: false } }));
+  assert.equal(menu.dataset.open, undefined);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });

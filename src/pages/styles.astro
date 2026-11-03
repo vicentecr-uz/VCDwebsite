@@ -10,6 +10,7 @@ import ProjectImage from '../components/project/ProjectImage.astro';
 import ProjectImageGrid from '../components/project/ProjectImageGrid.astro';
 import ProjectAward from '../components/project/ProjectAward.astro';
 import ProjectDetails from '../components/project/ProjectDetails.astro';
+import ProjectDivider from '../components/project/ProjectDivider.astro';
 import ProjectBodyText from '../components/project/ProjectBodyText.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
 import ProjectPressQuoteTicker from '../components/project/ProjectPressQuoteTicker.astro';
@@ -62,6 +63,7 @@ type PreviewKey =
   | 'project-grid'
   | 'project-layout'
   | 'image-lead'
+  | 'divider'
   | 'body-text'
   | 'section-title'
   | 'image-grid'
@@ -203,6 +205,17 @@ const componentCatalog: ComponentEntry[] = [
     props: 'src?, alt?, href?, spacing?',
     usedOn: [],
     preview: 'project-award',
+  },
+  {
+    id: 'component-project-divider',
+    name: 'ProjectDivider',
+    category: 'project-content',
+    purpose: 'An independent hairline divider with editable spacing and block order.',
+    classRef: '.project-divider',
+    source: 'src/components/project/ProjectDivider.astro',
+    props: 'documentKey?, sectionPath?, spacing?, sectionId?, contentId?',
+    usedOn: ['Sabi API', 'Sabi Styling', 'Project details'],
+    preview: 'divider',
   },
   {
     id: 'component-project-details',
@@ -849,6 +862,9 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
                       )}
                       {component.preview === 'project-award' && (
                         <ProjectAward href={examples.awardHref} spacing="none" />
+                      )}
+                      {component.preview === 'divider' && (
+                        <ProjectDivider spacing="none" />
                       )}
                       {component.preview === 'project-details' && (
                         <ProjectDetails title="Project details & credits" rows={examples.projectDetails} />

@@ -1602,8 +1602,6 @@ h3.project-section-title {
 
 .project-details {
   width: min(100%, 65ch);
-  border-top: 1px solid var(--sys-color-outline-variant);
-  padding-top: var(--space-unit);
   font-size: var(--text-body-size);
   font-weight: var(--text-body-weight);
   line-height: var(--text-body-leading);
@@ -1638,25 +1636,23 @@ h3.project-section-title {
 .project-details__label { color: var(--sys-color-on-srf-variant); min-width: 0; overflow-wrap: anywhere; }
 .project-details__value { margin: 0; color: var(--sys-color-on-srf); min-width: 0; overflow-wrap: anywhere; }
 .project-details__add,
-.project-details__remove {
-  display: none;
-  font: inherit;
-  font-size: 0.8125rem;
-  color: var(--sys-color-on-srf-variant);
-  padding: 0.5rem;
-  cursor: pointer;
-}
-.project-details__remove { grid-column: 2; justify-self: start; }
-.project-details__add { margin-top: var(--space-unit); }
+.project-details__actions { display: none; }
+.project-details__add { font: inherit; font-size: 0.8125rem; color: var(--sys-color-on-srf-variant); padding: 0.5rem; cursor: pointer; margin-top: var(--space-unit); }
+.project-details__actions { position: absolute; inset-inline-end: calc(100% + 4px); top: 0; opacity: 0; }
 .project-details__add:focus-visible,
-.project-details__remove:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
-.project-details__add:disabled,
-.project-details__remove:disabled { opacity: 0.4; cursor: default; }
+.project-details__actions:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+.project-details__add:disabled { opacity: 0.4; cursor: default; }
 .is-dev-mode .project-details__add,
-.is-dev-mode .project-details__remove { display: inline-flex; }
+.is-dev-mode .project-details__actions { display: inline-flex; }
+.is-dev-mode .project-details__row:hover .project-details__actions,
+.is-dev-mode .project-details__row:focus-within .project-details__actions { opacity: 1; }
+@media (hover: none) { .is-dev-mode .project-details__actions { opacity: 1; } }
+@media (pointer: coarse) { .project-details__actions { padding: 10px; } }
 
 @media (max-width: 40em) {
   .project-details__row { display: block; }
+  .project-details__actions { inset-inline-end: 0; }
+  .is-dev-mode .project-details__label { padding-inline-end: 44px; }
   .project-details__value { margin-top: 0.25em; }
 }
 
