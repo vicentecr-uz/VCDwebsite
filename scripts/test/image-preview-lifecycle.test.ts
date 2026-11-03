@@ -13,7 +13,9 @@ let clock = 0;
 class TestTrack extends EventTarget {
   closest(selector: string) { return selector === '[data-carousel-track]' ? this : null; }
 }
-class TestDocument extends EventTarget {}
+class TestDocument extends EventTarget {
+  createElement() { return new TestImage(); }
+}
 const testDocument = new TestDocument();
 
 class TestImage extends EventTarget {
@@ -40,6 +42,7 @@ class TestImage extends EventTarget {
   onerror: (() => void) | null = null;
   decode: () => Promise<void> = () => Promise.resolve();
   clone?: TestImage;
+  children: TestImage[] = [];
   cloneDecode?: () => Promise<void>;
   animations: FakeAnimation[] = [];
   top = 20;
@@ -51,6 +54,7 @@ class TestImage extends EventTarget {
   getBoundingClientRect() { return { top: this.top, left: 20, bottom: this.top + 200, right: 320 }; }
   cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); if (this.cloneDecode) clone.decode = this.cloneDecode; return clone; }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
+  append(...nodes: TestImage[]) { this.children.push(...nodes); }
   remove() { this.isConnected = false; }
   closest() { return null; }
   getAnimations() { return this.animations; }
@@ -260,7 +264,7 @@ try {
   for (let frame = 0; frame < 2; frame++) {
     const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0));
   }
-  assert.equal(cold.image.clone!.classes.has('is-revealing'), true);
+  assert.equal(cold.image.clone!.children.some((child) => child.classes.has('is-revealing')), true);
   runTimer(600);
   assert.equal(cold.image.src, '/cold-clone.webp', 'source changes only behind the decoded reveal');
   coldUpgrade.destroy();
