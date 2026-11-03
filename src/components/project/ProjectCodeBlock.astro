@@ -37,11 +37,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   {options.map(({ lang, code }, index) => (
     <div class="code-block__panel" data-option-panel hidden={index > 0}>
       <Code code={code.trim()} lang={lang as never} theme={codeTheme} />
-      {!code.includes('\n') && (
-        <button type="button" class="dev-btn dev-btn--ghost code-block__copy" aria-label="Copy" title="Copy" data-copy-code={code.trim()}>
-          <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
-        </button>
-      )}
+      <button type="button" class:list={["dev-btn dev-btn--ghost code-block__copy", code.includes("\n") && "code-block__copy--multiline"]} aria-label="Copy" title="Copy" data-copy-code={code.trim()}>
+        <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
+      </button>
     </div>
   ))}
 </div>
@@ -85,5 +83,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     top: 50%;
     right: 0.5em;
     translate: 0 -50%;
+  }
+
+  .code-block__copy--multiline {
+    top: 0.5em;
+    translate: none;
   }
 </style>

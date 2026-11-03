@@ -25,7 +25,7 @@ export function persistentPageParts(doc: Document) {
   const header = page?.querySelector<HTMLElement>(':scope > .site-header-slot');
   const backdrop = page?.querySelector<HTMLElement>(':scope > .header-menu-backdrop');
   const overlay = doc.getElementById('transition-overlay');
-  return wrapper && page && header && backdrop && overlay ? { wrapper, page, header, backdrop, overlay } : null;
+  return wrapper && page && overlay && ((header && backdrop) || page.hasAttribute('data-documentation-page')) ? { wrapper, page, header, backdrop, overlay } : null;
 }
 
 export function supportsPersistentPage(doc: Document) {
@@ -53,5 +53,8 @@ export function swapPageContent(current: Document, incoming: Document) {
   if (marker && nextMarker) bodyRetained.set(marker, nextMarker);
   replaceAround(current.body, incoming.body, bodyRetained);
   replaceAround(old.wrapper, next.wrapper, new Map([[old.page, next.page]]));
-  replaceAround(old.page, next.page, new Map([[old.header, next.header], [old.backdrop, next.backdrop]]));
+  const pageRetained = new Map<Element, Element>();
+  if (old.header && next.header) pageRetained.set(old.header, next.header);
+  if (old.backdrop && next.backdrop) pageRetained.set(old.backdrop, next.backdrop);
+  replaceAround(old.page, next.page, pageRetained);
 }

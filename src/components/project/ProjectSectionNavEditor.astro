@@ -157,7 +157,7 @@ import SelectField from '../ui/EditorSelectField.astro';
       const text = block.querySelector('.project-section-title, [data-dev-text-document]')?.textContent?.trim()
         || (block.matches('[data-dev-text-document]') ? block.textContent?.trim() : '')
         || block.querySelector('img')?.alt?.trim()
-        || block.dataset.devSectionDeletable || 'Block';
+        || (block.dataset.devSectionDeletable === 'divider' ? 'Divider' : block.dataset.devSectionDeletable) || 'Block';
       const words = text.split(/\s+/);
       return words.slice(0, 4).join(' ') + (words.length > 4 ? '…' : '');
     };

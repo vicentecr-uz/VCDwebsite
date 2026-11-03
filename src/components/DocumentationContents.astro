@@ -1,0 +1,83 @@
+---
+import Menu from './ui/Menu.astro';
+
+interface Props {
+  contents: Array<{ id: string; label: string }>;
+}
+const { contents } = Astro.props;
+---
+
+{contents.length > 0 && (
+  <nav class="documentation-contents" aria-label="On this page" data-documentation-contents>
+    <p>On this page</p>
+    <div class="documentation-contents__outline">
+      <span class="documentation-contents__marker" data-contents-marker aria-hidden="true" />
+      <Menu as="ul" backplate={false}>
+        {contents.map(({ id, label }) => (
+          <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href={`#${id}`}>{label}</a></li>
+        ))}
+      </Menu>
+    </div>
+  </nav>
+)}
+
+<script>
+  import { activeSectionId } from '../lib/activeSection';
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const navigation = document.querySelector('[data-documentation-contents]');
+    const outline = navigation?.querySelector<HTMLElement>('.documentation-contents__outline');
+    const marker = outline?.querySelector<HTMLElement>('[data-contents-marker]');
+    if (!navigation || !outline || !marker) return;
+    const entries = [...navigation.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]
+      .map(link => ({ link, heading: document.getElementById(link.getAttribute('href')!.slice(1)) }))
+      .filter((entry): entry is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(entry.heading));
+    if (!entries.length) return;
+    const scope = createPageScope();
+    let scheduled = false;
+    const update = () => {
+      scheduled = false;
+      const selectedId = activeSectionId(
+        entries.map(({ heading }) => ({ id: heading.id, top: heading.getBoundingClientRect().top + window.scrollY })),
+        { scrollY: window.scrollY, viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight },
+      );
+      const current = entries.find(({ heading }) => heading.id === selectedId) ?? entries[0];
+      for (const entry of entries) {
+        if (entry === current) entry.link.setAttribute('aria-current', 'location');
+        else entry.link.removeAttribute('aria-current');
+      }
+      const rect = current.link.getBoundingClientRect();
+      const style = getComputedStyle(current.link);
+      const paddingTop = parseFloat(style.paddingTop) || 0;
+      const paddingBottom = parseFloat(style.paddingBottom) || 0;
+      const top = rect.top - outline.getBoundingClientRect().top + paddingTop;
+      const height = Math.max(0, rect.height - paddingTop - paddingBottom);
+      marker.style.transform = `translateY(${top}px) scaleY(${height})`;
+    };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      scope.frame(update);
+    };
+    scope.listen(window, 'scroll', schedule, { passive: true });
+    scope.listen(window, 'resize', schedule);
+    scope.listen(window, 'hashchange', schedule);
+    update();
+    scope.frame(() => { marker.dataset.ready = 'true'; });
+    return () => scope.destroy();
+  });
+</script>
+
+<style>
+  .documentation-contents { color: var(--documentation-navigation-muted); font-size: 0.875rem; line-height: 1.6; }
+  p { color: var(--sys-color-on-srf-subtle); margin: 0 0 1rem; }
+  .documentation-contents__outline { position: relative; padding-left: 4px; border-left: 1px solid var(--sys-color-outline); }
+  a { white-space: normal; text-align: left; color: var(--documentation-navigation-muted); }
+  a:hover, a[aria-current='location'] { color: var(--sys-color-on-srf); }
+  .documentation-contents__marker { position: absolute; left: -1px; top: 0; width: 2px; height: 1px; background: var(--sys-color-on-srf); transform-origin: top; pointer-events: none; }
+  .documentation-contents__marker[data-ready] { transition: transform 250ms ease; }
+  @media (prefers-reduced-motion: reduce) {
+    .documentation-contents__marker[data-ready] { transition-duration: 0ms; }
+  }
+</style>
