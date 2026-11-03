@@ -4,7 +4,7 @@ import Footer from './Footer.astro';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCarouselTuner from './project/ProjectImageCarouselTuner.astro';
 import ProjectImageCaptionTuner from './project/ProjectImageCaptionTuner.astro';
-import headerSettings from '../content/settings/header.json';
+import cornerUpLeftIcon from 'lucide-static/icons/corner-up-left.svg?raw';
 import '../styles/project.css';
 
 interface Props {
@@ -20,9 +20,10 @@ const showDevTools = import.meta.env.DEV;
 <Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage}>
   <div data-page-shell data-writeup-page class="writeup-page flex flex-col min-h-dvh">
     <header class="writeup-masthead">
-      <a href="/digital" class="writeup-masthead__name">{headerSettings.siteTitle}</a>
-      {/* Mirrors the role line in the home-intro content; move to header settings if it starts changing. */}
-      <p class="writeup-masthead__role">Product Designer</p>
+      <a href="/digital" class="writeup-backlink">
+        <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />
+        <span class="writeup-backlink__label">Index</span>
+      </a>
       <h1 class="sr-only">{title}</h1>
     </header>
 
@@ -53,22 +54,41 @@ const showDevTools = import.meta.env.DEV;
     letter-spacing: var(--text-body-tracking);
   }
 
-  .writeup-masthead__name {
-    font-weight: var(--text-body-emphasis-weight);
-    color: var(--sys-color-on-srf);
+  .writeup-backlink {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--space-unit) * 0.5);
+    color: var(--sys-color-on-srf-subtle);
     text-decoration: none;
+    transition: color 150ms ease;
   }
 
-  .writeup-masthead__name:hover {
-    text-decoration: underline;
-    text-decoration-color: color-mix(in srgb, currentColor 10%, transparent);
-    text-decoration-thickness: 0.08em;
-    text-underline-offset: 0.15em;
+  .writeup-backlink::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
   }
 
-  .writeup-masthead__role {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
+  .writeup-backlink__icon {
+    display: inline-flex;
+  }
+
+  :global(.writeup-backlink__icon svg) {
+    width: 1em;
+    height: 1em;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .writeup-backlink:hover {
+      color: var(--sys-color-on-srf);
+    }
+  }
+
+  .writeup-backlink:focus-visible {
+    color: var(--sys-color-on-srf);
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 4px;
   }
 
 </style>
