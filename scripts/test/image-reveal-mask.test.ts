@@ -59,3 +59,21 @@ test('preview reveal alpha changes monotonically through a continuous fade', () 
 
   expect(hasIntermediateAlpha).toBe(true);
 });
+
+test('inverse feather preserves opaque pixels and translucent shadows when added', () => {
+  const inverseStops = [...css.matchAll(
+    /transparent\s+calc\(var\(--preview-reveal-y\) - ([\d.]+)%\),\s*#000\s+calc\(var\(--preview-reveal-y\) \+ ([\d.]+)%\)/g,
+  )];
+  expect(inverseStops.map(match => [Number(match[1]), Number(match[2])])).toEqual([[22, 22], [22, 22]]);
+  expect(css).toMatch(/isolation:\s*isolate/);
+  expect(css).toMatch(/mix-blend-mode:\s*plus-lighter/);
+  for (const alpha of [0, 0.05, 0.3, 1]) {
+    for (const progress of [-22, 0, 25, 50, 75, 100, 122]) {
+      for (const position of [0, 25, 50, 75, 100]) {
+        const highCoverage = alphaAt(position, progress, 22);
+        const lowCoverage = 1 - highCoverage;
+        expect(alpha * lowCoverage + alpha * highCoverage).toBeCloseTo(alpha, 12);
+      }
+    }
+  }
+});

@@ -5,8 +5,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   const frames = new Set<number>();
   const timers = new Set<number>();
   const preloads = new Set<HTMLImageElement>();
-  const clones = new Set<HTMLImageElement>();
-  const revealClones = new Map<HTMLImageElement, HTMLImageElement>();
   const revealPairs = new Map<HTMLImageElement, { pair: HTMLElement; thumb: HTMLImageElement; high: HTMLImageElement }>();
   const bound = new Set<HTMLImageElement>();
   const nextFrame = (callback: FrameRequestCallback) => {
@@ -218,32 +216,25 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     });
   }
 
+  function removeRevealPair(img: HTMLImageElement): void {
+    const pair = revealPairs.get(img);
+    if (!pair) return;
+    discardReveal(pair.thumb);
+    discardReveal(pair.high);
+    pair.pair.remove();
+    revealPairs.delete(img);
+    img.classList.remove('image-preview-pair-covered');
+  }
+
   function cancel(img: HTMLImageElement): void {
     cleanupCandidate(img);
     previewLoaded.delete(img);
     const state = previewStates.get(img);
     cancelTimer(state?.retryTimer);
     previewStates.delete(img);
-    const clone = revealClones.get(img);
-    const pair = revealPairs.get(img);
     discardReveal(img);
-    if (pair) {
-      discardReveal(pair.thumb);
-      discardReveal(pair.high);
-      pair.pair.remove();
-      clones.delete(pair.thumb);
-      clones.delete(pair.high);
-      revealPairs.delete(img);
-      revealClones.delete(img);
-    }
-    if (clone) {
-      discardReveal(clone);
-      clone.remove();
-      clones.delete(clone);
-      revealClones.delete(img);
-    }
+    removeRevealPair(img);
     img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
-    img.classList.remove('image-preview-pair-covered');
   }
 
   function afterNextPaint(): Promise<void> {
@@ -312,13 +303,12 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     clone?: HTMLImageElement,
   ): Promise<void> {
     if (!current(img, preview)) {
-      clone?.remove();
-      if (clone) clones.delete(clone);
-      if (revealClones.get(img) === clone) revealClones.delete(img);
+      if (revealPairs.get(img)?.high === clone) removeRevealPair(img);
       return;
     }
     freezeInFlowBox(img);
     img.src = preview;
+    img.removeAttribute('data-image-preview');
     img.dataset.imageUpgraded = 'true';
     delete img.dataset.imagePreviewUpgrading;
     candidates.delete(img);
@@ -326,6 +316,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     const pair = revealPairs.get(img);
     if (pair) {
+      // WebKit can blank the original on src changes; retain the pair until it paints.
       await Promise.race([
         decodeImage(img, preview),
         new Promise<void>((resolve) => later(resolve, 2000)),
@@ -333,20 +324,13 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       await afterNextPaint();
       const cleanup = () => {
         if (signal.aborted || revealPairs.get(img) !== pair) return;
-        pair.pair.remove();
-        clones.delete(pair.thumb);
-        clones.delete(pair.high);
-        revealPairs.delete(img);
-        revealClones.delete(img);
-        img.removeAttribute('data-image-preview');
+        removeRevealPair(img);
         delete img.dataset.imagePreviewRevealing;
-        img.classList.remove('image-preview-pair-covered');
       };
       if (carouselPaused) deferredRevealCompletions.set(pair.high, cleanup);
       else cleanup();
       return;
     }
-    img.removeAttribute('data-image-preview');
     if (signal.aborted) return;
     delete img.dataset.imagePreviewRevealing;
   }
@@ -562,14 +546,10 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     const pair = document.createElement('span');
     pair.setAttribute('data-preview-pair', '');
     pair.setAttribute('aria-hidden', 'true');
-    for (const attribute of ['data-image-original', 'data-image-preview', 'tabindex', 'role', 'aria-label']) {
-      pair.removeAttribute(attribute);
-    }
     pair.className = 'image-preview-pair';
 
     const makeClone = (src: string, marker: string) => {
       const clone = img.cloneNode(false) as HTMLImageElement;
-      clones.add(clone);
       clone.className = img.className;
       clone.removeAttribute('data-image-preview');
       clone.removeAttribute('data-image-preview-bound');
@@ -577,10 +557,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       clone.setAttribute('aria-hidden', 'true');
       for (const attribute of ['id', 'data-image-original', 'data-progressive-image', 'data-preview-reveal', 'data-preview-thumb', 'tabindex', 'role', 'aria-label']) {
         clone.removeAttribute(attribute);
-      }
-      for (const attr of ['sizes', 'srcset', 'width', 'height', 'decoding'] as const) {
-        const value = img.getAttribute(attr);
-        if (value) clone.setAttribute(attr, value);
       }
       clone.setAttribute(marker, '');
       clone.src = src;
@@ -591,13 +567,12 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     const thumb = makeClone(img.currentSrc || img.src, 'data-preview-thumb');
     const high = makeClone(preview, 'data-preview-reveal');
-    revealClones.set(img, high);
     revealPairs.set(img, { pair, thumb, high });
     img.insertAdjacentElement('afterend', pair);
 
     let finished = false;
     const done = () => {
-      if (finished || !current(img, preview) || revealClones.get(img) !== high) return;
+      if (finished || !current(img, preview) || revealPairs.get(img)?.high !== high) return;
       if (carouselPaused) {
         deferredRevealCompletions.set(high, done);
         return;
@@ -620,24 +595,23 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     // The preload and the visible clone have separate decode lifetimes.
     // Keep the thumbnail until the actual reveal layer has pixels.
     const failedDecode = later(() => {
-      if (!current(img, preview) || revealClones.get(img) !== high) return;
+      if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
       cancel(img);
       delete img.dataset.imagePreviewRevealing;
       options.onError?.(img);
     }, PREVIEW_TIMEOUT_MS);
-    void Promise.all([decodeImage(thumb), decodeImage(high)]).then(() => {
-      if (!current(img, preview) || revealClones.get(img) !== high) return;
+    void Promise.all([decodeImage(thumb), decodeImage(high, preview)]).then(() => {
+      if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
       if (!thumb.complete || !thumb.naturalWidth || !high.complete || !high.naturalWidth) return;
       cancelTimer(failedDecode);
       thumb.addEventListener('transitionend', onEnd, { signal });
       high.addEventListener('transitionend', onEnd, { signal });
       nextFrame(() => {
         nextFrame(() => {
-          if (!current(img, preview) || revealClones.get(img) !== high) return;
+          if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
           const startReveal = () => {
-            if (!current(img, preview) || revealClones.get(img) !== high) return;
+            if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
             img.classList.add('image-preview-pair-covered');
-            // Keep the pair marker in sync with both bitmap masks.
             pair.classList.add('is-revealing');
             thumb.classList.add('is-revealing');
             high.classList.add('is-revealing');
@@ -780,11 +754,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         image.src = '';
       }
       preloads.clear();
-      clones.forEach((clone) => clone.remove());
-      clones.clear();
-      revealPairs.forEach(({ pair }) => pair.remove());
-      revealPairs.clear();
-      revealClones.clear();
+      for (const image of revealPairs.keys()) removeRevealPair(image);
       previewQueue.clear();
       for (const image of bound) {
         delete image.dataset.imagePreviewBound;
