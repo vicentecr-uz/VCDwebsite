@@ -458,14 +458,18 @@ const gridCardTemplateSeed: ProjectGridItem = {
     color: var(--chip-ink);
   }
 
+  /* Top-layer popover; placeBeside() sets top/left. Display only on
+     :popover-open so the UA closed-popover display:none still applies. */
   .project-grid__status-menu {
     opacity: var(--chip-rail-opacity, 1);
     transition: opacity 0.15s ease;
     --status-menu-pad: 0.35em;
-    position: absolute;
-    top: 0;
-    left: calc(100% + 0.35em);
-    display: grid;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    border: 0;
+    overflow: visible;
+    color: inherit;
     gap: 0.15em;
     min-width: 7.5em;
     padding: var(--status-menu-pad);
@@ -473,6 +477,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
     /* Same page surface as crop/grid tuner overlays — tracks --sys-color-srf. */
     background: var(--sys-color-srf);
     box-shadow: var(--elevated-surface-shadow);
+  }
+
+  .project-grid__status-menu:popover-open {
+    display: grid;
   }
 
   .project-grid__status-menu button {
@@ -668,9 +676,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
   html.is-dev-mode .project-grid__item:focus-within .project-grid__chips,
   /* a. Status menu open — a <button> click doesn't reliably focus it on
         macOS, so :focus-within can't be trusted while the pointer travels
-        off the card to the menu. The menu's own hidden attribute is the
+        off the card to the menu. The menu's own popover-open state is the
         honest signal that the interaction is still live. */
-  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden])) .project-grid__chips,
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:popover-open) .project-grid__chips,
   /* b. Crop tuner open — DevProjectGridEditor adds is-dev-crop-open to
         <html> and marks the card's cover .dev-crop-stage-host; hold the
         rail on that card while the tuner owns it. */
@@ -959,7 +967,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /* a. Status menu open — the status chip stays, the other four fade. The
         title/year dash is a light, quickly-dismissed mode, so it stays. */
-  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden]))
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:popover-open)
     .project-grid__chip:not([data-dev-project-status]) {
     opacity: 0;
     pointer-events: none;
@@ -1052,7 +1060,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   /* Edit-mode titles follow the chip rail: reveal on card interaction and hold during active editing. */
   html.is-dev-mode .project-grid__item:hover .project-grid__meta,
   html.is-dev-mode .project-grid__item:focus-within .project-grid__meta,
-  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden])) .project-grid__meta,
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:popover-open) .project-grid__meta,
   html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host) .project-grid__meta,
   html.is-dev-mode .project-grid__item.is-span-mode .project-grid__meta {
     opacity: 1;
