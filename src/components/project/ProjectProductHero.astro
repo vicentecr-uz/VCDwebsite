@@ -1,5 +1,6 @@
 ---
 import chevronDownIcon from 'lucide-static/icons/chevron-down.svg?raw';
+import chevronUpIcon from 'lucide-static/icons/chevron-up.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 import Hairline from '../ui/Hairline.astro';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
@@ -61,7 +62,7 @@ const agents = [
         aria-haspopup="menu"
         aria-expanded="false"
         aria-controls="product-hero-install-menu"
-      >Install<span class="dev-btn__icon" set:html={sizeIcon(chevronDownIcon, 16)} /></button>
+      >Install<span class="dev-btn__icon product-hero__chevron"><span data-chevron="down" set:html={sizeIcon(chevronDownIcon, 16)} /><span data-chevron="up" set:html={sizeIcon(chevronUpIcon, 16)} /></span></button>
       <div class="dev-menu product-hero__menu" id="product-hero-install-menu" popover="manual" role="menu" aria-label="Install with">
         {agents.map(({ label, href }) => (
           <a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" role="menuitem" tabindex="-1" href={href}>{label}</a>
@@ -223,13 +224,39 @@ const agents = [
     font-weight: 500;
   }
 
-  .product-hero__install > button[aria-expanded='true'] .dev-btn__icon {
-    rotate: 180deg;
-  }
-
   .product-hero__install .dev-btn__icon {
     margin-inline-end: -2px;
-    transition: rotate 0.2s ease;
+  }
+
+  /* Down and up chevrons stacked; the expanded state swaps them with the
+     traffic lights' icon swap rather than rotating one. */
+  .product-hero__chevron {
+    display: grid;
+  }
+
+  .product-hero__chevron > span {
+    grid-area: 1 / 1;
+    display: grid;
+    transition:
+      opacity var(--icon-swap-dur) var(--icon-swap-ease),
+      filter var(--icon-swap-dur) var(--icon-swap-ease),
+      transform var(--icon-swap-dur) var(--icon-swap-ease);
+  }
+
+  .product-hero__install > button[aria-expanded='false'] [data-chevron='up'],
+  .product-hero__install > button[aria-expanded='true'] [data-chevron='down'] {
+    opacity: 0;
+    filter: blur(var(--icon-swap-blur));
+    transform: scale(var(--icon-swap-start-scale));
+  }
+
+  /* Reduced motion keeps the crossfade and drops the blur and scale. */
+  @media (prefers-reduced-motion: reduce) {
+    .product-hero__install > button[aria-expanded='false'] [data-chevron='up'],
+    .product-hero__install > button[aria-expanded='true'] [data-chevron='down'] {
+      filter: none;
+      transform: none;
+    }
   }
 
   .product-hero__menu {
