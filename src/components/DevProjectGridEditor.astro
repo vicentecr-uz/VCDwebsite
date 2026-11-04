@@ -5,7 +5,11 @@ import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
 import SelectField from './ui/EditorSelectField.astro';
 import TextField from './ui/TextField.astro';
+import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import fileTextIcon from 'lucide-static/icons/file-text.svg?raw';
+import globeLockIcon from 'lucide-static/icons/globe-lock.svg?raw';
+import layoutPanelTopIcon from 'lucide-static/icons/layout-panel-top.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import imageIcon from 'lucide-static/icons/image.svg?raw';
@@ -29,6 +33,18 @@ const visibilityOptions = [
   { value: 'teaser', label: 'Teaser', icon: eyeOffIcon },
   { value: 'draft', label: 'Draft', icon: filePenIcon },
 ];
+const galleryOptions = [
+  { value: 'shown', label: 'Shown', icon: eyeIcon },
+  { value: 'hidden', label: 'Hidden', icon: eyeOffIcon },
+];
+const publishOptions = [
+  { value: 'published', label: 'Published', icon: globeIcon },
+  { value: 'unpublished', label: 'Not published', icon: globeLockIcon },
+];
+const pageTypeOptions = [
+  { value: 'case-study', label: 'Case study', icon: layoutPanelTopIcon },
+  { value: 'writeup', label: 'Write-up', icon: fileTextIcon },
+];
 ---
 
 <DevOverlay
@@ -42,7 +58,7 @@ const visibilityOptions = [
     <div class="dev-project-settings__top-row">
       <SelectField
         class="dev-project-settings__field dev-project-settings__field--visibility"
-        label="Visibility"
+        label="Status"
         id="ps-status-trigger"
         data-ps-status
         options={visibilityOptions}
@@ -71,6 +87,33 @@ const visibilityOptions = [
           </div>
         </label>
       </div>
+    </div>
+
+    <div class="dev-project-settings__top-row" data-ps-gallery-fields>
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Visibility"
+        data-ps-gallery
+        options={galleryOptions}
+        value="shown"
+      />
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Publish"
+        data-ps-publish
+        options={publishOptions}
+        value="published"
+      />
+    </div>
+
+    <div class="dev-project-settings__top-row" data-ps-layout-wrap>
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Page type"
+        data-ps-layout
+        options={pageTypeOptions}
+        value="case-study"
+      />
     </div>
 
     <div class="dev-project-settings__slug-wrap" data-ps-slug-wrap>
@@ -199,6 +242,12 @@ const visibilityOptions = [
   const bgSwatch = settingsRoot?.querySelector('[data-ps-bg-swatch]');
   const bgPicker = settingsRoot?.querySelector('[data-ps-bg-picker]');
   const statusSelect = settingsRoot?.querySelector('select[data-ps-status]');
+  const gallerySelect = settingsRoot?.querySelector('select[data-ps-gallery]');
+  const publishSelect = settingsRoot?.querySelector('select[data-ps-publish]');
+  const layoutSelect = settingsRoot?.querySelector('select[data-ps-layout]');
+  const galleryFields = settingsRoot?.querySelector('[data-ps-gallery-fields]');
+  const layoutWrap = settingsRoot?.querySelector('[data-ps-layout-wrap]');
+  const listingFields = settingsRoot?.querySelector('[data-ps-listing-fields]');
   const slugInput = settingsRoot?.querySelector('[data-ps-slug]');
   const slugWrap = settingsRoot?.querySelector('[data-ps-slug-wrap]');
   const slugError = settingsRoot?.querySelector('[data-ps-slug-error]');
@@ -284,9 +333,9 @@ const visibilityOptions = [
     if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
   };
 
-  const settingsMatch = (a, b) => a.status === b.status && a.slug === b.slug && a.listing.bg === b.listing.bg;
+  const settingsMatch = (a, b) => a.status === b.status && a.slug === b.slug && a.layout === b.layout && a.listing.bg === b.listing.bg;
   const withSettings = (current, settings) => ({ ...structuredClone(current),
-    status: settings.status, slug: settings.slug,
+    status: settings.status, slug: settings.slug, layout: settings.layout,
     listing: { ...structuredClone(current.listing), bg: settings.listing.bg },
   });
   const restoreSettings = (entry, snapshot) => applyHistorySnapshot(entry, withSettings(entry.draft, snapshot), false);
@@ -531,9 +580,10 @@ const visibilityOptions = [
     return { ...base, year: String(listing.subtitle || '') };
   };
 
-  const buildSavePayload = (slug, grid, draft) => {
+  const buildSavePayload = (slug, grid, draft, hasCard = true) => {
     const listings = {};
-    listings[grid] = buildListingPayload(grid, draft.listing, draft.status);
+    // A page opened from the Pages list without a card on this gallery must not gain one here.
+    if (hasCard) listings[grid] = buildListingPayload(grid, draft.listing, draft.status);
     const nextSlug = draft.status === 'image' ? slug : String(draft.slug || slug).trim();
     return {
       slug,
@@ -541,6 +591,7 @@ const visibilityOptions = [
       title: draft.title,
       description: draft.description,
       status: draft.status,
+      layout: draft.layout,
       listings,
       teaser: {
         label: draft.teaserLabel,
@@ -861,6 +912,7 @@ const visibilityOptions = [
   window.__vcdEnableCardEditing = enableCardEditing;
 
   const readInlineIntoDraft = (entry) => {
+    if (!entry.item) return;
     const inline = readInlineText(entry.item);
     entry.draft.title = inline.title;
     entry.draft.subtitle = inline.subtitle;
@@ -884,7 +936,7 @@ const visibilityOptions = [
       detail: {
         id,
         kind: 'project-settings',
-        payload: buildSavePayload(slug, entry.grid, entry.draft),
+        payload: buildSavePayload(slug, entry.grid, entry.draft, Boolean(entry.item)),
         revert: () => {
           revokeLiveCover(slug);
           revokeLiveHover(slug);
@@ -903,9 +955,9 @@ const visibilityOptions = [
   const applyHistorySnapshot = (entry, snapshot, stage = true) => {
     if (!entry) return;
     entry.draft = structuredClone(snapshot);
-    const title = entry.item.querySelector('[data-dev-project-title]');
-    const subtitle = entry.item.querySelector('[data-dev-project-subtitle]');
-    const teaser = entry.item.querySelector('[data-dev-project-teaser-label]');
+    const title = entry.item?.querySelector('[data-dev-project-title]');
+    const subtitle = entry.item?.querySelector('[data-dev-project-subtitle]');
+    const teaser = entry.item?.querySelector('[data-dev-project-teaser-label]');
     if (title instanceof HTMLElement) title.textContent = snapshot.title;
     if (subtitle instanceof HTMLElement) subtitle.textContent = snapshot.listing.subtitle ?? snapshot.subtitle ?? '';
     if (teaser instanceof HTMLElement) teaser.textContent = snapshot.teaserLabel || 'Coming soon';
@@ -933,13 +985,13 @@ const visibilityOptions = [
     });
   };
 
-  const ensureLoaded = async (slug, item) => {
+  const ensureLoaded = async (slug, item, fallbackGrid = 'home') => {
     const existing = caches.get(slug);
     if (existing) {
       existing.item = item;
       return existing;
     }
-    const grid = gridForItem(item);
+    const grid = item ? gridForItem(item) : fallbackGrid;
     const response = await pageFetch(
       `/api/project-settings?slug=${encodeURIComponent(slug)}&grid=${encodeURIComponent(grid)}`,
     );
@@ -954,15 +1006,17 @@ const visibilityOptions = [
       subtitle: (grid === 'play' ? listing.meta : listing.year) ?? '',
       teaserLabel: payload.teaser?.label ?? '',
       description: payload.description ?? '',
-      status: payload.status ?? item.dataset.devStatus ?? 'draft',
+      status: payload.status ?? item?.dataset.devStatus ?? 'draft',
+      layout: payload.layout === 'writeup' ? 'writeup' : 'case-study',
+      legacy: payload.stack === 'legacy',
       slug,
       listing: {
-        image: listing.image ?? item.querySelector('.project-grid__img--base')?.getAttribute('src') ?? '',
-        hoverImage: listing.hoverImage ?? item.dataset.devHoverImage ?? '',
+        image: listing.image ?? item?.querySelector('.project-grid__img--base')?.getAttribute('src') ?? '',
+        hoverImage: listing.hoverImage ?? item?.dataset.devHoverImage ?? '',
         hoverDark: typeof listing.hoverDark === 'boolean' ? listing.hoverDark : undefined,
-        bg: listing.bg ?? item.dataset.devBg ?? '#efefef',
-        dark: listing.dark ?? item.dataset.devDark === 'true',
-        full: listing.full ?? item.classList.contains('project-grid__item--full'),
+        bg: listing.bg ?? item?.dataset.devBg ?? '#efefef',
+        dark: listing.dark ?? item?.dataset.devDark === 'true',
+        full: listing.full ?? Boolean(item?.classList.contains('project-grid__item--full')),
         subtitle: (grid === 'play' ? listing.meta : listing.year) ?? '',
       },
       teaser: {
@@ -980,6 +1034,26 @@ const visibilityOptions = [
     return entry;
   };
 
+  // The EditorSelect bridge mirrors native value/disabled into the trigger.
+  const setSelect = (select, value, disabled) => {
+    if (!(select instanceof HTMLSelectElement)) return;
+    if (select.value !== value) select.value = value;
+    if (select.disabled !== disabled) select.disabled = disabled;
+  };
+
+  // Visibility and Publish are owned by the Pages panel (membership + publicLink).
+  const renderGalleryFields = () => {
+    const entry = panelSlug ? caches.get(panelSlug) : null;
+    const state = entry ? window.__vcdGalleryPages?.state(panelSlug) : null;
+    if (galleryFields instanceof HTMLElement) galleryFields.hidden = !state;
+    if (!entry || !state) return;
+    const isPublic = entry.draft.status === 'published';
+    setSelect(gallerySelect, state.on ? 'shown' : 'hidden', false);
+    // Navigation-linked Public pages publish anyway; other statuses never get a route.
+    setSelect(publishSelect, isPublic && (state.navigationLinked || state.publicLink) ? 'published' : 'unpublished',
+      !isPublic || state.navigationLinked);
+  };
+
   const renderPanelFromEntry = (entry) => {
     if (statusSelect instanceof HTMLSelectElement) {
       statusSelect.value = entry.draft.status;
@@ -987,6 +1061,11 @@ const visibilityOptions = [
     if (slugWrap instanceof HTMLElement) {
       slugWrap.hidden = entry.draft.status === 'image';
     }
+    if (layoutWrap instanceof HTMLElement) layoutWrap.hidden = entry.draft.status === 'image';
+    // Legacy-stack pages keep their own renderer; layout does not apply.
+    setSelect(layoutSelect, entry.draft.layout, entry.draft.legacy);
+    if (listingFields instanceof HTMLElement) listingFields.hidden = !entry.item;
+    renderGalleryFields();
     if (slugInput instanceof HTMLInputElement) {
       slugInput.value = entry.draft.slug || panelSlug || '';
       slugInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
@@ -996,9 +1075,7 @@ const visibilityOptions = [
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
-    if (statusLine instanceof HTMLElement) {
-      statusLine.textContent = 'Card background and visibility. Title, cover, and span edit on the card.';
-    }
+    if (statusLine instanceof HTMLElement) statusLine.textContent = '';
     clearSlugError();
     disarmDelete();
     syncPanelActionButtons();
@@ -1037,14 +1114,14 @@ const visibilityOptions = [
     }
   };
 
-  const openSettings = async (slug, trigger) => {
-    const item = gridItemForSlug(slug);
-    if (!(item instanceof HTMLElement)) {
-      window.alert('Could not find that project on this page.');
-      return;
-    }
+  const openSettings = async (slug, trigger, grid) => {
+    const found = gridItemForSlug(slug);
+    const item = found instanceof HTMLElement ? found : null;
     try {
-      const entry = await ensureLoaded(slug, item);
+      const [entry] = await Promise.all([
+        ensureLoaded(slug, item, grid || document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid') || 'home'),
+        window.__vcdGalleryPages?.load(),
+      ]);
       panelSlug = slug;
       settingsEntry = entry;
       settingsOpening = structuredClone(entry.draft);
@@ -1060,7 +1137,7 @@ const visibilityOptions = [
     const slug = String(event.detail?.slug || '').trim();
     const trigger = event.detail?.trigger;
     if (slug) {
-      void openSettings(slug, trigger instanceof HTMLElement ? trigger : undefined);
+      void openSettings(slug, trigger instanceof HTMLElement ? trigger : undefined, event.detail?.grid);
     }
   }));
 
@@ -1868,10 +1945,25 @@ const visibilityOptions = [
         : entry.draft.status;
       if (entry.draft.status === 'image') entry.draft.slug = panelSlug;
       if (slugWrap instanceof HTMLElement) slugWrap.hidden = entry.draft.status === 'image';
+      if (layoutWrap instanceof HTMLElement) layoutWrap.hidden = entry.draft.status === 'image';
       clearSlugError();
       applyListingPreview(entry.item, entry.draft, entry.grid);
+      renderGalleryFields();
       syncPanelActionButtons();
+    } else if (target.matches('select[data-ps-layout]')) {
+      const entry = panelSlug ? caches.get(panelSlug) : null;
+      if (!entry || !(layoutSelect instanceof HTMLSelectElement)) return;
+      entry.draft.layout = layoutSelect.value === 'writeup' ? 'writeup' : 'case-study';
+      syncPanelActionButtons();
+    } else if (target.matches('select[data-ps-gallery]') && gallerySelect instanceof HTMLSelectElement) {
+      window.__vcdGalleryPages?.set(panelSlug, { on: gallerySelect.value === 'shown' });
+    } else if (target.matches('select[data-ps-publish]') && publishSelect instanceof HTMLSelectElement) {
+      window.__vcdGalleryPages?.set(panelSlug, { publicLink: publishSelect.value === 'published' });
     }
+  });
+
+  scope.listen(window, 'vcd:dev-gallery-pages-change', () => {
+    if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) renderGalleryFields();
   });
 
   scope.listen(settingsRoot, 'input', (event) => {

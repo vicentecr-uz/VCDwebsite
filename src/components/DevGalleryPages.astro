@@ -2,16 +2,14 @@
 import DevOverlay from './DevOverlay.astro';
 import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
-import globeIcon from 'lucide-static/icons/globe.svg?raw';
-import globeLockIcon from 'lucide-static/icons/globe-lock.svg?raw';
+import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
 import layoutGridIcon from 'lucide-static/icons/layout-grid.svg?raw';
 import listIcon from 'lucide-static/icons/list.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
 const eyeIconSvg = sizeIcon(eyeIcon, 16);
 const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
-const globeIconSvg = sizeIcon(globeIcon, 16);
-const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
+const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 ---
 
 <DevOverlay
@@ -29,8 +27,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     data-dev-gallery-pages
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
-    data-globe-icon={globeIconSvg}
-    data-globe-lock-icon={globeLockIconSvg}
+    data-ellipsis-icon={ellipsisIconSvg}
   >
     <div class="dev-gallery-pages__filters dev-segmented" role="group" aria-label="Gallery filter">
       <button type="button" data-gallery-filter="all" class="dev-btn dev-btn--ghost is-active">All</button>
@@ -40,7 +37,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
 
     <p class="dev-gallery-pages__status" data-gallery-status aria-live="polite">Loading…</p>
     <div class="dev-gallery-pages__grid" data-gallery-grid></div>
-    <div class="dev-gallery-pages__list" data-gallery-list role="table" aria-label="Pages" hidden></div>
+    <ul class="dev-gallery-pages__list" data-gallery-list aria-label="Pages" hidden></ul>
   </div>
 </DevOverlay>
 
@@ -111,8 +108,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
     const eyeIconHtml = root.dataset.eyeIcon || '';
     const eyeOffIconHtml = root.dataset.eyeOffIcon || '';
-    const globeIconHtml = root.dataset.globeIcon || '';
-    const globeLockIconHtml = root.dataset.globeLockIcon || '';
+    const ellipsisIconHtml = root.dataset.ellipsisIcon || '';
     const listEl = root.querySelector<HTMLElement>('[data-gallery-list]');
     const viewButtons = panel.querySelectorAll<HTMLButtonElement>('[data-gallery-view]');
     const VIEW_KEY = 'vcd:gallery-pages-view';
@@ -827,6 +823,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     });
 
     const syncCount = () => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-gallery-pages-change'));
       if (!countEl) return;
       const onCount = selected.size;
       countEl.textContent = isDirty()
@@ -856,73 +853,48 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
       pushGalleryChange(before, gallerySnapshot(), `${publicLinks.has(page.slug) ? 'Publish' : 'Unpublish'} ${page.title}`);
     };
 
-    const iconButton = (className: string, html: string, label: string, pressed: boolean) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = className;
-      button.innerHTML = html;
-      button.setAttribute('aria-label', label);
-      button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-      return button;
-    };
-
-    const cell = (role: string, className: string, ...children: Node[]) => {
-      const el = document.createElement('div');
-      el.setAttribute('role', role);
-      el.className = className;
-      el.append(...children);
-      return el;
-    };
-
     // Same walk as the build's prune: from this gallery's cards plus whatever
     // static pages, the header, or other galleries link to, through Public pages'
-    // own links. publicLink pages are not followed, matching the build.
-    const reachableSlugs = () => {
+    // own links. publicLink pages are not followed, matching the build. Returns
+    // every slug navigation points at, whatever that page's own status.
+    const navigationTargets = () => {
       const bySlug = new Map(pages.map((page) => [page.slug, page]));
       const queue = pages.filter((page) => selected.has(page.slug) || page.rootLinked).map((page) => page.slug);
-      const reached = new Set<string>();
+      const linked = new Set<string>();
+      const expanded = new Set<string>();
       while (queue.length) {
         const slug = queue.shift()!;
+        linked.add(slug);
         const page = bySlug.get(slug);
-        if (reached.has(slug) || page?.status !== 'published') continue;
-        reached.add(slug);
+        if (expanded.has(slug) || page?.status !== 'published') continue;
+        expanded.add(slug);
         queue.push(...(page.links ?? []));
       }
-      return reached;
+      return linked;
     };
 
     const renderList = (list: GalleryPage[]) => {
       if (!listEl) return;
-      const reached = reachableSlugs();
-      const header = cell('row', 'dev-gallery-pages__row dev-gallery-pages__row--head',
-        cell('columnheader', 'dev-gallery-pages__name', document.createTextNode('Name')),
-        cell('columnheader', 'dev-gallery-pages__col', document.createTextNode('Visible')),
-        cell('columnheader', 'dev-gallery-pages__col', document.createTextNode('Publish')),
-      );
-      const rows = list.map((page) => {
-        const isOn = selected.has(page.slug);
-        const isPublicStatus = page.status === 'published';
-        const listed = reached.has(page.slug);
-        const isPublished = isPublicStatus && (listed || publicLinks.has(page.slug));
-
-        const eye = iconButton('dev-gallery-pages__toggle', isOn ? eyeIconHtml : eyeOffIconHtml,
-          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`, isOn);
-        scope.listen(eye, 'click', () => toggleMembership(page));
-
-        const globe = iconButton('dev-gallery-pages__toggle', isPublished ? globeIconHtml : globeLockIconHtml,
-          `${page.title}${isPublished ? ' (published)' : ' (not published)'}`, isPublished);
-        // Reachable Public pages publish through navigation; non-Public statuses never get a route.
-        globe.disabled = !isPublicStatus || listed;
-        scope.listen(globe, 'click', () => togglePublicLink(page));
-
-        const row = cell('row', 'dev-gallery-pages__row',
-          cell('cell', 'dev-gallery-pages__name', document.createTextNode(page.title)),
-          cell('cell', 'dev-gallery-pages__col', eye),
-          cell('cell', 'dev-gallery-pages__col', globe),
-        );
+      listEl.replaceChildren(...list.map((page) => {
+        const row = document.createElement('li');
+        row.className = 'dev-gallery-pages__row';
+        const name = document.createElement('span');
+        name.className = 'dev-gallery-pages__name';
+        name.textContent = page.title;
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'dev-gallery-pages__more';
+        more.innerHTML = ellipsisIconHtml;
+        more.setAttribute('aria-label', `Page settings for ${page.title}`);
+        more.title = 'Page settings';
+        scope.listen(more, 'click', () => {
+          window.dispatchEvent(new CustomEvent('vcd:dev-project-settings-open', {
+            detail: { slug: page.slug, grid: activeGrid, trigger: more },
+          }));
+        });
+        row.append(name, more);
         return row;
-      });
-      listEl.replaceChildren(header, ...rows);
+      }));
     };
 
     const syncView = () => {
@@ -1088,6 +1060,31 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
       });
     });
 
+    // Page settings (DevProjectGridEditor) edits Visibility and Publish here so
+    // membership, publicLink, pending save, and undo keep one owner.
+    window.__vcdGalleryPages = {
+      load: async () => {
+        if (!activeGrid) activeGrid = currentGrid();
+        await loadPages();
+      },
+      state: (slug: string) => {
+        const page = pageBySlug(slug);
+        if (!page || loadedGrid !== activeGrid) return null;
+        return {
+          on: selected.has(slug),
+          publicLink: publicLinks.has(slug),
+          navigationLinked: navigationTargets().has(slug),
+        };
+      },
+      set: (slug: string, next: { on?: boolean; publicLink?: boolean }) => {
+        const page = pageBySlug(slug);
+        if (!page) return;
+        if (next.on !== undefined && next.on !== selected.has(slug)) toggleMembership(page);
+        if (next.publicLink !== undefined && next.publicLink !== publicLinks.has(slug)) togglePublicLink(page);
+      },
+    };
+    scope.add(() => { delete window.__vcdGalleryPages; });
+
     filterButtons.forEach((button) => {
       scope.listen(button, 'click', () => {
         const next = button.getAttribute('data-gallery-filter');
@@ -1252,6 +1249,9 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
 
   /* Same width as the 3-up grid so switching views does not resize the panel. */
   .dev-gallery-pages__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
     display: flex;
     flex-direction: column;
     width: calc(var(--dev-gallery-thumb-w) * 3 + 16px + 0.3em);
@@ -1261,24 +1261,16 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
   }
 
   .dev-gallery-pages__row {
-    display: grid;
-    grid-template-columns: 1fr 64px 64px;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     min-height: 32px;
     border-top: 1px solid var(--sys-color-outline-variant);
   }
 
-  /* Two inks only: on-srf for names and anything clickable, on-srf-subtle for
-     labels and locked state. On/off is carried by the glyph, never by tint. */
-  .dev-gallery-pages__row--head {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    min-height: 24px;
+  .dev-gallery-pages__row:first-child {
     border-top: 0;
-    background: var(--sys-color-srf);
-    font: var(--dev-text-status);
-    color: var(--sys-color-on-srf-subtle);
   }
 
   .dev-gallery-pages__name {
@@ -1291,20 +1283,11 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     color: var(--sys-color-on-srf);
   }
 
-  .dev-gallery-pages__row--head .dev-gallery-pages__name {
-    font: inherit;
-    color: inherit;
-  }
-
-  .dev-gallery-pages__col {
-    display: flex;
-    justify-content: center;
-  }
-
-  .dev-gallery-pages__toggle {
+  .dev-gallery-pages__more {
     position: relative;
     display: grid;
     place-items: center;
+    flex: 0 0 auto;
     padding: 2px;
     border: 0;
     border-radius: var(--dev-radius-control-in-container);
@@ -1314,22 +1297,17 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
   }
 
   /* 32px square hit area: 20px button + 6px each side, the full row height. */
-  .dev-gallery-pages__toggle::before {
+  .dev-gallery-pages__more::before {
     content: '';
     position: absolute;
     inset: -6px;
   }
 
-  .dev-gallery-pages__toggle svg {
+  .dev-gallery-pages__more svg {
     display: block;
   }
 
-  .dev-gallery-pages__toggle:disabled {
-    color: var(--sys-color-on-srf-subtle);
-    cursor: default;
-  }
-
-  .dev-gallery-pages__toggle:focus-visible {
+  .dev-gallery-pages__more:focus-visible {
     outline: 2px solid var(--sys-color-outline);
     outline-offset: 0;
   }

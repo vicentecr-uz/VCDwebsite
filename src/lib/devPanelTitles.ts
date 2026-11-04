@@ -5,7 +5,7 @@ export const DEV_PANEL_TITLES = {
   grid: 'Grid',
   carousel: 'Carousel',
   'add-image': 'Add image',
-  'project-settings': 'Project settings',
+  'project-settings': 'Page settings',
   'gallery-pages': 'Pages',
   'asset-manager': 'Asset manager',
   'log-issue': 'Log new issue',
