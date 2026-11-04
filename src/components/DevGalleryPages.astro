@@ -163,12 +163,12 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       const panelPad = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dev-panel-pad')) || 12;
       const innerBodyW = Math.min(readLandscapeDefaultInnerWidth(), viewportCapPx().width - 2 * panelPad);
       if (!gridEl) {
-        return Math.round((innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS);
+        return (innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS;
       }
       const gridStyle = getComputedStyle(gridEl);
       const gridPadX = Number.parseFloat(gridStyle.paddingLeft) + Number.parseFloat(gridStyle.paddingRight);
       const available = innerBodyW - gridPadX - (GRID_COLUMNS - 1) * GRID_GAP;
-      return Math.round(available / GRID_COLUMNS);
+      return available / GRID_COLUMNS;
     };
 
     const viewportCapPx = () => {
@@ -1187,6 +1187,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
   .dev-overlay[data-dev-panel-key='gallery-pages'] .dev-overlay__body {
     overflow-y: hidden;
+    scrollbar-gutter: auto;
   }
 
   .dev-gallery-pages {
@@ -1223,7 +1224,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
        a classic scrollbar lane or the drag lift never adds a sideways scroll. */
     overflow: hidden auto;
     overscroll-behavior: contain;
-    padding: 0.15em;
+    padding: 0;
   }
 
   .dev-gallery-pages__views {

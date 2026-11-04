@@ -77,3 +77,19 @@ test('empty content keeps the default pending and manual sizing is preserved', (
   manual.layout.applyLayoutCaps();
   expect(manual.panel.style.height).toBe('420px');
 });
+
+test('thumbnail columns exactly fill the inner width at default and narrow viewport sizes', () => {
+  const from = source.indexOf('    const computeThumbWidth = () => {');
+  const to = source.indexOf('    const viewportCapPx =', from);
+  const code = source.slice(from, to) + '\nreturn computeThumbWidth();';
+  for (const viewportWidth of [1200, 500, 344]) {
+    const width = new Function(
+      'getComputedStyle', 'document', 'gridEl', 'readLandscapeDefaultInnerWidth',
+      'viewportCapPx', 'GRID_COLUMNS', 'GRID_GAP', code,
+    )(
+      () => ({ getPropertyValue: () => '12', paddingLeft: '0px', paddingRight: '0px' }),
+      { documentElement: {} }, {}, () => 573, () => ({ width: viewportWidth }), 3, 8,
+    );
+    expect(width * 3 + 2 * 8).toBeCloseTo(Math.min(573, viewportWidth - 24), 8);
+  }
+});
