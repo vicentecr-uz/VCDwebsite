@@ -1,5 +1,5 @@
 // @ts-check
-import { readdir, readFile, unlink } from 'node:fs/promises';
+import { readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse } from 'parse5';
@@ -188,7 +188,7 @@ function codeReferences(contents) {
   return refs;
 }
 
-/** @param {string} distDir @param {{site?: string|URL, assetsDir?: string}} options */
+/** @param {string} distDir @param {{site?: string|URL, assetsDir?: string, linkRoutes?: string[]}} options */
 export async function prunePublicOutput(distDir, options = {}) {
   distDir = path.resolve(distDir);
   const site = new URL(String(options.site || 'http://localhost/'));
@@ -237,7 +237,17 @@ export async function prunePublicOutput(distDir, options = {}) {
     const targetFile = routeFiles.get(routeKey(redirect.destination.pathname));
     return Boolean(targetFile && reachable.has(targetFile));
   }));
-  const retainedHtml = new Set([...reachable, ...technical]);
+  // `publicLink` pages ship by URL only: kept but not traversed, so they never
+  // publish what they link to, and marked noindex unless navigation reaches them.
+  const linkOnlyHtml = [...new Set((options.linkRoutes || [])
+    .map((route) => routeFiles.get(routeKey(route)))
+    .filter((file) => file && !reachable.has(file)))];
+  for (const file of linkOnlyHtml) {
+    const html = await readFile(file, 'utf8');
+    const meta = '<meta name="robots" content="noindex">';
+    await writeFile(file, /<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, (head) => head + meta) : meta + html);
+  }
+  const retainedHtml = new Set([...reachable, ...technical, ...linkOnlyHtml]);
   const removedHtml = [];
   for (const file of htmlFiles) {
     if (!retainedHtml.has(file)) { await unlink(file); removedHtml.push(path.relative(distDir, file)); }
@@ -270,5 +280,5 @@ export async function prunePublicOutput(distDir, options = {}) {
   for (const file of assetFiles) {
     if (!retainedAssets.has(file)) { await unlink(file); removedAssets.push(path.relative(distDir, file)); }
   }
-  return { retainedHtml: [...retainedHtml].map((file) => path.relative(distDir, file)), removedHtml, retainedAssets: [...retainedAssets].map((file) => path.relative(distDir, file)), removedAssets };
+  return { retainedHtml: [...retainedHtml].map((file) => path.relative(distDir, file)), linkOnlyHtml: linkOnlyHtml.map((file) => path.relative(distDir, file)), removedHtml, retainedAssets: [...retainedAssets].map((file) => path.relative(distDir, file)), removedAssets };
 }
