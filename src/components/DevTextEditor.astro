@@ -239,7 +239,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'divider' | 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'divider' | 'bodyText' | 'quote' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
@@ -819,6 +819,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="award">Award</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="quote">Quote</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="divider">Divider</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
@@ -2522,10 +2523,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
       section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
-      section.dataset.devSectionDeletable = 'bodyText';
+      section.dataset.devSectionDeletable = type === 'quote' ? 'quote' : 'bodyText';
 
-      const body = document.createElement('div');
-      body.className = 'project-body-text';
+      const body = document.createElement(type === 'quote' ? 'blockquote' : 'div');
+      body.className = type === 'quote' ? 'project-body-text project-quote' : 'project-body-text';
       body.dataset.devTextDocument = documentKey;
       body.dataset.devTextPath = JSON.stringify([...sectionPath, 'paragraphs']);
       body.dataset.devTextKind = 'paragraphs';
@@ -2872,7 +2873,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : type === 'quote' ? 'quote' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -2897,7 +2898,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       const built = type === 'divider' ? buildDivider() : buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       built.root.dataset.devContentId = sectionId;
-      if (type === 'bodyText' || type === 'sectionTitle') {
+      if (type === 'bodyText' || type === 'sectionTitle' || type === 'quote') {
         built.root.dataset.siteAnnotationSectionId = sectionId;
         built.root.dataset.siteAnnotationDocument = documentKey;
       }
@@ -3172,7 +3173,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'quote' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
