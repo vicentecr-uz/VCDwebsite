@@ -47,6 +47,7 @@ const modern: Record<string, z.ZodRawShape> = {
   signup: { label: text.optional(), placeholder: text.optional() },
   award: { src: text.optional(), href: text.optional(), alt: text.optional() },
   divider: {},
+  quote: { paragraphs: strings },
   projectDetails: { rows: z.array(object.extend({ label: text, value: text })) },
   pressQuoteTicker: { items: z.array(object.extend({ quote: text, logoSrc: text, logoAlt: text, href: text })) },
   redditCommentCarousel: { items: z.array(object.extend({ author: text, paragraphs: strings, score: z.union([number, text]) })) },
