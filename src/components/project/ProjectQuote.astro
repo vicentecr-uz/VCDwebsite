@@ -1,0 +1,36 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
+
+interface Props {
+  paragraphs: string[];
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+  annotations?: unknown;
+}
+
+const { paragraphs, documentKey, sectionPath, spacing = 'group', sectionId, contentId, annotations } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-block--text', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-dev-section-deletable={editable ? 'quote' : undefined}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+>
+  <blockquote
+    class="project-body-text project-quote"
+    data-dev-text-document={editable ? documentKey : undefined}
+    data-dev-text-path={editable ? JSON.stringify([...sectionPath!, 'paragraphs']) : undefined}
+    data-dev-text-kind={editable ? 'paragraphs' : undefined}
+  >
+    {paragraphs.map((paragraph) => <p class="project-body-text__wrap-pretty" set:html={paragraph} />)}
+  </blockquote>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+</section>
