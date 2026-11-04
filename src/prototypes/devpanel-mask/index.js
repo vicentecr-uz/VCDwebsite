@@ -140,7 +140,8 @@ const disposePage = onPageLoad(() => {
       event.target?.isContentEditable ||
       event.metaKey ||
       event.ctrlKey ||
-      event.altKey
+      event.altKey ||
+      event.shiftKey
     )
       return;
     const number = Number.parseInt(event.key, 10);
