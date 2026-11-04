@@ -111,6 +111,7 @@ const projectSchema = document.extend({
   stack: z.enum(['modern', 'legacy']).optional(),
   layout: z.enum(['case-study', 'writeup']).optional(),
   status: z.enum(['published', 'draft', 'teaser', 'image']).optional(),
+  publicLink: z.boolean().optional(),
   listings: z.record(text, listing).optional(),
   scrollFinale: z.boolean().optional(),
 });
