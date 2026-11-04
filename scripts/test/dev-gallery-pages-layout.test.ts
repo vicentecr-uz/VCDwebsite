@@ -9,15 +9,14 @@ const applyLayoutCapsSource = source.slice(start, end).replace(/^\s*const applyL
 const makeApplyLayoutCaps = new Function(
   'panel', 'root', 'computeThumbWidth', 'measureOverlayHug', 'viewportCapPx',
   'getComputedStyle', 'document', 'gridEl', 'view', 'listEl', 'userSized',
-  'defaultHeightApplied', 'loadedGrid', 'activeGrid', 'pages',
+  'loadedGrid', 'activeGrid', 'pages',
   'GRID_GAP',
-  'return ' + applyLayoutCapsSource,
-) as (...args: unknown[]) => () => void;
+  'let defaultHeightApplied = false; const applyLayoutCaps = ' + applyLayoutCapsSource
+    + '; return { applyLayoutCaps, get defaultApplied() { return defaultHeightApplied; } };',
+) as (...args: unknown[]) => { applyLayoutCaps: () => void; readonly defaultApplied: boolean };
 const layoutArgs = ['panel', 'root', 'computeThumbWidth', 'measureOverlayHug', 'viewportCapPx',
   'getComputedStyle', 'document', 'gridEl', 'view', 'listEl', 'userSized',
-  'defaultHeightApplied', 'loadedGrid', 'activeGrid', 'pages', 'GRID_GAP'] as const;
-const applyLayoutCaps = (env: Record<string, unknown>) =>
-  makeApplyLayoutCaps(...layoutArgs.map((key) => env[key]))();
+  'loadedGrid', 'activeGrid', 'pages', 'GRID_GAP'] as const;
 
 function fixture(hug: { width: number; height: number; content: number }, options: { morphing?: boolean; userSized?: boolean } = {}) {
   const win = new Window({ url: 'http://localhost/' });
@@ -45,28 +44,36 @@ function fixture(hug: { width: number; height: number; content: number }, option
     pages: [{ slug: 'one' }],
     GRID_GAP: 8,
   };
-  return { env, measurements, readMeasurements: () => measurements, panel, root };
+  const layout = makeApplyLayoutCaps(...layoutArgs.map((key) => env[key]));
+  return { env, layout, measurements, readMeasurements: () => measurements, panel, root, hug };
 }
 
 test('morphing skips measurement and leaves the default pending until prepared geometry is valid', () => {
   const f = fixture({ width: 600, height: 700, content: 500 }, { morphing: true });
-  applyLayoutCaps(f.env);
+  f.layout.applyLayoutCaps();
   expect(f.readMeasurements()).toBe(0);
+  expect(f.layout.defaultApplied).toBe(false);
   expect(f.panel.style.height).toBe('');
   f.panel.classList.remove('is-dev-overlay-morphing');
-  applyLayoutCaps(f.env);
+  f.layout.applyLayoutCaps();
   expect(f.readMeasurements()).toBe(1);
+  expect(f.layout.defaultApplied).toBe(true);
   expect(f.panel.style.height).toBe('487px');
 });
 
 test('empty content keeps the default pending and manual sizing is preserved', () => {
   const empty = fixture({ width: 600, height: 700, content: 0 });
-  applyLayoutCaps(empty.env);
+  empty.layout.applyLayoutCaps();
   expect(empty.readMeasurements()).toBe(1);
+  expect(empty.layout.defaultApplied).toBe(false);
   expect(empty.panel.style.height).toBe('');
+  empty.hug.content = 500;
+  empty.layout.applyLayoutCaps();
+  expect(empty.layout.defaultApplied).toBe(true);
+  expect(empty.panel.style.height).toBe('487px');
 
   const manual = fixture({ width: 600, height: 700, content: 500 }, { userSized: true });
   manual.panel.style.height = '420px';
-  applyLayoutCaps(manual.env);
+  manual.layout.applyLayoutCaps();
   expect(manual.panel.style.height).toBe('420px');
 });
