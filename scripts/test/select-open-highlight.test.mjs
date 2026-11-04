@@ -14,14 +14,13 @@ test('selected select option is highlighted on the first open frame, not faded i
 
 const chrome = readFileSync(new URL('../../src/styles/dev-chrome.css', import.meta.url), 'utf8');
 const editorSelect = readFileSync(new URL('../../src/components/base-ui/EditorSelect.tsx', import.meta.url), 'utf8');
-const selectField = readFileSync(new URL('../../src/lib/selectField.ts', import.meta.url), 'utf8');
 const ruleWith = (css, selector) => [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
   .find(([, selectors]) => selectors.split(/,(?![^(]*\))/).some((s) => s.trim() === selector));
 
 test('both selects share the selected-row fill and its hover step', () => {
   assert.match(ruleWith(chrome, ".base-ui-select-item[data-selected]")?.[2] ?? '', /--comp-button-ghost-container-hover/);
   const hover = ruleWith(chrome, ".dev-menu__item:is(.is-selected, [aria-selected='true']):hover");
-  assert.ok(hover, 'legacy selected-row hover rule');
+  assert.ok(hover, 'shared Menu selected-row hover rule');
   const selectors = hover[1].split(/,(?![^(]*\))/).map((s) => s.trim());
   assert.ok(selectors.includes('.base-ui-select-item[data-selected]:hover'));
   assert.ok(selectors.includes("[data-pointer-open] :is(.dev-menu__item[aria-selected='true'], .base-ui-select-item[data-selected])"));
@@ -30,11 +29,15 @@ test('both selects share the selected-row fill and its hover step', () => {
 test('pointer-opened selects mark themselves until the pointer moves', () => {
   assert.match(editorSelect, /data-pointer-open=\{pointerOpen \|\| undefined\}/);
   assert.match(editorSelect, /details\.reason === 'trigger-press' && details\.event instanceof MouseEvent/);
-  assert.match(selectField, /toggleAttribute\('data-pointer-open', byPointer\)/);
-  assert.match(selectField, /removeAttribute\('data-pointer-open'\)/);
+});
+
+test('select popup portals into an enclosing modal dialog', () => {
+  // A body portal paints under a modal <dialog>'s top layer (the image lightbox's input mode).
+  assert.match(editorSelect, /setPortalContainer\(trigger\?\.closest\('dialog'\) \?\? undefined\)/);
+  assert.match(editorSelect, /<Select\.Portal container=\{portalContainer\}>/);
 });
 
 test('Base UI listbox rows keep the popup inset between them, like .dev-menu', () => {
   assert.ok(chrome.includes('gap: var(--dev-menu-gap)') && chrome.includes('--dev-menu-pad: var(--dev-menu-gap)'));
-  assert.match(css, /\.base-ui-select-item \+ \.base-ui-select-item,[^{]*\{\s*margin-top: var\(--popup-pad\);/);
+  assert.match(css, /\.base-ui-select-item \+ \.base-ui-select-item\s*\{\s*margin-top: var\(--popup-pad\);/);
 });
