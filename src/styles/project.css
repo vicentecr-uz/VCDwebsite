@@ -56,7 +56,21 @@
   --title-pull: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
 }
 
+/* A title over body text: pull by both lines' ink insets less a unit, so the
+   unit margin becomes a 2u ink gap, the paragraph break. */
+.project-stack--precede-related:has(> h2.project-section-title) + .project-block--text:has(> .project-body-text) {
+  --title-pull: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2 + (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2 - var(--space-related));
+}
+
+.project-stack--precede-related:has(> h3.project-section-title) + .project-block--text:has(> .project-body-text) {
+  --title-pull: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2 + (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2 - var(--space-related));
+}
+
 .project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + :is(.code-block, .sabi-example) {
+  margin-top: calc(var(--project-stack-margin, var(--space-related)) - var(--title-pull, 0px));
+}
+
+:is(.project-page__main, .listing-main) [data-dev-project-drop-zone] > .project-stack--precede-related:has(> .project-section-title) + .project-block--text:has(> .project-body-text) {
   margin-top: calc(var(--project-stack-margin, var(--space-related)) - var(--title-pull, 0px));
 }
 
@@ -96,21 +110,28 @@
 .project-stack--major { --project-stack-margin: var(--space-major); }
 .project-stack--none { --project-stack-margin: 0; }
 
-/* A title's unit gap above mirrors its gap below, ink to ink: cap top above,
-   baseline below. Body text adds its line's space above the cap / below the
-   baseline, (line-height - 0.697em) / 2 as for --title-pull, so the mirror adds
-   it when body text follows and drops it when body text precedes.
+/* A title's gap above mirrors its gap below, ink to ink: cap top above,
+   baseline below. Against body text that ink gap is 2u, the paragraph break
+   (see .project-body-text p + p). Both lines add their space above the cap /
+   below the baseline, (line-height - 0.697em) / 2 as for --title-pull, so the
+   margin is 2u minus the title's and the body's insets; above the title the
+   body's inset is already counted, so it is dropped when body text precedes.
    Ceiling: other text-like neighbours (quote, tagline, another title) count as
    boxes; give them their own inset here if one sits against a title. */
 .project-stack--precede-related:has(> .project-section-title) {
   --body-ink-inset: calc((var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
+  --title-ink-inset: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
   --title-gap-below: var(--space-related);
   --title-prev-inset: 0px;
   --project-stack-related-gap: calc(var(--title-gap-below) - var(--title-prev-inset));
 }
 
+.project-stack--precede-related:has(> h3.project-section-title) {
+  --title-ink-inset: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
+}
+
 .project-stack--precede-related:has(+ .project-block--text > .project-body-text) {
-  --title-gap-below: calc(var(--space-related) + var(--body-ink-inset));
+  --title-gap-below: calc(2 * var(--space-related) - var(--title-ink-inset));
 }
 
 .project-stack--precede-related:has(> h2.project-section-title):has(+ :is(.code-block, .sabi-example)) {
@@ -1714,7 +1735,8 @@ h3.project-section-title {
 
 .project-body-text p + p,
 .project-body-text[contenteditable] > :is(p, div) + :is(p, div) {
-  margin-top: 1lh;
+  /* With the two lines' space around the ink (1u), this makes a 2u break. */
+  margin-top: var(--space-unit);
 }
 
 .project-body-text strong {
