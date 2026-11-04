@@ -143,6 +143,8 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     const GRID_GAP = 8;
     const GRID_COLUMNS = 3;
     let layoutCapsRaf = 0;
+    let userSized = false;
+    let defaultHeightApplied = false;
     let historyScope: ReturnType<typeof pageHistory.scope> | null = null;
     let unregisterHistoryScope: (() => void) | null = null;
     scope.add(() => unregisterHistoryScope?.());
@@ -155,9 +157,11 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       return panelWidth - 2 * panelPad;
     };
 
-    /** Thumb width from the signed 597px landscape body, not the current resize. */
+    /** Thumb width from the signed 597px landscape body, not the current resize —
+     * narrowed only when the viewport can't fit that, so 3 columns never scroll sideways. */
     const computeThumbWidth = () => {
-      const innerBodyW = readLandscapeDefaultInnerWidth();
+      const panelPad = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dev-panel-pad')) || 12;
+      const innerBodyW = Math.min(readLandscapeDefaultInnerWidth(), viewportCapPx().width - 2 * panelPad);
       if (!gridEl) {
         return Math.round((innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS);
       }
@@ -175,7 +179,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       };
     };
 
-    const measureOverlayHug = (): { width: number; height: number } | null => {
+    const measureOverlayHug = (): { width: number; height: number; content: number } | null => {
       if (panel.hidden) return null;
       const prevWidth = panel.style.width;
       const prevHeight = panel.style.height;
@@ -187,12 +191,13 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       panel.style.maxHeight = '';
       const width = panel.offsetWidth;
       const height = panel.offsetHeight;
+      const content = (view === 'grid' ? gridEl : listEl)?.offsetHeight ?? 0;
       panel.style.width = prevWidth;
       panel.style.height = prevHeight;
       panel.style.maxWidth = prevMaxWidth;
       panel.style.maxHeight = prevMaxHeight;
       if (!width || !height) return null;
-      return { width, height };
+      return { width, height, content };
     };
 
     const applyLayoutCaps = () => {
@@ -215,6 +220,17 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
         panel.style.maxWidth = `${Math.min(hug.width, viewport.width)}px`;
       }
       panel.style.maxHeight = `${Math.min(hug.height, viewport.height)}px`;
+
+      // Open at most 3.5 thumbnail rows tall (both views) until the user resizes;
+      // max-height stays at the hug so a drag can still grow it to full content.
+      if (!userSized && !defaultHeightApplied && loadedGrid === activeGrid && pages.length) {
+        defaultHeightApplied = true;
+        const thumbH = computeThumbWidth() * 3 / 4;
+        const gridStyle = gridEl ? getComputedStyle(gridEl) : null;
+        const gridPadY = gridStyle ? Number.parseFloat(gridStyle.paddingTop) + Number.parseFloat(gridStyle.paddingBottom) : 0;
+        const target = hug.height - hug.content + 3.5 * thumbH + 3 * GRID_GAP + gridPadY;
+        if (target < hug.height) panel.style.height = `${Math.round(target)}px`;
+      }
 
       const capW = Number.parseFloat(panel.style.maxWidth);
       const capH = Number.parseFloat(panel.style.maxHeight);
@@ -1028,6 +1044,9 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     const openPanel = () => {
       const grid = currentGrid();
       if (!grid) return;
+      userSized = false;
+      defaultHeightApplied = false;
+      panel.style.height = '';
       activeGrid = grid;
       historyScope = pageHistory.scope();
       unregisterHistoryScope?.();
@@ -1148,6 +1167,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     }) as EventListener);
 
     ownObserver(new MutationObserver(() => {
+      if (panel.classList.contains('is-resizing')) userSized = true;
       if (!panel.hidden) scheduleLayoutCaps();
     })).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
   };
@@ -1172,6 +1192,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
+    min-height: 0;
   }
 
   .dev-gallery-pages__status,
@@ -1194,8 +1215,12 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     gap: 8px;
     width: max-content;
     max-width: 100%;
-    height: max-content;
-    flex: 0 0 auto;
+    min-height: 0;
+    flex: 0 1 auto;
+    /* Scrolls itself once the panel is shorter than its rows; x is hidden so
+       a classic scrollbar lane or the drag lift never adds a sideways scroll. */
+    overflow: hidden auto;
+    overscroll-behavior: contain;
     padding: 0.15em;
   }
 
@@ -1250,7 +1275,8 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
   /* Same width as the 3-up grid so switching views does not resize the panel. */
   .dev-gallery-pages__list {
     margin: 0;
-    padding: 0;
+    /* Room for the ⋯ hit area (6px past the button) inside the list's box. */
+    padding: 0 6px 0 0;
     list-style: none;
     display: flex;
     flex-direction: column;
@@ -1265,12 +1291,13 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    min-height: 32px;
-    border-top: 1px solid var(--sys-color-outline-variant);
+    flex: 0 0 32px;
   }
 
-  .dev-gallery-pages__row:first-child {
-    border-top: 0;
+  /* Divider as an inset shadow so it takes no height: the 32px hit area then
+     fits the row exactly and the last row never overflows the list. */
+  .dev-gallery-pages__row + .dev-gallery-pages__row {
+    box-shadow: inset 0 1px var(--sys-color-outline-variant);
   }
 
   .dev-gallery-pages__name {
@@ -1288,7 +1315,9 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     display: grid;
     place-items: center;
     flex: 0 0 auto;
-    padding: 2px;
+    width: 20px;
+    height: 20px;
+    padding: 0;
     border: 0;
     border-radius: var(--dev-radius-control-in-container);
     background: none;
