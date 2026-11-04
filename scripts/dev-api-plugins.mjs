@@ -147,6 +147,32 @@ export function devAuthoringRequestQueue() {
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'image']);
 const LISTING_GRIDS = ['home', 'play'];
+const SITE_HOST = new URL(process.env.PUBLIC_SITE_URL || 'https://vicentecr.uz').host;
+
+/**
+ * First path segments of same-site links in a content document: `href="…"` in
+ * rich text plus string fields keyed href/url/link. Mirrors what the build's
+ * reachability pass follows. Ceiling: links hardcoded in .astro templates are
+ * invisible here; the build output (public-site-output.mjs) stays authoritative.
+ */
+function linkedSegments(value, out = new Set(), key = '') {
+  const add = (raw) => {
+    let url;
+    try { url = new URL(raw, `https://${SITE_HOST}`); } catch { return; }
+    if (url.host !== SITE_HOST) return;
+    const segment = url.pathname.split('/').filter(Boolean)[0];
+    if (segment) out.add(decodeURIComponent(segment));
+  };
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(/href=["']([^"']+)["']/gi)) add(match[1]);
+    if (/^(?:href|url|link)$/i.test(key)) add(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) linkedSegments(item, out);
+  } else if (value && typeof value === 'object') {
+    for (const [childKey, child] of Object.entries(value)) linkedSegments(child, out, childKey);
+  }
+  return out;
+}
 
 function validateStatus(status, fallback = 'draft') {
   const value = String(status || fallback);
@@ -1254,6 +1280,18 @@ export function galleryMembershipDevWriter() {
               .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'));
             /** @type {Array<Record<string, unknown>>} */
             const pages = [];
+            // Static pages and the header link into projects regardless of any gallery.
+            const rootLinked = new Set();
+            for (const dir of ['src/content/pages', 'src/content/settings']) {
+              const full = path.join(process.cwd(), dir);
+              for (const file of readdirSync(full).filter((name) => name.endsWith('.json'))) {
+                try {
+                  linkedSegments(JSON.parse(await readFile(path.join(full, file), 'utf8')), rootLinked);
+                } catch {
+                  // Unreadable documents contribute no links.
+                }
+              }
+            }
             for (const file of files) {
               const slug = file.replace(/\.json$/, '');
               try {
@@ -1264,7 +1302,9 @@ export function galleryMembershipDevWriter() {
                   title: String(data.title || slug),
                   status: validateStatus(data.status, 'published'),
                   publicLink: data.publicLink === true,
-                  listedElsewhere: LISTING_GRIDS.some((other) => other !== grid && Boolean(data.listings?.[other])),
+                  rootLinked: rootLinked.has(slug)
+                    || LISTING_GRIDS.some((other) => other !== grid && Boolean(data.listings?.[other])),
+                  links: [...linkedSegments(data.sections)],
                   ...cover,
                 });
               } catch {
