@@ -38,40 +38,7 @@
 .project-page__main > .project-stack--precede-related + *,
 .project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + *,
 .listing-main [data-dev-project-drop-zone] > .project-stack--precede-related + * {
-  margin-top: var(--project-stack-margin, var(--space-related));
-}
-
-/* A title over a boxed block: pull the block up by the title line's space below
-   the baseline, so the gap reads like the related gap between the block's own
-   boxes. For Hanken Grotesk (ascender 1000, descender 303, cap 697; see Header)
-   that space is (line-height - 0.697em) / 2. Re-measure if the typeface changes.
-   It lives in the block's own margin-top, the margin the reorder engine
-   measures and gives the drop slot, so a lifted block settles where it was.
-   text-box-trim can't do this: the title's min-height: 1lh holds its box open. */
-.project-stack--precede-related:has(> h2.project-section-title) + :is(.code-block, .sabi-example) {
-  --title-pull: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
-}
-
-.project-stack--precede-related:has(> h3.project-section-title) + :is(.code-block, .sabi-example) {
-  --title-pull: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
-}
-
-/* A title over body text: pull by both lines' ink insets less a unit, so the
-   unit margin becomes a 2u ink gap, the paragraph break. */
-.project-stack--precede-related:has(> h2.project-section-title) + .project-block--text:has(> .project-body-text) {
-  --title-pull: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2 + (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2 - var(--space-related));
-}
-
-.project-stack--precede-related:has(> h3.project-section-title) + .project-block--text:has(> .project-body-text) {
-  --title-pull: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2 + (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2 - var(--space-related));
-}
-
-.project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + :is(.code-block, .sabi-example) {
-  margin-top: calc(var(--project-stack-margin, var(--space-related)) - var(--title-pull, 0px));
-}
-
-:is(.project-page__main, .listing-main) [data-dev-project-drop-zone] > .project-stack--precede-related:has(> .project-section-title) + .project-block--text:has(> .project-body-text) {
-  margin-top: calc(var(--project-stack-margin, var(--space-related)) - var(--title-pull, 0px));
+  margin-top: var(--project-stack-margin, var(--project-stack-related-gap, var(--space-related)));
 }
 
 .project-page__main > .project-stack--related,
@@ -110,40 +77,48 @@
 .project-stack--major { --project-stack-margin: var(--space-major); }
 .project-stack--none { --project-stack-margin: 0; }
 
-/* A title's gap above mirrors its gap below, ink to ink: cap top above,
-   baseline below. Against body text that ink gap is 2u, the paragraph break
-   (see .project-body-text p + p). Both lines add their space above the cap /
-   below the baseline, (line-height - 0.697em) / 2 as for --title-pull, so the
-   margin is 2u minus the title's and the body's insets; above the title the
-   body's inset is already counted, so it is dropped when body text precedes.
+/* Related gaps around text are 2u, measured from the ink: a line's cap top and
+   baseline, never its box. A line adds (line-height - 0.697em) / 2 above the
+   cap and the same below the baseline (Hanken Grotesk: cap 697, descender 303
+   = ascender - cap), so each related gap is 2u less the
+   insets of the text lines on either side of it.
+   A title: 2u above its cap, from a box's edge or body text's baseline, and
+   2u below its baseline, to body text's cap or a box's edge.
    Ceiling: other text-like neighbours (quote, tagline, another title) count as
    boxes; give them their own inset here if one sits against a title. */
-.project-stack--precede-related:has(> .project-section-title) {
+.project-block--text:has(> .project-section-title) {
   --body-ink-inset: calc((var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
   --title-ink-inset: calc((var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
-  --title-gap-below: var(--space-related);
   --title-prev-inset: 0px;
-  --project-stack-related-gap: calc(var(--title-gap-below) - var(--title-prev-inset));
+  --project-stack-related-gap: calc(2 * var(--space-related) - var(--title-ink-inset) - var(--title-prev-inset));
 }
 
-.project-stack--precede-related:has(> h3.project-section-title) {
+.project-block--text:has(> h3.project-section-title) {
   --title-ink-inset: calc((var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
 }
 
-.project-stack--precede-related:has(+ .project-block--text > .project-body-text) {
-  --title-gap-below: calc(2 * var(--space-related) - var(--title-ink-inset));
-}
-
-.project-stack--precede-related:has(> h2.project-section-title):has(+ :is(.code-block, .sabi-example)) {
-  --title-gap-below: calc(var(--space-related) - (var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
-}
-
-.project-stack--precede-related:has(> h3.project-section-title):has(+ :is(.code-block, .sabi-example)) {
-  --title-gap-below: calc(var(--space-related) - (var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
-}
-
-.project-block--text:has(> .project-body-text) + .project-stack--precede-related:has(> .project-section-title) {
+.project-block--text:has(> .project-body-text) + .project-block--text:has(> .project-section-title) {
   --title-prev-inset: var(--body-ink-inset);
+}
+
+/* A box under a title: 2u from the title's baseline. Lives in the box's own
+   margin-top, the margin the reorder engine measures and gives the drop slot,
+   so a lifted block settles where it was. text-box-trim can't do this: the
+   title's min-height: 1lh holds its box open. */
+.project-block--text:has(> h2.project-section-title) + :not(:has(> :is(.project-body-text, .project-section-title))) {
+  --project-stack-related-gap: calc(2 * var(--space-related) - (var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
+}
+
+.project-block--text:has(> h3.project-section-title) + :not(:has(> :is(.project-body-text, .project-section-title))) {
+  --project-stack-related-gap: calc(2 * var(--space-related) - (var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
+}
+
+.project-block--text:has(> h2.project-section-title) + .project-block--text:has(> .project-body-text) {
+  --project-stack-related-gap: calc(2 * var(--space-related) - (var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2 - (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
+}
+
+.project-block--text:has(> h3.project-section-title) + .project-block--text:has(> .project-body-text) {
+  --project-stack-related-gap: calc(2 * var(--space-related) - (var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2 - (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
 }
 
 /* Body text against a box (image, embed, code block), either side: 2u from the
