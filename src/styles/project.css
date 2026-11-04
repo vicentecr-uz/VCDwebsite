@@ -146,6 +146,13 @@
   --title-prev-inset: var(--body-ink-inset);
 }
 
+/* Body text against a box (image, embed, code block), either side: 2u from the
+   ink, as between paragraphs, so the related gap drops the body line's inset. */
+.project-block--text:has(> .project-body-text) + :not(:has(> :is(.project-body-text, .project-section-title))),
+:not(:has(> :is(.project-body-text, .project-section-title))) + .project-block--text:has(> .project-body-text) {
+  --project-stack-related-gap: calc(2 * var(--space-related) - (var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
+}
+
 .project-intro-air {
   flex: 0 0 auto;
   height: 0;
