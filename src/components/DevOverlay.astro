@@ -170,8 +170,21 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const right = trig.right + GAP;
       const leftOfTrigger = trig.left - GAP - w;
       const maxLeft = Math.max(VIEW_INSET, vw - VIEW_INSET - w);
+      // Opened from inside another dev panel (e.g. Pages ⋯): sit beside that
+      // panel on the side nearer the cursor, never over it.
+      const host = trigger.closest<HTMLElement>('[data-dev-overlay]');
+      const hostRect = host && host !== overlay ? host.getBoundingClientRect() : null;
       let left: number;
-      if (block && overlay.dataset.devPanelKey === 'image' && clearRight + w <= vw - VIEW_INSET) {
+      if (hostRect) {
+        const besideRight = hostRect.right + GAP;
+        const besideLeft = hostRect.left - GAP - w;
+        const fitsRight = besideRight + w <= vw - VIEW_INSET;
+        const fitsLeft = besideLeft >= VIEW_INSET;
+        const preferRight = hostRect.right - x <= x - hostRect.left;
+        left = (preferRight ? fitsRight : !fitsLeft) && fitsRight ? besideRight
+          : fitsLeft ? besideLeft
+          : clamp(x - w / 2, VIEW_INSET, maxLeft);
+      } else if (block && overlay.dataset.devPanelKey === 'image' && clearRight + w <= vw - VIEW_INSET) {
         left = clearRight;
       } else if (block && overlay.dataset.devPanelKey === 'image' && clearLeft >= VIEW_INSET) {
         left = clearLeft;
