@@ -16,18 +16,22 @@ function fixture(stored: string | null = null) {
   const overlay = window.document.createElement('div');
   let width = 200;
   let height = 160;
+  const transitionSamples: string[] = [];
   Object.defineProperties(overlay, {
     offsetWidth: { get: () => width },
     offsetHeight: { get: () => height },
   });
-  overlay.getBoundingClientRect = () => ({
+  overlay.getBoundingClientRect = () => {
+    transitionSamples.push(overlay.style.transition);
+    return {
     left: Number.parseFloat(overlay.style.left) || 0,
     top: Number.parseFloat(overlay.style.top) || 0,
     width,
     height,
     right: (Number.parseFloat(overlay.style.left) || 0) + width,
     bottom: (Number.parseFloat(overlay.style.top) || 0) + height,
-  } as DOMRect);
+    } as DOMRect;
+  };
   if (stored !== null) window.localStorage.setItem('devOverlay:test:position', stored);
   const position = new Function(
     'window',
@@ -44,8 +48,16 @@ function fixture(stored: string | null = null) {
       width = nextWidth;
       height = nextHeight;
     },
+    transitionSamples,
   };
 }
+
+test('coordinate probes keep the panel entrance fade enabled', () => {
+  const f = fixture();
+  f.position.applyPosition(300, 240, false);
+  expect(f.transitionSamples.length).toBeGreaterThan(0);
+  expect(f.transitionSamples.every((transition) => transition === '')).toBe(true);
+});
 
 test('persists top-left fractions and restores proportional position without panel-size subtraction', () => {
   const f = fixture();
