@@ -929,32 +929,6 @@ media-volume-range:not(:defined) { display: none; }
   min-width: 0;
 }
 
-/*
-  Cropping inside a scroller: the track clips on both axes, so the crop stage's
-  handles get cut off at the frame edges. While a stage is mounted, drop the
-  clipping and isolate the slide being cropped — the stage is positioned inside
-  its own host, so it stays glued without a reposition pass.
-*/
-.is-dev-mode .project-image-carousel__clip:has(.dev-crop-stage-host) {
-  overflow: visible;
-  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-size, auto));
-}
-
-.is-dev-mode .project-image-carousel__track:has(> .dev-crop-stage-host) {
-  overflow: visible;
-  scroll-snap-type: none;
-  /* Isolation hides sibling slides; without this, pin-to-tallest collapses
-     to the crop host's height and the image jumps to the top. */
-  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-port-size, var(--project-carousel-track-size, auto)));
-  transition: none;
-}
-
-.is-dev-mode
-  .project-image-carousel__track:has(> .dev-crop-stage-host)
-  > .project-image-carousel__slide:not(.dev-crop-stage-host) {
-  display: none;
-}
-
 .project-image-carousel__track.is-dragging {
   cursor: grabbing;
 }
@@ -1024,6 +998,34 @@ media-volume-range:not(:defined) { display: none; }
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__slide {
   flex: 0 0 auto;
   width: 100%;
+}
+
+/*
+  Cropping inside a scroller: the track clips on both axes, so the crop stage's
+  handles get cut off at the frame edges. While a stage is mounted, drop the
+  clipping and isolate the slide being cropped — these rules come after the
+  dynamic-height and vertical clipping rules so the crop stage stays visible.
+  The stage is positioned inside its own host, so it stays glued without a
+  reposition pass.
+*/
+.is-dev-mode .project-image-carousel .project-image-carousel__clip:has(.dev-crop-stage-host) {
+  overflow: visible;
+  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-size, auto));
+}
+
+.is-dev-mode .project-image-carousel .project-image-carousel__track:has(> .dev-crop-stage-host) {
+  overflow: visible;
+  scroll-snap-type: none;
+  /* Isolation hides sibling slides; without this, pin-to-tallest collapses
+     to the crop host's height and the image jumps to the top. */
+  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-port-size, var(--project-carousel-track-size, auto)));
+  transition: none;
+}
+
+.is-dev-mode
+  .project-image-carousel__track:has(> .dev-crop-stage-host)
+  > .project-image-carousel__slide:not(.dev-crop-stage-host) {
+  display: none;
 }
 
 /* Wraps the track so overlaid dots can anchor to the images, not the block. */
