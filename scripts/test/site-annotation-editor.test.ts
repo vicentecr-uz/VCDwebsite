@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { Draw, PEN_BY_ID } from 'drawesome';
 import { siteAnnotationSvg, siteAnnotationHasFreeInk } from '../../src/lib/siteAnnotationSvg';
 import { validateSiteAnnotations, type SiteAnnotation } from '../../src/lib/siteAnnotations';
+import { nextSiteDrawMode, sendSiteDrawEvent } from '../../src/lib/siteDrawMode';
 
 const fixture: SiteAnnotation = {
   id: 'drawing', sectionId: 'block', kind: 'highlight',
@@ -58,6 +59,7 @@ const harness = (annotations: SiteAnnotation[] = [], storedPreferences?: unknown
       redo: () => { redoCount += 1; },
     } }),
     createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
+    sendSiteDrawEvent: (event: Parameters<typeof sendSiteDrawEvent>[0]) => sendSiteDrawEvent(event, document.documentElement),
     Draw: {}, PEN_BY_ID, siteAnnotationSvg, siteAnnotationHasFreeInk, positionSiteAnnotations() {},
     rangeForOffsets: (block: HTMLElement, start: number, end: number) => {
       const walker = document.createTreeWalker(block, 4);
@@ -202,6 +204,27 @@ test('editing a partly offscreen drawing preserves the complete old and new ink 
   expect(50 + saved.box.y * 40 + saved.strokes[0].points[0][1]).toBe(-40);
 });
 
+test('the open stage holds the page in drawing mode until it closes', () => {
+  const h = harness([fixture]);
+  const root = h.document.documentElement;
+  h.invokeClick(h.section.querySelector<HTMLButtonElement>('[data-site-draw-manage]')!);
+  expect(root.getAttribute('data-site-draw-mode')).toBe('menu');
+  h.startDrawing(h.target, null);
+  expect(root.getAttribute('data-site-draw-mode')).toBe('drawing');
+  h.done();
+  expect(h.document.querySelector('.site-draw-stage')).toBeNull();
+  expect(root.hasAttribute('data-site-draw-mode')).toBe(false);
+});
+
+test('site draw mode ignores menu events while drawing', () => {
+  expect(nextSiteDrawMode('idle', 'menu-open')).toBe('menu');
+  expect(nextSiteDrawMode('menu', 'stage-open')).toBe('drawing');
+  expect(nextSiteDrawMode('drawing', 'menu-close')).toBe('drawing');
+  expect(nextSiteDrawMode('drawing', 'menu-open')).toBe('drawing');
+  expect(nextSiteDrawMode('idle', 'stage-close')).toBe('idle');
+  expect(nextSiteDrawMode('drawing', 'stage-close')).toBe('idle');
+});
+
 test('a changed layout keeps the drawing open until its original viewport is restored', () => {
   const h = harness();
   h.window.alert = () => {};
@@ -326,7 +349,7 @@ test('multiple drawings open as a list and support detail Back and Escape dismis
   expect(h.document.activeElement?.getAttribute('data-site-draw-menu-annotation')).toBe('drawing');
   h.window.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
   expect(h.document.querySelector('.site-draw-menu')).toBeNull();
-  expect(h.document.documentElement.hasAttribute('data-site-draw-menu-open')).toBe(false);
+  expect(h.document.documentElement.hasAttribute('data-site-draw-mode')).toBe(false);
 });
 
 test('single drawing detail closes on outside pointerdown and Tab is not trapped', () => {
@@ -345,7 +368,7 @@ test('single drawing detail closes on outside pointerdown and Tab is not trapped
   h.window.dispatchEvent(tab);
   expect(tab.defaultPrevented).toBe(false);
   expect(h.document.querySelector('.site-draw-menu')).toBeNull();
-  expect(h.document.documentElement.hasAttribute('data-site-draw-menu-open')).toBe(false);
+  expect(h.document.documentElement.hasAttribute('data-site-draw-mode')).toBe(false);
 });
 
 test('outside dismissal consumes only its associated click across menu levels', () => {
