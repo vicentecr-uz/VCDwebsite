@@ -33,3 +33,8 @@ test('pointer-opened selects mark themselves until the pointer moves', () => {
   assert.match(selectField, /toggleAttribute\('data-pointer-open', byPointer\)/);
   assert.match(selectField, /removeAttribute\('data-pointer-open'\)/);
 });
+
+test('Base UI listbox rows keep the popup inset between them, like .dev-menu', () => {
+  assert.ok(chrome.includes('gap: var(--dev-menu-gap)') && chrome.includes('--dev-menu-pad: var(--dev-menu-gap)'));
+  assert.match(css, /\.base-ui-select-item \+ \.base-ui-select-item,[^{]*\{\s*margin-top: var\(--popup-pad\);/);
+});
