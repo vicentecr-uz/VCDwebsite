@@ -38,6 +38,12 @@ The editor’s **Subtle** inline style (`.text-subtle`) uses this semantic token
 
 Text and decorative rules have separate contrast requirements. Do not use `--sys-color-outline` as text ink: a hairline can be fainter than readable text. The same numeric colour also has different optical weight in a rule and antialiased letterforms, so choose each role for its purpose rather than matching their values.
 
+## Quiet controls in editing chrome
+
+`--sys-color-on-srf-faint` (`ref.palette.grey.700` light, `grey.300` dark) is the ink for low-emphasis dev controls and icons at rest: unselected toggles, select chevrons, help glyphs. Dev chrome reaches it through `--comp-button-label-faint`. It is about 1.5:1 against white, so it is never text ink; quiet text in dev chrome still uses `--comp-button-label-subtle` or `--sys-color-on-srf-subtle`. Public-site controls (such as the Sabi demo's replay button) keep `--comp-button-label-subtle`.
+
+Figma's `on-srf-subtle` variable resolves to `palette/grey/700`, the value code used until the metadata role moved to grey500. Code's `on-srf-faint` is that Figma value; code's `on-srf-subtle` is the optional-metadata role above. Mirror both in Figma so the names line up.
+
 ## Example
 
 The attribution selector in `src/layouts/DocumentationLayout.astro` is optional metadata. Its former supporting-copy role is the concrete misuse this rule replaces.
