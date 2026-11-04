@@ -24,8 +24,17 @@ function setup(reduced = false) {
   panel.animate = animate as typeof panel.animate;
   body.animate = animate as typeof body.animate;
   const callbacks: string[] = [];
-  const api = createDevPanelCollapse(panel, { beforeChange: () => callbacks.push('before'), afterChange: () => callbacks.push('after') });
-  return { win, panel, body, button, pending, callbacks, api };
+  const stateChanges: Array<{ minimized: boolean; hidden: boolean; height: number }> = [];
+  const api = createDevPanelCollapse(panel, {
+    beforeChange: () => callbacks.push('before'),
+    afterStateChange: () => stateChanges.push({
+      minimized: panel.classList.contains('is-minimized'),
+      hidden: body.hidden,
+      height: panel.getBoundingClientRect().height,
+    }),
+    afterChange: () => callbacks.push('after'),
+  });
+  return { win, panel, body, button, pending, callbacks, stateChanges, api };
 }
 
 test('non-animated collapse produces a header-only, inert panel and expand restores ARIA state', () => {
@@ -85,4 +94,13 @@ test('reduced motion keeps endpoint height fixed while preserving fade timing', 
   expect(h.pending[0].keyframes[0].height).toBe(h.pending[0].keyframes[1].height);
   expect(h.pending[1].keyframes[0].opacity).not.toBe(h.pending[1].keyframes[1].opacity);
   h.pending.forEach((animation) => animation.resolve());
+});
+
+test('state hook runs after final visibility state and before target measurement', () => {
+  const h = setup();
+  h.api.set(true, false);
+  h.stateChanges.length = 0;
+  h.api.set(false);
+  expect(h.stateChanges).toEqual([{ minimized: false, hidden: false, height: 120 }]);
+  expect(h.pending[0].keyframes[1].height).toBe('120px');
 });
