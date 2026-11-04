@@ -41,9 +41,12 @@ export default function EditorSelect({
   const [selectionReturnedFocus, setSelectionReturnedFocus] = useState(false);
   const [menuValue, setMenuValue] = useState(snapshot.value);
   const [pointerOpen, setPointerOpen] = useState(false);
+  const [portalContainer, setPortalContainer] = useState<HTMLDialogElement | undefined>();
 
   useEffect(() => {
     const trigger = document.getElementById(triggerId);
+    // A body portal paints under a modal <dialog>'s top layer; keep the popup inside it.
+    setPortalContainer(trigger?.closest('dialog') ?? undefined);
     const select = trigger?.closest('.dev-field')?.querySelector<HTMLSelectElement>('select[data-dev-editor-select]');
     if (!select) return;
     return initEditorSelectBridge(select, setSnapshot);
@@ -83,7 +86,7 @@ export default function EditorSelect({
         {selected?.iconSvg && <span className="dev-select__trigger-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: selected.iconSvg }} />}
         <Select.Value className="base-ui-select-value dev-select__trigger-label" placeholder={snapshot.emptyLabel} />
       </Select.Trigger>
-      <Select.Portal>
+      <Select.Portal container={portalContainer}>
         <Select.Positioner className="base-ui-select-positioner" alignItemWithTrigger>
           <Select.Popup
             className="base-ui-select-popup"
