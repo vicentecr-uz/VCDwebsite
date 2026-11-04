@@ -230,11 +230,12 @@ export function initSelectFields() {
     clampToViewport(listbox, parseFloat(listbox.style.left), parseFloat(listbox.style.top));
   };
 
-  const openListbox = (parts: Parts) => {
+  const openListbox = (parts: Parts, { byPointer = false } = {}) => {
     const { trigger, listbox, select } = parts;
     if (trigger.disabled) return;
     ensureInstance(parts);
     listbox.classList.remove('is-keyboard');
+    listbox.toggleAttribute('data-pointer-open', byPointer);
     syncFromSelect(parts);
     listbox.showPopover();
     trigger.setAttribute('aria-expanded', 'true');
@@ -250,6 +251,7 @@ export function initSelectFields() {
 
     listbox.hidePopover();
     listbox.classList.remove('is-keyboard');
+    listbox.removeAttribute('data-pointer-open');
     trigger.setAttribute('aria-expanded', 'false');
     setActiveOption(parts, null);
     const instance = instances.get(parts.wrapper);
@@ -290,7 +292,7 @@ export function initSelectFields() {
       if (!parts || parts.trigger.disabled) return;
       ensureInstance(parts);
       syncFromSelect(parts);
-      if (!parts.listbox.matches(':popover-open')) openListbox(parts);
+      if (!parts.listbox.matches(':popover-open')) openListbox(parts, { byPointer: event.detail > 0 });
       else closeListbox(parts, { returnFocus: false });
       return;
     }
@@ -323,6 +325,7 @@ export function initSelectFields() {
     const target = event.target;
     document.querySelectorAll<HTMLUListElement>('.dev-select__listbox').forEach((listbox) => {
       if (!listbox.matches(':popover-open')) return;
+      listbox.removeAttribute('data-pointer-open'); // real :hover is live once the pointer moves
       if (!listbox.classList.contains('is-keyboard')) return;
       listbox.classList.remove('is-keyboard');
       if (!(target instanceof Element)) return;

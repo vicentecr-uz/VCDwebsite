@@ -40,6 +40,7 @@ export default function EditorSelect({
   });
   const [selectionReturnedFocus, setSelectionReturnedFocus] = useState(false);
   const [menuValue, setMenuValue] = useState(snapshot.value);
+  const [pointerOpen, setPointerOpen] = useState(false);
 
   useEffect(() => {
     const trigger = document.getElementById(triggerId);
@@ -67,6 +68,7 @@ export default function EditorSelect({
       onValueChange={commit}
       onOpenChange={(open, details) => {
         if (open) setMenuValue(snapshot.value);
+        setPointerOpen(open && details.reason === 'trigger-press' && details.event instanceof MouseEvent);
         setSelectionReturnedFocus(!open && details.reason === 'item-press');
       }}
     >
@@ -83,7 +85,14 @@ export default function EditorSelect({
       </Select.Trigger>
       <Select.Portal>
         <Select.Positioner className="base-ui-select-positioner" alignItemWithTrigger>
-          <Select.Popup className="base-ui-select-popup" data-editor-select-popup data-editor-select-owner={triggerId}>
+          <Select.Popup
+            className="base-ui-select-popup"
+            data-editor-select-popup
+            data-editor-select-owner={triggerId}
+            // Real :hover is live once the pointer moves; until then dev-chrome paints the selected row's hover.
+            data-pointer-open={pointerOpen || undefined}
+            onPointerMove={(event) => { if (event.movementX || event.movementY) setPointerOpen(false); }}
+          >
             <Select.List>
               {grouped(snapshot.options).map(({ label: group, options }, index) => (
                 <Select.Group className="base-ui-select-group" key={index}>
