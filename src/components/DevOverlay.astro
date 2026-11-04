@@ -2,7 +2,7 @@
 import DevOverlayFrame from './ui/DevOverlayFrame.astro';
 ---
 
-<DevOverlayFrame {...Astro.props} data-dev-overlay><slot /></DevOverlayFrame>
+<DevOverlayFrame {...Astro.props} hasHeadActions={Astro.slots.has('head-actions')} data-dev-overlay><slot name="head-actions" slot="head-actions" /><slot /></DevOverlayFrame>
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
@@ -170,8 +170,21 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const right = trig.right + GAP;
       const leftOfTrigger = trig.left - GAP - w;
       const maxLeft = Math.max(VIEW_INSET, vw - VIEW_INSET - w);
+      // Opened from inside another dev panel (e.g. Pages ⋯): sit beside that
+      // panel on the side nearer the cursor, never over it.
+      const host = trigger.closest<HTMLElement>('[data-dev-overlay]');
+      const hostRect = host && host !== overlay ? host.getBoundingClientRect() : null;
       let left: number;
-      if (block && overlay.dataset.devPanelKey === 'image' && clearRight + w <= vw - VIEW_INSET) {
+      if (hostRect) {
+        const besideRight = hostRect.right + GAP;
+        const besideLeft = hostRect.left - GAP - w;
+        const fitsRight = besideRight + w <= vw - VIEW_INSET;
+        const fitsLeft = besideLeft >= VIEW_INSET;
+        const preferRight = hostRect.right - x <= x - hostRect.left;
+        left = (preferRight ? fitsRight : !fitsLeft) && fitsRight ? besideRight
+          : fitsLeft ? besideLeft
+          : clamp(x - w / 2, VIEW_INSET, maxLeft);
+      } else if (block && overlay.dataset.devPanelKey === 'image' && clearRight + w <= vw - VIEW_INSET) {
         left = clearRight;
       } else if (block && overlay.dataset.devPanelKey === 'image' && clearLeft >= VIEW_INSET) {
         left = clearLeft;
@@ -482,6 +495,15 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       scope.listen(window, 'resize', scheduleConstrain);
     }
 
+    // A panel about to swap its body (e.g. Pages grid ↔ list) asks to keep its
+    // top edge. Ceiling: a 300ms window covers the swap plus the panel's own
+    // follow-up layout caps; general top-left anchoring for minimize and
+    // resize (#192) replaces this.
+    let keepTop: { top: number; until: number } | null = null;
+    scope.listen(overlay, 'vcd:dev-overlay-keep-top', () => {
+      keepTop = { top: overlay.getBoundingClientRect().top, until: performance.now() + 300 };
+    });
+
     let lastObservedHeight: number | null = null;
     ownObserver(new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -490,7 +512,12 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       lastObservedHeight = height;
       if (collapse.animating) return;
       if (!overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
-        applyPreferredPosition();
+        if (keepTop && performance.now() < keepTop.until) {
+          applyPosition(overlay.getBoundingClientRect().left, keepTop.top, true);
+        } else {
+          keepTop = null;
+          applyPreferredPosition();
+        }
       }
       if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
       if (overlay.classList.contains('is-minimized')) {

@@ -123,6 +123,8 @@ The production-gallery column below assumes the document has a `listings[grid]` 
 | `draft` | Hidden | No | Yes |
 | `image` | Visible as a gallery-only image card | No | No |
 
+A Public document with `"publicLink": true` also ships at `/slug` when nothing links to it, such as a write-up shared only by URL. `scripts/public-site-output.mjs` keeps it without following its links, so it never publishes the pages it links to, and adds `<meta name="robots" content="noindex">` unless navigation reaches it anyway. **Page settings** (the card cog, or ⋯ on a row in the Pages panel's list view) edits it as **Publish**, next to **Visibility** (shown on this gallery), **Status**, and **Page type** (`layout`: Case study or Write-up; locked for legacy-stack pages). Visibility and Publish stage through the Pages panel's gallery-membership change. Publish is locked for non-Public statuses and for pages navigation already reaches: gallery cards, plus same-site links in page, header, and Public project documents. Links hardcoded in `.astro` templates are not seen there; the build stays authoritative.
+
 Dev mode can create and author Public, Teaser, and Draft slugs without a server restart. `[slug].astro` prerenders only in production, and the create/settings/rename APIs send `astro:content-changed` to clear the dev route cache. `image` deliberately has no project route.
 
 Home, Work, and Play listing cards come from each project's `listings`. Dev-mode grid management is handled by `DevProjectGridEditor.astro`, including New page and project settings.
