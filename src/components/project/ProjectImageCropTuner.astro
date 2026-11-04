@@ -1779,6 +1779,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const refreshCover = () => {
+      if (editingSession) {
+        if (viewportGateOk()) {
+          if (!pageStage) mountPageStage();
+        } else if (pageStage) {
+          unmountPageStage({ immediate: true });
+        }
+      }
       if (editedImage.naturalWidth) renderDraft();
     };
 
