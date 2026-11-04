@@ -1263,6 +1263,8 @@ export function galleryMembershipDevWriter() {
                   slug,
                   title: String(data.title || slug),
                   status: validateStatus(data.status, 'published'),
+                  publicLink: data.publicLink === true,
+                  listedElsewhere: LISTING_GRIDS.some((other) => other !== grid && Boolean(data.listings?.[other])),
                   ...cover,
                 });
               } catch {
@@ -1318,6 +1320,9 @@ export function galleryMembershipDevWriter() {
             ? [...new Set(body.slugs.map((value) => String(value || '').trim()).filter(Boolean))]
             : [];
           const wantedSet = new Set(wanted);
+          const publicLinks = body.publicLinks && typeof body.publicLinks === 'object' && !Array.isArray(body.publicLinks)
+            ? new Map(Object.entries(body.publicLinks).filter(([, value]) => typeof value === 'boolean'))
+            : new Map();
           const projectsDir = path.join(process.cwd(), 'src/content/projects');
           const files = readdirSync(projectsDir)
             .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'));
@@ -1357,17 +1362,23 @@ export function galleryMembershipDevWriter() {
             }
             const hasListing = Boolean(data.listings[grid]);
             const shouldHave = wantedSet.has(slug);
+            let changed = false;
+            if (publicLinks.has(slug) && (data.publicLink === true) !== publicLinks.get(slug)) {
+              if (publicLinks.get(slug)) data.publicLink = true;
+              else delete data.publicLink;
+              changed = true;
+            }
             if (hasListing && !shouldHave) {
               delete data.listings[grid];
-              if (!Object.keys(data.listings).length) delete data.listings;
-              await writeProjectJson(filePath, data);
-              continue;
+              changed = true;
             }
             if (!hasListing && shouldHave) {
               nextOrder += 1;
               data.listings[grid] = seedListingCard(grid, data, nextOrder);
-              await writeProjectJson(filePath, data);
+              changed = true;
             }
+            if (!Object.keys(data.listings).length) delete data.listings;
+            if (changed) await writeProjectJson(filePath, data);
           }
 
           // Optional DOM order from the panel — covers remove→re-add landing at the end.

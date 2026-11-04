@@ -41,6 +41,8 @@ export type ProjectDocument = {
   title: string;
   description?: string;
   status?: ProjectStatus;
+  /** Public-status page ships at `/slug` (noindex) even when no navigation reaches it. */
+  publicLink?: boolean;
   stack?: ProjectStack;
   layout?: 'case-study' | 'writeup';
   listings?: Partial<Record<'home' | 'play', ProjectListingCard>>;
