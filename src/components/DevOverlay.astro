@@ -55,26 +55,42 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
 
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-    let preferredCenter: { u: number; v: number } | null = null;
+    let preferredPosition: { x: number; y: number } | null = null;
 
     const savePosition = (left: number, top: number) => {
       if (embedded) return;
-      preferredCenter = {
-        u: clamp((left + overlay.offsetWidth / 2) / window.innerWidth, 0, 1),
-        v: clamp((top + overlay.offsetHeight / 2) / window.innerHeight, 0, 1),
+      preferredPosition = {
+        x: clamp(left / window.innerWidth, 0, 1),
+        y: clamp(top / window.innerHeight, 0, 1),
       };
       try {
-        window.localStorage.setItem(positionStorageKey, JSON.stringify(preferredCenter));
+        window.localStorage.setItem(positionStorageKey, JSON.stringify(preferredPosition));
       } catch {
         // Ignore storage failures.
       }
     };
 
-    const readPosition = (): { u: number; v: number } | { left: number; top: number } | null => {
+    const readPosition = ():
+      | { x: number; y: number }
+      | { u: number; v: number }
+      | { left: number; top: number }
+      | null => {
       try {
         const raw = window.localStorage.getItem(positionStorageKey);
         if (!raw) return null;
-        const parsed = JSON.parse(raw) as { u?: unknown; v?: unknown; left?: unknown; top?: unknown };
+        const parsed = JSON.parse(raw) as {
+          x?: unknown;
+          y?: unknown;
+          u?: unknown;
+          v?: unknown;
+          left?: unknown;
+          top?: unknown;
+        };
+        const x = Number(parsed.x);
+        const y = Number(parsed.y);
+        if (parsed.x != null && parsed.y != null && Number.isFinite(x) && Number.isFinite(y)) {
+          return { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
+        }
         const u = Number(parsed.u);
         const v = Number(parsed.v);
         if (parsed.u != null && parsed.v != null && Number.isFinite(u) && Number.isFinite(v)) {
@@ -120,19 +136,24 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     };
 
     const applyPreferredPosition = () => {
-      if (embedded || !preferredCenter || !overlay.offsetWidth || !overlay.offsetHeight) return;
-      applyPosition(
-        preferredCenter.u * window.innerWidth - overlay.offsetWidth / 2,
-        preferredCenter.v * window.innerHeight - overlay.offsetHeight / 2,
-        false,
-      );
+      if (embedded || !preferredPosition || !overlay.offsetWidth || !overlay.offsetHeight) return;
+      applyPosition(preferredPosition.x * window.innerWidth, preferredPosition.y * window.innerHeight, false);
     };
 
     const storedPosition = readPosition();
-    if (storedPosition && 'u' in storedPosition) preferredCenter = storedPosition;
+    if (storedPosition && 'x' in storedPosition) preferredPosition = storedPosition;
+    let legacyCenter = storedPosition && 'u' in storedPosition ? storedPosition : null;
     let legacyPosition = storedPosition && 'left' in storedPosition ? storedPosition : null;
     const restorePosition = () => {
-      if (legacyPosition && overlay.offsetWidth && overlay.offsetHeight) {
+      if (!overlay.offsetWidth || !overlay.offsetHeight) return;
+      if (legacyCenter) {
+        applyPosition(
+          legacyCenter.u * window.innerWidth - overlay.offsetWidth / 2,
+          legacyCenter.v * window.innerHeight - overlay.offsetHeight / 2,
+          true,
+        );
+        legacyCenter = null;
+      } else if (legacyPosition) {
         applyPosition(legacyPosition.left, legacyPosition.top, true);
         legacyPosition = null;
       } else {
@@ -495,31 +516,21 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       scope.listen(window, 'resize', scheduleConstrain);
     }
 
-    // A panel about to swap its body (e.g. Pages grid ↔ list) asks to keep its
-    // top edge. Ceiling: a 300ms window covers the swap plus the panel's own
-    // follow-up layout caps; general top-left anchoring for minimize and
-    // resize (#192) replaces this.
-    let keepTop: { top: number; until: number } | null = null;
-    scope.listen(overlay, 'vcd:dev-overlay-keep-top', () => {
-      keepTop = { top: overlay.getBoundingClientRect().top, until: performance.now() + 300 };
-    });
-
     let lastObservedHeight: number | null = null;
     ownObserver(new ResizeObserver((entries) => {
       const entry = entries[0];
       const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
       const previous = lastObservedHeight;
       lastObservedHeight = height;
-      if (collapse.animating) return;
-      if (!overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
-        if (keepTop && performance.now() < keepTop.until) {
-          applyPosition(overlay.getBoundingClientRect().left, keepTop.top, true);
-        } else {
-          keepTop = null;
-          applyPreferredPosition();
+      if (collapse.animating || !wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
+      if (overlay.classList.contains('is-dragging') || overlay.classList.contains('is-resizing')) return;
+      if (!embedded) {
+        if (legacyCenter || legacyPosition) restorePosition();
+        else {
+          const rect = overlay.getBoundingClientRect();
+          applyPosition(rect.left, rect.top, false);
         }
       }
-      if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
       if (overlay.classList.contains('is-minimized')) {
         if (portraitScheduleConstrain) overlay.style.maxHeight = '';
         return;
