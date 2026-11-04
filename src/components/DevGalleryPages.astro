@@ -2,10 +2,14 @@
 import DevOverlay from './DevOverlay.astro';
 import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
+import layoutGridIcon from 'lucide-static/icons/layout-grid.svg?raw';
+import listIcon from 'lucide-static/icons/list.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
 const eyeIconSvg = sizeIcon(eyeIcon, 16);
 const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
+const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 ---
 
 <DevOverlay
@@ -14,11 +18,16 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
   layout="landscape"
   defaultHidden
 >
+  <div slot="head-actions" class="dev-gallery-pages__views" role="group" aria-label="View">
+    <button type="button" class="dev-gallery-pages__view" data-gallery-view="grid" aria-label="Thumbnails" title="Thumbnails" aria-pressed="true" set:html={sizeIcon(layoutGridIcon, 16)} />
+    <button type="button" class="dev-gallery-pages__view" data-gallery-view="list" aria-label="List" title="List" aria-pressed="false" set:html={sizeIcon(listIcon, 16)} />
+  </div>
   <div
     class="dev-gallery-pages"
     data-dev-gallery-pages
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
+    data-ellipsis-icon={ellipsisIconSvg}
   >
     <div class="dev-gallery-pages__filters dev-segmented" role="group" aria-label="Gallery filter">
       <button type="button" data-gallery-filter="all" class="dev-btn dev-btn--ghost is-active">All</button>
@@ -28,6 +37,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     <p class="dev-gallery-pages__status" data-gallery-status aria-live="polite">Loading…</p>
     <div class="dev-gallery-pages__grid" data-gallery-grid></div>
+    <ul class="dev-gallery-pages__list" data-gallery-list aria-label="Pages" hidden></ul>
   </div>
 </DevOverlay>
 
@@ -63,6 +73,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
    *   slug: string,
    *   title: string,
    *   status: string,
+   *   publicLink: boolean,
+   *   rootLinked: boolean,
+   *   links: string[],
    *   onGallery: boolean,
    *   hasCover: boolean,
    *   image: string,
@@ -95,6 +108,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
     const eyeIconHtml = root.dataset.eyeIcon || '';
     const eyeOffIconHtml = root.dataset.eyeOffIcon || '';
+    const ellipsisIconHtml = root.dataset.ellipsisIcon || '';
+    const listEl = root.querySelector<HTMLElement>('[data-gallery-list]');
+    const viewButtons = panel.querySelectorAll<HTMLButtonElement>('[data-gallery-view]');
+    const VIEW_KEY = 'vcd:gallery-pages-view';
+    let view: 'grid' | 'list' = localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid';
 
     /** @type {GalleryPage[]} */
     let pages = [];
@@ -102,6 +120,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     let selected = new Set();
     /** @type {Set<string>} */
     let baseline = new Set();
+    /** Slugs with `publicLink: true` — ship by URL even when no gallery lists them. */
+    let publicLinks = new Set<string>();
+    let baselinePublicLinks = new Set<string>();
     /** @type {GridOrderEntry[]} */
     let baselineOrder: GridOrderEntry[] = [];
     /** @type {string[]} */
@@ -122,6 +143,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const GRID_GAP = 8;
     const GRID_COLUMNS = 3;
     let layoutCapsRaf = 0;
+    let userSized = false;
+    let defaultHeightApplied = false;
     let historyScope: ReturnType<typeof pageHistory.scope> | null = null;
     let unregisterHistoryScope: (() => void) | null = null;
     scope.add(() => unregisterHistoryScope?.());
@@ -134,9 +157,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       return panelWidth - 2 * panelPad;
     };
 
-    /** Thumb width from the signed 597px landscape body, not the current resize. */
+    /** Thumb width from the signed 597px landscape body, not the current resize —
+     * narrowed only when the viewport can't fit that, so 3 columns never scroll sideways. */
     const computeThumbWidth = () => {
-      const innerBodyW = readLandscapeDefaultInnerWidth();
+      const panelPad = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dev-panel-pad')) || 12;
+      const innerBodyW = Math.min(readLandscapeDefaultInnerWidth(), viewportCapPx().width - 2 * panelPad);
       if (!gridEl) {
         return Math.round((innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS);
       }
@@ -154,7 +179,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       };
     };
 
-    const measureOverlayHug = (): { width: number; height: number } | null => {
+    const measureOverlayHug = (): { width: number; height: number; content: number } | null => {
       if (panel.hidden) return null;
       const prevWidth = panel.style.width;
       const prevHeight = panel.style.height;
@@ -166,12 +191,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       panel.style.maxHeight = '';
       const width = panel.offsetWidth;
       const height = panel.offsetHeight;
+      const content = (view === 'grid' ? gridEl : listEl)?.offsetHeight ?? 0;
       panel.style.width = prevWidth;
       panel.style.height = prevHeight;
       panel.style.maxWidth = prevMaxWidth;
       panel.style.maxHeight = prevMaxHeight;
       if (!width || !height) return null;
-      return { width, height };
+      return { width, height, content };
     };
 
     const applyLayoutCaps = () => {
@@ -194,6 +220,17 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         panel.style.maxWidth = `${Math.min(hug.width, viewport.width)}px`;
       }
       panel.style.maxHeight = `${Math.min(hug.height, viewport.height)}px`;
+
+      // Open at most 3.5 thumbnail rows tall (both views) until the user resizes;
+      // max-height stays at the hug so a drag can still grow it to full content.
+      if (!userSized && !defaultHeightApplied && loadedGrid === activeGrid && pages.length) {
+        defaultHeightApplied = true;
+        const thumbH = computeThumbWidth() * 3 / 4;
+        const gridStyle = gridEl ? getComputedStyle(gridEl) : null;
+        const gridPadY = gridStyle ? Number.parseFloat(gridStyle.paddingTop) + Number.parseFloat(gridStyle.paddingBottom) : 0;
+        const target = hug.height - hug.content + 3.5 * thumbH + 3 * GRID_GAP + gridPadY;
+        if (target < hug.height) panel.style.height = `${Math.round(target)}px`;
+      }
 
       const capW = Number.parseFloat(panel.style.maxWidth);
       const capH = Number.parseFloat(panel.style.maxHeight);
@@ -261,7 +298,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     };
 
     const isDirty = () =>
-      !setsEqual(selected, baseline) || !ordersEqual(captureGridOrder(), baselineOrder);
+      !setsEqual(selected, baseline)
+      || !setsEqual(publicLinks, baselinePublicLinks)
+      || !ordersEqual(captureGridOrder(), baselineOrder);
 
     const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
 
@@ -696,6 +735,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const restoreMembershipPreview = () => {
       selected = new Set(baseline);
+      publicLinks = new Set(baselinePublicLinks);
       applyPagesOrder(baselinePagesOrder);
       const grid = listingGrid();
       if (!grid) {
@@ -749,6 +789,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
             grid: activeGrid,
             slugs: [...selected],
             items: captureGridOrder(),
+            publicLinks: Object.fromEntries(pages
+              .filter((page) => publicLinks.has(page.slug) !== baselinePublicLinks.has(page.slug))
+              .map((page) => [page.slug, publicLinks.has(page.slug)])),
           },
           revert: () => {
             restoreMembershipPreview();
@@ -761,6 +804,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const gallerySnapshot = () => ({
       selected: [...selected],
+      publicLinks: [...publicLinks],
       order: captureGridOrder(),
       pagesOrder: pages.map((page) => page.slug),
     });
@@ -769,6 +813,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const applyGallerySnapshot = (snapshot) => {
       selected = new Set(snapshot.selected);
+      publicLinks = new Set(snapshot.publicLinks);
       applyPagesOrder(snapshot.pagesOrder);
       applyMembershipPreview();
       applyOrderToLiveGrid(snapshot.order.map((entry) => entry.slug));
@@ -794,6 +839,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     });
 
     const syncCount = () => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-gallery-pages-change'));
       if (!countEl) return;
       const onCount = selected.size;
       countEl.textContent = isDirty()
@@ -801,11 +847,91 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         : `${onCount} on this gallery`;
     };
 
+    const toggleMembership = (page: GalleryPage) => {
+      const before = gallerySnapshot();
+      if (selected.has(page.slug)) selected.delete(page.slug);
+      else selected.add(page.slug);
+      sortPagesByMembership();
+      applyMembershipPreview();
+      renderGrid();
+      syncCount();
+      syncPending();
+      pushGalleryChange(before, gallerySnapshot(), `${selected.has(page.slug) ? 'Show' : 'Hide'} ${page.title}`);
+    };
+
+    const togglePublicLink = (page: GalleryPage) => {
+      const before = gallerySnapshot();
+      if (publicLinks.has(page.slug)) publicLinks.delete(page.slug);
+      else publicLinks.add(page.slug);
+      renderGrid();
+      syncCount();
+      syncPending();
+      pushGalleryChange(before, gallerySnapshot(), `${publicLinks.has(page.slug) ? 'Publish' : 'Unpublish'} ${page.title}`);
+    };
+
+    // Same walk as the build's prune: from this gallery's cards plus whatever
+    // static pages, the header, or other galleries link to, through Public pages'
+    // own links. publicLink pages are not followed, matching the build. Returns
+    // every slug navigation points at, whatever that page's own status.
+    const navigationTargets = () => {
+      const bySlug = new Map(pages.map((page) => [page.slug, page]));
+      const queue = pages.filter((page) => selected.has(page.slug) || page.rootLinked).map((page) => page.slug);
+      const linked = new Set<string>();
+      const expanded = new Set<string>();
+      while (queue.length) {
+        const slug = queue.shift()!;
+        linked.add(slug);
+        const page = bySlug.get(slug);
+        if (expanded.has(slug) || page?.status !== 'published') continue;
+        expanded.add(slug);
+        queue.push(...(page.links ?? []));
+      }
+      return linked;
+    };
+
+    const renderList = (list: GalleryPage[]) => {
+      if (!listEl) return;
+      listEl.replaceChildren(...list.map((page) => {
+        const row = document.createElement('li');
+        row.className = 'dev-gallery-pages__row';
+        const name = document.createElement('span');
+        name.className = 'dev-gallery-pages__name';
+        name.textContent = page.title;
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'dev-gallery-pages__more';
+        more.innerHTML = ellipsisIconHtml;
+        more.setAttribute('aria-label', `Page settings for ${page.title}`);
+        more.title = 'Page settings';
+        scope.listen(more, 'click', () => {
+          window.dispatchEvent(new CustomEvent('vcd:dev-project-settings-open', {
+            detail: { slug: page.slug, grid: activeGrid, trigger: more },
+          }));
+        });
+        row.append(name, more);
+        return row;
+      }));
+    };
+
+    const syncView = () => {
+      // Header stays put while the body changes height (DevOverlay re-centres otherwise).
+      if ((gridEl?.hidden ?? false) !== (view !== 'grid')) {
+        panel.dispatchEvent(new CustomEvent('vcd:dev-overlay-keep-top'));
+      }
+      if (gridEl) gridEl.hidden = view !== 'grid';
+      if (listEl) listEl.hidden = view !== 'list';
+      viewButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', button.dataset.galleryView === view ? 'true' : 'false');
+      });
+    };
+
     const renderGrid = () => {
       if (!gridEl) return;
       if (drag) drag.cancel();
       const list = visiblePages();
       gridEl.replaceChildren();
+      listEl?.replaceChildren();
+      syncView();
 
       if (!list.length) {
         setStatus(filter === 'on'
@@ -819,6 +945,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       }
 
       setStatus(`${list.length} page${list.length === 1 ? '' : 's'}`);
+
+      if (view === 'list') {
+        renderList(list);
+        syncCount();
+        scheduleLayoutCaps();
+        return;
+      }
 
       for (const page of list) {
         const card = document.createElement('div');
@@ -863,17 +996,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         badge.draggable = false;
         scope.listen(badge, 'dragstart', (event) => event.preventDefault());
 
-        scope.listen(badge, 'click', () => {
-          const before = gallerySnapshot();
-          if (selected.has(page.slug)) selected.delete(page.slug);
-          else selected.add(page.slug);
-          sortPagesByMembership();
-          applyMembershipPreview();
-          renderGrid();
-          syncCount();
-          syncPending();
-          pushGalleryChange(before, gallerySnapshot(), `${selected.has(page.slug) ? 'Show' : 'Hide'} ${page.title}`);
-        });
+        scope.listen(badge, 'click', () => toggleMembership(page));
         attachCardDrag(card, thumb, page, isOn);
 
         card.append(badge, thumb);
@@ -902,6 +1025,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         pages = Array.isArray(payload.pages) ? payload.pages : [];
         selected = new Set(pages.filter((page) => page.onGallery).map((page) => page.slug));
         baseline = new Set(selected);
+        publicLinks = new Set(pages.filter((page) => page.publicLink).map((page) => page.slug));
+        baselinePublicLinks = new Set(publicLinks);
         detachedItems.clear();
         createdItems.clear();
         baselineOrder = captureGridOrder();
@@ -919,6 +1044,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const openPanel = () => {
       const grid = currentGrid();
       if (!grid) return;
+      userSized = false;
+      defaultHeightApplied = false;
+      panel.style.height = '';
       activeGrid = grid;
       historyScope = pageHistory.scope();
       unregisterHistoryScope?.();
@@ -940,6 +1068,43 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       historyScope = null;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
+
+    viewButtons.forEach((button) => {
+      scope.listen(button, 'click', () => {
+        const next = button.dataset.galleryView;
+        if ((next !== 'grid' && next !== 'list') || next === view) return;
+        view = next;
+        localStorage.setItem(VIEW_KEY, view);
+        renderGrid();
+      });
+    });
+
+    // Page settings (DevProjectGridEditor) edits Visibility and Publish here so
+    // membership, publicLink, pending save, and undo keep one owner.
+    window.__vcdGalleryPages = {
+      load: async () => {
+        if (!activeGrid) activeGrid = currentGrid();
+        // Already loaded: don't re-render (it would detach the ⋯ that opened settings).
+        if (loadedGrid === activeGrid) return;
+        await loadPages();
+      },
+      state: (slug: string) => {
+        const page = pageBySlug(slug);
+        if (!page || loadedGrid !== activeGrid) return null;
+        return {
+          on: selected.has(slug),
+          publicLink: publicLinks.has(slug),
+          navigationLinked: navigationTargets().has(slug),
+        };
+      },
+      set: (slug: string, next: { on?: boolean; publicLink?: boolean }) => {
+        const page = pageBySlug(slug);
+        if (!page) return;
+        if (next.on !== undefined && next.on !== selected.has(slug)) toggleMembership(page);
+        if (next.publicLink !== undefined && next.publicLink !== publicLinks.has(slug)) togglePublicLink(page);
+      },
+    };
+    scope.add(() => { delete window.__vcdGalleryPages; });
 
     filterButtons.forEach((button) => {
       scope.listen(button, 'click', () => {
@@ -981,10 +1146,12 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const ids = event.detail?.ids;
       if (Array.isArray(ids) && !ids.includes(`gallery-membership:${activeGrid}`)) return;
       baseline = new Set(selected);
+      baselinePublicLinks = new Set(publicLinks);
       baselineOrder = captureGridOrder();
       baselinePagesOrder = pages.map((page) => page.slug);
       for (const page of pages) {
         page.onGallery = selected.has(page.slug);
+        page.publicLink = publicLinks.has(page.slug);
       }
       syncCount();
       renderGrid();
@@ -1002,6 +1169,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     }) as EventListener);
 
     ownObserver(new MutationObserver(() => {
+      if (panel.classList.contains('is-resizing')) userSized = true;
       if (!panel.hidden) scheduleLayoutCaps();
     })).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
   };
@@ -1026,6 +1194,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
+    min-height: 0;
   }
 
   .dev-gallery-pages__status,
@@ -1048,9 +1217,136 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     gap: 8px;
     width: max-content;
     max-width: 100%;
-    height: max-content;
-    flex: 0 0 auto;
+    min-height: 0;
+    flex: 0 1 auto;
+    /* Scrolls itself once the panel is shorter than its rows; x is hidden so
+       a classic scrollbar lane or the drag lift never adds a sideways scroll. */
+    overflow: hidden auto;
+    overscroll-behavior: contain;
     padding: 0.15em;
+  }
+
+  .dev-gallery-pages__views {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* 15px box = traffic-light height, so the header does not grow; the 16px
+     glyph overflows by half a pixel each side. */
+  .dev-gallery-pages__view {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--on-surface-faint);
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+
+  .dev-gallery-pages__view::before {
+    content: '';
+    position: absolute;
+    inset: calc(var(--dev-hit-inset) * -1);
+  }
+
+  .dev-gallery-pages__view svg {
+    display: block;
+    overflow: visible;
+  }
+
+  /* Optical correction: list's three horizontal strokes land on fractional
+     pixels at 16px and read lighter than layout-grid's boxes at the same width. */
+  .dev-gallery-pages__view[data-gallery-view='list'] svg {
+    stroke-width: 2.25;
+  }
+
+  .dev-gallery-pages__view[aria-pressed='true'],
+  .dev-gallery-pages__view:hover {
+    color: var(--comp-button-label);
+  }
+
+  .dev-gallery-pages__view:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .dev-gallery-pages__grid[hidden],
+  .dev-gallery-pages__list[hidden] {
+    display: none;
+  }
+
+  /* Same width as the 3-up grid so switching views does not resize the panel. */
+  .dev-gallery-pages__list {
+    margin: 0;
+    /* Room for the ⋯ hit area (6px past the button) inside the list's box. */
+    padding: 0 6px 0 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    width: calc(var(--dev-gallery-thumb-w) * 3 + 16px + 0.3em);
+    max-width: 100%;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .dev-gallery-pages__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 0 0 32px;
+  }
+
+  /* Divider as an inset shadow so it takes no height: the 32px hit area then
+     fits the row exactly and the last row never overflows the list. */
+  .dev-gallery-pages__row + .dev-gallery-pages__row {
+    box-shadow: inset 0 1px var(--sys-color-outline-variant);
+  }
+
+  .dev-gallery-pages__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--dev-text-label);
+    letter-spacing: -0.01em;
+    color: var(--sys-color-on-srf);
+  }
+
+  .dev-gallery-pages__more {
+    position: relative;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--dev-radius-control-in-container);
+    background: none;
+    color: var(--sys-color-on-srf);
+    cursor: pointer;
+  }
+
+  /* 32px square hit area: 20px button + 6px each side, the full row height. */
+  .dev-gallery-pages__more::before {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+
+  .dev-gallery-pages__more svg {
+    display: block;
+  }
+
+  .dev-gallery-pages__more:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 0;
   }
 
   .dev-gallery-pages__card {

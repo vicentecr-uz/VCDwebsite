@@ -256,6 +256,26 @@
   color: var(--sys-color-on-srf-variant);
 }
 
+/* Panel-owned header controls sit right-aligned before the lights. They fade
+   with the body on minimize (same 250ms as devPanelCollapse) and leave the
+   tab order via visibility, so the header-only bar shows title + lights. */
+.dev-overlay__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  /* + the head's 8px gap = 24px to the lights: 3x the 8px between the
+     actions, so they read as a separate group. */
+  margin-right: 16px;
+  cursor: default;
+  transition: opacity 250ms ease, visibility 250ms;
+}
+
+.dev-overlay.is-minimized .dev-overlay__head-actions {
+  opacity: 0;
+  visibility: hidden;
+}
+
 /* Hover slop now comes from the light's own ::before (below), not from
    padding on the group, because padding would push the lights off the
    header's right edge. */

@@ -17,6 +17,8 @@ interface Props {
   defaultHidden?: boolean;
   layout?: 'portrait' | 'landscape';
   embedded?: boolean;
+  /** Set by DevOverlay, whose slot forwarding always fills the named slot. */
+  hasHeadActions?: boolean;
   [key: string]: any;
 }
 
@@ -30,6 +32,7 @@ const {
   defaultHidden = false,
   layout = 'portrait',
   embedded = false,
+  hasHeadActions = Astro.slots.has('head-actions'),
   ...rest
 } = Astro.props;
 
@@ -57,6 +60,13 @@ const hideSvg = trafficLightIcon(xIcon);
 >
   <div class="dev-overlay__head" data-drag-handle>
     <DevPanelTitle panelKey={panelKey} suffix={titleSuffix} title={title} />
+    {
+      hasHeadActions && (
+        <div class="dev-overlay__head-actions" data-drag-ignore>
+          <slot name="head-actions" />
+        </div>
+      )
+    }
     {
       showMinimize && (
         <div class="dev-overlay__lights" data-drag-ignore>
