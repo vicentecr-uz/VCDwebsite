@@ -78,18 +78,33 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     animating = true;
     const reduced = win.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const duration = 250;
+    const timing = { duration, easing: 'cubic-bezier(0.25, 1, 0.5, 1)', fill: 'both' as FillMode };
     body.hidden = false;
     panel.classList.add('is-dev-overlay-morphing');
+    let clipKeyframes: Keyframe[] | null = null;
+    if (!reduced && panel.classList.contains('dev-overlay')) {
+      const bodyRect = body.getBoundingClientRect();
+      const panelRect = panel.getBoundingClientRect();
+      const bodyHeight = bodyRect.height;
+      const bodyTop = bodyRect.top - panelRect.top;
+      const paddingBottom = Number.parseFloat(win.getComputedStyle(panel).paddingBottom) || 0;
+      const bodyStyles = win.getComputedStyle(body);
+      const corners = `${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
+      const inset = (height: number) => bodyHeight - (height - bodyTop - paddingBottom);
+      clipKeyframes = [
+        { clipPath: `inset(0 0 ${inset(fromHeight)}px 0 round 0 0 ${corners})` },
+        { clipPath: `inset(0 0 ${inset(toHeight)}px 0 round 0 0 ${corners})` },
+      ];
+    }
     if (!reduced) {
       // Only this bounded panel changes size; animating its box avoids scaling text and controls.
-      animations.push(panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], {
-        duration, easing: 'cubic-bezier(0.25, 1, 0.5, 1)', fill: 'both',
-      }));
+      animations.push(panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], timing));
     } else {
       // Keep the final geometry while the body fades, including the header-only collapsed size.
       animations.push(panel.animate([{ height: `${toHeight}px` }, { height: `${toHeight}px` }], { duration, fill: 'both' }));
     }
     animations.push(body.animate([{ opacity: fromOpacity }, { opacity: minimized ? 0 : 1 }], { duration, easing: 'ease', fill: 'both' }));
+    if (clipKeyframes) animations.push(body.animate(clipKeyframes, timing));
     void Promise.all(animations.map((animation) => animation.finished)).then(finish, () => {});
   };
 
