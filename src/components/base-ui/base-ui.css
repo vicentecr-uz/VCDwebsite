@@ -101,6 +101,11 @@
   min-width: 180px;
   padding: var(--popup-pad);
 }
+/* Rows sit the popup's inset apart, as in .dev-menu, so adjacent fills never touch. */
+.base-ui-select-item + .base-ui-select-item,
+.base-ui-menu-item + .base-ui-menu-item {
+  margin-top: var(--popup-pad);
+}
 .base-ui-select-popup {
   max-height: min(360px, var(--available-height));
   max-width: min(var(--anchor-width), calc(100vw - 32px));
@@ -188,7 +193,7 @@
 
 .base-ui-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
 .base-ui-field .dev-field__input--select { display: flex; align-items: center; gap: 8px; padding-right: 36px; }
-.base-ui-select-item { overflow-wrap: anywhere; gap: 8px; }
+.base-ui-select-item { overflow-wrap: anywhere; gap: 8px; font: var(--dev-text-select-value); }
 .base-ui-select-item > :first-child { min-width: 0; }
 .base-ui-field .dev-field__value { min-width: 0; }
 /* Each option's pill = the visible field box, so the listbox reads as fading in
@@ -211,6 +216,8 @@
 .base-ui-select-popup { background: var(--sys-color-srf); --popup-border: 0px; }
 .base-ui-select-item[data-highlighted] { background: var(--comp-field-container); }
 .base-ui-select-item { transition: background-color .2s ease, color .2s ease; }
+/* Base UI highlights the selected row as the popup mounts; show it on the first frame instead of fading it in. */
+.base-ui-select-popup[data-starting-style] .base-ui-select-item { transition: none; }
 
 .base-ui-select-group + .base-ui-select-group { margin-top: 8px; }
 .base-ui-select-group-label { padding: 6px 8px; color: var(--sys-color-on-srf-variant); font: var(--dev-text-status); line-height: 1.4; }

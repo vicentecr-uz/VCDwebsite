@@ -25,7 +25,7 @@ import DevPanelTitle from '../components/ui/DevPanelTitle.astro';
 import Field from '../components/ui/Field.astro';
 import TextField from '../components/ui/TextField.astro';
 import TextArea from '../components/ui/TextArea.astro';
-import SelectField from '../components/ui/SelectField.astro';
+import EditorSelectField from '../components/ui/EditorSelectField.astro';
 import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
 import Badge from '../components/ui/Badge.astro';
@@ -384,13 +384,13 @@ const componentCatalog: ComponentEntry[] = [
   },
   {
     id: 'component-ui-select-field',
-    name: 'SelectField',
+    name: 'EditorSelectField',
     category: 'ui-primitives',
-    purpose: 'Select input composed on Field — uses the system’s native select picker.',
-    classRef: '.dev-field / .dev-field__input--select',
-    source: 'src/components/ui/SelectField.astro',
-    props: 'label, options ({ value, label }[]), value?, disabled?, ...rest',
-    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    purpose: 'Select input composed on Field — Base UI listbox that opens over the trigger.',
+    classRef: '.dev-field / .dev-field__input--select / .base-ui-select-item',
+    source: 'src/components/ui/EditorSelectField.astro',
+    props: 'label, options ({ value, label, icon? }[] or groups), value?, disabled?, hideLabel?, ...rest',
+    usedOn: ['Edit mode panels'],
     preview: 'ui-select-field',
   },
   {
@@ -1000,7 +1000,7 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
                       )}
                       {component.preview === 'ui-select-field' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
-                          <SelectField
+                          <EditorSelectField
                             label="Label"
                             options={[
                               { value: 'a', label: 'Option A' },
