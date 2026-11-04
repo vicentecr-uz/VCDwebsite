@@ -1084,6 +1084,8 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     window.__vcdGalleryPages = {
       load: async () => {
         if (!activeGrid) activeGrid = currentGrid();
+        // Already loaded: don't re-render (it would detach the ⋯ that opened settings).
+        if (loadedGrid === activeGrid) return;
         await loadPages();
       },
       state: (slug: string) => {
@@ -1240,7 +1242,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     padding: 0;
     border: 0;
     background: none;
-    color: var(--sys-color-on-srf-subtle);
+    color: var(--comp-button-label-subtle);
     cursor: pointer;
     transition: color 150ms ease;
   }
@@ -1256,9 +1258,15 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     overflow: visible;
   }
 
+  /* Optical correction: list's three horizontal strokes land on fractional
+     pixels at 16px and read lighter than layout-grid's boxes at the same width. */
+  .dev-gallery-pages__view[data-gallery-view='list'] svg {
+    stroke-width: 2.25;
+  }
+
   .dev-gallery-pages__view[aria-pressed='true'],
   .dev-gallery-pages__view:hover {
-    color: var(--sys-color-on-srf);
+    color: var(--comp-button-label);
   }
 
   .dev-gallery-pages__view:focus-visible {

@@ -188,7 +188,11 @@
 .base-ui-select-item { overflow-wrap: anywhere; gap: 8px; }
 .base-ui-select-item > :first-child { min-width: 0; }
 .base-ui-field .dev-field__value { min-width: 0; }
-.base-ui-select-popup { min-width: min(180px, var(--anchor-width)); width: var(--anchor-width); }
+/* Popup = field width + its 4px side padding each way, and left-aligned item
+   text: alignItemWithTrigger then lands each option's pill exactly over the field
+   (pill 8px padding + icon/gap = the trigger's own 8px padding + icon/gap). */
+.base-ui-select-popup { min-width: min(180px, calc(var(--anchor-width) + 8px)); width: calc(var(--anchor-width) + 8px); max-width: min(calc(var(--anchor-width) + 8px), calc(100vw - 32px)); }
+.base-ui-select-item .base-ui-select-item__text { flex: 1; text-align: left; }
 .base-ui-collapsible { width: min(var(--dev-panel-width), 100%); box-sizing: border-box; }
 
 .base-ui-select-popup { background: var(--sys-color-srf); border: 0; }
