@@ -173,14 +173,22 @@ export function mediaCollectorIntegration(mediaDirName = 'media') {
       'astro:build:done': async ({ dir }) => {
         const distDir = fileURLToPath(dir);
         const mediaDir = path.join(process.cwd(), mediaDirName);
-        const output = await prunePublicOutput(distDir, { site, assetsDir });
+        const projectsDir = path.join(process.cwd(), 'src/content/projects');
+        const linkRoutes = [];
+        for (const file of (await readdir(projectsDir).catch(() => [])).filter((name) => name.endsWith('.json'))) {
+          const data = JSON.parse(await readFile(path.join(projectsDir, file), 'utf8'));
+          if (data.publicLink === true && (data.status ?? 'published') === 'published') {
+            linkRoutes.push(`/${path.basename(file, '.json')}/`);
+          }
+        }
+        const output = await prunePublicOutput(distDir, { site, assetsDir, linkRoutes });
         console.log(
-          `public output: retained ${output.retainedHtml.length} HTML page(s), `
-          + `removed ${output.removedHtml.length}; removed ${output.removedAssets.length} generated asset(s)`,
+          `public output: retained ${output.retainedHtml.length} HTML page(s) `
+          + `(${output.linkOnlyHtml.length} link-only), removed ${output.removedHtml.length}; removed ${output.removedAssets.length} generated asset(s)`,
         );
         const demoAssets = await readPublishedDemoAssets({
           distDir,
-          projectsDir: path.join(process.cwd(), 'src/content/projects'),
+          projectsDir,
           mediaDir,
           retainedHtml: output.retainedHtml,
         });

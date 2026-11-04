@@ -91,12 +91,15 @@
 }
 .base-ui-select-popup,
 .base-ui-menu-popup {
+  --popup-pad: 4px;
+  --popup-border: 1px;
   background: var(--comp-field-container);
-  border: 1px solid var(--sys-color-outline-variant);
-  border-radius: var(--dev-radius-control-in-container);
+  border: var(--popup-border) solid var(--sys-color-outline-variant);
+  /* Concentric with the items inside: outer = item radius + inset + border. */
+  border-radius: calc(var(--dev-radius-control) + var(--popup-pad) + var(--popup-border));
   box-shadow: var(--elevated-surface-shadow);
   min-width: 180px;
-  padding: 4px;
+  padding: var(--popup-pad);
 }
 .base-ui-select-popup {
   max-height: min(360px, var(--available-height));
@@ -188,10 +191,24 @@
 .base-ui-select-item { overflow-wrap: anywhere; gap: 8px; }
 .base-ui-select-item > :first-child { min-width: 0; }
 .base-ui-field .dev-field__value { min-width: 0; }
-.base-ui-select-popup { min-width: min(180px, var(--anchor-width)); width: var(--anchor-width); }
+/* Each option's pill = the visible field box, so the listbox reads as fading in
+   around the trigger. The field box is the anchor (trigger) minus its hit-slop
+   overhang each side (dev-chrome.css .dev-field__input--select); the listbox adds
+   its own inset + border around the pills. Pills pad like the field and text is
+   left-aligned, so alignItemWithTrigger lands each option's text exactly on the
+   trigger's value and each pill exactly on the field box. */
+.base-ui-select-popup {
+  --field-box-width: calc(var(--anchor-width) - 2 * var(--dev-hit-inset));
+  --listbox-width: calc(var(--field-box-width) + 2 * (var(--popup-pad) + var(--popup-border)));
+  min-width: min(180px, var(--listbox-width));
+  width: var(--listbox-width);
+  max-width: min(var(--listbox-width), calc(100vw - 32px));
+}
+.base-ui-select-item { padding-inline: var(--dev-field-padding); }
+.base-ui-select-item .base-ui-select-item__text { flex: 1; text-align: left; }
 .base-ui-collapsible { width: min(var(--dev-panel-width), 100%); box-sizing: border-box; }
 
-.base-ui-select-popup { background: var(--sys-color-srf); border: 0; }
+.base-ui-select-popup { background: var(--sys-color-srf); --popup-border: 0px; }
 .base-ui-select-item[data-highlighted] { background: var(--comp-field-container); }
 .base-ui-select-item { transition: background-color .2s ease, color .2s ease; }
 
