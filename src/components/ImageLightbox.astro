@@ -825,7 +825,10 @@ const inputModeOptions = [
   .image-lightbox.is-visible::backdrop { opacity: 1; }
   .image-lightbox__viewer { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; height: auto; min-height: 0; padding: calc(var(--vh-safe, 1svh) * 10) 10vw; overflow: visible; touch-action: none; outline: 0; }
   .image-lightbox__viewer:focus { outline: 0; }
-  .image-lightbox__viewer[data-keyboard-focus] { outline: 1px solid color-mix(in srgb, currentColor 35%, transparent); outline-offset: -1rem; }
+  /* Only while the viewer itself holds focus: tabbing on to the select must move the ring with it. */
+  .image-lightbox__viewer[data-keyboard-focus]:focus { outline: 1px solid color-mix(in srgb, currentColor 35%, transparent); outline-offset: -1rem; }
+  /* The editor field's focus fill barely reads over the backdrop; on the public site use the site focus ring. */
+  .image-lightbox__input-mode :global(.dev-field__value:has(:focus-visible:not([data-selection-returned-focus]))) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 3px; }
   .image-lightbox__image { display: block; width: min(100%, calc(var(--vh-safe, 1svh) * 80 * var(--image-aspect, 1))); height: auto; aspect-ratio: var(--image-aspect, auto); max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 80); object-fit: contain; transform-origin: center; user-select: none; cursor: grab; }
   :global(html:not(.is-dev-mode) img[data-image-original]) { cursor: pointer; }
   .image-lightbox__image.is-armed, .image-lightbox__image.is-settling { transition: opacity 150ms ease; }
