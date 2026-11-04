@@ -14,6 +14,9 @@ import '../styles/site-annotation-editor.css';
     const CHROME_FADE_MS = 280;
 
     const html = document.documentElement;
+    const remoteEditor = window.location.hostname === 'edit.vicentecr.uz';
+    html.classList.toggle('is-remote-editor', remoteEditor);
+    const restrictedMobileEditor = () => remoteEditor && window.matchMedia('(max-width: 40em)').matches;
     const leaseKey = '__vcdDevAuthoringLease';
     const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean } })[leaseKey]
       ??= { id: `dev-${crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`, timer: null, active: false });
@@ -345,7 +348,7 @@ import '../styles/site-annotation-editor.css';
         return;
       }
 
-      if (window.matchMedia('(max-width: 40em)').matches || target.closest('.dev-component-note-button')) return;
+      if (restrictedMobileEditor() || target.closest('.dev-component-note-button')) return;
 
       const editTrigger = target.closest<HTMLButtonElement>('[data-dev-edit-trigger]');
       if (editTrigger && devMode && !isSectionEditor()) {
@@ -428,7 +431,7 @@ import '../styles/site-annotation-editor.css';
     pageScope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
         // Alt+M types 'µ' in an editable — never intercept it there.
-        if (!devMode || window.matchMedia('(max-width: 40em)').matches || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
+        if (!devMode || restrictedMobileEditor() || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
         event.preventDefault();
         toggleLauncher();
         return;
@@ -450,7 +453,7 @@ import '../styles/site-annotation-editor.css';
         // same shortcut toggling both ways made it too easy to drop the whole
         // layer with a stray press, and the section-nav branch below has
         // always behaved this way.
-        if (!hasSectionNav() || window.matchMedia('(max-width: 40em)').matches) {
+        if (!hasSectionNav() || restrictedMobileEditor()) {
           setSectionEditor(false);
           if (!devMode) setDevMode(true);
           return;
@@ -466,7 +469,7 @@ import '../styles/site-annotation-editor.css';
       }
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyN') {
-        if (window.matchMedia('(max-width: 40em)').matches) return;
+        if (restrictedMobileEditor()) return;
         const gridEl = document.querySelector('[data-dev-project-grid]');
         if (!gridEl) return;
         if (isTypingTarget(event.target as HTMLElement | null)) return;
@@ -522,7 +525,7 @@ import '../styles/site-annotation-editor.css';
     }) as EventListener);
 
     pageScope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
-      if (!window.matchMedia('(max-width: 40em)').matches) return;
+      if (!restrictedMobileEditor()) return;
       if (event.detail?.panel) event.detail.panel.hidden = true;
       event.stopImmediatePropagation();
       syncTunerOpenClass();
