@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { createDevPanelCollapse } from '../../src/lib/devPanelCollapse';
 
-function setup(reduced = false) {
+function setup(reduced = false, prepare?: () => void) {
   const win = new Window({ url: 'http://localhost/' });
   win.matchMedia = (() => ({ matches: reduced, media: '(prefers-reduced-motion: reduce)', addListener() {}, removeListener() {} })) as typeof win.matchMedia;
   win.document.body.innerHTML = `<section class="dev-panel"><header><button data-minimize-toggle aria-expanded="true" aria-label="Minimize"></button></header><div data-overlay-body><input /></div></section>`;
@@ -10,7 +10,11 @@ function setup(reduced = false) {
   const body = panel.querySelector('[data-overlay-body]') as HTMLElement;
   body.style.opacity = '1';
   const button = panel.querySelector('button') as HTMLButtonElement;
-  Object.defineProperty(panel, 'getBoundingClientRect', { configurable: true, value: () => ({ height: panel.classList.contains('is-minimized') ? 40 : 120, width: 200, top: 0, left: 0, right: 200, bottom: 120 }) });
+  Object.defineProperty(panel, 'getBoundingClientRect', { configurable: true, value: () => {
+    const explicitHeight = Number.parseFloat(panel.style.height);
+    const height = panel.classList.contains('is-minimized') ? 40 : Number.isFinite(explicitHeight) ? explicitHeight : 120;
+    return { height, width: 200, top: 0, left: 0, right: 200, bottom: height };
+  } });
   Object.defineProperty(body, 'getBoundingClientRect', { configurable: true, value: () => ({ height: 80, width: 180, top: 32, left: 10, right: 190, bottom: 112 }) });
   const pending: Array<{ resolve(): void; cancel(): void; keyframes: Keyframe[] }> = [];
   const animate = function (this: HTMLElement, keyframes: Keyframe[]) {
@@ -24,8 +28,20 @@ function setup(reduced = false) {
   panel.animate = animate as typeof panel.animate;
   body.animate = animate as typeof body.animate;
   const callbacks: string[] = [];
-  const api = createDevPanelCollapse(panel, { beforeChange: () => callbacks.push('before'), afterChange: () => callbacks.push('after') });
-  return { win, panel, body, button, pending, callbacks, api };
+  const stateChanges: Array<{ minimized: boolean; hidden: boolean; height: number }> = [];
+  const api = createDevPanelCollapse(panel, {
+    beforeChange: () => callbacks.push('before'),
+    afterStateChange: () => {
+      prepare?.();
+      stateChanges.push({
+        minimized: panel.classList.contains('is-minimized'),
+        hidden: body.hidden,
+        height: panel.getBoundingClientRect().height,
+      });
+    },
+    afterChange: () => callbacks.push('after'),
+  });
+  return { win, panel, body, button, pending, callbacks, stateChanges, api };
 }
 
 test('non-animated collapse produces a header-only, inert panel and expand restores ARIA state', () => {
@@ -85,4 +101,13 @@ test('reduced motion keeps endpoint height fixed while preserving fade timing', 
   expect(h.pending[0].keyframes[0].height).toBe(h.pending[0].keyframes[1].height);
   expect(h.pending[1].keyframes[0].opacity).not.toBe(h.pending[1].keyframes[1].opacity);
   h.pending.forEach((animation) => animation.resolve());
+});
+
+test('state hook runs after final visibility state and before target measurement', () => {
+  const h = setup(false, () => { if (!h.panel.classList.contains('is-minimized')) h.panel.style.height = '96px'; });
+  h.api.set(true, false);
+  h.stateChanges.length = 0;
+  h.api.set(false);
+  expect(h.stateChanges).toEqual([{ minimized: false, hidden: false, height: 96 }]);
+  expect(h.pending[0].keyframes[1].height).toBe('96px');
 });

@@ -203,6 +203,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     const applyLayoutCaps = () => {
       if (panel.hidden) return;
       if (panel.classList.contains('is-minimized')) return;
+      if (panel.classList.contains('is-dev-overlay-morphing')) return;
       root.style.setProperty('--dev-gallery-thumb-w', `${computeThumbWidth()}px`);
       const hug = measureOverlayHug();
       if (!hug) return;
@@ -223,13 +224,15 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
       // Open at most 3.5 thumbnail rows tall (both views) until the user resizes;
       // max-height stays at the hug so a drag can still grow it to full content.
-      if (!userSized && !defaultHeightApplied && loadedGrid === activeGrid && pages.length) {
-        defaultHeightApplied = true;
+      if (!userSized && !defaultHeightApplied && loadedGrid === activeGrid && pages.length && hug.content > 0) {
         const thumbH = computeThumbWidth() * 3 / 4;
         const gridStyle = gridEl ? getComputedStyle(gridEl) : null;
         const gridPadY = gridStyle ? Number.parseFloat(gridStyle.paddingTop) + Number.parseFloat(gridStyle.paddingBottom) : 0;
         const target = hug.height - hug.content + 3.5 * thumbH + 3 * GRID_GAP + gridPadY;
-        if (target < hug.height) panel.style.height = `${Math.round(target)}px`;
+        if (Number.isFinite(target) && target > 0) {
+          defaultHeightApplied = true;
+          panel.style.height = Math.round(Math.min(target, hug.height, viewport.height)) + 'px';
+        }
       }
 
       const capW = Number.parseFloat(panel.style.maxWidth);
@@ -914,10 +917,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     };
 
     const syncView = () => {
-      // Header stays put while the body changes height (DevOverlay re-centres otherwise).
-      if ((gridEl?.hidden ?? false) !== (view !== 'grid')) {
-        panel.dispatchEvent(new CustomEvent('vcd:dev-overlay-keep-top'));
-      }
       if (gridEl) gridEl.hidden = view !== 'grid';
       if (listEl) listEl.hidden = view !== 'list';
       viewButtons.forEach((button) => {
@@ -1167,6 +1166,7 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       if (event.detail?.panel !== panel) return;
       scheduleLayoutCaps();
     }) as EventListener);
+    scope.listen(panel, 'vcd:dev-overlay-layout', applyLayoutCaps);
 
     ownObserver(new MutationObserver(() => {
       if (panel.classList.contains('is-resizing')) userSized = true;

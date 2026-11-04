@@ -1,5 +1,6 @@
 interface PanelCollapseOptions {
   beforeChange?: () => void;
+  afterStateChange?: () => void;
   afterChange?: () => void;
 }
 
@@ -54,6 +55,7 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     if (button) button.title = minimized ? 'Expand' : 'Minimize';
     button?.classList.toggle('dev-overlay__light--minimize', !minimized);
     button?.classList.toggle('dev-overlay__light--expand', minimized);
+    options.afterStateChange?.();
 
     const toHeight = panel.getBoundingClientRect().height;
     if (!minimized) morphBodyHeight = body.getBoundingClientRect().height;
