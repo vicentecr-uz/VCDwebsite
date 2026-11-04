@@ -2747,7 +2747,17 @@ export default defineConfig({
   // search engines both reject relative ones, so this has to be a real origin.
   site: process.env.PUBLIC_SITE_URL || 'https://vicentecr.uz',
   devToolbar: { enabled: false },
-  integrations: [react(), mediaCollectorIntegration(), devInspectors(), isolatedViteCommandCache()],
+  integrations: [
+    // A dev restart reruns Astro's content sync on a temp hmr:false server that
+    // shares these plugin objects; with static babel options @vitejs/plugin-react 5
+    // then deletes its `transform` while the live server still has it cached
+    // ("Cannot read properties of undefined (reading 'call')"). A babel function
+    // skips that branch. Drop once off @vitejs/plugin-react 5 (Astro 7 upgrade).
+    react({ babel: () => ({}) }),
+    mediaCollectorIntegration(),
+    devInspectors(),
+    isolatedViteCommandCache(),
+  ],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
   // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {
@@ -2806,6 +2816,10 @@ export default defineConfig({
         // also drops full-reload WS, but ignoring here keeps the watcher quiet.
         // Manual refresh when you want new content.
         ignored: [
+          // Agent worktrees nest inside the primary checkout: their astro.config.mjs
+          // and tsconfig.json would restart / full-reload this server. Anchored to
+          // this root so a worktree's own server still watches itself.
+          fileURLToPath(new URL('./.claude/worktrees/', import.meta.url)) + '**',
           '**/ROADMAP.md',
           '**/sitemap/**',
           '**/src/content/**',
