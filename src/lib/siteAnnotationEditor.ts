@@ -5,6 +5,7 @@ import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
 import { siteAnnotationSvg, siteAnnotationHasFreeInk } from './siteAnnotationSvg';
 import { captureTextParts, editableTextStrokes } from './siteAnnotationTextParts';
+import { sendSiteDrawEvent } from './siteDrawMode';
 import { annotationRect, annotationBaseRect, annotationVisibleRect, rangeForOffsets, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
@@ -275,6 +276,7 @@ const closeStage = () => {
   reactRoot = null;
   stage?.remove();
   stage = null;
+  sendSiteDrawEvent('stage-close');
   if (drawLauncher) {
     drawLauncher.hidden = !document.documentElement.classList.contains('is-dev-mode');
     positionLauncher();
@@ -446,6 +448,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   overlay.append(canvas, controls);
   document.body.append(overlay);
   stage = overlay;
+  sendSiteDrawEvent('stage-open');
   if (drawLauncher) drawLauncher.hidden = true;
   overlay.addEventListener('wheel', (event) => event.preventDefault(), { passive: false });
 
@@ -561,7 +564,7 @@ const closeDrawingMenu = (restoreFocus = false) => {
   const button = activeDrawingMenu.button;
   activeDrawingMenu = null;
   button.setAttribute('aria-expanded', 'false');
-  document.documentElement.removeAttribute('data-site-draw-menu-open');
+  sendSiteDrawEvent('menu-close');
   if (restoreFocus) button.focus();
 };
 
@@ -742,8 +745,7 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
   activeDrawingMenu = { menu, target, button, detailId: null, rows: [] };
   button.setAttribute('aria-expanded', 'true');
   button.setAttribute('aria-haspopup', 'menu');
-  document.documentElement.setAttribute('data-site-draw-menu-open', 'true');
-  document.dispatchEvent(new Event('dev:clear-gap-proximity'));
+  sendSiteDrawEvent('menu-open');
   document.body.append(menu);
   renderDrawingMenu(annotationsFor(target).current.length === 1 ? annotationsFor(target).current[0].id : null);
   let nativePopover = false;

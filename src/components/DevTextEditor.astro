@@ -198,6 +198,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
     GAP_INTENT_DELAY as SPACING_INTENT_DELAY_MS, GAP_FAST_POINTER as SPACING_FAST_POINTER_PX_PER_MS,
   } from '../lib/gapSpacingControl';
+  import { siteDrawMode } from '../lib/siteDrawMode';
 
   const disposePage = onPageLoad(() => {
   const pageScope = createPageScope();
@@ -1411,8 +1412,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
-      // Visible drawing controls own their vicinity, even when a gap pill paints above them.
-      if (document.documentElement.hasAttribute('data-site-draw-menu-open')
+      // Drawing (and its menu) owns the page; visible drawing controls own their vicinity.
+      if (siteDrawMode() !== 'idle'
         || isPointerNearDrawingControls(clientX, clientY)) {
         cancelGapRevealIntent();
         closeSectionMenus();
@@ -1601,7 +1602,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }) as EventListener, { signal: editorSignal });
       document.addEventListener('dev:clear-gap-proximity', () => {
         if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')
-          || document.documentElement.hasAttribute('data-site-draw-menu-open')) {
+          || siteDrawMode() !== 'idle') {
           closeSectionMenus();
         }
         clearGapProximityAll();
@@ -7108,8 +7109,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   /* Tuner open: force-hide gap controls (same as asset manager). */
   html.is-dev-tuner-open .dev-gap-toolbar__pill,
-  html[data-site-draw-menu-open] .dev-gap-toolbar__pill,
-  html[data-site-draw-menu-open] .dev-gap-toolbar__menu,
+  html[data-site-draw-mode] .dev-gap-toolbar__pill,
+  html[data-site-draw-mode] .dev-gap-toolbar__menu,
   html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__pill,
   html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__menu {
     opacity: 0 !important;
@@ -7126,14 +7127,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   /* Text hover dash + section chips paint at z 60–65 and show through panels
      that sit at the DevOverlay base (60). Hide transient chrome, retaining dirty fills. */
   html.is-dev-tuner-open [data-dev-text-document]::before,
-  html.is-dev-tuner-open [data-dev-text-document]:not(.is-dev-text-dirty)::after {
+  html.is-dev-tuner-open [data-dev-text-document]:not(.is-dev-text-dirty)::after,
+  html[data-site-draw-mode='drawing'] [data-dev-text-document]::before,
+  html[data-site-draw-mode='drawing'] [data-dev-text-document]:not(.is-dev-text-dirty)::after {
     opacity: 0 !important;
   }
 
   html.is-dev-tuner-open [data-dev-section-deletable] > .dev-section-delete,
   html.is-dev-tuner-open [data-dev-section-deletable]::after,
   html.is-dev-tuner-open [data-dev-section-reorderable] > .dev-section-drag-handle,
-  html.is-dev-tuner-open [data-dev-section-reorderable] > .dev-section-drag-bridge {
+  html.is-dev-tuner-open [data-dev-section-reorderable] > .dev-section-drag-bridge,
+  html[data-site-draw-mode='drawing'] [data-dev-section-deletable] > .dev-section-delete,
+  html[data-site-draw-mode='drawing'] [data-dev-section-deletable]::after,
+  html[data-site-draw-mode='drawing'] [data-dev-section-reorderable] > .dev-section-drag-handle,
+  html[data-site-draw-mode='drawing'] [data-dev-section-reorderable] > .dev-section-drag-bridge {
     opacity: 0 !important;
     pointer-events: none !important;
   }
