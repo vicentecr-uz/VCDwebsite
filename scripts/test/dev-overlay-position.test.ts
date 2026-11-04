@@ -7,7 +7,7 @@ const start = component.indexOf('    const clamp =');
 const end = component.indexOf('    const GAP = 8;', start);
 const positionSource = component.slice(start, end);
 const positionCompiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(
-  positionSource + '\nreturn { savePosition, readPosition, applyPreferredPosition, restorePosition };',
+  positionSource + '\nreturn { savePosition, readPosition, applyPosition, applyPreferredPosition, restorePosition };',
 );
 
 function fixture(stored: string | null = null) {
@@ -90,11 +90,78 @@ test('viewport clamping does not overwrite the stored proportional preference', 
   expect(JSON.parse(f.window.localStorage.getItem('devOverlay:test:position')!)).toEqual({ x: 0.9, y: 0.9 });
 });
 
-test('resizing only gates position writes, leaving snap handling after the gate', () => {
-  const observerStart = component.indexOf('    ownObserver(new ResizeObserver');
+test('resizing suppresses position writes but still snaps, while content resize clamps the current rect', () => {
+  const f = fixture();
+  let resizeCallback: (entries: Array<{ borderBoxSize: Array<{ blockSize: number }>; contentRect: { height: number } }>) => void;
+  class FakeResizeObserver {
+    constructor(callback: typeof resizeCallback) {
+      resizeCallback = callback;
+    }
+    observe() {}
+    disconnect() {}
+  }
+  const observerStart = component.indexOf('    let lastObservedHeight');
   const observerEnd = component.indexOf('    restorePosition();', observerStart);
   const observerSource = component.slice(observerStart, observerEnd);
-  expect(observerSource).toContain("!overlay.classList.contains('is-resizing')");
-  expect(observerSource).toContain('if (height < SNAP_TO_MINIMIZE_BELOW');
-  expect(observerSource.indexOf('if (height < SNAP_TO_MINIMIZE_BELOW')).toBeGreaterThan(observerSource.indexOf('if (!embedded'));
+  const observerCompiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(observerSource);
+  const collapse = { animating: false };
+  let minimized = false;
+  const setMinimized = (value: boolean) => { minimized = value; };
+  let positionWrites = 0;
+  const applyPosition = (...args: Parameters<typeof f.position.applyPosition>) => {
+    positionWrites += 1;
+    f.position.applyPosition(...args);
+  };
+  new Function(
+    'overlay',
+    'embedded',
+    'collapse',
+    'wantVisible',
+    'ownObserver',
+    'ResizeObserver',
+    'applyPosition',
+    'restorePosition',
+    'legacyCenter',
+    'legacyPosition',
+    'portraitScheduleConstrain',
+    'SNAP_TO_MINIMIZE_BELOW',
+    'heightBeforeResizeGesture',
+    'setMinimized',
+    observerCompiled,
+  )(
+    f.overlay,
+    false,
+    collapse,
+    true,
+    (observer: FakeResizeObserver) => observer,
+    FakeResizeObserver,
+    applyPosition,
+    f.position.restorePosition,
+    null,
+    null,
+    null,
+    72,
+    '160px',
+    setMinimized,
+  );
+  const callback = resizeCallback!;
+  f.overlay.classList.add('is-dev-overlay-open');
+
+  f.resize(200, 160);
+  callback([{ borderBoxSize: [{ blockSize: 160 }], contentRect: { height: 160 } }]);
+  positionWrites = 0;
+  f.overlay.style.left = '950px';
+  f.overlay.style.top = '30px';
+  f.overlay.classList.add('is-resizing');
+  f.resize(200, 60);
+  callback([{ borderBoxSize: [{ blockSize: 60 }], contentRect: { height: 60 } }]);
+  expect(positionWrites).toBe(0);
+  expect(minimized).toBe(true);
+  expect(f.overlay.dataset.restoredHeight).toBe('160px');
+
+  f.overlay.classList.remove('is-resizing');
+  f.resize(200, 120);
+  callback([{ borderBoxSize: [{ blockSize: 120 }], contentRect: { height: 120 } }]);
+  expect(positionWrites).toBe(1);
+  expect(f.overlay.getBoundingClientRect().left).toBe(800);
 });
