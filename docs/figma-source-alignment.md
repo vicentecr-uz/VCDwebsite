@@ -54,7 +54,7 @@ own — every one accepts and spreads arbitrary attributes so callers keep their
 | --- | --- | --- |
 | `Button.astro` | `Button` | `emphasis` (ghost/soft/solid/danger/page), `state`, `leadingIcon`, `trailingIcon`, `label` |
 | `SegmentedControl.astro` | `Segmented Control` | `items[]`, `value` |
-| `SelectField.astro` | `Select Field` | `label`, `value`, `options` |
+| `EditorSelectField.astro` | `Select Field` | `label`, `value`, `options` |
 | `TextField.astro` / `TextArea.astro` | `Text Field` / `Text Area` | `label`, `value` |
 | `ToggleRow.astro` | `Toggle Row` | `label`, `checked` |
 | `PanelActions.astro` | `Panel Actions` | `buttons[]` |
