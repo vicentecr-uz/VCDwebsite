@@ -191,18 +191,20 @@
 .base-ui-select-item { overflow-wrap: anywhere; gap: 8px; }
 .base-ui-select-item > :first-child { min-width: 0; }
 .base-ui-field .dev-field__value { min-width: 0; }
-/* Listbox = the visible field box: the anchor (trigger) minus its hit-slop
-   overhang each side (dev-chrome.css .dev-field__input--select). Option inset +
-   popup inset + border = the field padding, and option text is left-aligned, so
-   alignItemWithTrigger lands each option's text exactly on the trigger's value
-   with the popup flush to the field. */
+/* Each option's pill = the visible field box, so the listbox reads as fading in
+   around the trigger. The field box is the anchor (trigger) minus its hit-slop
+   overhang each side (dev-chrome.css .dev-field__input--select); the listbox adds
+   its own inset + border around the pills. Pills pad like the field and text is
+   left-aligned, so alignItemWithTrigger lands each option's text exactly on the
+   trigger's value and each pill exactly on the field box. */
 .base-ui-select-popup {
   --field-box-width: calc(var(--anchor-width) - 2 * var(--dev-hit-inset));
-  min-width: min(180px, var(--field-box-width));
-  width: var(--field-box-width);
-  max-width: min(var(--field-box-width), calc(100vw - 32px));
+  --listbox-width: calc(var(--field-box-width) + 2 * (var(--popup-pad) + var(--popup-border)));
+  min-width: min(180px, var(--listbox-width));
+  width: var(--listbox-width);
+  max-width: min(var(--listbox-width), calc(100vw - 32px));
 }
-.base-ui-select-item { padding-inline: calc(var(--dev-field-padding) - var(--popup-pad) - var(--popup-border)); }
+.base-ui-select-item { padding-inline: var(--dev-field-padding); }
 .base-ui-select-item .base-ui-select-item__text { flex: 1; text-align: left; }
 .base-ui-collapsible { width: min(var(--dev-panel-width), 100%); box-sizing: border-box; }
 
