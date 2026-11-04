@@ -427,10 +427,12 @@
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
 
   /* Core spacing unit — default site gutter, header/footer padding, grid gaps,
-     and the project-stack "related" step. rem (not em) so it is the same
-     distance wherever it is used, including inside elements with a scaled
-     font-size. Tightened on phones below; the phone gutter overrides it. */
-  --space-unit: 1rem;
+     and the project-stack "related" step. It is the ink gap between two body
+     lines (baseline to next cap top): body line minus Hanken Grotesk's cap
+     height (0.697em). Text gaps are whole multiples of it: line 1u, paragraph
+     and title 2u. Built from rem tokens, so it is the same distance wherever it
+     is used; it follows the body size per breakpoint. */
+  --space-unit: calc(var(--text-body-size) * (var(--text-body-leading) - 0.697));
 
   /* Project stack rhythm (one gap between siblings — see project.css).
      Related = the core unit so chrome padding and tight content gaps match. */
@@ -532,11 +534,10 @@
   }
 }
 
-/* Phone: the core unit steps down for chrome and compact content rhythm.
+/* Phone: the core unit follows the smaller body size.
    The page gutter is widened separately below so content stays off the edge. */
 @media (max-width: 40em) {
   :root {
-    --space-unit: 0.75rem;
     --page-top-offset: max(env(safe-area-inset-top, 0px), 2rem);
     --text-body-size: 1rem;
     --text-body-leading: 1.6;
