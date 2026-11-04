@@ -100,6 +100,35 @@
   --project-stack-related-gap: calc(var(--text-body-size) * var(--text-body-leading));
 }
 
+/* A title's unit gap above mirrors its gap below, ink to ink: cap top above,
+   baseline below. Body text adds its line's space above the cap / below the
+   baseline, (line-height - 0.697em) / 2 as for --title-pull, so the mirror adds
+   it when body text follows and drops it when body text precedes.
+   Ceiling: other text-like neighbours (quote, tagline, another title) count as
+   boxes; give them their own inset here if one sits against a title. */
+.project-stack--precede-related:has(> .project-section-title) {
+  --body-ink-inset: calc((var(--text-body-leading) - 0.697) * var(--text-body-size) / 2);
+  --title-gap-below: var(--space-related);
+  --title-prev-inset: 0px;
+  --project-stack-related-gap: calc(var(--title-gap-below) - var(--title-prev-inset));
+}
+
+.project-stack--precede-related:has(+ .project-block--text > .project-body-text) {
+  --title-gap-below: calc(var(--text-body-size) * var(--text-body-leading) + var(--body-ink-inset));
+}
+
+.project-stack--precede-related:has(> h2.project-section-title):has(+ :is(.code-block, .sabi-example)) {
+  --title-gap-below: calc(var(--space-related) - (var(--text-heading-1-leading) - 0.697) * var(--text-heading-1-size) / 2);
+}
+
+.project-stack--precede-related:has(> h3.project-section-title):has(+ :is(.code-block, .sabi-example)) {
+  --title-gap-below: calc(var(--space-related) - (var(--text-heading-2-leading) - 0.697) * var(--text-heading-2-size) / 2);
+}
+
+.project-block--text:has(> .project-body-text) + .project-stack--precede-related:has(> .project-section-title) {
+  --title-prev-inset: var(--body-ink-inset);
+}
+
 .project-intro-air {
   flex: 0 0 auto;
   height: 0;
