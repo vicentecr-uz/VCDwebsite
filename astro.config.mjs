@@ -2,7 +2,6 @@
 import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
@@ -75,7 +74,7 @@ import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 import { isVideoSrc } from './src/lib/imageUpload.mjs';
 import { isPlaceholderSrc } from './src/lib/projectImageFrame';
 import { imageDescriptionsDevWriter } from './scripts/dev-image-descriptions.mjs';
-import { devInspectors } from './scripts/dev-inspectors.mjs';
+import { devInspectors, lapseInstalled } from './scripts/dev-inspectors.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -2709,14 +2708,6 @@ export function contentNavDevWriter() {
 export function stubLapseWhenUnavailable() {
   const PREFIX = '\0vcd-lapse-stub:';
   const stubbed = new Set(['@aiforui/lapse/install', '@aiforui/lapse/panel']);
-  const lapseInstalled = (() => {
-    try {
-      createRequire(import.meta.url).resolve('@aiforui/lapse/panel');
-      return true;
-    } catch {
-      return false;
-    }
-  })();
   let command = 'serve';
   return {
     name: 'vcd-stub-lapse',
