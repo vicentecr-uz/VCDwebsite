@@ -40,7 +40,14 @@ Text and decorative rules have separate contrast requirements. Do not use `--sys
 
 ## Quiet controls in editing chrome
 
-`--sys-color-on-srf-faint` (`ref.palette.grey.700` light, `grey.300` dark) is the ink for low-emphasis dev controls and icons at rest: unselected toggles, select chevrons, help glyphs. Dev chrome reaches it through `--comp-button-label-faint`. It is about 1.5:1 against white, so it is never text ink; quiet text in dev chrome still uses `--comp-button-label-subtle` or `--sys-color-on-srf-subtle`. Public-site controls (such as the Sabi demo's replay button) keep `--comp-button-label-subtle`.
+Faint ink is for low-emphasis dev controls and glyphs at rest (unselected toggles, select chevrons, help glyphs), and it depends on the surface the glyph is drawn on:
+
+| Surface | sys role (light / dark) | comp token |
+| --- | --- | --- |
+| Panel surface (`srf`) | `--sys-color-on-srf-faint` (grey-700 / grey-300) | `--comp-button-label-faint` |
+| Field and soft-button fills (`srf-container-low`, `srf-container`) | `--sys-color-on-srf-container-faint` (grey-600 / grey-400) | `--comp-field-icon` |
+
+Pick the token by the fill directly behind the glyph. Faint ink is never text ink (about 1.5–2:1); quiet text in dev chrome still uses `--comp-button-label-subtle` or `--sys-color-on-srf-subtle`. Public-site controls (such as the Sabi demo's replay button) keep `--comp-button-label-subtle`.
 
 Figma's `on-srf-subtle` variable resolves to `palette/grey/700`, the value code used until the metadata role moved to grey500. Code's `on-srf-faint` is that Figma value; code's `on-srf-subtle` is the optional-metadata role above. Mirror both in Figma so the names line up.
 
