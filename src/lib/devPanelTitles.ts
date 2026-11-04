@@ -6,7 +6,7 @@ export const DEV_PANEL_TITLES = {
   carousel: 'Carousel',
   'add-image': 'Add image',
   'project-settings': 'Project settings',
-  'gallery-pages': 'Gallery manager',
+  'gallery-pages': 'Pages',
   'asset-manager': 'Asset manager',
   'log-issue': 'Log new issue',
   'new-project': 'New project',

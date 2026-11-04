@@ -77,7 +77,8 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
    *   title: string,
    *   status: string,
    *   publicLink: boolean,
-   *   listedElsewhere: boolean,
+   *   rootLinked: boolean,
+   *   links: string[],
    *   onGallery: boolean,
    *   hasCover: boolean,
    *   image: string,
@@ -873,11 +874,26 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
       return el;
     };
 
-    // Ceiling: "listed" knows gallery listings only; a Public page reached by a
-    // text link (About, another case study) also ships. Upgrade by exposing the
-    // build's reachability graph to the dev API.
+    // Same walk as the build's prune: from this gallery's cards plus whatever
+    // static pages, the header, or other galleries link to, through Public pages'
+    // own links. publicLink pages are not followed, matching the build.
+    const reachableSlugs = () => {
+      const bySlug = new Map(pages.map((page) => [page.slug, page]));
+      const queue = pages.filter((page) => selected.has(page.slug) || page.rootLinked).map((page) => page.slug);
+      const reached = new Set<string>();
+      while (queue.length) {
+        const slug = queue.shift()!;
+        const page = bySlug.get(slug);
+        if (reached.has(slug) || page?.status !== 'published') continue;
+        reached.add(slug);
+        queue.push(...(page.links ?? []));
+      }
+      return reached;
+    };
+
     const renderList = (list: GalleryPage[]) => {
       if (!listEl) return;
+      const reached = reachableSlugs();
       const header = cell('row', 'dev-gallery-pages__row dev-gallery-pages__row--head',
         cell('columnheader', 'dev-gallery-pages__name', document.createTextNode('Name')),
         cell('columnheader', 'dev-gallery-pages__col', document.createTextNode('Visible')),
@@ -886,7 +902,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
       const rows = list.map((page) => {
         const isOn = selected.has(page.slug);
         const isPublicStatus = page.status === 'published';
-        const listed = isOn || page.listedElsewhere;
+        const listed = reached.has(page.slug);
         const isPublished = isPublicStatus && (listed || publicLinks.has(page.slug));
 
         const eye = iconButton('dev-gallery-pages__toggle', isOn ? eyeIconHtml : eyeOffIconHtml,
@@ -895,7 +911,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
 
         const globe = iconButton('dev-gallery-pages__toggle', isPublished ? globeIconHtml : globeLockIconHtml,
           `${page.title}${isPublished ? ' (published)' : ' (not published)'}`, isPublished);
-        // Listed Public pages publish through navigation; non-Public statuses never get a route.
+        // Reachable Public pages publish through navigation; non-Public statuses never get a route.
         globe.disabled = !isPublicStatus || listed;
         scope.listen(globe, 'click', () => togglePublicLink(page));
 
@@ -904,13 +920,16 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
           cell('cell', 'dev-gallery-pages__col', eye),
           cell('cell', 'dev-gallery-pages__col', globe),
         );
-        row.classList.toggle('is-off', !isOn);
         return row;
       });
       listEl.replaceChildren(header, ...rows);
     };
 
     const syncView = () => {
+      // Header stays put while the body changes height (DevOverlay re-centres otherwise).
+      if ((gridEl?.hidden ?? false) !== (view !== 'grid')) {
+        panel.dispatchEvent(new CustomEvent('vcd:dev-overlay-keep-top'));
+      }
       if (gridEl) gridEl.hidden = view !== 'grid';
       if (listEl) listEl.hidden = view !== 'list';
       viewButtons.forEach((button) => {
@@ -1249,6 +1268,8 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     border-top: 1px solid var(--sys-color-outline-variant);
   }
 
+  /* Two inks only: on-srf for names and anything clickable, on-srf-subtle for
+     labels and locked state. On/off is carried by the glyph, never by tint. */
   .dev-gallery-pages__row--head {
     position: sticky;
     top: 0;
@@ -1257,7 +1278,7 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     border-top: 0;
     background: var(--sys-color-srf);
     font: var(--dev-text-status);
-    color: var(--sys-color-on-srf-variant);
+    color: var(--sys-color-on-srf-subtle);
   }
 
   .dev-gallery-pages__name {
@@ -1273,10 +1294,6 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
   .dev-gallery-pages__row--head .dev-gallery-pages__name {
     font: inherit;
     color: inherit;
-  }
-
-  .dev-gallery-pages__row.is-off .dev-gallery-pages__name {
-    color: var(--sys-color-on-srf-subtle);
   }
 
   .dev-gallery-pages__col {
@@ -1296,23 +1313,20 @@ const globeLockIconSvg = sizeIcon(globeLockIcon, 16);
     cursor: pointer;
   }
 
+  /* Hit area fills the 64 × 32 cell: 20 + 2×22 wide, 20 + 2×6 tall. */
   .dev-gallery-pages__toggle::before {
     content: '';
     position: absolute;
-    inset: calc(var(--dev-hit-inset) * -1);
+    inset: -6px -22px;
   }
 
   .dev-gallery-pages__toggle svg {
     display: block;
   }
 
-  .dev-gallery-pages__toggle[aria-pressed='false'] {
-    color: var(--sys-color-on-srf-subtle);
-  }
-
   .dev-gallery-pages__toggle:disabled {
-    opacity: var(--dev-opacity-disabled);
-    cursor: not-allowed;
+    color: var(--sys-color-on-srf-subtle);
+    cursor: default;
   }
 
   .dev-gallery-pages__toggle:focus-visible {

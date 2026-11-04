@@ -482,6 +482,15 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       scope.listen(window, 'resize', scheduleConstrain);
     }
 
+    // A panel about to swap its body (e.g. Pages grid ↔ list) asks to keep its
+    // top edge. Ceiling: a 300ms window covers the swap plus the panel's own
+    // follow-up layout caps; general top-left anchoring for minimize and
+    // resize (#192) replaces this.
+    let keepTop: { top: number; until: number } | null = null;
+    scope.listen(overlay, 'vcd:dev-overlay-keep-top', () => {
+      keepTop = { top: overlay.getBoundingClientRect().top, until: performance.now() + 300 };
+    });
+
     let lastObservedHeight: number | null = null;
     ownObserver(new ResizeObserver((entries) => {
       const entry = entries[0];
@@ -490,7 +499,12 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       lastObservedHeight = height;
       if (collapse.animating) return;
       if (!overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
-        applyPreferredPosition();
+        if (keepTop && performance.now() < keepTop.until) {
+          applyPosition(overlay.getBoundingClientRect().left, keepTop.top, true);
+        } else {
+          keepTop = null;
+          applyPreferredPosition();
+        }
       }
       if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
       if (overlay.classList.contains('is-minimized')) {
