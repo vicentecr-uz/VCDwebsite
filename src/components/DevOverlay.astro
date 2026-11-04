@@ -523,8 +523,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const previous = lastObservedHeight;
       lastObservedHeight = height;
       if (collapse.animating || !wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
-      if (overlay.classList.contains('is-dragging') || overlay.classList.contains('is-resizing')) return;
-      if (!embedded) {
+      if (!embedded && !overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
         if (legacyCenter || legacyPosition) restorePosition();
         else {
           const rect = overlay.getBoundingClientRect();
