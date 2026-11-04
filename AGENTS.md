@@ -63,6 +63,8 @@ Use this sequence for every engine or repository-docs change:
 
    Confirm the exact route with `curl`. This proves availability only; the owner performs interactive visual verification. Do not drive pointer, hover, focus, drag, or animation QA headlessly.
 
+   Lapse and Agentation are part of the local QA environment. Keep the shared dev-inspector injection enabled on every review preview, regardless of port or worktree; do not remove or disable either tool unless the owner explicitly requests it. Preserve their normal shortcuts (⌥L and ⌥C) and the production exclusion.
+
    Cloudflare Pages branch previews are optional and are not an ordinary review or merge gate. Use one when the owner requests a remotely reachable URL, especially for phone testing away from the local network, or when a task genuinely requires Cloudflare-specific verification. Otherwise use the local worktree preview and do not wait for a pending Cloudflare preview check before merging. An enforced branch-protection requirement still applies until the repository setting is changed.
 9. Hand off the branch name, exact reviewed commit SHA, PR link, and checks run. For site/UI work, also provide the clickable localhost route and a numbered test script with exact expected results. Keep the preview and worktree alive through review.
 10. Wait for explicit sign-off on the reviewed result, such as “keep”, “approved”, “ship it”, or “looks good”. Silence, partial feedback, or approval of an approach is not result sign-off.
