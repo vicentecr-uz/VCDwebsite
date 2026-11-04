@@ -55,7 +55,8 @@ export function installPersistentNavigation(hooks: Hooks) {
     const title = (event.sourceElement as HTMLElement | undefined)?.dataset.headerNavigationTitle;
     announceTitle(title, preserveTitleMotionForNavigation);
     const outgoingDocs = Boolean(document.querySelector('[data-page-shell][data-documentation-page]'));
-    let covered = outgoingDocs ? undefined : hooks.cover();
+    // Unannotated links need destination markup before deciding whether the header persists.
+    let covered = outgoingDocs || (!title && !fadeHeader) ? undefined : hooks.cover();
     const cancel = () => hooks.cancel(!covered);
     queueMicrotask(() => {
       if (event.defaultPrevented && navigation === event) cancel();
@@ -64,10 +65,17 @@ export function installPersistentNavigation(hooks: Hooks) {
     event.loader = async () => {
       try {
         await loader();
-        if (event.signal.aborted || event.defaultPrevented) return;
+        if (event.signal.aborted) return;
+        // Astro cancels routing after loading a page without ClientRouter; cover before its full-page fallback.
+        const loadedWithoutRouter = event.newDocument !== document && !event.newDocument.querySelector('[name="astro-view-transitions-enabled"]');
+        if (event.defaultPrevented && !loadedWithoutRouter) return;
+        if (!event.newDocument.querySelector('.site-header-slot')) {
+          preserveTitleMotion = false;
+          announceTitle(undefined, false);
+        }
         const incomingDocs = Boolean(event.newDocument.querySelector('[data-page-shell][data-documentation-page]'));
-        if (!incomingDocs && !covered) covered = hooks.cover();
-        if (outgoingDocs && covered) await covered;
+        if ((!outgoingDocs || !incomingDocs) && !covered) covered = hooks.cover();
+        if (covered) await covered;
         if (event.signal.aborted || event.defaultPrevented) return;
         const parts = persistentPageParts(event.newDocument);
         // Only lifecycle-supported editor islands join the retained public shell.
@@ -75,7 +83,6 @@ export function installPersistentNavigation(hooks: Hooks) {
           event.preventDefault(); return;
         }
         if (!title && parts.header) announceTitle(parts.header.querySelector('.header-trigger__wordmark--page')?.textContent?.trim(), preserveTitleMotionForNavigation);
-        if (!outgoingDocs) await covered;
         skipVeil = outgoingDocs && incomingDocs;
       } catch (error) {
         if (!event.signal.aborted) { cancel(); event.preventDefault(); }

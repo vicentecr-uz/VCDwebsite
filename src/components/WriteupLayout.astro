@@ -15,17 +15,28 @@ interface Props {
 
 const { title, description, ogImage } = Astro.props;
 const showDevTools = import.meta.env.DEV;
+const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-research-paper';
 ---
 
 <Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage}>
   <div data-page-shell data-writeup-page class="writeup-page flex flex-col min-h-dvh">
     <header class="writeup-masthead">
-      <a href="/digital" class="writeup-backlink">
+      <a href={isTapicoResearch ? '/' : '/digital'} class="writeup-backlink">
         <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />
         <span class="writeup-backlink__label">Index</span>
       </a>
       <h1 class="sr-only">{title}</h1>
     </header>
+    {isTapicoResearch && <script is:inline>
+      if (document.referrer) {
+        const source = new URL(document.referrer);
+        if (source.origin === location.origin && source.pathname.replace(/\/$/, '') === '/tapico') {
+          const link = document.querySelector('.writeup-backlink');
+          link.href = '/tapico';
+          link.querySelector('.writeup-backlink__label').textContent = 'Back';
+        }
+      }
+    </script>}
 
     <main id="main-content" class="project-page__main flex-1">
       <slot />
