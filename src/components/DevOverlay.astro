@@ -238,6 +238,9 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         const rect = overlay.getBoundingClientRect();
         writeLocalFromViewport(rect.left, rect.top);
       },
+      afterStateChange: () => {
+        overlay.dispatchEvent(new CustomEvent('vcd:dev-overlay-layout'));
+      },
       afterChange: () => {
         if (!embedded && overlay.offsetHeight) {
           const rect = overlay.getBoundingClientRect();
