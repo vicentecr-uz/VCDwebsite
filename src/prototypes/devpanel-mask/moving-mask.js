@@ -45,7 +45,7 @@ export function mount(
     const styles = getComputedStyle(body);
     const corners = `${styles.borderBottomLeftRadius} ${styles.borderBottomRightRadius}`;
     const inset = (height) =>
-      `${Math.max(0, bodyHeight - Math.min(bodyHeight, Math.max(0, height - bodyTop - paddingBottom)))}px`;
+      `${bodyHeight - (height - bodyTop - paddingBottom)}px`;
     const timing = source.effect?.getTiming?.() ?? {};
     const mask = body.animate(
       [
