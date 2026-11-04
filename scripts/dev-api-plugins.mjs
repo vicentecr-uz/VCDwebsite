@@ -1017,6 +1017,11 @@ export function projectSettingsDevWriter() {
               title: data.title,
               description: data.description ?? '',
               status: data.status ?? 'draft',
+              stack: data.stack === 'legacy' ? 'legacy' : 'modern',
+              // Effective type, mirroring isWriteupProject (old Play listings default to write-up).
+              layout: data.stack !== 'legacy' && (data.layout === 'writeup' || (data.layout !== 'case-study' && Boolean(data.listings?.play)))
+                ? 'writeup'
+                : 'case-study',
               listings: resolvedListings,
               listing: {
                 image: listing.image ? assetUrlFromSrc(listing.image) : '',
@@ -1068,12 +1073,15 @@ export function projectSettingsDevWriter() {
           data.description = String(body.description || '').trim();
           data.status = validateStatus(body.status, validateStatus(data.status));
           data.slug = slug;
+          if (body.layout === 'case-study' || body.layout === 'writeup') data.layout = body.layout;
           const previousListings = data.listings ?? {};
           // Merge — one-grid saves must not wipe Home/Play siblings.
           data.listings = { ...previousListings };
           for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
-            if (!listing) continue;
+            // Cards are added only through gallery membership, which saves first;
+            // a settings save must not resurrect a card hidden in the same save.
+            if (!listing || !previousListings[grid]) continue;
             data.listings[grid] = listingCardForGrid(grid, listing, previousListings[grid] ?? {});
           }
           data.teaser = {
