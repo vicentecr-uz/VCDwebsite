@@ -112,9 +112,6 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
      * All writes are one synchronous turn so the 0,0 probe never paints.
      */
     const writeLocalFromViewport = (viewportLeft: number, viewportTop: number) => {
-      const prevTransition = overlay.style.transition;
-      overlay.style.transition = 'none';
-      void overlay.offsetWidth;
       overlay.style.translate = 'none';
       overlay.style.right = 'auto';
       overlay.style.bottom = 'auto';
@@ -123,7 +120,6 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const origin = overlay.getBoundingClientRect();
       overlay.style.left = `${viewportLeft - origin.left}px`;
       overlay.style.top = `${viewportTop - origin.top}px`;
-      overlay.style.transition = prevTransition;
     };
 
     const applyPosition = (left: number, top: number, persist: boolean) => {
