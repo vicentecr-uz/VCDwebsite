@@ -133,3 +133,21 @@ test('ships the unlinked owner-only analytics page with its assets', async () =>
   assert.ok(result.retainedHtml.includes('analytics/index.html'));
   assert.ok(result.retainedAssets.includes('_astro/analytics.js'));
 });
+
+test('ships publicLink pages by URL only, noindexed unless navigation reaches them', async () => {
+  const { root, put } = await fixture();
+  await put('index.html', '<a href="/listed/">Listed</a>');
+  await put('listed/index.html', '<html><head></head><body>listed</body></html>');
+  await put('write-up/index.html', '<html><head lang="en"><title>Write-up</title></head><body><a href="/old/">Old</a><img src="/_astro/figure.js"></body></html>');
+  await put('old/index.html', 'old');
+  await put('_astro/figure.js', 'export {};');
+
+  const result = await prunePublicOutput(root, { site, linkRoutes: ['/write-up/', '/listed/', '/missing/'] });
+
+  assert.deepEqual(result.linkOnlyHtml, ['write-up/index.html']);
+  assert.ok(result.retainedHtml.includes('write-up/index.html'));
+  assert.ok(result.removedHtml.includes('old/index.html'));
+  assert.ok(result.retainedAssets.includes('_astro/figure.js'));
+  assert.match(await readFile(path.join(root, 'write-up/index.html'), 'utf8'), /^<html><head lang="en"><meta name="robots" content="noindex"><title>/);
+  assert.doesNotMatch(await readFile(path.join(root, 'listed/index.html'), 'utf8'), /noindex/);
+});

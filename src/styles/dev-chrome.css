@@ -244,7 +244,7 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px;
+  padding: var(--dev-field-padding);
   border-radius: var(--dev-radius-control);
   background: var(--comp-field-container);
   --on-surface-faint: var(--sys-color-on-srf-container-faint);
@@ -455,12 +455,15 @@
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
-  margin: -4px;
-  padding: 12px;
+  /* The trigger overhangs the grey value box by the hit slop on every side, and
+     pads by the same amount back in, so its content sits at the field padding.
+     The select listbox subtracts this overhang to match the visible box. */
+  margin: calc(-1 * var(--dev-hit-inset));
+  padding: calc(var(--dev-field-padding) + var(--dev-hit-inset));
   padding-right: 28px;
   /* Value box padding is 0 for selects (55afc2c) — 100% is already the grey
-     box; +8px matches the -4px overflow so the native menu covers the chevron. */
-  width: calc(100% + 8px);
+     box; the overhang on both sides lets the native menu cover the chevron. */
+  width: calc(100% + 2 * var(--dev-hit-inset));
 }
 
 .dev-field__input--select:disabled {
