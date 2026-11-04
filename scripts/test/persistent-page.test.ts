@@ -328,7 +328,7 @@ test('seen-session Digital to Home navigation completes the persistent swap', as
   expect(reveals).toEqual([1]);
 });
 
-function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10, bottom: 58 }, hiddenClass = false, ancestorOpacity = '' } = {}) {
+function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10, bottom: 58 }, hiddenClass = false, ancestorOpacity = '', cover = (_doc: any) => Promise.resolve() } = {}) {
   const win = fixture(); const doc = win.document;
   doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
   doc.body.innerHTML = '<div id="site-wrapper"><div data-page-shell><div class="site-header-slot"><header class="site-header"><span class="header-trigger__wordmark" aria-hidden="false">Project</span></header></div><div class="header-menu-backdrop"></div></div><main></main></div><div id="transition-overlay"></div>';
@@ -344,7 +344,7 @@ function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10,
   const stored = { getItem: () => 'true' };
   new Function('document', 'sessionStorage', 'CustomEvent', 'persistentPageParts', 'supportsPersistentPage', 'hooks', `${script}; installPersistentNavigation(hooks);`)(
     doc, stored, win.CustomEvent, persistentPageParts, supportsPersistentPage,
-    { cover: () => Promise.resolve(), reveal() {}, cancel() {}, beforeSwap() {} },
+    { cover: () => cover(doc), reveal() {}, cancel() {}, beforeSwap() {} },
   );
   const prepare = (path: string, sourceTitle?: string) => {
     const event = new win.Event('astro:before-preparation', { cancelable: true }) as any;
@@ -358,6 +358,30 @@ function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10,
   };
   return { doc, header, starts, prepare };
 }
+
+test('unannotated navigation to a headerless write-up lowers the header before covering and waits before fallback', async () => {
+  const covered: boolean[] = [];
+  let finishCover!: () => void;
+  const f = navigationVisibilityFixture({ cover: (doc) => {
+    covered.push(doc.documentElement.hasAttribute('data-header-navigation'));
+    return new Promise<void>(resolve => { finishCover = resolve; });
+  } });
+  const next = f.doc.implementation.createHTMLDocument('Research paper');
+  next.body.innerHTML = '<div id="site-wrapper"><div data-page-shell data-writeup-page><main>Research</main></div></div><div id="transition-overlay"></div>';
+  const event = f.prepare('/tapico-research-paper');
+  event.newDocument = next;
+  expect(covered).toEqual([]);
+  const loading = event.loader();
+  await Promise.resolve();
+  expect(covered).toEqual([false]);
+  expect(f.starts.at(-1)?.animateTitle).toBe(false);
+  expect(event.defaultPrevented).toBe(false);
+  finishCover();
+  await loading;
+  expect(event.defaultPrevented).toBe(true);
+  f.prepare('/about', 'About');
+  expect(f.starts.at(-1)?.animateTitle).toBe(true);
+});
 
 for (const [name, options, expected] of [
   ['hidden above the viewport', { rect: { width: 100, height: 48, top: -80, bottom: -32 } }, false],
@@ -450,11 +474,13 @@ test('docs leaving for a standard page defer the cover until the destination is 
   expect(f.doc.querySelector('.site-header-slot')).toBeTruthy();
 });
 
-test('standard pages entering docs keep the cover and remove the old header', async () => {
+test('unannotated links from standard pages entering docs cover after loading and remove the old header', async () => {
   const f = docsNavigationFixture(html('About'));
   const nav = f.prepare(docsHtml('API'));
+  expect(f.covers).toEqual([]);
+  await nav.preparation.loader();
   expect(f.covers).toEqual([1]);
-  await nav.preparation.loader(); nav.swap(); await Promise.resolve();
+  nav.swap(); await Promise.resolve();
   expect(f.reveals).toEqual([false]);
   expect(f.doc.querySelector('.site-header-slot')).toBeNull();
 });
@@ -504,7 +530,7 @@ test('silent reveal invalidates old work and opens preview upgrades without rais
 test('headerless non-doc sources cover and fall back before entering a supported docs shell', async () => {
   const f = docsNavigationFixture(docsHtml('Hero').replace('data-documentation-page', ''));
   const nav = f.prepare(docsHtml('API'));
-  expect(f.covers).toEqual([1]);
+  expect(f.covers).toEqual([]);
   await nav.preparation.loader();
   expect(nav.preparation.defaultPrevented).toBe(true);
   expect(f.doc.getElementById('main-content')?.textContent).toBe('Hero');
