@@ -23,13 +23,12 @@ test('select trigger value and options share one type token', () => {
   // Menu rows are the source (06a05789); the select trigger follows them, not the field label.
   assert.match(global, /--dev-text-select-value:\s*var\(--dev-text-menu-item\)/);
   assert.equal(lastFont(chrome, '.dev-field__input--select'), 'var(--dev-text-select-value)');
-  assert.equal(lastFont(chrome, '.dev-select__option'), 'var(--dev-text-select-value)');
   assert.equal(lastFont(baseUi, '.base-ui-select-item'), 'var(--dev-text-select-value)');
 });
 
 test('select font rules outrank the generic input and Menu row rules', () => {
   // Same specificity, so the later rule wins over the generic input's `font: inherit` and the Menu row font.
-  const shared = chrome.search(/\.dev-field__input--select,\s*\.dev-select__option\s*\{/);
+  const shared = chrome.search(/\.dev-field__input--select\s*\{\s*font:/);
   assert.ok(shared > chrome.indexOf('.dev-field__input {'));
   assert.ok(shared > chrome.indexOf('.dev-menu__item {'));
 });

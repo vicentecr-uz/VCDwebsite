@@ -635,7 +635,7 @@ const positionDrawingMenu = (menu: HTMLElement, button: HTMLElement) => {
 const menuButton = (text: string, onClick: () => void) => {
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'dev-select__option dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill';
+  button.className = 'site-draw-menu__item dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill';
   button.setAttribute('role', 'menuitem');
   button.textContent = text;
   button.addEventListener('click', onClick);
@@ -660,7 +660,7 @@ const renderDrawingMenu = (detailId: string | null) => {
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', label);
     const heading = document.createElement('div');
-    heading.className = 'dev-select__group-label';
+    heading.className = 'site-draw-menu__group-label';
     heading.textContent = label;
     group.append(heading);
     if (entry.current.length > 1) active.menu.append(menuButton('Back', () => {
@@ -710,7 +710,7 @@ const renderDrawingMenu = (detailId: string | null) => {
     else edit.focus();
   } else {
     const heading = document.createElement('div');
-    heading.className = 'dev-select__group-label';
+    heading.className = 'site-draw-menu__group-label';
     heading.textContent = 'Drawings';
     active.menu.append(heading);
     entry.current.forEach((annotation, index) => {
@@ -735,7 +735,7 @@ const renderDrawingMenu = (detailId: string | null) => {
 const showManage = (target: Target, button: HTMLButtonElement) => {
   closeDrawingMenu();
   const menu = document.createElement('div');
-  menu.className = 'site-draw-menu dev-select__listbox dev-surface';
+  menu.className = 'site-draw-menu dev-surface';
   menu.setAttribute('popover', 'manual');
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', 'Drawings');

@@ -1,5 +1,5 @@
 ---
-import SelectField from './ui/SelectField.astro';
+import EditorSelectField from './ui/EditorSelectField.astro';
 
 const inputModeOptions = [
   { value: 'auto', label: 'Auto' },
@@ -15,7 +15,7 @@ const inputModeOptions = [
     <span class="image-lightbox__demo-pointer" data-image-lightbox-demo-pointer="two" aria-hidden="true"></span>
     <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
     <div class="image-lightbox__input-mode">
-      <SelectField label="Input mode" hideLabel data-image-lightbox-input-mode options={inputModeOptions} />
+      <EditorSelectField label="Input mode" hideLabel data-image-lightbox-input-mode options={inputModeOptions} />
     </div>
   </div>
 </dialog>
@@ -50,8 +50,8 @@ const inputModeOptions = [
       return Math.abs(delta) <= 20 ? upright + delta * .1 : rotation;
     };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,.image-lightbox__input-mode,.dev-select__listbox,[role="option"],[contenteditable="true"],[contenteditable="plaintext-only"]'));
-    const isInputModePopupOpen = () => Boolean(viewer.querySelector('.dev-select__listbox:popover-open'));
+    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,.image-lightbox__input-mode,[data-editor-select-popup],[role="option"],[contenteditable="true"],[contenteditable="plaintext-only"]'));
+    const isInputModePopupOpen = () => Boolean(dialog.querySelector('[data-editor-select-popup][data-open]'));
     let view = fit();
     let start = fit();
     let velocity = fit();
