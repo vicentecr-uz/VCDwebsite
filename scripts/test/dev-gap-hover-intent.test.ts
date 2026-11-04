@@ -29,9 +29,9 @@ function createHarness() {
     },
     clearTimeout(id: number) { timers.delete(id); },
   };
-  const drawingMenu = { open: false };
+  const drawMode = { value: 'idle' as 'idle' | 'menu' | 'drawing' };
   const drawingControls: Array<{ getBoundingClientRect: () => object }> = [];
-  const root = { classList: { toggle() {}, remove() {} }, hasAttribute: () => drawingMenu.open };
+  const root = { classList: { toggle() {}, remove() {} }, hasAttribute: () => false };
   const document = {
     activeElement: null,
     documentElement: root,
@@ -77,6 +77,7 @@ function createHarness() {
     pageScope: { timeout: window.setTimeout },
     window,
     document,
+    siteDrawMode: () => drawMode.value,
     editorSignal,
     spacingStates,
     isDevContentEditing: () => editingState.value,
@@ -113,7 +114,7 @@ function createHarness() {
   const syntheticBody = source.slice(source.indexOf('((event: CustomEvent', syntheticStart), source.indexOf(") as EventListener", syntheticStart)) + ')';
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`${geometry}\n${intent}\n${sync}\nconst syncSpacingProximityApi = syncSpacingProximity;\nconst handlePointerMove = ${pointerBody};\nconst handleSynthetic = ${syntheticBody};\nconst handleWheel = ${wheelBody};\nreturn { syncSpacingProximity: syncSpacingProximityApi, handlePointerMove, handleSynthetic, handleWheel, setSuppressed: (value) => { suppressionState.value = value; }, setEditing: (value) => { editingState.value = value; }, setPinned: (kind, value) => { pinState[kind] = value; }, abort: () => abortCallbacks.forEach((callback) => callback()) };`);
   const api = new Function('env', `with (env) { ${compiled} }`)(env);
-  return { first, second, drawingMenu, drawingControls, ...api, runTimers, advance: (amount: number) => { now += amount; } };
+  return { first, second, drawMode, drawingControls, ...api, runTimers, advance: (amount: number) => { now += amount; } };
 }
 
 test('Drawings owns overlapping gap geometry and cancels pending or visible gap reveals', () => {
@@ -131,19 +132,21 @@ test('Drawings owns overlapping gap geometry and cancels pending or visible gap 
   assert.equal(h.first.control.classList.contains('is-near-spacing'), false);
 });
 
-test('an open drawing menu suppresses every gap until it closes', () => {
-  const h = createHarness();
-  h.drawingMenu.open = true;
-  h.first.control.classList.add('is-menu-open');
-  h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 100 });
-  h.runTimers(140);
-  assert.equal(h.first.control.classList.contains('is-menu-open'), false);
-  assert.equal(h.second.control.classList.contains('is-near-spacing'), false);
-  h.drawingMenu.open = false;
-  h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 300 });
-  h.runTimers(140);
-  assert.equal(h.second.control.classList.contains('is-near-spacing'), true);
-});
+for (const mode of ['menu', 'drawing'] as const) {
+  test(`site draw mode "${mode}" suppresses every gap until it returns to idle`, () => {
+    const h = createHarness();
+    h.drawMode.value = mode;
+    h.first.control.classList.add('is-menu-open');
+    h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 100 });
+    h.runTimers(140);
+    assert.equal(h.first.control.classList.contains('is-menu-open'), false);
+    assert.equal(h.second.control.classList.contains('is-near-spacing'), false);
+    h.drawMode.value = 'idle';
+    h.handlePointerMove({ buttons: 0, clientX: 305, clientY: 10, timeStamp: 300 });
+    h.runTimers(140);
+    assert.equal(h.second.control.classList.contains('is-near-spacing'), true);
+  });
+}
 
 test('hidden gap waits for settled intent, then retains within 24px', () => {
   const harness = createHarness();
