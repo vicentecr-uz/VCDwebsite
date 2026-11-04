@@ -39,5 +39,5 @@ test('select popup portals into an enclosing modal dialog', () => {
 
 test('Base UI listbox rows keep the popup inset between them, like .dev-menu', () => {
   assert.ok(chrome.includes('gap: var(--dev-menu-gap)') && chrome.includes('--dev-menu-pad: var(--dev-menu-gap)'));
-  assert.match(css, /\.base-ui-select-item \+ \.base-ui-select-item,[^{]*\{\s*margin-top: var\(--popup-pad\);/);
+  assert.match(css, /\.base-ui-select-item \+ \.base-ui-select-item\s*\{\s*margin-top: var\(--popup-pad\);/);
 });
