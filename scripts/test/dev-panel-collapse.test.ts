@@ -104,7 +104,7 @@ test('reduced motion keeps endpoint height fixed while preserving fade timing', 
 });
 
 test('state hook runs after final visibility state and before target measurement', () => {
-  const h = setup(false, () => { h.panel.style.height = '96px'; });
+  const h = setup(false, () => { if (!h.panel.classList.contains('is-minimized')) h.panel.style.height = '96px'; });
   h.api.set(true, false);
   h.stateChanges.length = 0;
   h.api.set(false);
