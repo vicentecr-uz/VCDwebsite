@@ -28,7 +28,8 @@ test('select trigger value and options share one type token', () => {
 });
 
 test('select font rules outrank the generic input and Menu row rules', () => {
-  // Same specificity, so the later rule wins: the select font must follow the generic input's `font: inherit`.
-  assert.ok(chrome.indexOf('.dev-field__input {') < chrome.indexOf('.dev-field__input--select {'));
-  assert.ok(chrome.indexOf('.dev-menu__item {') < chrome.lastIndexOf('.dev-select__option {'));
+  // Same specificity, so the later rule wins over the generic input's `font: inherit` and the Menu row font.
+  const shared = chrome.search(/\.dev-field__input--select,\s*\.dev-select__option\s*\{/);
+  assert.ok(shared > chrome.indexOf('.dev-field__input {'));
+  assert.ok(shared > chrome.indexOf('.dev-menu__item {'));
 });
