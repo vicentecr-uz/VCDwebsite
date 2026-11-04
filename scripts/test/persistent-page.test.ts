@@ -346,11 +346,11 @@ function navigationVisibilityFixture({ rect = { width: 100, height: 48, top: 10,
     doc, stored, win.CustomEvent, persistentPageParts, supportsPersistentPage,
     { cover: () => cover(doc), reveal() {}, cancel() {}, beforeSwap() {} },
   );
-  const prepare = (path: string, sourceTitle?: string) => {
+  const prepare = (path: string, sourceTitle?: string, load = async (_event: any) => {}) => {
     const event = new win.Event('astro:before-preparation', { cancelable: true }) as any;
     Object.assign(event, {
       to: new URL(path, 'https://vcd.test'), signal: new AbortController().signal,
-      loader: async () => {}, sourceElement: sourceTitle ? { dataset: { headerNavigationTitle: sourceTitle } } : { dataset: {} },
+      loader: () => load(event), sourceElement: sourceTitle ? { dataset: { headerNavigationTitle: sourceTitle } } : { dataset: {} },
       newDocument: doc,
     });
     doc.dispatchEvent(event);
@@ -381,6 +381,33 @@ test('unannotated navigation to a headerless write-up lowers the header before c
   expect(event.defaultPrevented).toBe(true);
   f.prepare('/about', 'About');
   expect(f.starts.at(-1)?.animateTitle).toBe(true);
+});
+
+test('Astro opting out of routing to a write-up still waits for the white cover before full-page navigation', async () => {
+  const covered: boolean[] = [];
+  let finishCover!: () => void;
+  const f = navigationVisibilityFixture({ cover: (doc) => {
+    covered.push(doc.documentElement.hasAttribute('data-header-navigation'));
+    return new Promise<void>(resolve => { finishCover = resolve; });
+  } });
+  const next = f.doc.implementation.createHTMLDocument('Research paper');
+  next.body.innerHTML = '<div id="site-wrapper"><div data-page-shell data-writeup-page><main>Research</main></div></div><div id="transition-overlay"></div>';
+  const event = f.prepare('/tapico-research-paper', undefined, async event => {
+    await Promise.resolve();
+    event.newDocument = next;
+    // The real Astro loader prevents routing when the fetched page has no ClientRouter marker.
+    event.preventDefault();
+  });
+  let finished = false;
+  const loading = event.loader().then(() => { finished = true; });
+  for (let i = 0; i < 4; i++) await Promise.resolve();
+  expect(event.defaultPrevented).toBe(true);
+  expect(covered).toEqual([false]);
+  expect(f.starts.at(-1)?.animateTitle).toBe(false);
+  expect(finished).toBe(false);
+  finishCover();
+  await loading;
+  expect(finished).toBe(true);
 });
 
 for (const [name, options, expected] of [
