@@ -65,7 +65,10 @@ export function installPersistentNavigation(hooks: Hooks) {
     event.loader = async () => {
       try {
         await loader();
-        if (event.signal.aborted || event.defaultPrevented) return;
+        if (event.signal.aborted) return;
+        // Astro cancels routing after loading a page without ClientRouter; cover before its full-page fallback.
+        const loadedWithoutRouter = event.newDocument !== document && !event.newDocument.querySelector('[name="astro-view-transitions-enabled"]');
+        if (event.defaultPrevented && !loadedWithoutRouter) return;
         if (!event.newDocument.querySelector('.site-header-slot')) {
           preserveTitleMotion = false;
           announceTitle(undefined, false);
