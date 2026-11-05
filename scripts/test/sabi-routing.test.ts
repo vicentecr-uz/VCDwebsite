@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { onRequest } from '../../functions/_middleware';
 import routes from '../../public/_routes.json';
 
-const paths = ['/', '/getting-started', '/api', '/email-and-number-fields', '/styling'];
+const paths = ['/', '/getting-started', '/installation', '/web-components', '/react-nextjs', '/api', '/email-and-number-fields', '/styling'];
 for (const path of paths) {
   test(`Sabi host serves ${path} from portfolio assets`, async () => {
     let fetched = '';
