@@ -4,7 +4,7 @@ import ProjectSections from '../../components/project/ProjectSections.astro';
 import { loadPageDocument } from '../../lib/projects';
 
 const pages = [
-  { slug: 'getting-started', key: 'sabi-getting-started', label: 'Getting started', group: 'Basics' },
+  { slug: 'getting-started', key: 'sabi-getting-started', label: 'Introduction', group: 'Basics' },
   { slug: 'api', key: 'sabi-api', label: 'Sabi', group: 'API' },
   { slug: 'email-and-number-fields', key: 'sabi-email-and-number-fields', label: 'Email and number fields', group: 'Guides' },
   { slug: 'styling', key: 'sabi-styling', label: 'Styling', group: 'Guides' },
@@ -15,7 +15,12 @@ export function getStaticPaths() {
 const index = pages.findIndex(page => page.slug === Astro.params.page);
 const current = pages[index];
 const page = loadPageDocument(current.key);
-const links = pages.map(({ slug, label, group }) => ({ href: `/sabi/${slug}`, label, group }));
+const introduction = current.slug === 'getting-started' ? page : loadPageDocument('sabi-getting-started');
+const links = pages.map(({ slug, label, group }) => ({
+  href: `/sabi/${slug}`,
+  label: slug === 'getting-started' ? introduction.title ?? label : label,
+  group,
+}));
 const contents = page.sections.filter(section => section.type === 'sectionTitle' && section.sectionId)
   .map(section => ({ id: String(section.sectionId), label: String(section.title) }));
 ---
