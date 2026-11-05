@@ -112,13 +112,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
      sets the progress values from how much is hidden above and below, so each edge fades in only
      when there is more to scroll. Replace with Sabi once it supports multi-line text. */
   .code-block :global(.astro-code[data-code-scroll]) {
-    /* The bottom fade reaches 0 one DevPanel inset (--dev-panel-pad) above the base, the same margin
-       a DevPanel keeps between its edge and its clipped contents; the grabber centres in that band. */
-    --code-fade-solid-bottom: var(--dev-panel-pad);
-    --_t0: 0px;
-    --_ts: calc(var(--code-fade-size, 2.5em) * var(--code-fade-top, 0));
-    --_b0: calc(100% - var(--code-fade-solid-bottom) * var(--code-fade-bottom, 0));
-    --_bs: calc((var(--code-fade-size, 2.5em) - var(--code-fade-solid-bottom)) * var(--code-fade-bottom, 0));
+    /* Each fade reaches 0 one DevPanel inset (--dev-panel-pad) inside its edge, the same margin a
+       DevPanel keeps between its edge and its clipped contents; the grabber centres in the bottom band. */
+    --code-fade-solid: var(--dev-panel-pad);
+    --_t0: calc(var(--code-fade-solid) * var(--code-fade-top, 0));
+    --_ts: calc((var(--code-fade-size, 2.5em) - var(--code-fade-solid)) * var(--code-fade-top, 0));
+    --_b0: calc(100% - var(--code-fade-solid) * var(--code-fade-bottom, 0));
+    --_bs: calc((var(--code-fade-size, 2.5em) - var(--code-fade-solid)) * var(--code-fade-bottom, 0));
     --_mask: linear-gradient(
       to bottom,
       rgb(0 0 0 / 0) var(--_t0),
@@ -198,7 +198,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     translate: -50% 0;
     border-radius: 999px;
     background: var(--sys-color-on-srf-subtle);
-    box-shadow: 0 0 0 2px var(--sys-color-srf);
     opacity: 0;
     transition: opacity 150ms ease-out;
   }
