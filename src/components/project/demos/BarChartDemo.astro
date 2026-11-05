@@ -22,9 +22,16 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
 ---
 
 <figure class:list={['bar-chart', hasNotes && 'bar-chart--notes']}>
-  <span class="bar-chart__grid" aria-hidden="true" style={`grid-row:1 / span ${rows.length};--bar-chart-lines:${lines}`}></span>
+  <div class="bar-chart__row bar-chart__axis" style="grid-row:1" aria-hidden="true">
+    <span></span>
+    <span class="bar-chart__ticks">
+      {ticks.map((tick, index) => <span style={`left:${share(tick)}`}>{tick}{index === 0 && unit && <span class="bar-chart__unit">{unit}</span>}</span>)}
+    </span>
+    {hasNotes && <span class="bar-chart__note">{noteLabel}</span>}
+  </div>
+  <span class="bar-chart__grid" aria-hidden="true" style={`grid-row:2 / span ${rows.length};--bar-chart-lines:${lines}`}></span>
   {rows.map((row, index) => (
-    <div class="bar-chart__row" style={`grid-row:${index + 1}`} data-tone={row.tone === 'bad' ? 'bad' : undefined} role="img" aria-label={spoken(row)}>
+    <div class="bar-chart__row" style={`grid-row:${index + 2}`} data-tone={row.tone === 'bad' ? 'bad' : undefined} role="img" aria-label={spoken(row)}>
       <span class="bar-chart__label" aria-hidden="true">{row.label.split(/(\s+)/).map((word) => word.includes('-') ? <span class="bar-chart__word">{word}</span> : word)}</span>
       <span class="bar-chart__track" aria-hidden="true">
         <span class="bar-chart__bar" style={`width:${share(row.value)}`}><span class="bar-chart__value">{row.value}</span></span>
@@ -32,13 +39,6 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
       {hasNotes && <span class="bar-chart__note" aria-hidden="true">{row.note}</span>}
     </div>
   ))}
-  <div class="bar-chart__row bar-chart__axis" style={`grid-row:${rows.length + 1}`} aria-hidden="true">
-    <span></span>
-    <span class="bar-chart__ticks">
-      {ticks.map((tick, index) => <span style={`left:${share(tick)}`}>{tick}{index === 0 && unit && <span class="bar-chart__unit">{unit}</span>}</span>)}
-    </span>
-    {hasNotes && <span class="bar-chart__note">{noteLabel}</span>}
-  </div>
 </figure>
 
 <style>
@@ -50,8 +50,9 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
     /* Ink-to-ink spacing (project.css): a 1.2 line adds this above its cap and below its baseline. */
     --bar-chart-ink: calc((1.2em - 0.697em) / 2);
     margin: 0;
+    /* The axis reads first: 2u from the frame edge to its cap; the last bar ends 2u from the bottom. */
     padding: calc(var(--space-unit) * 2) var(--demo-frame-inset, calc(var(--space-unit) * 2));
-    padding-bottom: calc(var(--space-unit) * 2 - var(--bar-chart-ink));
+    padding-top: calc(var(--space-unit) * 2 - var(--bar-chart-ink));
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     column-gap: var(--space-unit);
@@ -65,7 +66,7 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
   .bar-chart--notes { grid-template-columns: max-content minmax(0, 1fr) max-content; }
 
   /* Gridlines run through the row gaps: one element spans every bar row in the plot column, behind
-     the bars, and overshoots the first and last bar by 0.5u (0.5u still clears the axis numbers). */
+     the bars, and overshoots the first and last bar by 0.5u (0.5u still clears the axis baseline). */
   .bar-chart__grid {
     grid-column: 2;
     margin-block: calc(var(--space-unit) * -0.5);
@@ -104,8 +105,8 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
   .bar-chart__note { text-align: right; color: var(--sys-color-on-srf-variant); }
   [data-tone='bad'] .bar-chart__note { color: var(--bar-chart-red-ink); }
 
-  /* 1u from the last bar to the numbers' cap, inside the 2u row gap. */
-  .bar-chart__axis { color: var(--sys-color-on-srf-variant); margin-top: calc(var(--space-unit) * -1 - var(--bar-chart-ink)); }
+  /* Axis on top so units and context read first: 1u from its baseline to the first bar, inside the 2u row gap. */
+  .bar-chart__axis { color: var(--sys-color-on-srf-variant); margin-bottom: calc(var(--space-unit) * -1 - var(--bar-chart-ink)); }
   .bar-chart__ticks { position: relative; height: 1.2em; }
   .bar-chart__ticks > span { position: absolute; translate: -50% 0; white-space: nowrap; }
   .bar-chart__ticks > span:first-child { translate: 0 0; }
