@@ -84,7 +84,7 @@ export async function renderWriteupShareCard(title: string, publishedOn?: string
   const [naturalTitle, date, name, logo] = await Promise.all([
     textLayer(titleText, ink, 'Bold 80'),
     publishedOn && textLayer(dateFormat.format(new Date(publishedOn)), lightColor('on-srf-subtle'), '32'),
-    textLayer('Vicente Cruz', ink, 'Medium 36'),
+    textLayer('Vicente Cruz', ink, 'Medium 52'),
     sharp(LOGO_FILE, { svg: { stylesheet: `polygon, path { fill: ${ink} !important; }` } })
       .resize(LOGO_SIZE, LOGO_SIZE).png().toBuffer(),
   ]);
