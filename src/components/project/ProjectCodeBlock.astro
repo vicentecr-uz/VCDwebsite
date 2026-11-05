@@ -13,9 +13,12 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  /** Visible lines before the code scrolls; unset shows it all. */
+  maxLines?: number;
 }
 
-const { options, documentKey, sectionPath, spacing = 'group', sectionId, contentId } = Astro.props;
+const { options, documentKey, sectionPath, spacing = 'group', sectionId, contentId, maxLines } = Astro.props;
+const lines = Number.isInteger(maxLines) && maxLines! > 0 ? maxLines : undefined;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 ---
@@ -26,6 +29,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'codeBlock' : undefined}
   data-options
+  data-code-block
+  data-max-lines={lines}
+  style={lines ? `--code-block-max-lines:${lines}` : undefined}
 >
   {options.length > 1 && (
     <div class="dev-segmented code-block__options" role="group" aria-label="Language">
@@ -42,10 +48,22 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       </button>
     </div>
   ))}
+  {editable && (
+    <span
+      class="code-block__resize"
+      data-code-block-resize
+      data-document={documentKey}
+      data-path={JSON.stringify([...sectionPath!, 'maxLines'])}
+      data-saved-lines={lines ?? 0}
+      aria-hidden="true"
+    ></span>
+  )}
 </div>
 
 <script>
   import './optionPanels';
+  import './codeBlockScroll';
+  if (import.meta.env.DEV) void import('./codeBlockResize');
 </script>
 
 <style>
@@ -65,29 +83,133 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   /* Corners on the panel, at the block's font size, so they match the
      --section-content-radius above; the code itself is set smaller. */
+  /* Corners and the code background on the panel, at the block's font size, so they match the
+     --section-content-radius above. The background sits here, not on the scroller, so the scroll
+     fade below only fades the code. */
   .code-block__panel {
     position: relative;
     overflow: hidden;
     border-radius: var(--radius-card);
+    background: var(--sys-color-srf-container-low);
   }
 
   .code-block :global(.astro-code) {
     margin: 0;
     padding: 1em 1.25em;
-    background: var(--sys-color-srf-container-low) !important;
+    background: transparent !important;
     --on-surface-faint: var(--sys-color-on-srf-container-faint);
     font: 0.875rem/1.6 var(--font-mono);
   }
 
+  /* A height set in Edit mode caps the code at whole lines; the rest scrolls inside the panel. */
+  .code-block[data-max-lines] :global(.astro-code) {
+    max-height: calc(var(--code-block-max-lines) * 1.6em + 2em);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Scroll fade, Sabi's eased mask turned vertical (src/lib/sabi/styles.css). codeBlockScroll.ts
+     sets the progress values from how much is hidden above and below, so each edge fades in only
+     when there is more to scroll. Replace with Sabi once it supports multi-line text. */
+  .code-block :global(.astro-code[data-code-scroll]) {
+    /* The bottom fade reaches 0 one DevPanel inset (--dev-panel-pad) above the base, the same margin
+       a DevPanel keeps between its edge and its clipped contents; the grabber centres in that band. */
+    --code-fade-solid-bottom: var(--dev-panel-pad);
+    --_t0: 0px;
+    --_ts: calc(var(--code-fade-size, 2.5em) * var(--code-fade-top, 0));
+    --_b0: calc(100% - var(--code-fade-solid-bottom) * var(--code-fade-bottom, 0));
+    --_bs: calc((var(--code-fade-size, 2.5em) - var(--code-fade-solid-bottom)) * var(--code-fade-bottom, 0));
+    --_mask: linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 0) var(--_t0),
+      rgb(0 0 0 / 0.043) calc(var(--_t0) + var(--_ts) * 0.125),
+      rgb(0 0 0 / 0.156) calc(var(--_t0) + var(--_ts) * 0.25),
+      rgb(0 0 0 / 0.316) calc(var(--_t0) + var(--_ts) * 0.375),
+      rgb(0 0 0 / 0.5) calc(var(--_t0) + var(--_ts) * 0.5),
+      rgb(0 0 0 / 0.684) calc(var(--_t0) + var(--_ts) * 0.625),
+      rgb(0 0 0 / 0.844) calc(var(--_t0) + var(--_ts) * 0.75),
+      rgb(0 0 0 / 0.957) calc(var(--_t0) + var(--_ts) * 0.875),
+      #000 calc(var(--_t0) + var(--_ts)),
+      #000 calc(var(--_b0) - var(--_bs)),
+      rgb(0 0 0 / 0.957) calc(var(--_b0) - var(--_bs) * 0.875),
+      rgb(0 0 0 / 0.844) calc(var(--_b0) - var(--_bs) * 0.75),
+      rgb(0 0 0 / 0.684) calc(var(--_b0) - var(--_bs) * 0.625),
+      rgb(0 0 0 / 0.5) calc(var(--_b0) - var(--_bs) * 0.5),
+      rgb(0 0 0 / 0.316) calc(var(--_b0) - var(--_bs) * 0.375),
+      rgb(0 0 0 / 0.156) calc(var(--_b0) - var(--_bs) * 0.25),
+      rgb(0 0 0 / 0.043) calc(var(--_b0) - var(--_bs) * 0.125),
+      rgb(0 0 0 / 0) var(--_b0)
+    );
+    -webkit-mask-image: var(--_mask);
+    mask-image: var(--_mask);
+  }
+
   .code-block__copy {
     position: absolute;
+    z-index: 1;
     top: 50%;
     right: 0.5em;
     translate: 0 -50%;
+    /* Quieter at rest; fades to the ghost button's label colour on hover. */
+    color: var(--sys-color-on-srf-subtle);
+    transition: color 150ms ease-out;
   }
+
+  @media (hover: hover) and (pointer: fine) {
+    .code-block__copy:hover { color: var(--comp-button-label); }
+  }
+
+  .code-block__copy:focus-visible { color: var(--comp-button-label); }
 
   .code-block__copy--multiline {
     top: 0.5em;
     translate: none;
+  }
+
+  /* Edit mode only: a grabber on the base of the panel that appears when the pointer comes near
+     the bottom edge. Its hit area straddles the edge so it can be found without aiming. */
+  .code-block__resize {
+    display: none;
+  }
+
+  :global(html.is-dev-mode) .code-block__resize {
+    display: block;
+    position: relative;
+    z-index: 2;
+    height: 0;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+
+  :global(html.is-dev-mode) .code-block__resize::before {
+    content: '';
+    position: absolute;
+    inset: -12px 0;
+  }
+
+  :global(html.is-dev-mode) .code-block__resize::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    /* Centred in the bottom fade's --dev-panel-pad band: half the band up, less half the pill. */
+    top: calc(var(--dev-panel-pad) / -2 - 2px);
+    width: 32px;
+    height: 4px;
+    translate: -50% 0;
+    border-radius: 999px;
+    background: var(--sys-color-on-srf-subtle);
+    box-shadow: 0 0 0 2px var(--sys-color-srf);
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :global(html.is-dev-mode) .code-block__resize:hover::after { opacity: 1; }
+  }
+
+  :global(html.is-dev-mode) .code-block__resize[data-dragging]::after { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .code-block__copy, :global(html.is-dev-mode) .code-block__resize::after { transition: none; }
   }
 </style>
