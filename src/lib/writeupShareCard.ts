@@ -34,29 +34,21 @@ const months = [
   'july', 'august', 'september', 'october', 'november', 'december',
 ];
 
-function htmlText(node: DefaultTreeAdapterMap['node'], inlineContext = false): string {
-  if ('value' in node) return node.value.replace(/\s+/g, ' ');
-  if (!('childNodes' in node)) return '';
-  if (node.nodeName === 'br') return '\n';
-  if (node.nodeName === 'script' || node.nodeName === 'style' || node.nodeName === 'pre') return '';
-  if (/^h[1-6]$/.test(node.nodeName)) return '';
-  if (node.nodeName === 'code' && !inlineContext) return '';
-  const childInline = inlineContext || node.nodeName === 'p' || node.nodeName === 'div' || node.nodeName === 'li';
-  const children = node.childNodes.map((child) => htmlText(child, childInline)).join('');
-  if (node.nodeName === 'li') return `\n- ${children}\n`;
-  return node.nodeName === 'p' || node.nodeName === 'div' ? `\n${children}\n` : children;
-}
-
-function textLines(html: string, proseOnly = false): string[] {
-  return htmlText(parseFragment(html), proseOnly).split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
-}
-
 export function writeupPublicationDate(sections: Array<Record<string, unknown>>): string | undefined {
   const paragraphs = sections.find((section) => section.type === 'bodyText')?.paragraphs;
   if (!Array.isArray(paragraphs)) return;
 
-  const [, dateLine] = paragraphs.flatMap((html) => typeof html === 'string' ? textLines(html) : []);
+  const text = (node: DefaultTreeAdapterMap['node']): string => {
+    if ('value' in node) return node.value.replace(/\s+/g, ' ');
+    if (!('childNodes' in node)) return '';
+    if (node.nodeName === 'br') return '\n';
+    if (node.nodeName === 'script' || node.nodeName === 'style') return '';
+    const children = node.childNodes.map(text).join('');
+    return node.nodeName === 'p' || node.nodeName === 'div' ? `\n${children}\n` : children;
+  };
+
+  const [, dateLine] = paragraphs.map((html) => text(parseFragment(html))).join('\n')
+    .split('\n').map((line) => line.trim()).filter(Boolean);
   if (!dateLine) return;
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateLine)) return validIsoDate(dateLine);
   const date = /^(\d{1,2}) +([a-z]+) +(\d{4})$/i.exec(dateLine);
@@ -65,37 +57,6 @@ export function writeupPublicationDate(sections: Array<Record<string, unknown>>)
   const monthIndex = months.indexOf(month.toLowerCase());
   if (monthIndex === -1) return;
   return validIsoDate(`${year}-${String(monthIndex + 1).padStart(2, '0')}-${day.padStart(2, '0')}`);
-}
-
-const sentenceSegmenter = new Intl.Segmenter('en-GB', { granularity: 'sentence' });
-const listPrefix = /^(?:[-*•]\s+|\d+[.)]\s+)/;
-const sentenceEnding = /[.!?](?:["'”’»)]*)$/;
-
-export function writeupSocialDescription(
-  title: string,
-  sections: Array<Record<string, unknown>>,
-  description?: string,
-): string {
-  const existing = description?.trim();
-  if (existing) return existing;
-
-  // Use the opening prose as an excerpt. If it yields nothing, prefer the byline to a fragment from deep in the article.
-  const opening = sections.filter((section) => section.type === 'bodyText').slice(0, 3);
-  const titleLine = title.replace(/\s+/g, ' ').trim();
-  for (const { paragraphs } of opening) {
-    if (!Array.isArray(paragraphs)) continue;
-    for (const paragraph of paragraphs) {
-      if (typeof paragraph !== 'string') continue;
-      for (const line of textLines(paragraph, true)) {
-        if (line === titleLine || listPrefix.test(line)) continue;
-        for (const { segment } of sentenceSegmenter.segment(line)) {
-          const sentence = segment.trim();
-          if (sentence.length >= 40 && sentence.length <= 180 && sentenceEnding.test(sentence)) return sentence;
-        }
-      }
-    }
-  }
-  return 'by Vicente Cruz';
 }
 
 function validIsoDate(value: string) {
