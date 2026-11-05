@@ -13,6 +13,8 @@ export const CRAFT_DEMOS = [
   { id: 'gap-spacing', title: 'Draggable block system', height: 42 },
   { id: 'block-reorder', title: 'Block reorder', height: 46 },
   { id: 'proximity', title: 'Proximity reveal', height: 36 },
+  // Inline and content-sized: height is unused, data comes from the block's `sample`.
+  { id: 'bar-chart', title: 'Bar chart', height: 0 },
 ] as const;
 
 export function craftDemo(id: unknown) {

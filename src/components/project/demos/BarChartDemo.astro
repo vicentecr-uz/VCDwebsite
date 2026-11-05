@@ -1,0 +1,124 @@
+---
+// Horizontal bar chart after Apple's ML research figures: right-aligned labels on the left at every
+// width, bars that carry their value at the start, a quiet axis below, an optional note column.
+type Row = { label: string; value: number; note?: string; tone?: 'bad' };
+
+interface Props { sample?: unknown }
+
+const raw = (Astro.props.sample ?? {}) as { rows?: unknown; max?: unknown; ticks?: unknown; unit?: unknown; noteLabel?: unknown };
+const rows = (Array.isArray(raw.rows) ? raw.rows : []).filter((row): row is Row =>
+  Boolean(row) && typeof row.label === 'string' && typeof row.value === 'number' && Number.isFinite(row.value));
+const max = typeof raw.max === 'number' && raw.max > 0 ? raw.max : Math.max(1, ...rows.map((row) => row.value));
+const ticks = Array.isArray(raw.ticks) ? raw.ticks.filter((tick): tick is number => typeof tick === 'number') : [0, max];
+const unit = typeof raw.unit === 'string' ? raw.unit.trim() : '';
+const noteLabel = typeof raw.noteLabel === 'string' ? raw.noteLabel : '';
+const hasNotes = rows.some((row) => row.note);
+const share = (value: number) => `${Math.min(100, Math.max(0, (value / max) * 100))}%`;
+const spoken = (row: Row) => `${row.label}: ${row.value}${unit ? ` ${unit}` : ''}${row.note ? `, ${noteLabel ? `${noteLabel} ` : ''}${row.note}` : ''}`;
+// One 1px line per tick. The grid box starts 1px left of the plot so the zero line sits beside the
+// bars' origin, not under it. In background-position, 100% = box − 1px = plot width.
+const at = (tick: number) => (tick <= 0 ? '0px' : tick >= max ? '100%' : `calc(1px + ${(tick / max) * 100}%)`);
+const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--bar-chart-grid)) ${at(tick)} 0 / 1px 100% no-repeat`).join(', ');
+---
+
+<figure class:list={['bar-chart', hasNotes && 'bar-chart--notes']}>
+  <span class="bar-chart__grid" aria-hidden="true" style={`grid-row:1 / span ${rows.length};--bar-chart-lines:${lines}`}></span>
+  {rows.map((row, index) => (
+    <div class="bar-chart__row" style={`grid-row:${index + 1}`} data-tone={row.tone === 'bad' ? 'bad' : undefined} role="img" aria-label={spoken(row)}>
+      <span class="bar-chart__label" aria-hidden="true">{row.label.split(/(\s+)/).map((word) => word.includes('-') ? <span class="bar-chart__word">{word}</span> : word)}</span>
+      <span class="bar-chart__track" aria-hidden="true">
+        <span class="bar-chart__bar" style={`width:${share(row.value)}`}><span class="bar-chart__value">{row.value}</span></span>
+      </span>
+      {hasNotes && <span class="bar-chart__note" aria-hidden="true">{row.note}</span>}
+    </div>
+  ))}
+  <div class="bar-chart__row bar-chart__axis" style={`grid-row:${rows.length + 1}`} aria-hidden="true">
+    <span></span>
+    <span class="bar-chart__ticks">
+      {ticks.map((tick, index) => <span style={`left:${share(tick)}`}>{tick}{index === 0 && unit && <span class="bar-chart__unit">{unit}</span>}</span>)}
+    </span>
+    {hasNotes && <span class="bar-chart__note">{noteLabel}</span>}
+  </div>
+</figure>
+
+<style>
+  .bar-chart {
+    /* Soft red for marks; a darker ink of the same hue for text so it clears 4.5:1 on the frame. */
+    --bar-chart-red: oklch(from var(--sys-color-error) calc(l + 0.1) calc(c * 0.5) h);
+    --bar-chart-red-ink: oklch(from var(--sys-color-error) 0.53 calc(c * 0.6) h);
+    --bar-chart-grid: var(--comp-chart-gridline);
+    /* Ink-to-ink spacing (project.css): a 1.2 line adds this above its cap and below its baseline. */
+    --bar-chart-ink: calc((1.2em - 0.697em) / 2);
+    margin: 0;
+    padding: calc(var(--space-unit) * 2) var(--demo-frame-inset, calc(var(--space-unit) * 2));
+    padding-bottom: calc(var(--space-unit) * 2 - var(--bar-chart-ink));
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: var(--space-unit);
+    row-gap: calc(var(--space-unit) * 2);
+    font: var(--text-body-weight, 400) var(--text-body-size)/1.2 var(--font-sans);
+    letter-spacing: var(--text-body-tracking, normal);
+    color: var(--sys-color-on-srf);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-chart--notes { grid-template-columns: max-content minmax(0, 1fr) max-content; }
+
+  /* Gridlines run through the row gaps: one element spans every bar row in the plot column, behind
+     the bars, and overshoots the first and last bar by 0.5u (0.5u still clears the axis numbers). */
+  .bar-chart__grid {
+    grid-column: 2;
+    margin-block: calc(var(--space-unit) * -0.5);
+    margin-inline-start: -1px;
+    background: var(--bar-chart-lines);
+    pointer-events: none;
+  }
+
+  .bar-chart__row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; }
+  .bar-chart__label { text-align: right; text-wrap: balance; }
+  .bar-chart__word { white-space: nowrap; } /* never wrap a hyphenated word at its hyphen */
+  .bar-chart__track { position: relative; height: calc(var(--space-unit) * 2); }
+
+  .bar-chart__bar {
+    --bar-chart-fill: var(--sys-color-on-srf-container-faint);
+    position: absolute;
+    inset: 0 auto 0 0;
+    display: flex;
+    align-items: center;
+    /* Inset equals the cap-to-edge gap above and below the value: (bar height − cap height) / 2. */
+    padding-inline: calc((var(--space-unit) * 2 - 0.697em) / 2);
+    /* Square at the origin so every bar shares one crisp zero edge; rounded only where it ends. */
+    border-radius: 0 var(--dev-radius-checkbox) var(--dev-radius-checkbox) 0;
+    /* A 60% tint under the value fading to full colour at the tip keeps the number on the lightest part. */
+    background: linear-gradient(to right, color-mix(in oklch, var(--bar-chart-fill) 60%, transparent), var(--bar-chart-fill));
+    container-type: inline-size;
+  }
+
+  /* A bar too short to hold its value hands it to the space just past its end. */
+  @container (width < 56px) {
+    .bar-chart__value { position: absolute; left: 100%; margin-left: var(--space-unit); }
+  }
+
+  [data-tone='bad'] .bar-chart__bar { --bar-chart-fill: var(--bar-chart-red); }
+  .bar-chart__value { color: var(--sys-color-on-srf); white-space: nowrap; }
+  .bar-chart__note { text-align: right; color: var(--sys-color-on-srf-variant); }
+  [data-tone='bad'] .bar-chart__note { color: var(--bar-chart-red-ink); }
+
+  /* 1u from the last bar to the numbers' cap, inside the 2u row gap. */
+  .bar-chart__axis { color: var(--sys-color-on-srf-variant); margin-top: calc(var(--space-unit) * -1 - var(--bar-chart-ink)); }
+  .bar-chart__ticks { position: relative; height: 1.2em; }
+  .bar-chart__ticks > span { position: absolute; translate: -50% 0; white-space: nowrap; }
+  .bar-chart__ticks > span:first-child { translate: 0 0; }
+  .bar-chart__ticks > span:last-child { translate: -100% 0; }
+  /* The unit hangs off 0 so 0 stays on its position and the last tick ends at the plot edge. */
+  .bar-chart__unit { position: absolute; left: 100%; margin-left: 0.3em; }
+
+  /* Phones keep labels on the left (wrapping, right-aligned); only the type and label column tighten. */
+  @media (max-width: 40em) {
+    .bar-chart { font-size: 0.875em; grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr); }
+    .bar-chart--notes { grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr) max-content; }
+    /* Two wrapped lines must fit the 2u bar so every row keeps the bar's pitch. */
+    .bar-chart__row:not(.bar-chart__axis) { height: calc(var(--space-unit) * 2); }
+    .bar-chart__label { overflow-wrap: anywhere; line-height: 1.1; }
+  }
+</style>
