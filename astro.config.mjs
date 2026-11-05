@@ -39,6 +39,7 @@ import {
   devAuthoringRequestQueue,
   writeAtomicJson,
   markAutomaticImageAltIntent,
+  projectRouteWatcher,
 } from './scripts/dev-api-plugins.mjs';
 import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
@@ -2784,6 +2785,7 @@ export default defineConfig({
       projectCreateDevWriter(),
       projectDeleteDevWriter(),
       projectRenameDevWriter(),
+      projectRouteWatcher(),
       listingOrderDevWriter(),
       galleryMembershipDevWriter(),
       sectionOrderDevWriter(),
