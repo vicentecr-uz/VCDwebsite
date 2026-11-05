@@ -7,16 +7,13 @@ export const WRITEUP_CARD_WIDTH = 1200;
 export const WRITEUP_CARD_HEIGHT = 630;
 const INSET = 72;
 const TEXT_WIDTH = WRITEUP_CARD_WIDTH - INSET * 2;
-const LOGO_SIZE = 60;
 const TEXT_BLOCK_HEIGHT = 298;
-// Keep a clear strip below the branding for the platform’s title overlay.
-const FOOTER_TOP = WRITEUP_CARD_HEIGHT - 134 - LOGO_SIZE;
+const NAME_BASELINE = 507;
 // Fontconfig loads the bundled font from disk. On macOS, Pango defaults to Core Text.
 if (process.platform === 'darwin') process.env.PANGOCAIRO_BACKEND ??= 'fontconfig';
 
 // TrueType copy of the site's Latin WOFF2, covered by public/fonts/hanken-grotesk/OFL.txt.
 const FONT_FILE = path.resolve('src/assets/fonts/hanken-grotesk-latin.ttf');
-const LOGO_FILE = path.resolve('public/favicon.svg');
 
 function lightColor(role: 'srf' | 'on-srf' | 'on-srf-subtle') {
   const alias = tokens.sys.color[role].$extensions.modes.light;
@@ -67,19 +64,46 @@ function validIsoDate(value: string) {
   return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === value ? value : undefined;
 }
 
-function textLayer(markup: string, font: string, height?: number) {
+function textLayer(markup: string, width = TEXT_WIDTH, wrap: 'word' | 'word-char' | 'none' = 'word-char', height?: number) {
   return sharp({
     text: {
       text: markup,
-      font: `Hanken Grotesk ${font}`,
+      font: 'Hanken Grotesk Regular 54',
       fontfile: FONT_FILE,
-      width: TEXT_WIDTH,
+      width,
       height,
       rgba: true,
       spacing: 8,
-      wrap: 'word-char',
+      wrap,
     },
   }).png().toBuffer({ resolveWithObject: true });
+}
+
+async function balancedTextLayer(markup: string) {
+  const unwrapped = await textLayer(markup, TEXT_WIDTH, 'none');
+  if (unwrapped.info.width <= TEXT_WIDTH && unwrapped.info.height <= TEXT_BLOCK_HEIGHT) return unwrapped;
+
+  const natural = await textLayer(markup);
+  if (natural.info.height > TEXT_BLOCK_HEIGHT) {
+    return textLayer(markup, TEXT_WIDTH, 'word-char', TEXT_BLOCK_HEIGHT);
+  }
+
+  // Narrow the measure without adding a line or splitting a word. The height
+  // tolerance allows different letters on the last line, but less than one line.
+  let minWidth = Math.ceil(TEXT_WIDTH / 2);
+  let maxWidth = TEXT_WIDTH;
+  let balanced = natural;
+  while (maxWidth - minWidth > 8) {
+    const width = Math.floor((minWidth + maxWidth) / 2);
+    const candidate = await textLayer(markup, width, 'word');
+    if (candidate.info.height <= natural.info.height + 24 && candidate.info.width <= width) {
+      balanced = candidate;
+      maxWidth = width;
+    } else {
+      minWidth = width;
+    }
+  }
+  return balanced;
 }
 
 export async function renderWriteupShareCard(title: string, publishedOn?: string): Promise<Buffer> {
@@ -90,23 +114,14 @@ export async function renderWriteupShareCard(title: string, publishedOn?: string
     `<span foreground="${ink}">${escapeMarkup(titleText)}</span>`,
     dateText ? `<span foreground="${lightColor('on-srf-subtle')}">${escapeMarkup(dateText)}</span>` : '',
   ].filter(Boolean).join('\n');
-  const wordmarkMarkup = `<span foreground="${ink}" letter_spacing="-1400">${escapeMarkup('Vicente Cruz')}</span>`;
-  const [naturalTitleDate, name, logo] = await Promise.all([
-    textLayer(titleDateMarkup, 'Regular 54'),
-    textLayer(wordmarkMarkup, 'Bold 52'),
-    sharp(LOGO_FILE, { svg: { stylesheet: `polygon, path { fill: ${ink} !important; }` } })
-      .resize(LOGO_SIZE, LOGO_SIZE).png().toBuffer(),
+  const [titleDate, name] = await Promise.all([
+    balancedTextLayer(titleDateMarkup),
+    textLayer(`<span foreground="${ink}">Vicente Cruz</span>`),
   ]);
-  // Keep the title and date at one size, shrinking both together for long titles.
-  const titleDateImage = naturalTitleDate.info.height > TEXT_BLOCK_HEIGHT
-    ? await textLayer(titleDateMarkup, 'Regular 54', TEXT_BLOCK_HEIGHT)
-    : naturalTitleDate;
-  const layers: sharp.OverlayOptions[] = [
-    { input: titleDateImage.data, left: INSET, top: INSET },
-    { input: name.data, left: INSET, top: Math.round(FOOTER_TOP + Math.max(0, (LOGO_SIZE - name.info.height) / 2)) },
-    { input: logo, left: WRITEUP_CARD_WIDTH - INSET - LOGO_SIZE, top: FOOTER_TOP },
-  ];
 
   return sharp({ create: { width: WRITEUP_CARD_WIDTH, height: WRITEUP_CARD_HEIGHT, channels: 3, background: lightColor('srf') } })
-    .composite(layers).png().toBuffer();
+    .composite([
+      { input: titleDate.data, left: INSET, top: INSET },
+      { input: name.data, left: INSET, top: NAME_BASELINE - name.info.height },
+    ]).png().toBuffer();
 }
