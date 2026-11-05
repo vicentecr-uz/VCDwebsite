@@ -174,14 +174,14 @@ export function mediaCollectorIntegration(mediaDirName = 'media') {
         const distDir = fileURLToPath(dir);
         const mediaDir = path.join(process.cwd(), mediaDirName);
         const projectsDir = path.join(process.cwd(), 'src/content/projects');
-        const linkRoutes = [];
+        const publicRoutes = [];
         for (const file of (await readdir(projectsDir).catch(() => [])).filter((name) => name.endsWith('.json'))) {
           const data = JSON.parse(await readFile(path.join(projectsDir, file), 'utf8'));
-          if (data.publicLink === true && (data.status ?? 'published') === 'published') {
-            linkRoutes.push(`/${path.basename(file, '.json')}/`);
+          if ((data.status ?? 'published') === 'published') {
+            publicRoutes.push(`/${path.basename(file, '.json')}/`);
           }
         }
-        const output = await prunePublicOutput(distDir, { site, assetsDir, linkRoutes });
+        const output = await prunePublicOutput(distDir, { site, assetsDir, publicRoutes });
         console.log(
           `public output: retained ${output.retainedHtml.length} HTML page(s) `
           + `(${output.linkOnlyHtml.length} link-only), removed ${output.removedHtml.length}; removed ${output.removedAssets.length} generated asset(s)`,

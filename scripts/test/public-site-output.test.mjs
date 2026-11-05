@@ -136,7 +136,7 @@ test('ships the unlinked owner-only analytics page with its assets', async () =>
   assert.ok(result.retainedAssets.includes('_astro/analytics.js'));
 });
 
-test('ships publicLink pages by URL only, noindexed unless navigation reaches them', async () => {
+test('ships Public pages at their URL, noindexed unless navigation reaches them', async () => {
   const { root, put } = await fixture();
   await put('index.html', '<a href="/listed/">Listed</a>');
   await put('listed/index.html', '<html><head></head><body>listed</body></html>');
@@ -144,7 +144,7 @@ test('ships publicLink pages by URL only, noindexed unless navigation reaches th
   await put('old/index.html', 'old');
   await put('_astro/figure.js', 'export {};');
 
-  const result = await prunePublicOutput(root, { site, linkRoutes: ['/write-up/', '/listed/', '/missing/'] });
+  const result = await prunePublicOutput(root, { site, publicRoutes: ['/write-up/', '/listed/', '/missing/'] });
 
   assert.deepEqual(result.linkOnlyHtml, ['write-up/index.html']);
   assert.ok(result.retainedHtml.includes('write-up/index.html'));

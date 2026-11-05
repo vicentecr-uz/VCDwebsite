@@ -47,9 +47,9 @@ curl -s "http://localhost:4321/src/components/Thing.astro?astro&type=style&index
 
 All authoring assets live under `media/`, regardless of project status. JSON stores normalized relative paths with no `draft:` prefix. Status changes never move files between draft and public folders.
 
-The build derives publication from navigation-reachable output. Before collecting media, `scripts/public-site-output.mjs` follows rendered internal links from Home, including links in text and embedded pages. It removes unreachable HTML pages and their unused generated assets. The technical 404 page and pure redirect aliases to reachable pages or external destinations remain available; they do not make other pages public.
+The build derives publication from navigation-reachable output. Before collecting media, `scripts/public-site-output.mjs` follows rendered internal links from Home, including links in text and embedded pages. It keeps every Public project page and removes other unreachable HTML pages and their unused generated assets. The technical 404 page and pure redirect aliases to reachable pages or external destinations remain available; they do not make other pages public.
 
-`scripts/collect-shipped-assets.mjs` then scans the retained HTML, CSS, and JavaScript for `/images/...` references, generates requested derivatives, and copies only those assets from `media/` into `dist/images/`. Draft and unlinked Public case-study media does not ship unless a retained output file also uses it. A teaser's public gallery card can publish its cover without shipping the unreleased project body. Missing source media fails the build instead of creating a silent production 404. Local uploads and Save alone do not make an image public.
+`scripts/collect-shipped-assets.mjs` then scans the retained HTML, CSS, and JavaScript for `/images/...` references, generates requested derivatives, and copies only those assets from `media/` into `dist/images/`. Draft case-study media does not ship unless a retained output file also uses it. A teaser's public gallery card can publish its cover without shipping the unreleased project body. Missing source media fails the build instead of creating a silent production 404. Local uploads and Save alone do not make an image public.
 
 ## Save and publish lifecycle
 
@@ -114,16 +114,16 @@ The dev server must be restarted by its operator to mount newly pulled style-tok
 
 Modern projects live in `src/content/projects/{slug}.json`, use `stack: "modern"`, and render through `src/pages/[slug].astro`. Documents contain `sections`, `outline`, `listings`, and `status`.
 
-The production-gallery column below assumes the document has a `listings[grid]` entry for a gallery reachable from Home; status alone does not create a card. A Public page ships only when visitors can reach it through rendered internal navigation, including ordinary text links. Disconnected groups of pages do not publish each other. Dev mode also exposes Draft cards for authoring.
+The production-gallery column below assumes the document has a `listings[grid]` entry for a gallery reachable from Home; status alone does not create a card. A Public page always ships at `/slug`, whether or not anything links to it. Use Draft for a page that should not be reachable. Dev mode also exposes Draft cards for authoring.
 
 | Status | Production gallery | Production `/slug` | Dev `/slug` |
 | --- | --- | --- | --- |
-| `published` (UI: **Public**) | Visible and linked | Only when navigation-reachable | Yes |
+| `published` (UI: **Public**) | Visible and linked | Yes | Yes |
 | `teaser` | Visible but unlinked, with teaser treatment | No | Yes |
 | `draft` | Hidden | No | Yes |
 | `image` | Visible as a gallery-only image card | No | No |
 
-A Public document with `"publicLink": true` also ships at `/slug` when nothing links to it, such as a write-up shared only by URL. `scripts/public-site-output.mjs` keeps it without following its links, so it never publishes the pages it links to, and adds `<meta name="robots" content="noindex">` unless navigation reaches it anyway. **Page settings** (the card cog, or ⋯ on a row in the Pages panel's list view) edits it as **Publish**, next to **Visibility** (shown on this gallery), **Status**, and **Page type** (`layout`: Case study or Write-up; locked for legacy-stack pages). Visibility and Publish stage through the Pages panel's gallery-membership change. Publish is locked for non-Public statuses and for pages navigation already reaches: gallery cards, plus same-site links in page, header, and Public project documents. Links hardcoded in `.astro` templates are not seen there; the build stays authoritative.
+`scripts/public-site-output.mjs` keeps every Public project route. One that navigation does not reach is kept without following its links, so it never publishes the pages it links to, and gets `<meta name="robots" content="noindex">`. **Page settings** (the card cog, or ⋯ on a row in the Pages panel's list view) edits **Status**, **Visibility** (shown on this gallery), and **Page type** (`layout`: Case study or Write-up; locked for legacy-stack pages). Visibility stages through the Pages panel's gallery-membership change.
 
 Dev mode can create and author Public, Teaser, and Draft slugs without a server restart. `[slug].astro` prerenders only in production, and the create/settings/rename APIs send `astro:content-changed` to clear the dev route cache. A project file that appears or disappears any other way (an agent writing it, a pull, a content Update) clears the cache too: `projectRouteWatcher` in `scripts/dev-api-plugins.mjs` watches `src/content/projects/` directly, because Vite's watcher ignores `src/content`. `image` deliberately has no project route.
 
