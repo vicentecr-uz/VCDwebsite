@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { writeupPublicationDate } from '../../src/lib/writeupShareCard';
+import { writeupPublicationDate, writeupSocialDescription } from '../../src/lib/writeupShareCard';
 
 const bodyText = (...paragraphs: string[]) => ({ type: 'bodyText', paragraphs });
 
@@ -16,4 +16,22 @@ test('ignores prose, invalid calendar dates and dates in later blocks', () => {
   expect(writeupPublicationDate([bodyText('Title', 'Written in November 2026')])).toBeUndefined();
   expect(writeupPublicationDate([bodyText('Title<br>29 February 2026')])).toBeUndefined();
   expect(writeupPublicationDate([bodyText('Title'), bodyText('Another heading<br>5 November 2026')])).toBeUndefined();
+});
+
+test('prefers an existing social description and otherwise derives the first prose sentence', () => {
+  expect(writeupSocialDescription('Title', [bodyText('Title<br>5 November 2026')], '  A deliberate description.  '))
+    .toBe('A deliberate description.');
+  expect(writeupSocialDescription('Title', [
+    bodyText('Title<br>5 November 2026'),
+    { type: 'sectionTitle', text: 'Context' },
+    bodyText('- This list item is not a social description.', '<h2>Implementation</h2>', 'The first paragraph explains the change clearly, including why the slower path mattered for readers.'),
+  ])).toBe('The first paragraph explains the change clearly, including why the slower path mattered for readers.');
+});
+
+test('uses the clean fallback when no suitable sentence is available', () => {
+  expect(writeupSocialDescription('Title', [
+    bodyText('Title<br>5 November 2026'),
+    bodyText('<pre>This is an implementation detail that should never become the social description.</pre>'),
+    bodyText('- A short list item.', 'A heading only'),
+  ])).toBe('by Vicente Cruz');
 });

@@ -50,6 +50,7 @@ const DEFAULT_OG_IMAGE = '/images/vicente-cruz-social.jpg';
 interface Props {
   title: string;
   persistentNavigation?: boolean;
+  socialTitle?: string;
   description?: string;
   /**
    * Share-card image, root-relative (e.g. `/images/foo.preview.webp`).
@@ -69,6 +70,7 @@ interface Props {
 
 const {
   title,
+  socialTitle = title,
   persistentNavigation = false,
   description = 'Born in Rome, IT. Based in London, UK.',
   ogImage = DEFAULT_OG_IMAGE,
@@ -270,7 +272,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="Vicente Cruz" />
-    <meta property="og:title" content={title} />
+    <meta property="og:title" content={socialTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical.href} />
     <meta property="og:image" content={ogImageUrl.href} />
@@ -283,7 +285,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
       </>
     )}
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content={title} />
+    <meta name="twitter:title" content={socialTitle} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl.href} />
     <style is:inline set:html={loadingSpinnerStyles}></style>
