@@ -39,6 +39,10 @@ export const resolveAutoTextWrap = (paragraph: ParentNode): 'balance' | 'normal'
   return hasVisibleText && allEmphasized ? 'balance' : 'normal';
 };
 
+// A paragraph whose text opens with "- " hangs its wrapped lines under the first word.
+export const DASH_LINE_HTML = /^(?:<[^>]+>)*-[ \u00a0]/;
+const DASH_LINE_TEXT = /^-[ \u00a0]/;
+
 export const refreshParagraphWrapping = (element: HTMLElement, legacyBalance = false) => {
   element.querySelectorAll<HTMLElement>(':scope > p, :scope > div').forEach((paragraph) => {
     const mode = paragraphTextWrap(paragraph, legacyBalance);
@@ -46,6 +50,7 @@ export const refreshParagraphWrapping = (element: HTMLElement, legacyBalance = f
     for (const value of ['normal', 'pretty', 'balance']) {
       paragraph.classList.toggle(`project-body-text__wrap-${value}`, value === resolved);
     }
+    paragraph.classList.toggle('project-body-text__dash', DASH_LINE_TEXT.test(paragraph.textContent ?? ''));
   });
 };
 

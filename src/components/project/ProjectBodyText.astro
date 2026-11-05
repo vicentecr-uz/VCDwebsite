@@ -5,6 +5,7 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 import { resolveTextWrapHtml } from '../../lib/projectTextWrap';
+import { DASH_LINE_HTML } from '../../lib/devTextDom';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
@@ -45,7 +46,10 @@ const rawIntroHeight = Number(introHeight);
 const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
   ? Math.min(100, Math.max(1, Math.round(rawIntroHeight)))
   : 75;
-const paragraphWrapClass = (paragraph: string) => `project-body-text__wrap-${resolveTextWrapHtml(paragraph, balance)}`;
+const paragraphWrapClass = (paragraph: string) => [
+  `project-body-text__wrap-${resolveTextWrapHtml(paragraph, balance)}`,
+  DASH_LINE_HTML.test(paragraph) && 'project-body-text__dash',
+];
 ---
 
 <section
@@ -70,7 +74,7 @@ const paragraphWrapClass = (paragraph: string) => `project-body-text__wrap-${res
     data-dev-text-legacy-balance={editable && balance ? 'true' : undefined}
   >
     {paragraphs.map((paragraph) => (
-      <p class={paragraphWrapClass(paragraph)} set:html={paragraph} />
+      <p class:list={paragraphWrapClass(paragraph)} set:html={paragraph} />
     ))}
   </div>
   {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
