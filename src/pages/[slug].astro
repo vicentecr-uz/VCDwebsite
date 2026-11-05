@@ -36,13 +36,14 @@ const sections = project.sections;
 const outline = resolveProjectOutline(project);
 const sectionLinks = resolveProjectSectionLinks(project);
 
-// Share card = the project's own gallery cover, at the `preview` tier so
-// scrapers get a ~150KB webp rather than the multi-MB original.
+// Case studies use the lightweight preview of their gallery cover.
 const listingCover = Object.values(project.listings ?? {})
   .map((listing) => listing?.image)
   .find((image): image is string => Boolean(image));
-const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
-const PageLayout = isWriteupProject(project) ? WriteupLayout : ProjectLayout;
+const isWriteup = isWriteupProject(project);
+const coverPreview = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
+const ogImage = isWriteup ? `/share-cards/${encodeURIComponent(slug)}.png` : coverPreview;
+const PageLayout = isWriteup ? WriteupLayout : ProjectLayout;
 ---
 
 {project.stack === 'legacy' ? (
