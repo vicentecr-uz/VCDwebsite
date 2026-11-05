@@ -1,4 +1,7 @@
 .demo-frame {
+  /* Inset from the frame's edge to demo content. Demos pad with this rather than their own value,
+     so content lines up with the page column once the frame bleeds on phones. */
+  --demo-frame-inset: calc(var(--space-unit) * 2);
   position: relative;
   border-radius: var(--radius-control-smooth);
   background: var(--comp-demo-frame-container);
@@ -16,4 +19,42 @@
 @media (max-width: 40em) {
   .demo-frame { box-shadow: none; }
   .demo-frame::after { border-radius: 0; }
+
+  /* A frame in the page flow bleeds to both viewport edges. Negative margins expand its auto width
+     into the page gutter; `100% + 2 * gutter` overshoots when the inherited gutter does not match the
+     parent padding, which caused horizontal scrolling. Nested frames (e.g. the crop demo's preview
+     shell) are not project blocks and stay inset. */
+  .project-block.demo-frame {
+    --demo-frame-inset: var(--page-gutter);
+    width: auto;
+    max-width: none;
+    margin-inline: calc(-1 * var(--page-gutter));
+    border-radius: 0;
+  }
+
+  /* Full bleed drops the side rings, so the top ring is drawn on its own and the ::after ring is
+     clipped to the bottom edge. */
+  .project-block.demo-frame::before {
+    content: '';
+    display: block;
+    position: relative;
+    z-index: 3;
+    width: 100%;
+    height: 4px;
+    margin-bottom: -4px;
+    pointer-events: none;
+    box-shadow: var(--surface-stroke-shadow);
+    clip-path: inset(calc(-1 * var(--smooth-ring-width)) 0 calc(100% - var(--smooth-ring-width)) 0);
+  }
+
+  /* The edge sticks under the site header, so it only sticks on pages that render one. */
+  [data-page-shell]:has(.site-header) .project-block.demo-frame::before {
+    position: sticky;
+    /* Clear the header with the ring's outer edge, not its sticky box. */
+    top: calc(var(--site-header-visible-height, var(--site-header-height)) + var(--smooth-ring-width));
+  }
+
+  .project-block.demo-frame::after {
+    clip-path: inset(var(--smooth-ring-width) calc(-1 * var(--smooth-ring-width)) calc(-1 * var(--smooth-ring-width)) calc(-1 * var(--smooth-ring-width)));
+  }
 }
