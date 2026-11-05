@@ -191,41 +191,17 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       background: var(--comp-demo-frame-container);
       pointer-events: none;
     }
+    /* Full bleed and the edge rings live in demoFrame.css (.project-block.demo-frame). */
     .project-interactive-demo {
-      /* Negative margins expand a block's auto width into the page gutter.
-         `100% + 2 * gutter` overshoots when the inherited gutter does not
-         match the parent padding, which caused horizontal scrolling. */
-      width: auto;
-      max-width: none;
-      margin-inline: calc(-1 * var(--page-gutter));
-      border-radius: 0;
-      box-shadow: none;
       display: block;
       overflow: visible;
     }
 
-    .project-interactive-demo[data-demo-frame='default']::before {
-      content: '';
-      display: block;
-      position: relative;
-      z-index: 3;
-      width: 100%;
-      height: 4px;
-      margin-bottom: -4px;
-      pointer-events: none;
-      box-shadow: var(--surface-stroke-shadow);
-      clip-path: inset(calc(-1 * var(--smooth-ring-width)) 0 calc(100% - var(--smooth-ring-width)) 0);
-    }
-
-    /* The edge sticks under the site header, so it only sticks on pages that render one. */
-    :global([data-page-shell]:has(.site-header)) .project-interactive-demo[data-demo-frame='default']::before {
-      position: sticky;
-      /* Clear the header with the ring's outer edge, not its sticky box. */
-      top: calc(var(--site-header-visible-height, var(--site-header-height)) + var(--smooth-ring-width));
-    }
-
-    .project-interactive-demo[data-demo-frame='default']::after {
-      clip-path: inset(var(--smooth-ring-width) calc(-1 * var(--smooth-ring-width)) calc(-1 * var(--smooth-ring-width)) calc(-1 * var(--smooth-ring-width)));
+    /* Frameless demos carry no .demo-frame but still bleed, as before. */
+    .project-interactive-demo[data-demo-frame='none'] {
+      width: auto;
+      max-width: none;
+      margin-inline: calc(-1 * var(--page-gutter));
     }
 
     .project-interactive-demo__content {
