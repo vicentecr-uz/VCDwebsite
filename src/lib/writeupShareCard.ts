@@ -3,11 +3,14 @@ import sharp from 'sharp';
 import { parseFragment, type DefaultTreeAdapterMap } from 'parse5';
 import tokens from '../../tokens/design-tokens.json';
 
-const WIDTH = 1200;
-const HEIGHT = 630;
+export const WRITEUP_CARD_WIDTH = 1200;
+export const WRITEUP_CARD_HEIGHT = 630;
 const INSET = 72;
-const TEXT_WIDTH = WIDTH - INSET * 2;
+const TEXT_WIDTH = WRITEUP_CARD_WIDTH - INSET * 2;
 const LOGO_SIZE = 60;
+const TEXT_BLOCK_HEIGHT = 298;
+// Keep a clear strip below the branding for the platform’s title overlay.
+const FOOTER_TOP = WRITEUP_CARD_HEIGHT - 158 - LOGO_SIZE;
 // Fontconfig loads the bundled font from disk. On macOS, Pango defaults to Core Text.
 if (process.platform === 'darwin') process.env.PANGOCAIRO_BACKEND ??= 'fontconfig';
 
@@ -64,15 +67,16 @@ function validIsoDate(value: string) {
   return Number.isFinite(date.valueOf()) && date.toISOString().slice(0, 10) === value ? value : undefined;
 }
 
-function textLayer(text: string, color: string, font: string, height?: number) {
+function textLayer(markup: string, font: string, height?: number) {
   return sharp({
     text: {
-      text: `<span foreground="${color}">${escapeMarkup(text)}</span>`,
+      text: markup,
       font: `Hanken Grotesk ${font}`,
       fontfile: FONT_FILE,
       width: TEXT_WIDTH,
       height,
       rgba: true,
+      spacing: 8,
       wrap: 'word-char',
     },
   }).png().toBuffer({ resolveWithObject: true });
@@ -81,24 +85,28 @@ function textLayer(text: string, color: string, font: string, height?: number) {
 export async function renderWriteupShareCard(title: string, publishedOn?: string): Promise<Buffer> {
   const ink = lightColor('on-srf');
   const titleText = title.trim() || 'Untitled';
-  const [naturalTitle, date, name, logo] = await Promise.all([
-    textLayer(titleText, ink, 'Bold 80'),
-    publishedOn && textLayer(dateFormat.format(new Date(publishedOn)), lightColor('on-srf-subtle'), '32'),
-    textLayer('Vicente Cruz', ink, 'Medium 52'),
+  const dateText = publishedOn ? dateFormat.format(new Date(publishedOn)) : '';
+  const titleDateMarkup = [
+    `<span foreground="${ink}">${escapeMarkup(titleText)}</span>`,
+    dateText ? `<span foreground="${lightColor('on-srf-subtle')}">${escapeMarkup(dateText)}</span>` : '',
+  ].filter(Boolean).join('\n');
+  const wordmarkMarkup = `<span foreground="${ink}" letter_spacing="-1400">${escapeMarkup('Vicente Cruz')}</span>`;
+  const [naturalTitleDate, name, logo] = await Promise.all([
+    textLayer(titleDateMarkup, 'Regular 62'),
+    textLayer(wordmarkMarkup, 'Bold 52'),
     sharp(LOGO_FILE, { svg: { stylesheet: `polygon, path { fill: ${ink} !important; }` } })
       .resize(LOGO_SIZE, LOGO_SIZE).png().toBuffer(),
   ]);
-  // Leave room for metadata and the footer. Scale only titles that exceed the title area.
-  const titleImage = naturalTitle.info.height > 310
-    ? await textLayer(titleText, ink, 'Bold 80', 310)
-    : naturalTitle;
+  // Keep the title and date at one size, shrinking both together for long titles.
+  const titleDateImage = naturalTitleDate.info.height > TEXT_BLOCK_HEIGHT
+    ? await textLayer(titleDateMarkup, 'Regular 62', TEXT_BLOCK_HEIGHT)
+    : naturalTitleDate;
   const layers: sharp.OverlayOptions[] = [
-    { input: titleImage.data, left: INSET, top: INSET },
-    { input: name.data, left: INSET, top: HEIGHT - INSET - name.info.height },
-    { input: logo, left: WIDTH - INSET - LOGO_SIZE, top: HEIGHT - INSET - LOGO_SIZE },
+    { input: titleDateImage.data, left: INSET, top: INSET },
+    { input: name.data, left: INSET, top: Math.round(FOOTER_TOP + Math.max(0, (LOGO_SIZE - name.info.height) / 2)) },
+    { input: logo, left: WRITEUP_CARD_WIDTH - INSET - LOGO_SIZE, top: FOOTER_TOP },
   ];
-  if (date) layers.push({ input: date.data, left: INSET, top: INSET + titleImage.info.height + 26 });
 
-  return sharp({ create: { width: WIDTH, height: HEIGHT, channels: 3, background: lightColor('srf') } })
+  return sharp({ create: { width: WRITEUP_CARD_WIDTH, height: WRITEUP_CARD_HEIGHT, channels: 3, background: lightColor('srf') } })
     .composite(layers).png().toBuffer();
 }
