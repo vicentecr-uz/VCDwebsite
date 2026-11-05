@@ -27,7 +27,7 @@ test.afterEach(async () => {
 test('keeps navigation closure, redirect aliases, embedded documents, and transitive generated assets', async () => {
   const { root, put } = await fixture();
   await put('index.html', '<link rel="canonical" href="/private/"><a href="/about/?from=home#top">About</a><a href="https://example.test/work/">Work</a><iframe src="/embed/"></iframe><object data="/object/"></object><script src="_assets/home.js"></script><script src="//example.test/_assets/encoded%20file.js"></script><script>const fake = \'<a href="/script-fake/">fake</a>\';</script><!-- <a href="/comment-fake/">fake</a> -->');
-  await put('about/index.html', '<a href="/multi/">Continue</a>');
+  await put('about/index.html', '<meta property="og:image" content="https://example.test/share-cards/about.png"><a href="/multi/">Continue</a>');
   await put('multi/index.html', '<a href="/unlisted/">Reachable text link</a><a href="../text-linked/">Relative text link</a>');
   await put('unlisted/index.html', 'reachable');
   await put('text-linked/index.html', 'relative reachable');
@@ -36,7 +36,7 @@ test('keeps navigation closure, redirect aliases, embedded documents, and transi
   await put('object/index.html', '<meta http-equiv="refresh" content="0;url=/unlisted/"><a href="/unlisted/">Continue</a>');
   await put('cycle-a/index.html', '<a href="/cycle-b/">cycle</a>');
   await put('cycle-b/index.html', '<a href="/cycle-a/">cycle</a>');
-  await put('private/index.html', '<img src="/images/private-figure.png">');
+  await put('private/index.html', '<meta name="twitter:image" content="/share-cards/private.png"><img src="/images/private-figure.png">');
   await put('private-alias/index.html', '<meta http-equiv="refresh" content="0;url=/private/"><p>real page content</p><a href="/private/">Continue</a>');
   await put('alias/index.html', '<meta http-equiv="refresh" content="0;url=/"><script>location.replace("/")</script><a href="/">Continue</a>');
   await put('external/index.html', '<meta http-equiv="refresh" content="0;url=https://social.example/profile"><a href="https://social.example/profile">Continue</a>');
@@ -49,6 +49,8 @@ test('keeps navigation closure, redirect aliases, embedded documents, and transi
   await put('_assets/transitive.js', 'const image = "/images/shared%20cover.svg";');
   await put('_assets/preload.js', 'const image = "/images/shared%20cover.svg";');
   await put('_assets/private.js', 'const image = "/images/private-figure.png";');
+  await put('share-cards/about.png');
+  await put('share-cards/private.png');
   await put('_assets/orphan.css', 'body {}');
   await put('_assets/encoded file.js', 'export const encoded = true;');
   await put('_assets/protocol.js', 'export const protocol = true;');
@@ -57,8 +59,8 @@ test('keeps navigation closure, redirect aliases, embedded documents, and transi
   assert.ok(result.retainedHtml.includes('index.html'));
   for (const route of ['about/index.html', 'multi/index.html', 'unlisted/index.html', 'text-linked/index.html', 'work/index.html', 'embed/index.html', 'object/index.html', 'alias/index.html', 'external/index.html', '404.html']) assert.ok(result.retainedHtml.includes(route), route);
   for (const route of ['cycle-a/index.html', 'cycle-b/index.html', 'private/index.html', 'private-alias/index.html', 'private-from-404/index.html', 'script-fake/index.html', 'comment-fake/index.html']) assert.ok(result.removedHtml.includes(route), route);
-  for (const asset of ['_assets/home.js', '_assets/shared.css', '_assets/transitive.js', '_assets/preload.js']) assert.ok(result.retainedAssets.includes(asset), asset);
-  for (const asset of ['_assets/private.js', '_assets/orphan.css', '_assets/protocol.js']) assert.ok(result.removedAssets.includes(asset), asset);
+  for (const asset of ['_assets/home.js', '_assets/shared.css', '_assets/transitive.js', '_assets/preload.js', 'share-cards/about.png']) assert.ok(result.retainedAssets.includes(asset), asset);
+  for (const asset of ['_assets/private.js', '_assets/orphan.css', '_assets/protocol.js', 'share-cards/private.png']) assert.ok(result.removedAssets.includes(asset), asset);
   assert.ok(result.retainedAssets.includes('_assets/encoded file.js'));
 
   const media = path.join(root, 'media');
