@@ -10,7 +10,7 @@ const TEXT_WIDTH = WRITEUP_CARD_WIDTH - INSET * 2;
 const LOGO_SIZE = 60;
 const TEXT_BLOCK_HEIGHT = 298;
 // Keep a clear strip below the branding for the platform’s title overlay.
-const FOOTER_TOP = WRITEUP_CARD_HEIGHT - 158 - LOGO_SIZE;
+const FOOTER_TOP = WRITEUP_CARD_HEIGHT - 134 - LOGO_SIZE;
 // Fontconfig loads the bundled font from disk. On macOS, Pango defaults to Core Text.
 if (process.platform === 'darwin') process.env.PANGOCAIRO_BACKEND ??= 'fontconfig';
 
@@ -92,14 +92,14 @@ export async function renderWriteupShareCard(title: string, publishedOn?: string
   ].filter(Boolean).join('\n');
   const wordmarkMarkup = `<span foreground="${ink}" letter_spacing="-1400">${escapeMarkup('Vicente Cruz')}</span>`;
   const [naturalTitleDate, name, logo] = await Promise.all([
-    textLayer(titleDateMarkup, 'Regular 62'),
+    textLayer(titleDateMarkup, 'Regular 54'),
     textLayer(wordmarkMarkup, 'Bold 52'),
     sharp(LOGO_FILE, { svg: { stylesheet: `polygon, path { fill: ${ink} !important; }` } })
       .resize(LOGO_SIZE, LOGO_SIZE).png().toBuffer(),
   ]);
   // Keep the title and date at one size, shrinking both together for long titles.
   const titleDateImage = naturalTitleDate.info.height > TEXT_BLOCK_HEIGHT
-    ? await textLayer(titleDateMarkup, 'Regular 62', TEXT_BLOCK_HEIGHT)
+    ? await textLayer(titleDateMarkup, 'Regular 54', TEXT_BLOCK_HEIGHT)
     : naturalTitleDate;
   const layers: sharp.OverlayOptions[] = [
     { input: titleDateImage.data, left: INSET, top: INSET },
