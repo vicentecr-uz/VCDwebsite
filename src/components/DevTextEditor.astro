@@ -395,7 +395,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership' | 'project-details-rows' | 'annotation';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership' | 'project-details-rows' | 'annotation' | 'layout-field';
       payload: Record<string, unknown>;
       revert: () => void;
       prepare?: () => Record<string, unknown>;
@@ -948,7 +948,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       change.kind === 'crop'
       || change.kind === 'grid'
       || change.kind === 'carousel'
-      || change.kind === 'caption';
+      || change.kind === 'caption'
+      // A numeric section field (code block maxLines); saved through the batch's layout list.
+      || change.kind === 'layout-field';
     const readPendingMediaPath = (change: PendingMediaChange) => {
       const path = change.payload.path;
       return Array.isArray(path) ? path : null;
@@ -1921,6 +1923,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               .map((change) => change.payload),
             captions: pendingMediaForDocument
               .filter((change) => change.kind === 'caption')
+              .map((change) => change.payload),
+            spacing: pendingMediaForDocument
+              .filter((change) => change.kind === 'layout-field')
               .map((change) => change.payload),
           }),
         });
@@ -4235,7 +4240,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           && detail.kind !== 'project-settings'
           && detail.kind !== 'gallery-membership'
           && detail.kind !== 'project-details-rows'
-          && detail.kind !== 'annotation')
+          && detail.kind !== 'annotation'
+          && detail.kind !== 'layout-field')
       ) {
         return;
       }
@@ -6194,7 +6200,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 document: state.document,
                 path: state.path,
                 value: submittedHeights.get(state),
-              }, state.element))),
+              }, state.element))).concat(imageChanges
+                .filter((change) => change.kind === 'layout-field')
+                .map((change) => change.payload)),
             }),
           });
           const payload = await response.json();
