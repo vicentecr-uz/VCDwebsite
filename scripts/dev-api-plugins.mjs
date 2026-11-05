@@ -1,5 +1,5 @@
 // @ts-check
-import { createReadStream, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile as execFileCallback } from 'node:child_process';
@@ -1599,6 +1599,32 @@ export function projectRenameDevWriter() {
           send(400, { error: error instanceof Error ? error.message : 'Could not rename the project.' });
         }
       });
+    },
+  };
+}
+
+/**
+ * A project document that appears or disappears without the create/rename/delete APIs (an agent
+ * writing the file, a pull, a content Update) is not in Astro's getStaticPaths route cache, so its
+ * /slug 404s until something busts the cache. Vite's watcher deliberately ignores src/content (see
+ * server.watch.ignored in astro.config.mjs), so this watches the projects folder itself; renames
+ * (adds and removals) bust the cache without touching Vite's reload path.
+ */
+export function projectRouteWatcher() {
+  return {
+    name: 'project-route-watcher',
+    apply: 'serve',
+    configureServer(server) {
+      const dir = path.resolve(server.config.root, 'src/content/projects');
+      let watcher;
+      try {
+        watcher = watch(dir, (event, file) => {
+          if (event === 'rename' && file?.endsWith('.json')) invalidateAstroRouteCache(server);
+        });
+      } catch {
+        return; // no content checkout (fresh engine clone): nothing to route
+      }
+      server.httpServer?.once('close', () => watcher.close());
     },
   };
 }
