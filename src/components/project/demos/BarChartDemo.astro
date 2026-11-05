@@ -49,10 +49,14 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
     --bar-chart-grid: var(--comp-chart-gridline);
     /* Ink-to-ink spacing (project.css): a 1.2 line adds this above its cap and below its baseline. */
     --bar-chart-ink: calc((1.2em - 0.697em) / 2);
+    /* Gridlines run this far past the first and last bar; they are the plot's visual edge, so spacing
+       is measured from their ends rather than from the bars. */
+    --bar-chart-overshoot: calc(var(--space-unit) * 0.5);
     margin: 0;
-    /* The axis reads first: 2u from the frame edge to its cap; the last bar ends 2u from the bottom. */
+    /* The axis reads first: 2u from the frame edge to its cap; 2u from the gridlines' end to the bottom. */
     padding: calc(var(--space-unit) * 2) var(--demo-frame-inset, calc(var(--space-unit) * 2));
     padding-top: calc(var(--space-unit) * 2 - var(--bar-chart-ink));
+    padding-bottom: calc(var(--space-unit) * 2 + var(--bar-chart-overshoot));
     display: grid;
     grid-template-columns: max-content minmax(0, 1fr);
     column-gap: var(--space-unit);
@@ -66,10 +70,10 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
   .bar-chart--notes { grid-template-columns: max-content minmax(0, 1fr) max-content; }
 
   /* Gridlines run through the row gaps: one element spans every bar row in the plot column, behind
-     the bars, and overshoots the first and last bar by 0.5u (0.5u still clears the axis baseline). */
+     the bars, and overshoots the first and last bar. */
   .bar-chart__grid {
     grid-column: 2;
-    margin-block: calc(var(--space-unit) * -0.5);
+    margin-block: calc(0px - var(--bar-chart-overshoot));
     margin-inline-start: -1px;
     background: var(--bar-chart-lines);
     pointer-events: none;
@@ -105,8 +109,8 @@ const lines = ticks.map((tick) => `linear-gradient(var(--bar-chart-grid), var(--
   .bar-chart__note { text-align: right; color: var(--sys-color-on-srf-variant); }
   [data-tone='bad'] .bar-chart__note { color: var(--bar-chart-red-ink); }
 
-  /* Axis on top so units and context read first: 1u from its baseline to the first bar, inside the 2u row gap. */
-  .bar-chart__axis { color: var(--sys-color-on-srf-variant); margin-bottom: calc(var(--space-unit) * -1 - var(--bar-chart-ink)); }
+  /* Axis on top so units and context read first: 1u from its baseline to the gridlines' top, inside the 2u row gap. */
+  .bar-chart__axis { color: var(--sys-color-on-srf-variant); margin-bottom: calc(var(--space-unit) * -1 + var(--bar-chart-overshoot) - var(--bar-chart-ink)); }
   .bar-chart__ticks { position: relative; height: 1.2em; }
   .bar-chart__ticks > span { position: absolute; translate: -50% 0; white-space: nowrap; }
   .bar-chart__ticks > span:first-child { translate: 0 0; }
