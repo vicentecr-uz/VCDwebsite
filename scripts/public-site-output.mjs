@@ -194,7 +194,7 @@ function codeReferences(contents) {
   return refs;
 }
 
-/** @param {string} distDir @param {{site?: string|URL, assetsDir?: string, linkRoutes?: string[]}} options */
+/** @param {string} distDir @param {{site?: string|URL, assetsDir?: string, publicRoutes?: string[]}} options */
 export async function prunePublicOutput(distDir, options = {}) {
   distDir = path.resolve(distDir);
   const site = new URL(String(options.site || 'http://localhost/'));
@@ -243,9 +243,10 @@ export async function prunePublicOutput(distDir, options = {}) {
     const targetFile = routeFiles.get(routeKey(redirect.destination.pathname));
     return Boolean(targetFile && reachable.has(targetFile));
   }));
-  // `publicLink` pages ship by URL only: kept but not traversed, so they never
-  // publish what they link to, and marked noindex unless navigation reaches them.
-  const linkOnlyHtml = [...new Set((options.linkRoutes || [])
+  // Public project pages always ship at their URL. One that navigation doesn't
+  // reach is kept but not traversed, so it never publishes what it links to,
+  // and is marked noindex.
+  const linkOnlyHtml = [...new Set((options.publicRoutes || [])
     .map((route) => routeFiles.get(routeKey(route)))
     .filter((file) => file && !reachable.has(file)))];
   for (const file of linkOnlyHtml) {

@@ -73,9 +73,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
    *   slug: string,
    *   title: string,
    *   status: string,
-   *   publicLink: boolean,
-   *   rootLinked: boolean,
-   *   links: string[],
    *   onGallery: boolean,
    *   hasCover: boolean,
    *   image: string,
@@ -120,9 +117,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
     let selected = new Set();
     /** @type {Set<string>} */
     let baseline = new Set();
-    /** Slugs with `publicLink: true` — ship by URL even when no gallery lists them. */
-    let publicLinks = new Set<string>();
-    let baselinePublicLinks = new Set<string>();
     /** @type {GridOrderEntry[]} */
     let baselineOrder: GridOrderEntry[] = [];
     /** @type {string[]} */
@@ -302,7 +296,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
     const isDirty = () =>
       !setsEqual(selected, baseline)
-      || !setsEqual(publicLinks, baselinePublicLinks)
       || !ordersEqual(captureGridOrder(), baselineOrder);
 
     const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
@@ -738,7 +731,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
     const restoreMembershipPreview = () => {
       selected = new Set(baseline);
-      publicLinks = new Set(baselinePublicLinks);
       applyPagesOrder(baselinePagesOrder);
       const grid = listingGrid();
       if (!grid) {
@@ -792,9 +784,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
             grid: activeGrid,
             slugs: [...selected],
             items: captureGridOrder(),
-            publicLinks: Object.fromEntries(pages
-              .filter((page) => publicLinks.has(page.slug) !== baselinePublicLinks.has(page.slug))
-              .map((page) => [page.slug, publicLinks.has(page.slug)])),
           },
           revert: () => {
             restoreMembershipPreview();
@@ -807,7 +796,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
     const gallerySnapshot = () => ({
       selected: [...selected],
-      publicLinks: [...publicLinks],
       order: captureGridOrder(),
       pagesOrder: pages.map((page) => page.slug),
     });
@@ -816,7 +804,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
 
     const applyGallerySnapshot = (snapshot) => {
       selected = new Set(snapshot.selected);
-      publicLinks = new Set(snapshot.publicLinks);
       applyPagesOrder(snapshot.pagesOrder);
       applyMembershipPreview();
       applyOrderToLiveGrid(snapshot.order.map((entry) => entry.slug));
@@ -860,36 +847,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       syncCount();
       syncPending();
       pushGalleryChange(before, gallerySnapshot(), `${selected.has(page.slug) ? 'Show' : 'Hide'} ${page.title}`);
-    };
-
-    const togglePublicLink = (page: GalleryPage) => {
-      const before = gallerySnapshot();
-      if (publicLinks.has(page.slug)) publicLinks.delete(page.slug);
-      else publicLinks.add(page.slug);
-      renderGrid();
-      syncCount();
-      syncPending();
-      pushGalleryChange(before, gallerySnapshot(), `${publicLinks.has(page.slug) ? 'Publish' : 'Unpublish'} ${page.title}`);
-    };
-
-    // Same walk as the build's prune: from this gallery's cards plus whatever
-    // static pages, the header, or other galleries link to, through Public pages'
-    // own links. publicLink pages are not followed, matching the build. Returns
-    // every slug navigation points at, whatever that page's own status.
-    const navigationTargets = () => {
-      const bySlug = new Map(pages.map((page) => [page.slug, page]));
-      const queue = pages.filter((page) => selected.has(page.slug) || page.rootLinked).map((page) => page.slug);
-      const linked = new Set<string>();
-      const expanded = new Set<string>();
-      while (queue.length) {
-        const slug = queue.shift()!;
-        linked.add(slug);
-        const page = bySlug.get(slug);
-        if (expanded.has(slug) || page?.status !== 'published') continue;
-        expanded.add(slug);
-        queue.push(...(page.links ?? []));
-      }
-      return linked;
     };
 
     const renderList = (list: GalleryPage[]) => {
@@ -1024,8 +981,6 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
         pages = Array.isArray(payload.pages) ? payload.pages : [];
         selected = new Set(pages.filter((page) => page.onGallery).map((page) => page.slug));
         baseline = new Set(selected);
-        publicLinks = new Set(pages.filter((page) => page.publicLink).map((page) => page.slug));
-        baselinePublicLinks = new Set(publicLinks);
         detachedItems.clear();
         createdItems.clear();
         baselineOrder = captureGridOrder();
@@ -1078,8 +1033,8 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       });
     });
 
-    // Page settings (DevProjectGridEditor) edits Visibility and Publish here so
-    // membership, publicLink, pending save, and undo keep one owner.
+    // Page settings (DevProjectGridEditor) edits Visibility here so membership,
+    // pending save, and undo keep one owner.
     window.__vcdGalleryPages = {
       load: async () => {
         if (!activeGrid) activeGrid = currentGrid();
@@ -1092,15 +1047,12 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
         if (!page || loadedGrid !== activeGrid) return null;
         return {
           on: selected.has(slug),
-          publicLink: publicLinks.has(slug),
-          navigationLinked: navigationTargets().has(slug),
         };
       },
-      set: (slug: string, next: { on?: boolean; publicLink?: boolean }) => {
+      set: (slug: string, next: { on?: boolean }) => {
         const page = pageBySlug(slug);
         if (!page) return;
         if (next.on !== undefined && next.on !== selected.has(slug)) toggleMembership(page);
-        if (next.publicLink !== undefined && next.publicLink !== publicLinks.has(slug)) togglePublicLink(page);
       },
     };
     scope.add(() => { delete window.__vcdGalleryPages; });
@@ -1145,12 +1097,10 @@ const ellipsisIconSvg = sizeIcon(ellipsisIcon, 16);
       const ids = event.detail?.ids;
       if (Array.isArray(ids) && !ids.includes(`gallery-membership:${activeGrid}`)) return;
       baseline = new Set(selected);
-      baselinePublicLinks = new Set(publicLinks);
       baselineOrder = captureGridOrder();
       baselinePagesOrder = pages.map((page) => page.slug);
       for (const page of pages) {
         page.onGallery = selected.has(page.slug);
-        page.publicLink = publicLinks.has(page.slug);
       }
       syncCount();
       renderGrid();
