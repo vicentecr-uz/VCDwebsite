@@ -1,0 +1,98 @@
+---
+type Tone = 'default' | 'warn' | 'bad';
+type Row = { label: string; value: number; note?: string; tone?: Tone };
+
+interface Props { sample?: unknown }
+
+const raw = (Astro.props.sample ?? {}) as { rows?: unknown; max?: unknown; ticks?: unknown; unit?: unknown; noteLabel?: unknown };
+const rows = (Array.isArray(raw.rows) ? raw.rows : []).filter((row): row is Row =>
+  Boolean(row) && typeof row.label === 'string' && typeof row.value === 'number' && Number.isFinite(row.value));
+const max = typeof raw.max === 'number' && raw.max > 0 ? raw.max : Math.max(1, ...rows.map((row) => row.value));
+const ticks = Array.isArray(raw.ticks) ? raw.ticks.filter((tick): tick is number => typeof tick === 'number') : [0, max];
+const unit = typeof raw.unit === 'string' ? raw.unit.trim() : '';
+const noteLabel = typeof raw.noteLabel === 'string' ? raw.noteLabel : '';
+const share = (value: number) => `${Math.min(100, Math.max(0, (value / max) * 100))}%`;
+const hasNotes = rows.some((row) => row.note);
+---
+
+<figure class:list={['bar-chart', hasNotes && 'bar-chart--notes']}>
+  <div class="bar-chart__row bar-chart__axis" aria-hidden="true">
+    <span class="bar-chart__label"></span>
+    <span class="bar-chart__ticks">
+      {ticks.map((tick) => <span style={`left:${share(tick)}`}>{tick}</span>)}
+    </span>
+    <span class="bar-chart__value">{unit}</span>
+    {hasNotes && <span class="bar-chart__note">{noteLabel}</span>}
+  </div>
+  {rows.map((row) => (
+    <div class="bar-chart__row" data-tone={row.tone ?? 'default'} role="img" aria-label={`${row.label}: ${row.value}${unit ? ` ${unit}` : ''}${row.note ? `, ${noteLabel ? `${noteLabel} ` : ''}${row.note}` : ''}`}>
+      <span class="bar-chart__label" aria-hidden="true">{row.label}</span>
+      <span class="bar-chart__track" aria-hidden="true"><span class="bar-chart__bar" style={`width:${share(row.value)}`}></span></span>
+      <span class="bar-chart__value" aria-hidden="true">{row.value}</span>
+      {hasNotes && <span class="bar-chart__note" aria-hidden="true">{row.note}</span>}
+    </div>
+  ))}
+</figure>
+
+<style>
+  .bar-chart {
+    margin: 0;
+    padding: calc(var(--space-unit) * 3);
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    column-gap: calc(var(--space-unit) * 2);
+    row-gap: calc(var(--space-unit) * 1.5);
+    font: var(--text-body-weight, 400) var(--text-body-size)/1.2 var(--font-sans);
+    letter-spacing: var(--text-body-tracking, normal);
+    color: var(--sys-color-on-srf);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-chart--notes { grid-template-columns: max-content minmax(0, 1fr) max-content max-content; }
+
+  .bar-chart__row {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: subgrid;
+    align-items: center;
+  }
+
+  .bar-chart__axis { color: var(--sys-color-on-srf-variant); }
+
+  .bar-chart__ticks { position: relative; height: 1.2em; }
+  .bar-chart__ticks > span { position: absolute; top: 0; translate: -50% 0; white-space: nowrap; }
+  .bar-chart__ticks > span:first-child { translate: 0 0; }
+  .bar-chart__ticks > span:last-child { translate: -100% 0; }
+
+  .bar-chart__track {
+    position: relative;
+    height: calc(var(--space-unit) * 3);
+    border-radius: var(--dev-radius-checkbox);
+    background: var(--sys-color-srf-container-low);
+    overflow: hidden;
+  }
+
+  .bar-chart__bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    border-radius: inherit;
+    background: var(--sys-color-on-srf-container-faint);
+  }
+
+  .bar-chart__value, .bar-chart__note { text-align: right; }
+  .bar-chart__note { color: var(--sys-color-on-srf-variant); }
+
+  [data-tone='warn'] .bar-chart__bar { background: color-mix(in oklch, var(--sys-color-error) 45%, var(--sys-color-srf-container-low)); }
+  [data-tone='bad'] .bar-chart__bar { background: var(--sys-color-error); }
+  [data-tone='bad'] .bar-chart__note,
+  [data-tone='warn'] .bar-chart__note { color: var(--sys-color-error); }
+
+  /* Phones: each label takes its own line above its bar so the track keeps its width. */
+  @media (max-width: 40em) {
+    .bar-chart { padding: calc(var(--space-unit) * 2); column-gap: var(--space-unit); row-gap: calc(var(--space-unit) * 2); grid-template-columns: minmax(0, 1fr) max-content; }
+    .bar-chart--notes { grid-template-columns: minmax(0, 1fr) max-content max-content; }
+    .bar-chart__row { row-gap: calc(var(--space-unit) * 0.5); }
+    .bar-chart__label { grid-column: 1 / -1; }
+    .bar-chart__axis .bar-chart__label { display: none; }
+  }
+</style>
