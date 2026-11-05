@@ -1514,11 +1514,16 @@ function contentBatchDevWriter() {
               && Number.isInteger(value)
               && value >= 1
               && value <= 100;
+            // Code block line cap from Edit mode's base grabber; 0 clears it.
+            const validMaxLines = field === 'maxLines'
+              && Number.isInteger(value)
+              && value >= 0
+              && value <= 1000;
             if (
               !resolved ||
               !Array.isArray(resolved.path) ||
               resolved.path.length > 8 ||
-              (!validSpacing && !validIntroHeight) ||
+              (!validSpacing && !validIntroHeight && !validMaxLines) ||
               !isSafeContentPath(resolved.path)
             ) {
               send(400, { error: 'One or more layout fields are not editable.' });
@@ -1647,7 +1652,12 @@ function contentBatchDevWriter() {
                   send(400, { error: 'Intro height is only editable on Intro blocks.' });
                   return;
                 }
-                target[field] = change.value;
+                if (field === 'maxLines' && target.type !== 'codeBlock') {
+                  send(400, { error: 'A line limit is only editable on code blocks.' });
+                  return;
+                }
+                if (field === 'maxLines' && change.value === 0) delete target.maxLines;
+                else target[field] = change.value;
                 if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                   delete target.tightTop;
                 }
