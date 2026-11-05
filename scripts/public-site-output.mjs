@@ -100,6 +100,12 @@ export function documentInfo(document) {
       else if (URL_ATTRIBUTES.has(name)) resources.push(attribute.value);
       if (name === 'style') inline.push(attribute.value);
     }
+    if (tag === 'meta') {
+      const content = attr(node, 'content');
+      if (content && (attr(node, 'property') === 'og:image' || attr(node, 'name') === 'twitter:image')) {
+        resources.push(content);
+      }
+    }
     if (tag === 'meta' && attr(node, 'http-equiv')?.toLowerCase() === 'refresh') {
       const content = attr(node, 'content') || '';
       const match = content.match(/^[^;]+;\s*url\s*=\s*(.*)$/i);
@@ -256,17 +262,20 @@ export async function prunePublicOutput(distDir, options = {}) {
   const retainedAssets = new Set();
   // Ceiling: this traces emitted HTML/CSS/JS and generated assets; upgrade to a full module graph when runtime loading semantics require it.
   const assetRoot = path.resolve(distDir, assetsDir);
+  const shareCardRoot = path.resolve(distDir, 'share-cards');
+  const isGeneratedAsset = (file) => file.startsWith(assetRoot + path.sep)
+    || (path.dirname(file) === shareCardRoot && path.extname(file) === '.png');
   const addRefs = (file, refs) => {
     for (const raw of refs) {
       const resolved = resolveAssetFile(raw, file, distDir, site, assetsDir, knownFiles);
-      if (resolved && (resolved === assetRoot || resolved.startsWith(assetRoot + path.sep))) retainedAssets.add(resolved);
+      if (resolved && isGeneratedAsset(resolved)) retainedAssets.add(resolved);
     }
   };
   for (const file of retainedHtml) {
     const info = documentInfo(documents.get(file));
     addRefs(file, [...info.resources, ...info.inline.flatMap((value) => codeReferences(value))]);
   }
-  const assetFiles = allFiles.filter((file) => file === assetRoot || file.startsWith(assetRoot + path.sep));
+  const assetFiles = allFiles.filter(isGeneratedAsset);
   const assetQueue = [...retainedAssets];
   while (assetQueue.length) {
     const file = assetQueue.shift();
