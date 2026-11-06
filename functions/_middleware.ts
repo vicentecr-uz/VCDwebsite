@@ -1,3 +1,5 @@
+import { sabiDocsPages } from '../src/lib/sabi-docs-pages';
+
 const SABI_HOST = 'sabi.vicentecr.uz';
 
 type PagesContext = {
@@ -19,7 +21,7 @@ export async function onRequest({ request, next, env }: PagesContext): Promise<R
   }
   if (url.hostname === SABI_HOST) {
     const path = url.pathname.replace(/\/$/, '') || '/';
-    if (['/', '/getting-started', '/api', '/email-and-number-fields', '/styling'].includes(path)) {
+    if (path === '/' || sabiDocsPages.some(({ slug }) => path === `/${slug}`)) {
       const asset = new URL(path === '/' ? '/sabi/' : `/sabi${path}/`, url);
       asset.search = url.search;
       return env.ASSETS.fetch(asset);
