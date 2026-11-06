@@ -822,6 +822,40 @@
   background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
 }
 
+.dev-segmented[data-slide-selection] {
+  position: relative;
+}
+
+.dev-segmented[data-slide-selection] > .dev-btn {
+  transition-property: color, border-color, transform;
+  transition-duration: 200ms, 200ms, var(--motion-press-duration);
+  transition-timing-function: ease, ease, ease-out;
+}
+
+.dev-segmented__indicator {
+  display: none;
+  position: absolute;
+  inset: 0 auto auto 0;
+  border-radius: var(--dev-radius-control);
+  background: var(--dev-segmented-selected-fill);
+  pointer-events: none;
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .dev-segmented[data-slide-selection]:has(> .dev-btn[data-segment-target]:is(.is-active, .is-selected, [aria-pressed='true'])) {
+    overflow: clip;
+  }
+
+  .dev-segmented[data-slide-selection]:has(> .dev-btn[data-segment-target]:is(.is-active, .is-selected, [aria-pressed='true'])) > .dev-segmented__indicator {
+    display: block;
+  }
+
+  .dev-segmented[data-slide-selection] > .dev-btn[data-segment-target]:is(.is-active, .is-selected, [aria-pressed='true']) {
+    background: transparent;
+  }
+}
+
 /* Eye Button Base (597:4708) — the shown/hidden toggle pinned into a gallery
    or asset thumb's top-right corner. Icon-only, so it keeps an accessible
    name from its aria-label; the variant is the glyph, not the fill. */
