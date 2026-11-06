@@ -8,7 +8,6 @@ import TextField from './ui/TextField.astro';
 import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import fileTextIcon from 'lucide-static/icons/file-text.svg?raw';
-import globeLockIcon from 'lucide-static/icons/globe-lock.svg?raw';
 import layoutPanelTopIcon from 'lucide-static/icons/layout-panel-top.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
@@ -37,10 +36,6 @@ const galleryOptions = [
   { value: 'shown', label: 'Shown', icon: eyeIcon },
   { value: 'hidden', label: 'Hidden', icon: eyeOffIcon },
 ];
-const publishOptions = [
-  { value: 'published', label: 'Published', icon: globeIcon },
-  { value: 'unpublished', label: 'Not published', icon: globeLockIcon },
-];
 const pageTypeOptions = [
   { value: 'case-study', label: 'Case study', icon: layoutPanelTopIcon },
   { value: 'writeup', label: 'Write-up', icon: fileTextIcon },
@@ -56,15 +51,6 @@ const pageTypeOptions = [
     <p class="dev-project-settings__hint" hidden></p>
 
     <div class="dev-project-settings__top-row">
-      <SelectField
-        class="dev-project-settings__field dev-project-settings__field--visibility"
-        label="Status"
-        id="ps-status-trigger"
-        data-ps-status
-        options={visibilityOptions}
-        value="published"
-      />
-
       <div class="dev-project-settings__listing" data-ps-listing-fields>
         <label class="dev-project-settings__field dev-field">
           <span class="dev-field__label">Card background</span>
@@ -87,32 +73,33 @@ const pageTypeOptions = [
           </div>
         </label>
       </div>
-    </div>
 
-    <div class="dev-project-settings__top-row" data-ps-gallery-fields>
-      <SelectField
-        class="dev-project-settings__field dev-project-settings__field--visibility"
-        label="Visibility"
-        data-ps-gallery
-        options={galleryOptions}
-        value="shown"
-      />
-      <SelectField
-        class="dev-project-settings__field dev-project-settings__field--visibility"
-        label="Publish"
-        data-ps-publish
-        options={publishOptions}
-        value="published"
-      />
-    </div>
-
-    <div class="dev-project-settings__top-row" data-ps-layout-wrap>
       <SelectField
         class="dev-project-settings__field dev-project-settings__field--visibility"
         label="Page type"
         data-ps-layout
+        data-ps-layout-wrap
         options={pageTypeOptions}
         value="case-study"
+      />
+    </div>
+
+    <div class="dev-project-settings__top-row">
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Status"
+        id="ps-status-trigger"
+        data-ps-status
+        options={visibilityOptions}
+        value="published"
+      />
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Visibility"
+        data-ps-gallery
+        data-ps-gallery-wrap
+        options={galleryOptions}
+        value="shown"
       />
     </div>
 
@@ -243,9 +230,8 @@ const pageTypeOptions = [
   const bgPicker = settingsRoot?.querySelector('[data-ps-bg-picker]');
   const statusSelect = settingsRoot?.querySelector('select[data-ps-status]');
   const gallerySelect = settingsRoot?.querySelector('select[data-ps-gallery]');
-  const publishSelect = settingsRoot?.querySelector('select[data-ps-publish]');
   const layoutSelect = settingsRoot?.querySelector('select[data-ps-layout]');
-  const galleryFields = settingsRoot?.querySelector('[data-ps-gallery-fields]');
+  const galleryFields = settingsRoot?.querySelector('[data-ps-gallery-wrap]');
   const layoutWrap = settingsRoot?.querySelector('[data-ps-layout-wrap]');
   const listingFields = settingsRoot?.querySelector('[data-ps-listing-fields]');
   const slugInput = settingsRoot?.querySelector('[data-ps-slug]');
@@ -1041,17 +1027,13 @@ const pageTypeOptions = [
     if (select.disabled !== disabled) select.disabled = disabled;
   };
 
-  // Visibility and Publish are owned by the Pages panel (membership + publicLink).
+  // Visibility is owned by the Pages panel (gallery membership).
   const renderGalleryFields = () => {
     const entry = panelSlug ? caches.get(panelSlug) : null;
     const state = entry ? window.__vcdGalleryPages?.state(panelSlug) : null;
     if (galleryFields instanceof HTMLElement) galleryFields.hidden = !state;
     if (!entry || !state) return;
-    const isPublic = entry.draft.status === 'published';
     setSelect(gallerySelect, state.on ? 'shown' : 'hidden', false);
-    // Navigation-linked Public pages publish anyway; other statuses never get a route.
-    setSelect(publishSelect, isPublic && (state.navigationLinked || state.publicLink) ? 'published' : 'unpublished',
-      !isPublic || state.navigationLinked);
   };
 
   const renderPanelFromEntry = (entry) => {
@@ -1957,8 +1939,6 @@ const pageTypeOptions = [
       syncPanelActionButtons();
     } else if (target.matches('select[data-ps-gallery]') && gallerySelect instanceof HTMLSelectElement) {
       window.__vcdGalleryPages?.set(panelSlug, { on: gallerySelect.value === 'shown' });
-    } else if (target.matches('select[data-ps-publish]') && publishSelect instanceof HTMLSelectElement) {
-      window.__vcdGalleryPages?.set(panelSlug, { publicLink: publishSelect.value === 'published' });
     }
   });
 
