@@ -114,9 +114,16 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, s
   if (typeof IntersectionObserver === 'undefined' || video.dataset.videoVisibilityBound === 'true') return;
   video.dataset.videoVisibilityBound = 'true';
   let fade: { volume: number; start: number; frame: number } | undefined;
+  // Ambient autoplay loops resume on return; a video the viewer started stays paused.
+  const autoplay = video.dataset.autoplay === 'true';
+  let pausedByVisibility = false;
+  const pauseForVisibility = () => { pausedByVisibility = autoplay; video.pause(); };
   const observer = new IntersectionObserver(([entry]) => {
-    if (entry.isIntersecting) cancelFade();
-    else if (!video.paused) startFade();
+    if (entry.isIntersecting) {
+      cancelFade();
+      if (pausedByVisibility && video.paused) video.play().catch(() => {});
+      pausedByVisibility = false;
+    } else if (!video.paused) startFade();
   }, { threshold: 0 });
   const cancelFade = () => {
     if (fade) cancelAnimationFrame(fade.frame);
@@ -127,7 +134,7 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, s
   const startFade = () => {
     if (fade || video.paused) return;
     const volume = video.volume;
-    if (video.muted || volume <= 0) { video.pause(); return; }
+    if (video.muted || volume <= 0) { pauseForVisibility(); return; }
     fade = { volume, start: performance.now(), frame: 0 };
     video.setAttribute('data-project-video-fading', '');
     const tick = (now: number) => {
@@ -139,14 +146,14 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, s
       }
       const progress = Math.max(0, Math.min(1, (now - fade.start) / 300));
       video.volume = fade.volume * (1 - progress);
-      if (progress >= 1) { video.pause(); cancelFade(); return; }
+      if (progress >= 1) { pauseForVisibility(); cancelFade(); return; }
       fade.frame = requestAnimationFrame(tick);
     };
     fade.frame = requestAnimationFrame(tick);
   };
   video.addEventListener('play', () => { observer.observe(controller); });
   const stop = () => { observer.disconnect(); cancelFade(); };
-  video.addEventListener('pause', stop);
+  video.addEventListener('pause', () => { if (pausedByVisibility) cancelFade(); else stop(); });
   video.addEventListener('ended', stop);
   scope.add(stop);
   if (!video.paused) observer.observe(controller);

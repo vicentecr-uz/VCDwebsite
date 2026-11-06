@@ -37,14 +37,11 @@ const json = (status: number, body: Record<string, unknown>) =>
 const unavailable = () => json(503, { error: 'Signup is not available yet.' });
 const badGateway = () => json(502, { error: 'Signup is not available yet.' });
 
+// Cloudflare sets cf-connecting-ip itself; a client can prefix X-Forwarded-For, so it is only a non-Cloudflare fallback.
 function clientIp(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
   return (
     request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     || request.headers.get('x-real-ip')
     || 'unknown'
   );
