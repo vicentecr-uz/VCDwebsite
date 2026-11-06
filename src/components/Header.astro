@@ -920,13 +920,6 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       trigger.dispatchEvent(new CustomEvent('header:trigger-open', { bubbles: true }));
     };
 
-    /**
-     * @param force Bypass the :hover gate on removing `is-menu-open`. A
-     *   scroll-close happens with the cursor still parked on the trigger, so
-     *   the normal gate would leave the class on forever — the class then
-     *   reads as "open" on later frames and flaps the header's mode. Focus is
-     *   still honoured by the interaction-specific close guards below.
-     */
     // The class may outlive `data-menu-open` only while hover or focus still
     // holds the closed menu; every release path ends here so it cannot stick.
     // Tap mode has no real hover and focus-on-tap is incidental, so nothing holds it there.
@@ -936,6 +929,13 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       if (!held) trigger.classList.remove('is-menu-open');
     };
 
+    /**
+     * @param force Bypass the :hover gate on removing `is-menu-open`. A
+     *   scroll-close happens with the cursor still parked on the trigger, so
+     *   the normal gate would leave the class on forever — the class then
+     *   reads as "open" on later frames and flaps the header's mode. Focus is
+     *   still honoured by the interaction-specific close guards below.
+     */
     const closeMenu = (force = false) => {
       if (previewPinned || navigationOutgoing) return;
       if (!isOpen()) return;
