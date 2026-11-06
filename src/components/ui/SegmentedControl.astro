@@ -12,3 +12,67 @@ const { label, class: className, ...rest } = Astro.props;
 <div class:list={['dev-segmented', className]} role="group" aria-label={label} {...rest}>
   <slot />
 </div>
+
+<script>
+  const selected = ':scope > .dev-btn:is(.is-active, .is-selected, [aria-pressed="true"])';
+  const motion = matchMedia('(prefers-reduced-motion: no-preference)');
+  // Unit-mass spring sampled every 25 ms (stiffness 260, damping ratio .725).
+  const spring = 'linear(0, .0666, .2171, .396, .569, .7178, .835, .9203, .9776, 1.0122, 1.03, 1.0363, 1.0354, 1.0306, 1.0242, 1.0177, 1)';
+  const pending = new WeakMap<Element, number>();
+
+  document.addEventListener('click', (event) => {
+    const button = event.target instanceof Element && event.target.closest<HTMLButtonElement>('button.dev-btn');
+    const group = button && button.parentElement;
+    if (!group?.matches('.dev-segmented[data-slide-selection]')) return;
+
+    const frame = pending.get(group);
+    if (!event.detail) {
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      pending.delete(group);
+      return;
+    }
+    if (frame !== undefined) return;
+
+    const [previous, extra] = group.querySelectorAll<HTMLButtonElement>(selected);
+    if (!motion.matches || !previous || extra || previous === button) return;
+
+    const oldPill = group.querySelector<HTMLElement>(':scope > .dev-segmented__indicator');
+    const current = oldPill && previous.hasAttribute('data-segment-target')
+      ? new DOMMatrixReadOnly(getComputedStyle(oldPill).transform)
+      : null;
+    const x = current?.m41 ?? previous.offsetLeft;
+    const width = current && oldPill ? current.a * oldPill.offsetWidth : previous.offsetWidth;
+
+    // Existing click handlers own selection. Read their result before paint.
+    pending.set(group, requestAnimationFrame(() => {
+      pending.delete(group);
+      const [next, extra] = group.querySelectorAll<HTMLButtonElement>(selected);
+      if (!next || next === previous || extra || !motion.matches || !next.offsetWidth
+        || previous.offsetTop !== next.offsetTop || previous.offsetHeight !== next.offsetHeight) return;
+
+      oldPill?.remove();
+      group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
+
+      const pill = document.createElement('span');
+      pill.className = 'dev-segmented__indicator';
+      pill.setAttribute('aria-hidden', 'true');
+      pill.style.width = `${next.offsetWidth}px`;
+      pill.style.height = `${next.offsetHeight}px`;
+      next.setAttribute('data-segment-target', '');
+      group.prepend(pill);
+
+      const animation = pill.animate([
+        { transform: `translate(${x}px, ${next.offsetTop}px) scaleX(${width / next.offsetWidth})` },
+        { transform: `translate(${next.offsetLeft}px, ${next.offsetTop}px) scaleX(1)` },
+      ], {
+        duration: 400,
+        easing: CSS.supports('animation-timing-function', spring) ? spring : 'ease-out',
+      });
+      animation.onfinish = () => {
+        if (pill.parentElement !== group) return;
+        pill.remove();
+        next.removeAttribute('data-segment-target');
+      };
+    }));
+  }, { capture: true });
+</script>
