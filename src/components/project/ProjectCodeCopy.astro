@@ -17,7 +17,11 @@ const { code, top = false } = Astro.props;
   title="Copy"
   data-copy-code={code.trim()}
 >
-  <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
+  <span class="dev-btn__icon code-copy__icons" aria-hidden="true">
+    <span class="code-copy__glyph code-copy__glyph--copy" set:html={sizeIcon(copyIcon, 16)} />
+    <span class="code-copy__glyph code-copy__glyph--check">✓</span>
+  </span>
+  <span class="sr-only" role="status"></span>
 </button>
 
 <style>
@@ -43,7 +47,34 @@ const { code, top = false } = Astro.props;
     translate: none;
   }
 
+  .code-copy__icons {
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+
+  .code-copy__glyph {
+    grid-area: 1 / 1;
+    line-height: 1;
+    transition:
+      opacity var(--icon-swap-dur) var(--icon-swap-ease),
+      filter var(--icon-swap-dur) var(--icon-swap-ease),
+      transform var(--icon-swap-dur) var(--icon-swap-ease);
+  }
+
+  .code-copy:not([data-copied]) .code-copy__glyph--check,
+  .code-copy[data-copied] .code-copy__glyph--copy {
+    opacity: 0;
+    filter: blur(var(--icon-swap-blur));
+    transform: scale(var(--icon-swap-start-scale));
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .code-copy { transition: none; }
+    .code-copy {
+      --icon-swap-blur: 0px;
+      --icon-swap-start-scale: 1;
+      transition: none;
+    }
+    .code-copy__glyph { transition-property: opacity; }
   }
 </style>
