@@ -569,3 +569,44 @@ test('leaving the viewport fades before pausing and preserves manual pause and r
     Object.defineProperty(globalThis, 'performance', { configurable: true, value: previousPerformance });
   }
 });
+
+test('autoplay loops paused by leaving the viewport resume on return, unless the viewer paused them', () => {
+  const previousObserver = globalThis.IntersectionObserver;
+  let notify: (entries: Array<{ isIntersecting: boolean }>) => void;
+  let observing = false;
+  Object.assign(globalThis, {
+    IntersectionObserver: class {
+      constructor(callback: typeof notify) { notify = callback; }
+      observe() { observing = true; }
+      disconnect() { observing = false; }
+    },
+  });
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  video.dataset.autoplay = 'true';
+  video.muted = true;
+  let paused = true;
+  Object.defineProperty(video, 'paused', { get: () => paused });
+  video.pause = () => { paused = true; video.dispatchEvent(new window.Event('pause')); };
+  video.play = () => { paused = false; video.dispatchEvent(new window.Event('play')); return Promise.resolve(); };
+  controller.append(video);
+  window.document.body.append(controller);
+  try {
+    bindVideoVisibility(video, controller, createPageScope());
+    video.play();
+    notify!([{ isIntersecting: false }]);
+    expect(paused).toBe(true);
+    expect(observing).toBe(true);
+    notify!([{ isIntersecting: true }]);
+    expect(paused).toBe(false);
+
+    video.pause();
+    expect(observing).toBe(false);
+    notify!([{ isIntersecting: false }]);
+    notify!([{ isIntersecting: true }]);
+    expect(paused).toBe(true);
+  } finally {
+    controller.remove();
+    Object.assign(globalThis, { IntersectionObserver: previousObserver });
+  }
+});

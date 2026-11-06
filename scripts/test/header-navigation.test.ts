@@ -7,7 +7,7 @@ const header = readFileSync(resolve(root, 'src/components/Header.astro'), 'utf8'
 const titleTransition = readFileSync(resolve(root, 'src/scripts/headerTitleTransition.js'), 'utf8');
 const settleMicrotasks = async () => { for (let i = 0; i < 8; i += 1) await Promise.resolve(); };
 
-function menuFixture(linkCount = 2) {
+function menuFixture(linkCount = 2, tap = false) {
   const win = new Window();
   const doc = win.document;
   const linksHtml = Array.from({ length: linkCount }, (_, index) => `<a class="header-menu__link">Link ${index + 1}</a>`).join('');
@@ -28,7 +28,7 @@ function menuFixture(linkCount = 2) {
   let sequence = 0;
   const clearTimer = (id: number) => timers.delete(id);
   new Function('document', 'window', 'MouseEvent', 'HTMLElement', 'CustomEvent', 'syncMenuSurfaceInlineSize', 'setMenuSurfaceTiming', 'isTapMode', 'isDevEditing', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'menuScrollClosed', script)(
-    doc, win, win.MouseEvent, win.HTMLElement, win.CustomEvent, () => {}, (...values: number[]) => timings.push(values), () => false, () => false,
+    doc, win, win.MouseEvent, win.HTMLElement, win.CustomEvent, () => {}, (...values: number[]) => timings.push(values), () => tap, () => false,
     (callback: Function, delay: number) => { timers.set(++sequence, { callback, delay }); return sequence; },
     clearTimer, (callback: Function) => frames.push(callback), false,
   );
@@ -129,6 +129,51 @@ test('cancellation releases the outgoing menu lock', () => {
   [...f.timers.values()].forEach((timer) => timer.callback());
   f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
   expect(f.start.dataset.menuOpen).toBe('true');
+});
+
+function runTimers(f: ReturnType<typeof menuFixture>) {
+  const pending = [...f.timers.values()];
+  f.timers.clear();
+  pending.forEach(({ callback }) => callback());
+}
+
+test('Escape while hovering keeps the closed layout only until the pointer leaves', () => {
+  const f = menuFixture();
+  f.setHovered(true);
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseenter'));
+  f.doc.dispatchEvent(new f.win.KeyboardEvent('keydown', { key: 'Escape' }));
+  runTimers(f);
+  expect(f.start.dataset.menuOpen).toBeUndefined();
+  expect(f.start.classList.contains('is-menu-open')).toBe(true);
+  f.setHovered(false);
+  f.start.dispatchEvent(new f.win.MouseEvent('mouseleave'));
+  expect(f.start.classList.contains('is-menu-open')).toBe(false);
+});
+
+test('tap-mode close releases the open class despite sticky hover or tap focus', () => {
+  for (const hold of ['hover', 'focus'] as const) {
+    const f = menuFixture(2, true);
+    const panel = f.start.querySelector<HTMLElement>('.header-trigger__panel-bg')!;
+    panel.dispatchEvent(new f.win.MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(f.start.dataset.menuOpen).toBe('true');
+    if (hold === 'hover') f.setHovered(true);
+    else f.links[0].focus();
+    f.start.dispatchEvent(new f.win.CustomEvent('header:request-close'));
+    runTimers(f);
+    expect(f.start.dataset.menuOpen).toBeUndefined();
+    expect(f.start.classList.contains('is-menu-open')).toBe(false);
+  }
+});
+
+test('keyboard focus leaving a closed menu releases the open class', () => {
+  const f = menuFixture();
+  f.links[0].focus();
+  expect(f.start.dataset.menuOpen).toBe('true');
+  f.start.dispatchEvent(new f.win.CustomEvent('header:request-close'));
+  runTimers(f);
+  expect(f.start.classList.contains('is-menu-open')).toBe(true);
+  f.links[0].blur();
+  expect(f.start.classList.contains('is-menu-open')).toBe(false);
 });
 
 async function flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); }

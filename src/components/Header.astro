@@ -920,6 +920,15 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       trigger.dispatchEvent(new CustomEvent('header:trigger-open', { bubbles: true }));
     };
 
+    // The class may outlive `data-menu-open` only while hover or focus still
+    // holds the closed menu; every release path ends here so it cannot stick.
+    // Tap mode has no real hover and focus-on-tap is incidental, so nothing holds it there.
+    const releaseOpenClass = (force = false, focused = trigger.contains(document.activeElement)) => {
+      if (isOpen() || closeTimer) return;
+      const held = !isTapMode() && ((!force && trigger.matches(':hover')) || (!navigationClosing && focused));
+      if (!held) trigger.classList.remove('is-menu-open');
+    };
+
     /**
      * @param force Bypass the :hover gate on removing `is-menu-open`. A
      *   scroll-close happens with the cursor still parked on the trigger, so
@@ -937,9 +946,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
         delete trigger.dataset.menuCloseTimer;
-        if ((force || !trigger.matches(':hover')) && (navigationClosing || !trigger.contains(document.activeElement))) {
-          trigger.classList.remove('is-menu-open');
-        }
+        releaseOpenClass(force);
         if (!navigationOutgoing) {
           navigationClosing = false;
           releaseNavigationWeights();
@@ -1055,6 +1062,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         active.blur();
       }
       closeMenu();
+      releaseOpenClass();
     });
     // Scroll-driven close: run the normal animated close, not the instant
     // force-close, so the menu fades/staggers out like a mouse-leave.
@@ -1070,6 +1078,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         if (document.documentElement.hasAttribute('data-dev-header-link-editor-open')) return;
         if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
+        releaseOpenClass(false, false);
       }
     });
 

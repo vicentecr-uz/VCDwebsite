@@ -1320,7 +1320,8 @@ const easingOptions = [
       const distance = targetTop - startY;
 
       if (id) setActiveLink(id);
-      if (href) window.history.replaceState(null, '', href);
+      // Keep the ClientRouter's entry state: a null state makes it ignore Back to this entry.
+      if (href) window.history.replaceState(window.history.state, '', href);
 
       const useNativeSmooth = scrollEasing.getUseNative();
       const currentEaser = scrollEasing.getEaser();
@@ -1369,6 +1370,20 @@ const easingOptions = [
 
       scrollRafId = scope.frame(animateScroll);
     };
+
+    // User scroll input wins over an in-flight click scroll and releases the active-link lock.
+    const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+    const cancelAutoScroll = (event: Event) => {
+      if (!isAutoScrolling) return;
+      if (event.type === 'keydown' && !scrollKeys.has((event as KeyboardEvent).key)) return;
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      if (scrollTimeoutId) window.clearTimeout(scrollTimeoutId);
+      scrollRafId = scrollTimeoutId = 0;
+      isAutoScrolling = false;
+      manualLockUntil = 0;
+      updateActiveFromScroll();
+    };
+    for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) scope.listen(window, type, cancelAutoScroll, { passive: true });
 
     const revealHistoryBlock = (event: CustomEvent<{ block?: HTMLElement }>) => {
       const block = event.detail?.block;
