@@ -33,12 +33,17 @@ const { code, top = false } = Astro.props;
     translate: 0 -50%;
     /* Quieter at rest; fades to the ghost button's label colour on hover. */
     color: var(--sys-color-on-srf-subtle);
-    transition: color 150ms ease-out;
+    transition: color 150ms ease-out, background-color 150ms ease-out;
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .code-copy:hover { color: var(--comp-button-label); }
+    .code-copy:hover {
+      color: var(--comp-button-label);
+      background-color: var(--comp-button-ghost-container-pressed);
+    }
   }
+
+  .code-copy:active { background-color: var(--sys-color-srf-container-high); }
 
   .code-copy:focus-visible { color: var(--comp-button-label); }
 
