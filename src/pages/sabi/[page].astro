@@ -3,19 +3,23 @@ import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
 import ProjectSections from '../../components/project/ProjectSections.astro';
 import { loadPageDocument } from '../../lib/projects';
 
-const pages = [
-  { slug: 'getting-started', key: 'sabi-getting-started', label: 'Getting started', group: 'Basics' },
-  { slug: 'api', key: 'sabi-api', label: 'Sabi', group: 'API' },
-  { slug: 'email-and-number-fields', key: 'sabi-email-and-number-fields', label: 'Email and number fields', group: 'Guides' },
-  { slug: 'styling', key: 'sabi-styling', label: 'Styling', group: 'Guides' },
-] as const;
+import { sabiDocsPages } from '../../lib/sabi-docs-pages';
+
 export function getStaticPaths() {
-  return ['getting-started', 'api', 'email-and-number-fields', 'styling'].map(page => ({ params: { page } }));
+  return sabiDocsPages
+    .filter(({ optional, key }) => import.meta.env.DEV || !optional || loadPageDocument(key).sections.length)
+    .map(({ slug }) => ({ params: { page: slug } }));
 }
+const pages = sabiDocsPages.map(({ key, ...entry }) => ({ ...entry, document: loadPageDocument(key), key }))
+  .filter(({ optional, document }) => !optional || document.sections.length);
 const index = pages.findIndex(page => page.slug === Astro.params.page);
-const current = pages[index];
-const page = loadPageDocument(current.key);
-const links = pages.map(({ slug, label, group }) => ({ href: `/sabi/${slug}`, label, group }));
+const current = pages[index] ?? sabiDocsPages.find(page => page.slug === Astro.params.page)!;
+const page = 'document' in current ? current.document : loadPageDocument(current.key);
+const links = pages.map(({ slug, label, group, document }) => ({
+  href: `/sabi/${slug}`,
+  label: slug === 'getting-started' ? document.title ?? label : label,
+  group,
+}));
 const contents = page.sections.filter(section => section.type === 'sectionTitle' && section.sectionId)
   .map(section => ({ id: String(section.sectionId), label: String(section.title) }));
 ---

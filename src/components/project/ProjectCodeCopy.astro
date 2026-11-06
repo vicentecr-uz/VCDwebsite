@@ -1,0 +1,49 @@
+---
+import copyIcon from 'lucide-static/icons/copy.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+
+interface Props {
+  code: string;
+  top?: boolean;
+}
+
+const { code, top = false } = Astro.props;
+---
+
+<button
+  type="button"
+  class:list={['dev-btn', 'dev-btn--ghost', 'code-copy', top && 'code-copy--top']}
+  aria-label="Copy"
+  title="Copy"
+  data-copy-code={code.trim()}
+>
+  <span class="dev-btn__icon" set:html={sizeIcon(copyIcon, 16)} />
+</button>
+
+<style>
+  .code-copy {
+    position: absolute;
+    z-index: 1;
+    top: 50%;
+    right: 0.5em;
+    translate: 0 -50%;
+    /* Quieter at rest; fades to the ghost button's label colour on hover. */
+    color: var(--sys-color-on-srf-subtle);
+    transition: color 150ms ease-out;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .code-copy:hover { color: var(--comp-button-label); }
+  }
+
+  .code-copy:focus-visible { color: var(--comp-button-label); }
+
+  .code-copy--top {
+    top: 0.5em;
+    translate: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .code-copy { transition: none; }
+  }
+</style>

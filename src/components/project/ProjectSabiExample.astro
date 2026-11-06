@@ -1,5 +1,6 @@
 ---
 import { Code } from 'astro:components';
+import ProjectCodeCopy from './ProjectCodeCopy.astro';
 import { codeTheme } from '../../lib/codeTheme';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import '../../styles/dev-chrome.css';
@@ -60,7 +61,10 @@ const options = SABI_EXAMPLES[example] ?? [];
   {options.map(({ html }, index) => (
     <figure class="sabi-example__panel" data-option-panel hidden={index > 0}>
       <div class="sabi-example__preview" set:html={html} />
-      <Code code={html} lang="html" theme={codeTheme} />
+      <div class="sabi-example__code">
+        <Code code={html} lang="html" theme={codeTheme} />
+        <ProjectCodeCopy code={html} top />
+      </div>
     </figure>
   ))}
 </div>
@@ -105,8 +109,13 @@ const options = SABI_EXAMPLES[example] ?? [];
     border-radius: var(--radius-card) var(--radius-card) 0 0;
   }
 
+  .sabi-example__code {
+    position: relative;
+  }
+
   .sabi-example :global(.astro-code) {
     margin: 0;
+    margin-inline-end: 3em;
     padding: 1em 1.25em;
     background: none !important;
     font: 0.875rem/1.6 var(--font-mono);
