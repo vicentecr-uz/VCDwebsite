@@ -11,24 +11,34 @@ document.addEventListener('click', (event) => {
   panels.forEach((panel, i) => { panel.hidden = i !== index; });
 });
 
-document.addEventListener('click', (event) => {
+const copyFeedback = new WeakMap<HTMLButtonElement, number>();
+
+document.addEventListener('click', async (event) => {
   const button = (event.target as Element).closest<HTMLButtonElement>('[data-copy-code]');
   if (!button) return;
-  void navigator.clipboard.writeText(button.dataset.copyCode!).then(() => {
-    button.setAttribute('aria-label', 'Copied');
-    button.title = 'Copied';
-    const status = document.createElement('span');
-    status.className = 'sr-only';
-    status.setAttribute('role', 'status');
-    status.textContent = 'Code copied';
-    button.append(status);
-    window.setTimeout(() => {
-      status.remove();
-      button.setAttribute('aria-label', 'Copy');
-      button.title = 'Copy';
-    }, 1500);
-  }).catch(() => {
-    button.setAttribute('aria-label', 'Copy failed. Select the code to copy it.');
-    button.title = 'Copy failed. Select the code to copy it.';
-  });
+  const status = button.querySelector('[role="status"]')!;
+
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(button.dataset.copyCode!);
+    copied = true;
+  } catch {
+    // The clipboard can be unavailable or deny access.
+  }
+
+  window.clearTimeout(copyFeedback.get(button));
+  button.toggleAttribute('data-copied', copied);
+  const label = copied ? 'Copied' : 'Copy failed. Select the code to copy it.';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  status.textContent = copied ? 'Code copied' : label;
+
+  if (!copied) return;
+  copyFeedback.set(button, window.setTimeout(() => {
+    copyFeedback.delete(button);
+    button.removeAttribute('data-copied');
+    button.setAttribute('aria-label', 'Copy');
+    button.title = 'Copy';
+    status.textContent = '';
+  }, 1750));
 });
