@@ -1,0 +1,25 @@
+---
+import '../../lib/sabi/styles.css';
+import './sabi-page.css';
+
+const {
+  class: className,
+  value = 'example.com/a/long/path/that/runs/past/the/edge/of/the/field',
+  prefix = 'https://',
+  suffix = '',
+  ...attrs
+} = Astro.props;
+---
+
+<label class:list={['sabi-page-field', className]} {...attrs}>
+  <sabi-input>
+    {prefix && <span>{prefix}</span>}
+    <input aria-label="URL" value={value} />
+    {suffix && <span>{suffix}</span>}
+  </sabi-input>
+</label>
+
+<script>
+  import { define } from '../../lib/sabi/core';
+  define();
+</script>

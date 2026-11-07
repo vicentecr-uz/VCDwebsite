@@ -10,6 +10,7 @@ import '../../lib/stageshow/cursor.css';
 import loadingSpinner from '../ui/LoadingSpinner.svg?raw';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import CropFrameDemo from './demos/CropFrameDemo.astro';
+import SabiUrlField from './SabiUrlField.astro';
 import BarChartDemo from './demos/BarChartDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
@@ -27,8 +28,10 @@ interface Props {
 }
 const { demo: id, spacing = 'group', sectionId, contentId, documentKey, sectionPath, annotations, sample } = Astro.props;
 const demo = craftDemo(id);
+const urlSample = sample && typeof sample === 'object' ? sample as Record<string, unknown> : {};
+const sampleText = (key: string) => typeof urlSample[key] === 'string' ? urlSample[key] : undefined;
 const frame = demo && 'frame' in demo ? demo.frame : 'default';
-const embedded = demo && !['progressive-image', 'image-framing', 'bar-chart'].includes(demo.id);
+const embedded = demo && !['progressive-image', 'image-framing', 'bar-chart', 'url-field'].includes(demo.id);
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
@@ -40,7 +43,9 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is currently optimized for desktop</p>}
     <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
       {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
-      {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'bar-chart' ? <BarChartDemo sample={sample} /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
+      {demo.id === 'url-field' ? (
+        <div class="project-interactive-demo__url-field"><SabiUrlField value={sampleText('url')} prefix={sampleText('prefix')} suffix={sampleText('suffix')} /></div>
+      ) : demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'bar-chart' ? <BarChartDemo sample={sample} /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
         src={`/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
@@ -102,6 +107,13 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     display: block;
     position: relative;
     border-radius: inherit;
+  }
+
+  .project-interactive-demo__url-field {
+    display: grid;
+    place-items: center;
+    min-height: var(--demo-height);
+    padding: var(--demo-frame-inset);
   }
 
   .project-interactive-demo__loading {

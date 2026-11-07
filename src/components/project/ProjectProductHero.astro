@@ -5,8 +5,7 @@ import { sizeIcon } from '../../lib/icons';
 import Hairline from '../ui/Hairline.astro';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import '../../styles/dev-chrome.css';
-import '../../lib/sabi/styles.css';
-import './sabi-page.css';
+import SabiUrlField from './SabiUrlField.astro';
 
 interface Props {
   title: string;
@@ -48,12 +47,7 @@ const agents = [
 >
   <h1 class="product-hero__title" {...textAttrs('title')}>{title}</h1>
   <p class="product-hero__tagline" {...textAttrs('tagline')}>{tagline}</p>
-  <label class="sabi-page-field product-hero__field">
-    <sabi-input>
-      <span>https://</span>
-      <input aria-label="URL" value="example.com/a/long/path/that/runs/past/the/edge/of/the/field" />
-    </sabi-input>
-  </label>
+  <SabiUrlField class="product-hero__field" />
   <div class="product-hero__links">
     <div class="product-hero__install" data-install-menu>
       <button
@@ -79,9 +73,7 @@ const agents = [
 </header>
 
 <script>
-  import { define } from '../../lib/sabi/core';
   import { clampToViewport } from '../../lib/floatingLayer';
-  define();
 
   // In Edit mode a link's label is text to edit, so clicks stay on the page. Capture,
   // so this runs before the page-transition listener on the link (as in Header).

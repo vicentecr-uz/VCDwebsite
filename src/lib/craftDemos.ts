@@ -1,4 +1,5 @@
 export const CRAFT_DEMOS = [
+  { id: 'url-field', title: 'Try Sabi', height: 10 },
   { id: 'sabi-playground', title: 'Sabi', height: 23 },
   { id: 'sabi-caret', title: 'Keeping the caret visible', height: 23 },
   { id: 'sabi-jump', title: 'A one-frame jump', height: 23 },
