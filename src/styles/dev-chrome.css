@@ -747,8 +747,6 @@
   /* Concentric with the buttons: outer radius (10, radius/control-in-container)
      = inner button radius (8) + the 2px padding between them. */
   border-radius: var(--dev-radius-control-in-container);
-  /* Selected fill today is Page. If that later became Filled, retarget this;
-     unselected hover/press mix toward it. */
   --dev-segmented-selected-fill: var(--comp-button-page-container-selected);
 }
 
@@ -759,11 +757,6 @@
   /* Equal segments while every label fits; a longer label widens its own
      segment rather than wrapping onto a second line. */
   min-width: max-content;
-  /* Unselected type is secondary ink — softer than selected, still
-     readable on segmentedcontrol/bg. label-subtle (grey-600 on the
-     pill) was too low-contrast. Hover/press keep Ghost fill + the
-     OKLCH mix; only the ink is set here. */
-  color: var(--sys-color-on-srf-variant);
   /* Segments sit at the control padding — closer than the 8px hit-inset, so the slop
      would reach over a neighbour's visible edge. Segments are adjacent by
      design; the pill itself is the enlarged target. */
@@ -786,40 +779,30 @@
   width: 0;
 }
 
-/* Unselected segments are Ghost (transparent, same as the pill). Selected is
-   Page — the page surface poking through. Scoped to .dev-segmented, not the
-   base emphasis classes. Format bar and spacing chips stay Soft and are
-   unaffected (they are not .dev-segmented). */
-.dev-segmented .dev-btn.is-selected,
-.dev-segmented .dev-btn.is-active,
-.dev-segmented .dev-btn[aria-pressed='true'] {
+.dev-segmented .dev-btn:is(.is-selected, .is-active, [aria-pressed='true']) {
   background: var(--dev-segmented-selected-fill);
   color: var(--comp-button-label);
   box-shadow: none;
 }
 
-/* Lock selected hover to Page so the white chip does not vanish under the
-   pointer. Ghost hover is srf-container-low — the same as the pill — so it
-   is invisible there; unselected hover/press mix toward the selected fill
-   instead (lighten, not climb the container ladder). Must beat
-   .dev-btn--ghost:hover / :active. */
-@media (hover: hover) and (pointer: fine) {
-  .dev-segmented .dev-btn.is-selected:hover,
-  .dev-segmented .dev-btn.is-active:hover,
-  .dev-segmented .dev-btn[aria-pressed='true']:hover {
-    background: var(--dev-segmented-selected-fill);
-  }
+.dev-segmented .dev-btn:not(:is(.is-selected, .is-active, [aria-pressed='true'])) {
+  background: transparent;
+  color: var(--sys-color-on-srf-container-low-subtle);
+}
 
-  .dev-segmented .dev-btn:hover:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
-    background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .dev-segmented .dev-btn:not(:is(.is-selected, .is-active, [aria-pressed='true'])):is(:hover, [data-demo-hover='true']) {
+    color: var(--sys-color-on-srf-variant);
   }
 }
+
 /* Stageshow marks simulated hover/press without moving the real pointer. */
-.dev-segmented .dev-btn[data-hover]:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
-  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+.dev-segmented .dev-btn:not(:is(.is-selected, .is-active, [aria-pressed='true']))[data-hover] {
+  color: var(--sys-color-on-srf-variant);
 }
-.dev-segmented .dev-btn:is(:active, [data-pressed]):not(.is-selected):not(.is-active):not([aria-pressed='true']) {
-  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
+
+.dev-segmented .dev-btn:not(:is(.is-selected, .is-active, [aria-pressed='true'])):is(:active, [data-pressed], [data-demo-pressed='true']) {
+  color: var(--comp-button-label);
 }
 
 .dev-segmented[data-slide-selection] {
