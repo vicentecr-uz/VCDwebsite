@@ -47,8 +47,8 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
       <div class="project-page__main"><slot /></div>
       {(previous || next) && (
         <nav class="documentation-pagination" aria-label="Adjacent pages">
-          {previous ? <a class="text-link" href={previous.href}><span class="documentation-pagination__direction"><span aria-hidden="true" set:html={sizeIcon(chevronLeft, 16)} />Previous</span>{previous.label}</a> : <span />}
-          {next && <a class="text-link" href={next.href}><span class="documentation-pagination__direction">Next<span aria-hidden="true" set:html={sizeIcon(chevronRight, 16)} /></span>{next.label}</a>}
+          {previous ? <a href={previous.href}><span class="documentation-pagination__direction"><span aria-hidden="true" set:html={sizeIcon(chevronLeft, 16)} />Previous</span><span class="text-link">{previous.label}</span></a> : <span />}
+          {next && <a href={next.href}><span class="documentation-pagination__direction">Next<span aria-hidden="true" set:html={sizeIcon(chevronRight, 16)} /></span><span class="text-link">{next.label}</span></a>}
         </nav>
       )}
     </main>
@@ -185,6 +185,9 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
   .documentation-pagination a:last-child:not(:first-child) { text-align: right; justify-items: end; }
   .documentation-pagination__direction { display: inline-flex; align-items: center; gap: 0.25em; color: var(--sys-color-on-srf-subtle); }
   .documentation-pagination__direction > span { display: inline-flex; }
+  @media (hover: hover) and (pointer: fine) {
+    .documentation-pagination a:hover .text-link { text-decoration-color: color-mix(in srgb, currentColor 30%, transparent); }
+  }
   .documentation-main :global(h2.project-section-title) {
     font-size: var(--text-heading-2-size);
     font-weight: var(--text-heading-2-weight);
