@@ -16,9 +16,45 @@ const { label, class: className, ...rest } = Astro.props;
 <script>
   const selected = ':scope > .dev-btn:is(.is-active, .is-selected, [aria-pressed="true"])';
   const motion = matchMedia('(prefers-reduced-motion: no-preference)');
-  // Unit-mass spring sampled every 25 ms (stiffness 260, damping ratio .725).
-  const spring = 'linear(0, .0666, .2171, .396, .569, .7178, .835, .9203, .9776, 1.0122, 1.03, 1.0363, 1.0354, 1.0306, 1.0242, 1.0177, 1)';
-  const pending = new WeakMap<Element, number>();
+
+  // Each edge of the pill rides its own spring, after Motion's time-defined springs
+  // (motion-dom generators/spring.ts): stiffness (2π / (visualDuration × 1.2))², damping ratio
+  // 1 − bounce, unit mass, starting at rest. The leading edge is quicker and lands without
+  // overshoot; the trailing edge follows, so the pill stretches toward the target and then catches
+  // up. The animation runs until both edges rest instead of for a fixed time, so it never cuts a
+  // moving spring short. Tuned live on a throwaway prototype.
+  const LEAD = { visualDuration: 250, bounce: 0 };
+  const TRAIL = { visualDuration: 400, bounce: 0.2 };
+  const STEP = 10; // ms between samples, as Motion's linear() easing
+  const REST_DELTA = 0.1; // px; Motion's default 0.5 left a visible last-frame jump
+  const REST_SPEED = 2; // px/s, Motion's default
+
+  // Position and velocity (px, px/s) t seconds into an edge's move of delta px.
+  const spring = ({ visualDuration, bounce }: typeof LEAD) => {
+    const w = (2 * Math.PI) / ((visualDuration / 1000) * 1.2);
+    const z = Math.max(1 - bounce, 0.05);
+    if (z >= 1) {
+      return (t: number, delta: number) => {
+        const e = Math.exp(-w * t);
+        return [delta - e * delta * (1 + w * t), delta * w * w * t * e];
+      };
+    }
+    const wd = w * Math.sqrt(1 - z * z);
+    return (t: number, delta: number) => {
+      const e = Math.exp(-z * w * t);
+      return [
+        delta - e * delta * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t)),
+        delta * (w / Math.sqrt(1 - z * z)) * e * Math.sin(wd * t),
+      ];
+    };
+  };
+  const lead = spring(LEAD);
+  const trail = spring(TRAIL);
+  const resting = (edge: typeof lead, delta: number, ms: number) => {
+    const [x, v] = edge(ms / 1000, delta);
+    return Math.abs(delta - x) <= REST_DELTA && Math.abs(v) <= REST_SPEED;
+  };
+
   // Fractional layout box within the group: offset* round to whole pixels, so the pill would land
   // off the button and snap when removed. Size comes from computed style and position from the
   // rect's center, so a pressed button's centered scale doesn't shrink the box.
@@ -35,6 +71,10 @@ const { label, class: className, ...rest } = Astro.props;
       height,
     };
   };
+
+  const pending = new WeakMap<Element, number>();
+  // The sampled [left, right] edges of a pill in flight, so a click mid-flight starts from them.
+  const flights = new WeakMap<Element, { edges: Array<[number, number]>; animation: Animation }>();
 
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element && event.target.closest<HTMLButtonElement>('button.dev-btn');
@@ -53,12 +93,14 @@ const { label, class: className, ...rest } = Astro.props;
     if (!motion.matches || !previous || extra || previous === button) return;
 
     const oldPill = group.querySelector<HTMLElement>(':scope > .dev-segmented__indicator');
-    const current = oldPill && previous.hasAttribute('data-segment-target')
-      ? new DOMMatrixReadOnly(getComputedStyle(oldPill).transform)
-      : null;
-    const from = box(previous, group);
-    const x = current?.m41 ?? from.left;
-    const width = current && oldPill ? current.a * parseFloat(oldPill.style.width) : from.width;
+    const flight = oldPill && previous.hasAttribute('data-segment-target') ? flights.get(oldPill) : undefined;
+    const prev = box(previous, group);
+    let from = { left: prev.left, right: prev.left + prev.width };
+    if (flight && flight.animation.playState === 'running') {
+      const progress = Number(flight.animation.currentTime) / Number(flight.animation.effect!.getTiming().duration);
+      const [left, right] = flight.edges[Math.min(flight.edges.length - 1, Math.round(progress * (flight.edges.length - 1)))];
+      from = { left, right };
+    }
 
     // Existing click handlers own selection. Read their result before paint.
     pending.set(group, requestAnimationFrame(() => {
@@ -70,22 +112,39 @@ const { label, class: className, ...rest } = Astro.props;
       oldPill?.remove();
       group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
 
+      // The pill spans the group and clip-path cuts it to the two edges, so each edge moves on its
+      // own and inset()'s round keeps the corners exact (a scaled pill would stretch them).
+      const target = box(next, group);
+      const span = group.clientWidth;
       const pill = document.createElement('span');
       pill.className = 'dev-segmented__indicator';
       pill.setAttribute('aria-hidden', 'true');
-      const target = box(next, group);
-      pill.style.width = `${target.width}px`;
-      pill.style.height = `${target.height}px`;
+      Object.assign(pill.style, {
+        width: `${span}px`,
+        height: `${target.height}px`,
+        transform: `translateY(${target.top}px)`,
+        borderRadius: '0',
+      });
       next.setAttribute('data-segment-target', '');
       group.prepend(pill);
+      const radius = getComputedStyle(next).borderTopLeftRadius;
 
-      const animation = pill.animate([
-        { transform: `translate(${x}px, ${target.top}px) scaleX(${width / target.width})` },
-        { transform: `translate(${target.left}px, ${target.top}px) scaleX(1)` },
-      ], {
-        duration: 400,
-        easing: CSS.supports('animation-timing-function', spring) ? spring : 'ease-out',
-      });
+      const to = { left: target.left, right: target.left + target.width };
+      const rightward = to.left > from.left;
+      const leftSpring = rightward ? trail : lead;
+      const rightSpring = rightward ? lead : trail;
+      const dl = to.left - from.left;
+      const dr = to.right - from.right;
+      const edges: Array<[number, number]> = [];
+      let t = 0;
+      for (; t < 3000 && !(resting(leftSpring, dl, t) && resting(rightSpring, dr, t)); t += STEP) edges.push([from.left + leftSpring(t / 1000, dl)[0], from.right + rightSpring(t / 1000, dr)[0]]);
+      edges.push([to.left, to.right]);
+
+      const animation = pill.animate(
+        edges.map(([left, right]) => ({ clipPath: `inset(0 ${span - right}px 0 ${left}px round ${radius})` })),
+        { duration: t + STEP, easing: 'linear', fill: 'forwards' },
+      );
+      flights.set(pill, { edges, animation });
       animation.onfinish = () => {
         if (pill.parentElement !== group) return;
         pill.remove();
