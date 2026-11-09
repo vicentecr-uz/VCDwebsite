@@ -5,11 +5,10 @@ import { sizeIcon } from '../lib/icons';
 
 interface Props {
   websiteHref?: string;
-  pages: Array<{ href: string; label: string; group: string }>;
+  pages: Array<{ href: string; label: string; group: string; current?: boolean }>;
 }
 const { websiteHref = 'https://vicentecr.uz', pages } = Astro.props;
 const groups = [...new Set(pages.map((page) => page.group))];
-const currentPath = Astro.url.pathname.replace(/\/$/, '');
 ---
 
 <div class="documentation-navigation">
@@ -18,9 +17,9 @@ const currentPath = Astro.url.pathname.replace(/\/$/, '');
       <section class="documentation-navigation__group">
         <h2>{group}</h2>
         <ul>
-          {pages.filter((page) => page.group === group).map(({ href, label }) => (
+          {pages.filter((page) => page.group === group).map(({ href, label, current }) => (
             <li>
-              <a class="dev-btn dev-btn--ghost dev-menu__item" href={href} aria-current={currentPath === href.replace(/\/$/, '') ? 'page' : undefined}>{label}</a>
+              <a class="dev-btn dev-btn--ghost dev-menu__item" href={href} data-astro-prefetch="load" aria-current={current ? 'page' : undefined}>{label}</a>
             </li>
           ))}
         </ul>
