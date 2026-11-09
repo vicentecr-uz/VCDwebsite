@@ -47,8 +47,12 @@ const { code, top = false } = Astro.props;
 
   .code-copy:focus-visible { color: var(--comp-button-label); }
 
+  /* Concentric with the panel's corner: inset = card radius − button radius. 1rem stands in for
+     --radius-card (1em at the panel's 16px), since em here resolves against the button's 13px. */
   .code-copy--top {
-    top: 0.5em;
+    --code-copy-inset: calc(1rem - var(--dev-radius-control));
+    top: var(--code-copy-inset);
+    right: var(--code-copy-inset);
     translate: none;
   }
 
