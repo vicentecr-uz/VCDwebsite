@@ -15,15 +15,19 @@ const pages = sabiDocsPages.map(({ key, ...entry }) => ({ ...entry, document: lo
 const index = pages.findIndex(page => page.slug === Astro.params.page);
 const current = pages[index] ?? sabiDocsPages.find(page => page.slug === Astro.params.page)!;
 const page = 'document' in current ? current.document : loadPageDocument(current.key);
+// Deployed builds serve the docs from the root of sabi.vicentecr.uz (functions/_middleware.ts
+// redirects every /sabi path there), so /sabi links would cost a redirect on each click.
+const base = import.meta.env.DEV ? '/sabi' : '';
 const links = pages.map(({ slug, label, group, document }) => ({
-  href: `/sabi/${slug}`,
+  href: `${base}/${slug}`,
+  current: slug === Astro.params.page,
   label: slug === 'getting-started' ? document.title ?? label : label,
   group,
 }));
 const contents = page.sections.filter(section => section.type === 'sectionTitle' && section.sectionId)
   .map(section => ({ id: String(section.sectionId), label: String(section.title) }));
 ---
-<DocumentationLayout title={page.title ?? current.label} documentKey={current.key} canonicalUrl={`https://sabi.vicentecr.uz/${current.slug}`} description={page.description} pages={links} contents={contents} previous={links[index - 1]} next={links[index + 1]}>
+<DocumentationLayout homeHref={base || '/'} title={page.title ?? current.label} documentKey={current.key} canonicalUrl={`https://sabi.vicentecr.uz/${current.slug}`} description={page.description} pages={links} contents={contents} previous={links[index - 1]} next={links[index + 1]}>
   <div data-dev-project-drop-zone>
     <ProjectSections documentKey={current.key} sections={page.sections} />
   </div>
