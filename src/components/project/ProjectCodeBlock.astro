@@ -2,6 +2,7 @@
 import { Code } from 'astro:components';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import ProjectCodeCopy from './ProjectCodeCopy.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
 import { codeTheme } from '../../lib/codeTheme';
 import '../../styles/dev-chrome.css';
 
@@ -33,11 +34,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   style={lines ? `--code-block-max-lines:${lines}` : undefined}
 >
   {options.length > 1 && (
-    <div class="dev-segmented code-block__options" role="group" aria-label="Language">
+    <SegmentedControl class="code-block__options" label="Language" data-slide-selection>
       {options.map(({ label }, index) => (
         <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-center" aria-pressed={String(index === 0)}>{label}</button>
       ))}
-    </div>
+    </SegmentedControl>
   )}
   {options.map(({ lang, code }, index) => (
     <div class="code-block__panel" data-option-panel hidden={index > 0}>
