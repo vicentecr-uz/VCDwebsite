@@ -19,6 +19,22 @@ const { label, class: className, ...rest } = Astro.props;
   // Unit-mass spring sampled every 25 ms (stiffness 260, damping ratio .725).
   const spring = 'linear(0, .0666, .2171, .396, .569, .7178, .835, .9203, .9776, 1.0122, 1.03, 1.0363, 1.0354, 1.0306, 1.0242, 1.0177, 1)';
   const pending = new WeakMap<Element, number>();
+  // Fractional layout box within the group: offset* round to whole pixels, so the pill would land
+  // off the button and snap when removed. Size comes from computed style and position from the
+  // rect's center, so a pressed button's centered scale doesn't shrink the box.
+  const box = (el: Element, group: Element) => {
+    const r = el.getBoundingClientRect();
+    const g = group.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const width = parseFloat(style.width);
+    const height = parseFloat(style.height);
+    return {
+      left: r.left + r.width / 2 - width / 2 - g.left - group.clientLeft,
+      top: r.top + r.height / 2 - height / 2 - g.top - group.clientTop,
+      width,
+      height,
+    };
+  };
 
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element && event.target.closest<HTMLButtonElement>('button.dev-btn');
@@ -40,8 +56,9 @@ const { label, class: className, ...rest } = Astro.props;
     const current = oldPill && previous.hasAttribute('data-segment-target')
       ? new DOMMatrixReadOnly(getComputedStyle(oldPill).transform)
       : null;
-    const x = current?.m41 ?? previous.offsetLeft;
-    const width = current && oldPill ? current.a * oldPill.offsetWidth : previous.offsetWidth;
+    const from = box(previous, group);
+    const x = current?.m41 ?? from.left;
+    const width = current && oldPill ? current.a * parseFloat(oldPill.style.width) : from.width;
 
     // Existing click handlers own selection. Read their result before paint.
     pending.set(group, requestAnimationFrame(() => {
@@ -56,14 +73,15 @@ const { label, class: className, ...rest } = Astro.props;
       const pill = document.createElement('span');
       pill.className = 'dev-segmented__indicator';
       pill.setAttribute('aria-hidden', 'true');
-      pill.style.width = `${next.offsetWidth}px`;
-      pill.style.height = `${next.offsetHeight}px`;
+      const target = box(next, group);
+      pill.style.width = `${target.width}px`;
+      pill.style.height = `${target.height}px`;
       next.setAttribute('data-segment-target', '');
       group.prepend(pill);
 
       const animation = pill.animate([
-        { transform: `translate(${x}px, ${next.offsetTop}px) scaleX(${width / next.offsetWidth})` },
-        { transform: `translate(${next.offsetLeft}px, ${next.offsetTop}px) scaleX(1)` },
+        { transform: `translate(${x}px, ${target.top}px) scaleX(${width / target.width})` },
+        { transform: `translate(${target.left}px, ${target.top}px) scaleX(1)` },
       ], {
         duration: 400,
         easing: CSS.supports('animation-timing-function', spring) ? spring : 'ease-out',
