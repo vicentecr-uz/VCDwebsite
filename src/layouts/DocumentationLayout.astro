@@ -9,7 +9,7 @@ import menuIcon from 'lucide-static/icons/menu.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import '../styles/project.css';
 
-interface PageLink { href: string; label: string; group: string }
+interface PageLink { href: string; label: string; group: string; current?: boolean }
 interface AdjacentPage { href: string; label: string }
 interface Props {
   title: string;
@@ -47,8 +47,8 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
       <div class="project-page__main"><slot /></div>
       {(previous || next) && (
         <nav class="documentation-pagination" aria-label="Adjacent pages">
-          {previous ? <a href={previous.href}><span class="documentation-pagination__direction"><span aria-hidden="true" set:html={sizeIcon(chevronLeft, 16)} />Previous</span><span class="text-link">{previous.label}</span></a> : <span />}
-          {next && <a href={next.href}><span class="documentation-pagination__direction">Next<span aria-hidden="true" set:html={sizeIcon(chevronRight, 16)} /></span><span class="text-link">{next.label}</span></a>}
+          {previous ? <a href={previous.href} data-astro-prefetch="load"><span class="documentation-pagination__direction"><span aria-hidden="true" set:html={sizeIcon(chevronLeft, 16)} />Previous</span><span class="text-link">{previous.label}</span></a> : <span />}
+          {next && <a href={next.href} data-astro-prefetch="load"><span class="documentation-pagination__direction">Next<span aria-hidden="true" set:html={sizeIcon(chevronRight, 16)} /></span><span class="text-link">{next.label}</span></a>}
         </nav>
       )}
     </main>
