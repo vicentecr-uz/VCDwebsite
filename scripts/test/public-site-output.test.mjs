@@ -136,6 +136,23 @@ test('ships the unlinked owner-only analytics page with its assets', async () =>
   assert.ok(result.retainedAssets.includes('_astro/analytics.js'));
 });
 
+test('ships registered Sabi docs linked from the Sabi subdomain', async () => {
+  const { root, put } = await fixture();
+  await put('index.html', '<a href="https://sabi.vicentecr.uz/">Sabi</a>');
+  await put('sabi/index.html', '<a href="/introduction">Introduction</a>');
+  await put('sabi/introduction/index.html', '<a href="/vue-nuxt">Vue and Nuxt</a>');
+  await put('sabi/vue-nuxt/index.html', '<script src="/_astro/guide.js"></script>');
+  await put('sabi/unrelated/index.html', 'unrelated');
+  await put('_astro/guide.js', 'export {};');
+
+  const result = await prunePublicOutput(root, { site: 'https://vicentecr.uz' });
+
+  assert.ok(result.retainedHtml.includes('sabi/introduction/index.html'));
+  assert.ok(result.retainedHtml.includes('sabi/vue-nuxt/index.html'));
+  assert.ok(result.retainedAssets.includes('_astro/guide.js'));
+  assert.ok(result.removedHtml.includes('sabi/unrelated/index.html'));
+});
+
 test('ships Public pages at their URL, noindexed unless navigation reaches them', async () => {
   const { root, put } = await fixture();
   await put('index.html', '<a href="/listed/">Listed</a>');
