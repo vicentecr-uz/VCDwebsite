@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { onRequest } from '../../functions/_middleware';
 import routes from '../../public/_routes.json';
 
-const paths = ['/', '/getting-started', '/installation', '/web-components', '/react-nextjs', '/api', '/email-and-number-fields', '/styling'];
+const paths = ['/', '/introduction', '/installation', '/web-components', '/react-nextjs', '/api', '/email-and-number-fields', '/styling'];
 for (const path of paths) {
   test(`Sabi host serves ${path} from portfolio assets`, async () => {
     let fetched = '';
@@ -20,6 +20,13 @@ for (const path of paths) {
 test('portfolio docs redirect to Sabi with query intact', async () => {
   const response = await onRequest({ request: new Request('https://vicentecr.uz/sabi/styling?x=1'), next: async () => new Response('next'), env: { ASSETS: { fetch: async () => new Response('unexpected') } } });
   expect(response.headers.get('location')).toBe('https://sabi.vicentecr.uz/styling?x=1');
+});
+test('renamed Getting started redirects to Introduction', async () => {
+  for (const url of ['https://sabi.vicentecr.uz/getting-started?x=1', 'https://sabi.vicentecr.uz/getting-started/?x=1']) {
+    const response = await onRequest({ request: new Request(url), next: async () => new Response('next'), env: { ASSETS: { fetch: async () => new Response('unexpected') } } });
+    expect(response.status).toBe(301);
+    expect(response.headers.get('location')).toBe('https://sabi.vicentecr.uz/introduction?x=1');
+  }
 });
 test('portfolio paths and unknown Sabi paths pass through', async () => {
   for (const url of ['https://vicentecr.uz/styling', 'https://sabi.vicentecr.uz/missing']) {

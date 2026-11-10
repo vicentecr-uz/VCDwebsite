@@ -7,7 +7,7 @@ export const sabiDocsPages: ReadonlyArray<{
   group: string;
   optional?: boolean;
 }> = [
-  { slug: 'getting-started', key: 'sabi-getting-started', label: 'Introduction', group: 'Basics' },
+  { slug: 'introduction', key: 'sabi-getting-started', label: 'Introduction', group: 'Basics' },
   { slug: 'installation', key: 'sabi-installation', label: 'Installation', group: 'Basics', optional: true },
   { slug: 'web-components', key: 'sabi-web-components', label: 'Web Components', group: 'Framework Guides', optional: true },
   { slug: 'react-nextjs', key: 'sabi-react-nextjs', label: 'React and Next.js', group: 'Framework Guides', optional: true },
