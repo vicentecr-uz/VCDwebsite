@@ -2818,8 +2818,17 @@ export default defineConfig({
       signupDevApi(),
       ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter()]),
     ],
+    // Every client dep must be listed: a dep discovered on first load makes Vite
+    // re-optimise and send full-reload, which contentHmrGate drops, so the open tab
+    // keeps stale dep URLs and its next navigation 504s under a stuck veil.
     optimizeDeps: {
-      include: ['gsap', 'gsap/SplitText', 'color-dialog-box'],
+      include: [
+        'gsap', 'gsap/SplitText', 'gsap/CustomEase', 'color-dialog-box', 'drawesome', 'media-chrome', '@ybouane/liquidglass',
+        'astro/virtual-modules/transitions-router.js',
+        'astro/virtual-modules/transitions-types.js',
+        'astro/virtual-modules/transitions-events.js',
+        'astro/virtual-modules/transitions-swap-functions.js',
+      ],
     },
     server: {
       watch: {
