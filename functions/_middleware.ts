@@ -1,6 +1,8 @@
 import { sabiDocsPages } from '../src/lib/sabi-docs-pages';
 
 const SABI_HOST = 'sabi.vicentecr.uz';
+// Renamed docs paths. The sabi-input 0.1.0 README on npm links /getting-started.
+const RENAMED: Record<string, string> = { '/getting-started': '/introduction' };
 
 type PagesContext = {
   request: Request;
@@ -21,6 +23,11 @@ export async function onRequest({ request, next, env }: PagesContext): Promise<R
   }
   if (url.hostname === SABI_HOST) {
     const path = url.pathname.replace(/\/$/, '') || '/';
+    if (RENAMED[path]) {
+      const target = new URL(RENAMED[path], `https://${SABI_HOST}`);
+      target.search = url.search;
+      return Response.redirect(target.href, 301);
+    }
     if (path === '/' || sabiDocsPages.some(({ slug }) => path === `/${slug}`)) {
       const asset = new URL(path === '/' ? '/sabi/' : `/sabi${path}/`, url);
       asset.search = url.search;

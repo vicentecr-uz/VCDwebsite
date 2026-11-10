@@ -12,7 +12,7 @@ afterEach(async () => { await restore?.(); restore = undefined; });
 
 function fixture(reduce = false) {
   const originals = new Map(globals.map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  const win = new Window({ url: 'https://vcd.test/sabi/getting-started' });
+  const win = new Window({ url: 'https://vcd.test/sabi/introduction' });
   const desktop = Object.assign(new win.EventTarget(), { matches: false });
   const reduced = Object.assign(new win.EventTarget(), { matches: reduce });
   Object.defineProperty(win, 'matchMedia', { value: (query: string) => query.includes('reduced-motion') ? reduced : desktop });
