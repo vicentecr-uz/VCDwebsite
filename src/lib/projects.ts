@@ -84,7 +84,7 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
-export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics' | 'sabi' | 'sabi-getting-started' | 'sabi-installation' | 'sabi-web-components' | 'sabi-react-nextjs' | 'sabi-api' | 'sabi-styling' | 'sabi-email-and-number-fields';
+export type PageDocumentKey = 'home' | 'home-intro' | 'play' | 'about' | 'styles' | 'analytics' | 'sabi' | 'sabi-getting-started' | 'sabi-installation' | 'sabi-web-components' | 'sabi-react-nextjs' | 'sabi-vue-nuxt' | 'sabi-svelte-sveltekit' | 'sabi-astro' | 'sabi-api' | 'sabi-styling' | 'sabi-email-and-number-fields';
 
 export type PageDocument = {
   examples?: StylesExamples;

@@ -2,7 +2,11 @@ import { expect, test } from 'bun:test';
 import { onRequest } from '../../functions/_middleware';
 import routes from '../../public/_routes.json';
 
-const paths = ['/', '/introduction', '/installation', '/web-components', '/react-nextjs', '/api', '/email-and-number-fields', '/styling'];
+const paths = [
+  '/', '/introduction', '/installation', '/web-components', '/react-nextjs',
+  '/vue-nuxt', '/vue-nuxt/', '/svelte-sveltekit', '/svelte-sveltekit/', '/astro', '/astro/',
+  '/api', '/email-and-number-fields', '/styling',
+];
 for (const path of paths) {
   test(`Sabi host serves ${path} from portfolio assets`, async () => {
     let fetched = '';
@@ -12,7 +16,7 @@ for (const path of paths) {
       env: { ASSETS: { fetch: async input => { fetched = String(input); return new Response('asset'); } } },
     });
     expect(await response.text()).toBe('asset');
-    expect(new URL(fetched).pathname).toBe(path === '/' ? '/sabi/' : `/sabi${path}/`);
+    expect(new URL(fetched).pathname).toBe(`/sabi${path.replace(/\/$/, '')}/`);
     expect(new URL(fetched).search).toBe('?test=1');
     expect(routes.include.some(route => route === path || (route.endsWith('/*') && path.startsWith(route.slice(0, -1))))).toBe(true);
   });
