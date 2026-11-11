@@ -109,6 +109,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     font: 0.875rem/1.6 var(--font-mono);
   }
 
+  .code-block__panel[data-code-single-line] {
+    --code-copy-size: var(--dev-control-height);
+    --code-copy-inset: 6.5px;
+  }
+
   .code-block__panel[data-code-single-line] > :global(.astro-code) {
     direction: ltr;
     padding-inline-end: 0;
@@ -117,7 +122,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   .code-block__panel[data-code-single-line] > :global(.astro-code > code) {
     display: block;
     inline-size: max-content;
-    padding-inline-end: calc(var(--dev-control-height) + 1.25rem);
+    padding-inline-end: calc(var(--code-copy-size) + var(--code-copy-inset) + 5px);
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.code-copy) {
+    inline-size: var(--code-copy-size);
+    right: var(--code-copy-inset);
   }
 
   .code-block__panel:has(> .astro-code:focus-visible) {

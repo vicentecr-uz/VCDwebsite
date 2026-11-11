@@ -1,7 +1,7 @@
 import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
 const VERTICAL_FADE_EM = 2.5;
-const HORIZONTAL_FADE_PX = 24;
+const HORIZONTAL_FADE_PX = 30;
 const BLUR_BANDS = [
   { start: 1, full: 1, radius: 0.125 },
   { start: 0.9, full: 0.65, radius: 0.25 },
