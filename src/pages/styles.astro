@@ -1,7 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import Header from '../components/Header.astro';
-import Footer from '../components/Footer.astro';
+import DocumentationLayout from '../layouts/DocumentationLayout.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
 import DocumentationContents from '../components/DocumentationContents.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
@@ -632,27 +630,26 @@ const visibleOutline = outline.filter((entry) =>
     : entry,
 );
 const sectionLinks = deriveNavFromOutline(visibleOutline);
+const contents = sectionLinks.flatMap((entry) => 'children' in entry ? entry.children : [entry]);
+const documentationPages = [{ href: '/styles', label: 'Design system', group: 'VCD', current: true }];
 ---
 
-<Layout title="Design System — Vicente Cruz">
-  <div
-    class="styles-page"
-    data-section-nav-root
-    data-section-nav-document="styles"
-    data-section-nav-outline-only="true"
-    data-section-nav={JSON.stringify(sectionLinks)}
-    data-section-outline={JSON.stringify(visibleOutline)}
-  >
-    <Header title="Design System" />
-
-    <div class="styles-layout">
-      <SectionSidebarNav
-        sectionLinks={sectionLinks}
-        ariaLabel="Design System page sections"
-        desktopOnly
-      />
-
-      <main id="main-content" class="styles-main" data-section-nav-main>
+<DocumentationLayout
+  title="Design System"
+  product="VCD"
+  homeHref="/"
+  documentKey="styles"
+  pages={documentationPages}
+  contents={contents}
+  githubHref="https://github.com/vicentecr-uz/VCDwebsite"
+  sectionNavDocument="styles"
+  sectionNavOutlineOnly
+  sectionNav={JSON.stringify(sectionLinks)}
+  sectionOutline={JSON.stringify(visibleOutline)}
+>
+  <div class="styles-editor-shell">
+    <SectionSidebarNav sectionLinks={sectionLinks} ariaLabel="Design System editor sections" desktopOnly />
+    <div class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
           <ProjectBodyText
             paragraphs={stylesNav.introParagraphs ?? []}
@@ -1086,21 +1083,22 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
           </article>
         </section>
         )}
-      </main>
     </div>
-
-    {import.meta.env.DEV && <StyleColorTokenEditor />}
-    {import.meta.env.DEV && <ProjectSectionNavEditor />}
-    <Footer />
   </div>
-</Layout>
+  {import.meta.env.DEV && <StyleColorTokenEditor />}
+  {import.meta.env.DEV && <ProjectSectionNavEditor />}
+</DocumentationLayout>
 
 <style>
 
-  .styles-page {
-    min-height: 100dvh;
+  .styles-editor-shell {
+    position: relative;
     display: flex;
     flex-direction: column;
+  }
+
+  .styles-editor-shell > .section-sidebar-nav {
+    display: none;
   }
 
   .styles-main {
@@ -1114,10 +1112,6 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
   .styles-intro > :global(.project-block--text),
   #styles-components > :global(.project-block--text) {
     width: 100%;
-  }
-
-  .styles-layout {
-    position: relative;
   }
 
   .section-block[id] {
