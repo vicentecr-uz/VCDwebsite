@@ -45,6 +45,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           <p class="sidenotes__paragraph">
             <span
               data-dev-text-document={editable ? documentKey : undefined}
+              aria-label={editable ? 'Text before note reference' : undefined}
               data-dev-text-path={editable ? JSON.stringify(paragraphPath) : undefined}
               data-dev-text-kind={editable ? 'text' : undefined}
             >{item.paragraph}</span>
@@ -65,6 +66,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           <div class="sidenotes__note-inner"><span class="sidenotes__number" aria-hidden="true">{index + 1}</span>
           <p
             data-dev-text-document={editable ? documentKey : undefined}
+            aria-label={editable ? 'Note text' : undefined}
             data-dev-text-path={editable ? JSON.stringify(notePath) : undefined}
             data-dev-text-kind={editable ? 'text' : undefined}
           >{item.note}</p></div>
@@ -125,6 +127,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       opacity 200ms ease, color 150ms ease, visibility 0s linear 300ms;
   }
   .sidenotes__note-inner { display: flex; gap: 0.5em; min-height: 0; overflow: hidden; }
+  .sidenotes__note-inner p { flex: 1; min-inline-size: 0; }
+  .sidenotes__note-inner p[contenteditable]:empty { min-block-size: 1lh; }
   .sidenotes__number { font-variant-numeric: tabular-nums; }
   .sidenotes__note.is-open {
     grid-template-rows: 1fr;
