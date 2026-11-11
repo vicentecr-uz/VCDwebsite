@@ -14,24 +14,21 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     <span class="reddit-board-height__source" data-reddit-board-source></span>
     <Button emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
   </div>
-  <div class="reddit-board-height__detents" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <span style={`--detent:${index}`} />)}</div>
   <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
 </div>
 
 <style>
-  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: var(--dev-panel-pad); border-radius: var(--dev-radius-surface); }
+  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: var(--dev-panel-pad); border-radius: var(--dev-radius-panel); corner-shape: var(--squircle-shape); }
   .reddit-board-height[hidden] { display: none; }
   .reddit-board-height__field { position: relative; }
   .reddit-board-height__field:has([data-reddit-board-reset]:not([hidden])) :global(.dev-range-field__output) { right: 38px; }
-  .reddit-board-height__source { position: absolute; inset: 0 auto 0 58px; display: flex; align-items: center; pointer-events: none; color: var(--sys-color-on-srf-variant); font: var(--dev-text-status); }
+  .reddit-board-height__source { display: none; }
   .reddit-board-height__field :global(.dev-btn) { position: absolute; top: 50%; right: 4px; translate: 0 -50%; min-height: 28px; min-width: 28px; padding: 4px; }
   .reddit-board-height__field :global(.dev-btn[hidden]) { display: none; }
   .reddit-board-height__status { margin: 0; font: var(--dev-text-status); }
   .reddit-board-height__status:empty { display: none; }
-  .reddit-board-height__detents { position: relative; height: 4px; margin: calc(var(--space-unit) * -0.75) 0 0; pointer-events: none; }
-  .reddit-board-height__detents span { position: absolute; left: calc(var(--detent) * 100% / 13); width: 1px; height: 4px; translate: -50% 0; background: var(--sys-color-on-srf-container-faint); }
-  .reddit-board-height :global([data-reddit-board-viewport][data-override])::after { content: ''; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: var(--sys-color-on-srf); }
-  :global(button.reddit-board-height-grabber) { display: none; position: absolute; z-index: 2; bottom: -12px; left: 50%; width: 48px; height: 24px; padding: 0; border: 0; translate: -50% 0; cursor: ns-resize; touch-action: none; background: transparent; }
+  .reddit-board-height :global([data-reddit-board-viewport][data-override])::after { content: ''; display: inline-block; width: 3px; height: 3px; margin-left: 3px; vertical-align: 0.15em; border-radius: 50%; background: currentColor; }
+  :global(button.reddit-board-height-grabber) { display: none; position: absolute; z-index: 2; bottom: calc(-1 * (var(--rcb-pad-y, 0.75em) + var(--rcb-fade, 1.25em) / 2)); left: 50%; width: 48px; height: 24px; padding: 0; border: 0; translate: -50% 0; cursor: ns-resize; touch-action: none; background: transparent; }
   :global(html.is-dev-mode button.reddit-board-height-grabber) { display: block; }
   :global(button.reddit-board-height-grabber)::after { content: ''; position: absolute; top: 10px; left: 50%; width: 32px; height: 4px; translate: -50% 0; border-radius: 999px; background: var(--sys-color-on-srf-subtle); opacity: 0; transition: opacity 150ms ease-out; }
   :global(.reddit-comment-board:hover .reddit-board-height-grabber)::after,
@@ -148,6 +145,8 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       const local = typeof authored[selected] === 'number';
       let from = selected;
       while (authored[from] === null && from !== 'desktop') from = breakpoints[breakpoints.indexOf(from) - 1];
+      const inheritedFrom = from === selected ? 'default' : `${from[0].toUpperCase()}${from.slice(1)}`;
+      input.setAttribute('aria-description', local ? 'Custom height' : `Inherited from ${inheritedFrom}`);
       source.textContent = local ? 'Set here' : from === selected ? 'Default' : `From ${from[0].toUpperCase()}${from.slice(1)}`;
       reset.hidden = !local;
       preview();
