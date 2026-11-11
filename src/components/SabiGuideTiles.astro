@@ -15,8 +15,8 @@ const icons: Record<string, string | undefined> = {
   'web-components': codeIcon,
   'react-nextjs': atomIcon,
   'vue-nuxt': triangleIcon,
-  'svelte-sveltekit': svelteIcon,
-  astro: rocketIcon,
+  'svelte-sveltekit': svelteIcon.replace('stroke-width="2"', 'stroke-width="1.7"'),
+  astro: rocketIcon.replace('stroke-width="2"', 'stroke-width="1.8"'),
 };
 ---
 
@@ -27,16 +27,7 @@ const icons: Record<string, string | undefined> = {
       return (
         <li>
           <a href={href}>
-            {icon && (
-              <span
-                class:list={{
-                  'icon-svelte': slug === 'svelte-sveltekit',
-                  'icon-astro': slug === 'astro',
-                }}
-                aria-hidden="true"
-                set:html={sizeIcon(icon, 16)}
-              />
-            )}
+            {icon && <span aria-hidden="true" set:html={sizeIcon(icon, 16)} />}
             {label}
           </a>
         </li>
@@ -66,8 +57,6 @@ const icons: Record<string, string | undefined> = {
     text-decoration: none;
   }
   span { display: flex; color: var(--sys-color-on-srf-subtle); }
-  .icon-svelte :global(svg) { stroke-width: 1.7; }
-  .icon-astro :global(svg) { stroke-width: 1.8; }
   @media (hover: hover) { a:hover { background: var(--comp-button-ghost-container-pressed); } }
   a:active { background: var(--sys-color-srf-container-high); }
   a:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
