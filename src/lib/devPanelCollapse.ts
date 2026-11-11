@@ -24,13 +24,22 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     animations = [];
   };
 
+  const panelRadius = ({ width, height }: DOMRect, minimized: boolean) => {
+    const radius = win.getComputedStyle(panel).borderRadius;
+    if (!minimized || !panel.classList.contains('dev-overlay')) return radius;
+    // CSS clamps the oversized resting radius to the bar's dimensions.
+    const pixels = Number.parseFloat(radius);
+    return Number.isFinite(pixels) ? `${Math.min(pixels, width / 2, height / 2)}px` : radius;
+  };
+
   const set = (minimized: boolean, animate = true) => {
     if (destroyed) return;
     const wasMinimized = panel.classList.contains('is-minimized');
     const interrupted = animating;
     if (animate && minimized === wasMinimized && !interrupted) return;
-    const fromHeight = panel.getBoundingClientRect().height;
-    const fromRadius = win.getComputedStyle(panel).borderRadius;
+    const fromRect = panel.getBoundingClientRect();
+    const fromHeight = fromRect.height;
+    const fromRadius = panelRadius(fromRect, wasMinimized);
     const fromOpacity = wasMinimized && !interrupted ? 0 : Number(win.getComputedStyle(body).opacity);
     let morphBodyHeight = minimized ? body.getBoundingClientRect().height : 0;
     cancel();
@@ -58,8 +67,9 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     button?.classList.toggle('dev-overlay__light--expand', minimized);
     options.afterStateChange?.();
 
-    const toHeight = panel.getBoundingClientRect().height;
-    const toRadius = win.getComputedStyle(panel).borderRadius;
+    const toRect = panel.getBoundingClientRect();
+    const toHeight = toRect.height;
+    const toRadius = panelRadius(toRect, minimized);
     if (!minimized) morphBodyHeight = body.getBoundingClientRect().height;
     if (Number.isFinite(morphBodyHeight) && morphBodyHeight >= 0) {
       panel.style.setProperty('--dev-overlay-morph-body-height', `${morphBodyHeight}px`);
