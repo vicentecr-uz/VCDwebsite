@@ -89,11 +89,15 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       const bodyTop = bodyRect.top - panelRect.top;
       const paddingBottom = Number.parseFloat(win.getComputedStyle(panel).paddingBottom) || 0;
       const bodyStyles = win.getComputedStyle(body);
-      const corners = `${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
+      // The native body already clips to its shaped corners. The moving inset
+      // only limits how much of the body is revealed above the panel padding.
+      const corners = bodyStyles.getPropertyValue('corner-shape') === 'superellipse(1.33)'
+        ? ''
+        : ` round 0 0 ${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
       const inset = (height: number) => bodyHeight - (height - bodyTop - paddingBottom);
       clipKeyframes = [
-        { clipPath: `inset(0 0 ${inset(fromHeight)}px 0 round 0 0 ${corners})` },
-        { clipPath: `inset(0 0 ${inset(toHeight)}px 0 round 0 0 ${corners})` },
+        { clipPath: `inset(0 0 ${inset(fromHeight)}px 0${corners})` },
+        { clipPath: `inset(0 0 ${inset(toHeight)}px 0${corners})` },
       ];
     }
     if (!reduced) {
