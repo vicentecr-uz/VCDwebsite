@@ -827,10 +827,10 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
 
                     <div class:list={['component-preview', { 'component-preview--video': component.preview === 'video' }]}>
                       {component.preview === 'header' && (
-                        <p class="preview-note">Rendered at the top of this page.</p>
+                        <a href="/" class="project-inline-link">View the site header</a>
                       )}
                       {component.preview === 'footer' && (
-                        <p class="preview-note">Rendered at the bottom of this page.</p>
+                        <a href="/" class="project-inline-link">View the site footer</a>
                       )}
                       {component.preview === 'documentation-layout' && (
                         <a href="/sabi/introduction" class="project-inline-link">View the documentation template</a>
@@ -839,7 +839,7 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
                         <DocumentationContents contents={[{ id: 'component-documentation-layout', label: 'Documentation layout' }, { id: 'component-documentation-contents', label: 'On this page' }]} />
                       )}
                       {component.preview === 'sidebar-nav' && (
-                        <p class="preview-note">Fixed nav on the left of this page (desktop).</p>
+                        <a href={examples.referenceProject.href} class="project-inline-link">View case-study navigation</a>
                       )}
                       {component.preview === 'project-grid' && (
                         <ProjectGrid
@@ -1167,6 +1167,8 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
   h4 {
     font-size: 1.1rem;
   }
+
+  .styles-main .meta-values code { white-space: normal; overflow-wrap: anywhere; }
 
   .meta-values {
     font-family: var(--font-mono);
@@ -1553,6 +1555,11 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
   :global(.component-preview:has(.dev-overlay--embedded)),
   :global(.component-preview:has(.dev-menu)) {
     overflow: visible;
+  }
+
+  .component-preview__overlays :global(.dev-overlay--embedded) {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .component-preview :global(.project-block) {

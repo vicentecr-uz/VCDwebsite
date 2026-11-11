@@ -3,12 +3,13 @@ import Menu from './ui/Menu.astro';
 
 interface Props {
   contents: Array<{ id: string; label: string }>;
+  editOutline?: boolean;
 }
-const { contents } = Astro.props;
+const { contents, editOutline = false } = Astro.props;
 ---
 
-{contents.length > 0 && (
-  <nav class="documentation-contents" aria-label="On this page" data-documentation-contents>
+{(contents.length > 0 || editOutline) && (
+  <nav class="documentation-contents" aria-label="On this page" data-documentation-contents data-edit-outline={editOutline ? '' : undefined}>
     <p>On this page</p>
     <div class="documentation-contents__outline">
       <span class="documentation-contents__marker" data-contents-marker aria-hidden="true" />
@@ -25,19 +26,20 @@ const { contents } = Astro.props;
   import { activeSectionId } from '../lib/activeSection';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
 
-  onPageLoad(() => {
-    const navigation = document.querySelector('[data-documentation-contents]');
-    const outline = navigation?.querySelector<HTMLElement>('.documentation-contents__outline');
+  const mountContents = (navigation: HTMLElement) => {
+    const outline = navigation.querySelector<HTMLElement>('.documentation-contents__outline');
     const marker = outline?.querySelector<HTMLElement>('[data-contents-marker]');
-    if (!navigation || !outline || !marker) return;
-    const entries = [...navigation.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]
+    if (!outline || !marker) return;
+    const readEntries = () => [...navigation.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')]
       .map(link => ({ link, heading: document.getElementById(link.getAttribute('href')!.slice(1)) }))
       .filter((entry): entry is { link: HTMLAnchorElement; heading: HTMLElement } => Boolean(entry.heading));
-    if (!entries.length) return;
+    let entries = readEntries();
     const scope = createPageScope();
     let scheduled = false;
     const update = () => {
       scheduled = false;
+      marker.hidden = entries.length === 0;
+      if (!entries.length) return;
       const selectedId = activeSectionId(
         entries.map(({ heading }) => ({ id: heading.id, top: heading.getBoundingClientRect().top + window.scrollY })),
         { scrollY: window.scrollY, viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight },
@@ -63,18 +65,44 @@ const { contents } = Astro.props;
     scope.listen(window, 'scroll', schedule, { passive: true });
     scope.listen(window, 'resize', schedule);
     scope.listen(window, 'hashchange', schedule);
+    if (navigation.hasAttribute('data-edit-outline')) {
+      const list = outline.querySelector('ul');
+      const editList = document.querySelector('[data-section-sidebar-list]');
+      if (list && editList) {
+        scope.listen(window, 'vcd:section-nav-sidebar-synced', () => {
+          const rows = [...editList.querySelectorAll<HTMLAnchorElement>('a[href^="#"]')].map((source) => {
+            const row = document.createElement('li');
+            const link = document.createElement('a');
+            link.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item';
+            link.setAttribute('href', source.getAttribute('href')!);
+            link.textContent = source.textContent?.trim() ?? '';
+            row.append(link);
+            return row;
+          });
+          list.replaceChildren(...rows);
+          entries = readEntries();
+          schedule();
+        });
+      }
+    }
     update();
     scope.frame(() => { marker.dataset.ready = 'true'; });
-    return () => scope.destroy();
+    return scope.destroy;
+  };
+
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll<HTMLElement>('[data-documentation-contents]')].map(mountContents);
+    return () => cleanups.forEach((cleanup) => cleanup?.());
   });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>
   .documentation-contents { color: var(--documentation-navigation-muted); font-size: 0.875rem; line-height: 1.6; }
   p { color: var(--sys-color-on-srf-subtle); margin: 0 0 1rem; }
   .documentation-contents__outline { position: relative; padding-left: 4px; border-left: 1px solid var(--documentation-divider, var(--sys-color-outline)); }
-  a { white-space: normal; text-align: left; color: var(--documentation-navigation-muted); }
-  a:hover, a[aria-current='location'] { color: var(--sys-color-on-srf); }
+  .documentation-contents :global(a) { white-space: normal; text-align: left; color: var(--documentation-navigation-muted); }
+  .documentation-contents :global(a:is(:hover, [aria-current='location'])) { color: var(--sys-color-on-srf); }
   .documentation-contents__marker { position: absolute; left: -1px; top: 0; width: 2px; height: 1px; background: var(--sys-color-on-srf); transform-origin: top; pointer-events: none; }
   .documentation-contents__marker[data-ready] { transition: transform 250ms ease; }
   @media (prefers-reduced-motion: reduce) {
