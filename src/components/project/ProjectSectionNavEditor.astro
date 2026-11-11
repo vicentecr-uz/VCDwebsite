@@ -515,10 +515,7 @@ import SelectField from '../ui/EditorSelectField.astro';
       const block = target.closest<HTMLElement>('[data-section-nav-block]');
       if (block && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault(); event.stopImmediatePropagation(); selectBlock(block);
-        return;
       }
-      if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
-      if (target.closest('[data-editor-select-popup]')) return;
     }, { capture: true, signal });
     window.addEventListener('vcd:dev-history-change', () => {
       undoButton.disabled = saving || pageHistory.busy || !historyScope?.canUndo;

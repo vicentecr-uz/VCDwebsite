@@ -5,6 +5,7 @@ import '../styles/site-annotation-editor.css';
 <script>
   import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
 
+  import { devPanels, frontmostOpenPanel } from '../lib/devPanelStack';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
 
   const disposePage = onPageLoad(() => {
@@ -76,9 +77,6 @@ import '../styles/site-annotation-editor.css';
       [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
     const modeOnlyControls = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-mode-only]')];
-    const devPanels = () =>
-      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
-        .filter((panel) => !panel.hasAttribute('data-embedded'));
     const imageTargets = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
@@ -392,20 +390,6 @@ import '../styles/site-annotation-editor.css';
       }
     }, true);
 
-    // isContentEditable, not [contenteditable="true"]: editable hosts are set to
-    // 'plaintext-only' where the browser supports it (card titles, captions), and
-    // the attribute selector misses those — which let Esc in a card title fall
-    // through to "leave Dev Mode" instead of leaving the field.
-    const frontmostOpenPanel = () => {
-      const openPanels = devPanels().filter((panel) => !panel.hidden);
-      if (!openPanels.length) return null;
-      return openPanels.reduce((front, panel) => {
-        const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
-        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
-        return panelZ >= frontZ ? panel : front;
-      });
-    };
-
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea')));
     const isPlainField = (target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement =>
@@ -489,13 +473,11 @@ import '../styles/site-annotation-editor.css';
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target?.isContentEditable) return;
-      const nativeSelect = target?.closest('select');
-      if (nativeSelect instanceof HTMLSelectElement && nativeSelect.matches(':open')) return;
       if (isPlainField(event.target)) {
         const inEditChrome = Boolean(target?.closest('[data-dev-panel-key], .dev-overlay')) || devMode || isSectionEditor();
         if (!inEditChrome) return;
         event.preventDefault();
-        (event.target as HTMLElement).blur();
+        event.target.blur();
         return;
       }
 

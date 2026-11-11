@@ -97,6 +97,7 @@ import TextField from './ui/TextField.astro';
 <div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
 
 <script>
+  import { frontmostOpenPanel } from '../lib/devPanelStack';
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { getLastPointerPosition } from '../lib/lastPointer';
 
@@ -717,14 +718,8 @@ import TextField from './ui/TextField.astro';
         if (event.target.closest('[data-editor-select-popup]')) return;
       }
 
-      const openPanels = [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
-        .filter((candidate) => !candidate.hidden && !candidate.hasAttribute('data-embedded'));
-      const frontmost = openPanels.reduce<HTMLElement | null>((front, candidate) => {
-        if (!front) return candidate;
-        const candidateZ = Number.parseInt(getComputedStyle(candidate).zIndex, 10) || 0;
-        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
-        return candidateZ >= frontZ ? candidate : front;
-      }, null);
+      if (panel.hidden && !pickMode) return;
+      const frontmost = frontmostOpenPanel();
       if (frontmost && frontmost !== panel) return;
 
       if (pickMode) {
@@ -747,7 +742,11 @@ import TextField from './ui/TextField.astro';
         return;
       }
 
-      if (veilMode === 'logging') return;
+      if (veilMode === 'logging') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
 
       if (veilMode === 'done') {
         event.preventDefault();
