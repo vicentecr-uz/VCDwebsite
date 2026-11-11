@@ -83,14 +83,15 @@ const showPrototypeControls = false;
   .composition { position: relative; width: min(100%, 28em); container-type: inline-size; }
   .composition-grid { display: grid; grid-template-rows: 75cqw auto; gap: var(--progressive-demo-gap); padding-block: var(--progressive-demo-gap); justify-items: center; }
   .image-area { position: relative; width: 100%; height: 100%; }
-  .image-stack { position: absolute; inset: 0; border-radius: var(--radius-control-smooth); overflow: hidden; }
+  .image-stack { position: absolute; inset: 0; border-radius: calc(var(--radius-control-smooth) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); overflow: hidden; }
   .image-stack img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
   .image-quality-badge { --image-quality-inset: 12px; position: absolute; top: var(--image-quality-inset); left: var(--image-quality-inset); z-index: 1; pointer-events: none; padding: 6px 8px; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-red-500) 8%); color: var(--ref-palette-red-100); }
   .image-quality-badge--high { opacity: 0; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-green-500) 8%); color: var(--ref-palette-green-100); }
   :global(:root[data-theme='dark']) .image-quality-badge { color: var(--ref-palette-red-800); }
   :global(:root[data-theme='dark']) .image-quality-badge--high { color: var(--ref-palette-green-800); }
   .glass-root { position: absolute; inset: 0; }
-  .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; opacity: 0; }
+  .glass-source { display: block; width: 100%; height: 100%; border-radius: calc(var(--radius-control-smooth) * var(--continuous-corner-scale, 1));
+ corner-shape: var(--squircle-shape); pointer-events: none; opacity: 0; }
   .lens { position: absolute; left: 0; top: 0; width: 180px; height: 180px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
   .hint { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: visible; }
   .lens :global(canvas) { opacity: 0; }
@@ -105,7 +106,7 @@ const showPrototypeControls = false;
   }
   .lens[hidden] { display: none; }
   .lens:focus-visible { outline: 2px solid var(--sys-color-on-srf); }
-  .actions { display: grid; grid-template-columns: 1fr; align-items: center; padding: 6px; border-radius: 12px; }
+  .actions { display: grid; grid-template-columns: 1fr; align-items: center; padding: 6px; border-radius: calc(12px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); }
   /* The hidden Load cell preserves the original button width: Load text + 73px (original padding, Reset button, gaps and divider). */
   .actions::before { content: 'Load'; visibility: hidden; grid-area: 1 / 1; font: var(--dev-text-label); padding-inline: 30.5px; }
   .actions :global([data-load]) { display: grid; grid-area: 1 / 1; width: 100%; }
@@ -123,7 +124,7 @@ const showPrototypeControls = false;
   .demo-tooltip > svg path { fill: var(--sys-color-srf); }
   @media (prefers-reduced-motion: reduce) { .demo-tooltip { transition: none !important; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .load-label { transition-property: opacity; filter: none !important; transform: none !important; } }
-  .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: calc(12px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
   .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
   .lens-controls summary:active { cursor: grabbing; }
   .lens-controls__body { display: grid; gap: 12px; padding: 0 12px 12px; }
@@ -131,8 +132,8 @@ const showPrototypeControls = false;
   .lens-control label { display: flex; justify-content: space-between; gap: 8px; color: rgb(255 255 255 / 0.78); }
   .lens-control output { color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .lens-control input, .lens-control select { width: 100%; accent-color: #fff; }
-  .lens-control select { color: inherit; background: #222; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 6px; padding: 5px; font: inherit; }
-  .lens-copy { padding: 7px 9px; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 7px; background: transparent; color: #fff; cursor: pointer; font: inherit; }
+  .lens-control select { color: inherit; background: #222; border: 1px solid rgb(255 255 255 / 0.18); border-radius: calc(6px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 5px; font: inherit; }
+  .lens-copy { padding: 7px 9px; border: 1px solid rgb(255 255 255 / 0.18); border-radius: calc(7px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); background: transparent; color: #fff; cursor: pointer; font: inherit; }
   .lens-copy:hover { background: rgb(255 255 255 / 0.1); }
   .lens-copy-status { min-height: 1em; color: rgb(255 255 255 / 0.65); }
   .lens-controls input:focus-visible, .lens-controls select:focus-visible, .lens-controls summary:focus-visible { outline: 2px solid rgb(255 255 255 / 0.55); outline-offset: 2px; }
