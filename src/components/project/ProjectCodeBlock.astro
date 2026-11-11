@@ -40,12 +40,22 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       ))}
     </SegmentedControl>
   )}
-  {options.map(({ lang, code }, index) => (
-    <div class="code-block__panel" data-option-panel hidden={index > 0}>
-      <Code code={code.trim()} lang={lang as never} theme={codeTheme} />
-      <ProjectCodeCopy code={code} top={code.includes('\n')} />
-    </div>
-  ))}
+  {options.map(({ lang, code }, index) => {
+    const displayedCode = code.trim();
+    const singleLine = !/[\r\n]/.test(displayedCode);
+    return (
+      <div class="code-block__panel" data-option-panel data-code-single-line={singleLine ? '' : undefined} hidden={index > 0}>
+        <Code code={displayedCode} lang={lang as never} theme={codeTheme} />
+        {singleLine && (
+          <span class="code-block__edge" data-code-edge hidden aria-hidden="true">
+            <span class="code-block__edge-blur" data-code-edge-blur></span>
+            <span class="code-block__edge-tint"></span>
+          </span>
+        )}
+        <ProjectCodeCopy code={displayedCode} top={!singleLine} />
+      </div>
+    );
+  })}
   {editable && (
     <span
       class="code-block__resize"
@@ -99,12 +109,125 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     font: 0.875rem/1.6 var(--font-mono);
   }
 
+  .code-block__panel[data-code-single-line] {
+    --code-copy-size: var(--dev-control-height);
+    --code-copy-inset: 6.5px;
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.astro-code) {
+    direction: ltr;
+    padding-inline-end: 0;
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.astro-code > code) {
+    display: block;
+    inline-size: max-content;
+    padding-inline-end: calc(var(--code-copy-size) + var(--code-copy-inset) + 5px);
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.code-copy) {
+    inline-size: var(--code-copy-size);
+    right: var(--code-copy-inset);
+  }
+
+  .code-block__panel:has(> .astro-code:focus-visible) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+  }
+
+  .code-block__edge {
+    --code-edge-width: 60px;
+    --code-edge-full: 25px;
+    --code-edge-overscan: 9px;
+    --code-edge-radius: 3px;
+    position: absolute;
+    inset: 0 0 0 auto;
+    inset-block-end: max(0.75rem, var(--code-scrollbar-height, 0px));
+    width: var(--code-edge-width);
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .code-block__edge-blur,
+  .code-block__edge-tint { position: absolute; inset: 0; }
+
+  .code-block__edge-blur {
+    --code-edge-mask: linear-gradient(to left, #000 calc(100% - 6px), transparent);
+    overflow: clip;
+    background: var(--sys-color-srf-container-low);
+    -webkit-mask-image: var(--code-edge-mask);
+    mask-image: var(--code-edge-mask);
+  }
+
+  .code-block__edge-blur:empty { display: none; }
+
+  .code-block__edge-blur :global(.code-block__blur-band) {
+    --band-transition: calc(var(--code-edge-width) - var(--code-edge-full));
+    --band-width: calc(var(--code-edge-full) + var(--band-transition) * var(--band-start));
+    --band-solid: calc(var(--code-edge-full) + var(--band-transition) * var(--band-full));
+    --band-blur: calc(var(--code-edge-radius) * var(--band-radius) * var(--code-edge-progress, 0));
+    --band-mask: linear-gradient(to left, #000 var(--band-solid), transparent var(--band-width));
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: var(--band-width);
+    background: var(--sys-color-srf-container-low);
+    -webkit-mask-image: var(--band-mask);
+    mask-image: var(--band-mask);
+  }
+
+  .code-block__edge-blur :global(.code-block__blur-band:first-child) {
+    --band-blur: min(0.375px, calc(var(--code-edge-radius) * var(--band-radius) * var(--code-edge-progress, 0)));
+    --band-mask: none;
+  }
+
+  .code-block__edge-blur :global(.code-block__blur-sample) {
+    position: absolute;
+    inset: calc(-1 * var(--code-edge-overscan));
+    overflow: clip;
+    filter: blur(var(--band-blur));
+  }
+
+  .code-block__edge-blur :global(.code-block__blur-code) {
+    position: absolute;
+    top: calc(var(--code-edge-sample-y) + var(--code-edge-overscan));
+    left: calc(var(--code-edge-sample-x) + var(--band-width) + var(--code-edge-overscan));
+    width: max-content;
+    direction: ltr;
+    white-space: pre;
+    color: var(--sys-color-code-ink);
+    transform: translateX(var(--code-edge-offset, 0px));
+  }
+
+  .code-block__edge-tint {
+    opacity: var(--code-edge-progress, 0);
+    background: linear-gradient(to left, color-mix(in srgb, var(--sys-color-srf-container-low) 60%, transparent) var(--code-edge-full), transparent);
+  }
+
+  @supports (animation-timeline: --code-block-scroll) and (timeline-scope: --code-block-scroll) {
+    .code-block__panel[data-code-single-line] { timeline-scope: --code-block-scroll; }
+    .code-block__panel[data-code-single-line] > :global(.astro-code) { scroll-timeline: --code-block-scroll inline; }
+    .code-block__edge-blur :global(.code-block__blur-code) {
+      animation: code-block-scroll linear both;
+      animation-timeline: --code-block-scroll;
+    }
+    @keyframes code-block-scroll {
+      from { transform: translateX(0); }
+      to { transform: translateX(calc(-1 * var(--code-edge-travel))); }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .code-block__edge-blur { display: none; }
+  }
+
   /* A height set in Edit mode caps the code at whole lines; the rest scrolls inside the panel. */
   .code-block[data-max-lines] :global(.astro-code) {
     max-height: calc(var(--code-block-max-lines) * 1.6em + 2em);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+
+  .code-block__panel[data-code-single-line] > :global(.astro-code) { overscroll-behavior-x: none; }
 
   /* Scroll fade, Sabi's eased mask turned vertical (src/lib/sabi/styles.css). codeBlockScroll.ts
      sets the progress values from how much is hidden above and below, so each edge fades in only
