@@ -1,145 +1,204 @@
 ---
-import DevOverlay from './DevOverlay.astro';
 import RangeField from './ui/RangeField.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
 import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
 
 const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
 ---
 
-<DevOverlay title="Board height" storageKey="reddit-board-height" panelKey="reddit-board-height" defaultHidden>
-  <div class="reddit-board-height" data-reddit-board-height-panel>
-    {breakpoints.map((breakpoint) => (
-      <RangeField
-        label={breakpoint[0].toUpperCase() + breakpoint.slice(1)}
-        id={`reddit-board-height-${breakpoint}`}
-        min="8"
-        max="60"
-        step="1"
-        unit="em"
-        data-reddit-board-height={breakpoint}
-      />
-    ))}
-    <PanelActions>
-      <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
-      <Button emphasis="ghost" label="Reset" data-reddit-board-reset />
-      <Button emphasis="filled" label="Save" data-reddit-board-save />
-    </PanelActions>
-  </div>
-</DevOverlay>
+<div class="reddit-board-height" data-reddit-board-height-panel data-dev-overlay data-dev-panel-key="reddit-board-height" hidden>
+  <ViewportSelector label="Viewport" dataAttr="data-reddit-board-viewport" />
+  <RangeField label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value />
+  <PanelActions>
+    <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
+    <Button emphasis="ghost" label="↺" aria-label="Reset" data-reddit-board-reset />
+    <Button emphasis="filled" label="Save" data-reddit-board-save />
+  </PanelActions>
+</div>
 
 <style>
-  .reddit-board-height { display: grid; gap: var(--space-unit); }
+  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: var(--space-unit); width: min(22em, calc(100vw - 2 * var(--dev-panel-pad))); padding: var(--dev-panel-pad); border: 1px solid var(--sys-color-outline-variant); border-radius: var(--dev-radius-panel); background: var(--sys-color-srf-container); box-shadow: var(--elevated-surface-shadow); }
+  .reddit-board-height[hidden] { display: none; }
   .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; }
   .reddit-board-height__status { flex: 1 1 0; min-width: 0; margin: 0; font: var(--dev-text-label); }
+  .reddit-board-height :global([data-reddit-board-viewport][data-override])::after { content: ''; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: var(--sys-color-on-srf); }
+  :global(.reddit-board-height-grabber) { position: absolute; z-index: 2; bottom: -12px; left: 50%; width: 48px; height: 24px; translate: -50% 0; cursor: ns-resize; touch-action: none; }
+  :global(.reddit-board-height-grabber)::after { content: ''; position: absolute; top: 10px; left: 50%; width: 32px; height: 4px; translate: -50% 0; border-radius: 999px; background: var(--sys-color-on-srf-subtle); opacity: 0; transition: opacity 150ms ease-out; }
+  :global(.reddit-board-height-grabber:hover)::after, :global(.reddit-board-height-grabber[data-dragging])::after { opacity: 1; }
 </style>
 
 <script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
   type Breakpoint = 'desktop' | 'tablet' | 'mobile';
   const breakpoints: Breakpoint[] = ['desktop', 'tablet', 'mobile'];
+  const defaults: Record<Breakpoint, number> = { desktop: 20, tablet: 32, mobile: 26 };
   let cleanup: (() => void) | undefined;
 
   const init = () => {
     cleanup?.();
     const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
-    const overlay = panel?.closest<HTMLElement>('[data-dev-overlay]');
-    if (!panel || !overlay) return;
-    const controller = new AbortController();
-    const { signal } = controller;
-    const inputs = [...panel.querySelectorAll<HTMLInputElement>('[data-reddit-board-height]')];
-    const save = panel.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
-    const reset = panel.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
-    const status = panel.querySelector<HTMLElement>('[data-reddit-board-status]');
-    if (!save || !reset || !status || inputs.length !== 3) return;
+    const input = panel?.querySelector<HTMLInputElement>('[data-reddit-board-height-value]');
+    const reset = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
+    const save = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
+    const status = panel?.querySelector<HTMLElement>('[data-reddit-board-status]');
+    const viewportButtons = panel ? [...panel.querySelectorAll<HTMLButtonElement>('[data-reddit-board-viewport]')] : [];
+    if (!panel || !input || !reset || !save || !status || viewportButtons.length !== 3) return;
 
+    const scope = createPageScope();
+    const { signal } = scope;
     let root: HTMLElement | null = null;
-    let saved: Record<Breakpoint, number> = { desktop: 20, tablet: 32, mobile: 26 };
-    let values = { ...saved };
-    const preview = () => {
-      if (!root) return;
-      for (const breakpoint of breakpoints) {
-        root.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`);
-      }
+    let grabber: HTMLElement | null = null;
+    let saved = { ...defaults };
+    let values = { ...defaults };
+    let selected: Breakpoint = 'desktop';
+    let dragging = false;
+    let moved = false;
+    let pointerStartY = 0;
+    let valueStart = 0;
+    let pointerY = 0;
+    let frame = 0;
+
+    const actualViewport = (): Breakpoint => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+    const parentViewport = (viewport: Breakpoint): Breakpoint | null => viewport === 'mobile' ? 'tablet' : viewport === 'tablet' ? 'desktop' : null;
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const parentValue = (viewport: Breakpoint) => { const parent = parentViewport(viewport); return parent ? values[parent] : defaults.desktop; };
+    const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
+    const positionPanel = () => {
+      if (!grabber || panel.hidden) return;
+      const rect = grabber.getBoundingClientRect();
+      const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
+      panel.style.left = `${left}px`;
+      panel.style.top = `${Math.min(window.innerHeight - panel.offsetHeight - 8, rect.bottom + 8)}px`;
     };
     const sync = () => {
-      for (const input of inputs) {
-        const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
-        input.value = String(values[breakpoint]);
-        const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
-        if (output) output.textContent = `${values[breakpoint]}em`;
-        input.dispatchEvent(new Event('vcd:range-refresh'));
-      }
+      input.value = String(Math.round(values[selected]));
+      input.dispatchEvent(new Event('vcd:range-refresh'));
+      viewportButtons.forEach((button) => {
+        const viewport = button.dataset.redditBoardViewport as Breakpoint;
+        button.classList.toggle('is-active', viewport === selected);
+        button.setAttribute('aria-pressed', String(viewport === selected));
+        button.toggleAttribute('data-override', values[viewport] !== parentValue(viewport));
+      });
       preview();
+      positionPanel();
+    };
+    const createGrabber = (target: HTMLElement) => {
+      grabber?.remove();
+      const shell = target.querySelector<HTMLElement>('.reddit-comment-board__shell');
+      if (!shell) return null;
+      const next = document.createElement('span');
+      next.className = 'reddit-board-height-grabber';
+      next.setAttribute('aria-label', 'Adjust board height');
+      shell.append(next);
+      grabber = next;
+      return next;
     };
     const bind = (target: HTMLElement) => {
       root = target;
-      saved = JSON.parse(target.dataset.redditBoardHeights || '{}');
+      try {
+        const parsed = JSON.parse(target.dataset.redditBoardHeights || '{}') as Partial<Record<Breakpoint, unknown>>;
+        saved = { ...defaults };
+        breakpoints.forEach((breakpoint) => { if (typeof parsed[breakpoint] === 'number' && Number.isFinite(parsed[breakpoint])) saved[breakpoint] = parsed[breakpoint] as number; });
+      } catch { saved = { ...defaults }; }
       values = { ...saved };
+      selected = actualViewport();
+      createGrabber(target);
       status.textContent = '';
       sync();
     };
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
-      if (event.detail?.panel !== overlay) return;
-      const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]')
-        ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
-      if (target) bind(target);
-    }) as EventListener, { signal });
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
-      if (event.detail?.panel !== overlay || !root) return;
+    const close = () => {
+      if (panel.hidden) return;
+      panel.hidden = true;
       values = { ...saved };
-      sync();
-      status.textContent = '';
-    }) as EventListener, { signal });
-    inputs.forEach((input) => input.addEventListener('input', () => {
+      preview();
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+    };
+    const open = () => {
       if (!root) return;
-      const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
-      values[breakpoint] = input.valueAsNumber;
+      panel.hidden = false;
+      panel.style.zIndex = '61';
       sync();
-      status.textContent = 'Unsaved';
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel, trigger: grabber } }));
+      positionPanel();
+    };
+    const renderDrag = () => {
+      frame = 0;
+      const em = parseFloat(getComputedStyle(root || panel).fontSize) || 16;
+      values[selected] = clamp(valueStart - (pointerY - pointerStartY) / em, 8, 60);
+      moved = moved || Math.abs(pointerY - pointerStartY) > 4;
+      sync();
+    };
+    const endDrag = () => {
+      if (!grabber || !dragging) return;
+      if (frame) cancelAnimationFrame(frame);
+      renderDrag();
+      dragging = false;
+      delete grabber.dataset.dragging;
+      values[selected] = clamp(Math.round(values[selected]), 8, 60);
+      sync();
+      if (!moved) { if (panel.hidden) open(); else close(); }
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!grabber || event.button !== 0) return;
+      event.preventDefault();
+      dragging = true;
+      moved = false;
+      pointerStartY = pointerY = event.clientY;
+      valueStart = values[selected];
+      grabber.dataset.dragging = '';
+      grabber.setPointerCapture(event.pointerId);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging) return;
+      pointerY = event.getCoalescedEvents?.().at(-1)?.clientY ?? event.clientY;
+      if (!frame) frame = requestAnimationFrame(renderDrag);
+    };
+    const bindGrabber = (handle: HTMLElement) => {
+      handle.addEventListener('pointerdown', onPointerDown, { signal });
+      handle.addEventListener('pointermove', onPointerMove, { signal });
+      handle.addEventListener('pointerup', endDrag, { signal });
+      handle.addEventListener('pointercancel', endDrag, { signal });
+    };
+    viewportButtons.forEach((button) => button.addEventListener('click', () => {
+      const viewport = button.dataset.redditBoardViewport as Breakpoint;
+      if (!breakpoints.includes(viewport)) return;
+      selected = viewport;
+      window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: viewport } }));
+      sync();
     }, { signal }));
-    reset.addEventListener('click', () => {
-      values = { ...saved };
-      sync();
-      status.textContent = '';
-    }, { signal });
+    input.addEventListener('input', () => { if (input.validity.valid && Number.isFinite(input.valueAsNumber)) { values[selected] = input.valueAsNumber; status.textContent = 'Unsaved'; sync(); } }, { signal });
+    reset.addEventListener('click', () => { values[selected] = parentValue(selected); status.textContent = ''; sync(); }, { signal });
     save.addEventListener('click', async () => {
-      if (!root?.dataset.redditBoardDocument || !root.dataset.redditBoardPath) return;
-      const target = root;
+      if (!root?.dataset.redditBoardDocument) return;
       save.disabled = true;
-      inputs.forEach((input) => { input.disabled = true; });
       status.textContent = 'Saving…';
       try {
-        const response = await fetch('/api/content-spacing', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          signal,
-          body: JSON.stringify({ changes: [{
-            document: target.dataset.redditBoardDocument,
-            path: JSON.parse(target.dataset.redditBoardPath),
-            target: { sectionId: target.dataset.devContentId },
-            value: values,
-          }] }),
-        });
+        const response = await fetch('/api/content-spacing', { method: 'POST', headers: { 'content-type': 'application/json' }, signal, body: JSON.stringify({ changes: [{ document: root.dataset.redditBoardDocument, path: JSON.parse(root.dataset.redditBoardPath || '[]'), target: { sectionId: root.dataset.devContentId }, value: values }] }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not save height.');
         saved = { ...values };
-        target.dataset.redditBoardHeights = JSON.stringify(saved);
+        root.dataset.redditBoardHeights = JSON.stringify(saved);
         status.textContent = 'Saved';
-      } catch (error) {
-        if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
-      } finally {
-        save.disabled = false;
-        inputs.forEach((input) => { input.disabled = false; });
-      }
+      } catch (error) { if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.'; }
+      finally { save.disabled = false; }
     }, { signal });
-    if (!overlay.hidden) {
-      const target = document.querySelector<HTMLElement>('[data-reddit-board-document]');
-      if (target) bind(target);
-    }
-    cleanup = () => controller.abort();
+    scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel) return;
+      const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]') ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
+      if (target && target !== root) { bind(target); if (grabber) bindGrabber(grabber); }
+      if (!panel.hidden) { sync(); positionPanel(); }
+    }) as EventListener);
+    scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
+    scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
+    scope.listen(document, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); close(); } }, true);
+    scope.listen(window, 'resize', positionPanel);
+    scope.listen(window, 'scroll', positionPanel, true);
+    const initial = document.querySelector<HTMLElement>('[data-reddit-board-document]');
+    if (initial) { const handle = createGrabber(initial); bind(initial); if (handle) bindGrabber(handle); }
+    cleanup = () => { grabber?.remove(); scope.destroy(); };
   };
-  document.addEventListener('astro:page-load', init);
-  document.addEventListener('astro:before-swap', () => cleanup?.());
-  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
-  init();
+  onPageLoad(init);
+  import.meta.hot?.dispose(() => cleanup?.());
 </script>
