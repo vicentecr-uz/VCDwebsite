@@ -22,10 +22,11 @@ export function getStaticPaths() {
 const overview = 'design-futures-nov-11';
 const slug = Astro.params.report ?? overview;
 const report = reports[slug];
+const isOverview = slug === overview;
 const contents = report.sections.filter((section) => section.type === 'sectionTitle' && section.sectionId)
   .map((section) => ({ id: String(section.sectionId), label: String(section.title) }));
 ---
 
-<WriteupLayout title={report.title} description={report.description} indexHref={slug === overview ? '/' : `/reports/${overview}/`} contents={contents}>
+<WriteupLayout title={report.title} description={report.description} indexHref={isOverview ? '/' : `/reports/${overview}/`} backlinkLabel={isOverview ? undefined : 'Back'} contents={contents}>
   <ProjectSections documentKey="" sections={report.sections} />
 </WriteupLayout>

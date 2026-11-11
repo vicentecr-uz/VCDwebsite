@@ -15,11 +15,12 @@ interface Props {
   ogImage?: string;
   /** Where the Index control returns to. */
   indexHref?: string;
+  backlinkLabel?: string;
   /** Section anchors for an On this page rail beside the column. */
   contents?: Array<{ id: string; label: string }>;
 }
 
-const { title, description, ogImage, indexHref = '/digital', contents = [] } = Astro.props;
+const { title, description, ogImage, indexHref = '/digital', backlinkLabel = 'Index', contents = [] } = Astro.props;
 const showDevTools = import.meta.env.DEV;
 const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-research-paper';
 ---
@@ -37,7 +38,7 @@ const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-rese
     <header class="writeup-masthead">
       <a href={isTapicoResearch ? '/' : indexHref} class="writeup-backlink">
         <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />
-        <span class="writeup-backlink__label">Index</span>
+        <span class="writeup-backlink__label">{backlinkLabel}</span>
       </a>
       <h1 class="sr-only">{title}</h1>
     </header>
