@@ -6,8 +6,10 @@ const progress = (distance: number, length: number) => Math.min(1, Math.max(0, d
 
 function sync(scroller: HTMLElement, edge: HTMLElement | null) {
   const horizontal = scroller.scrollWidth - scroller.clientWidth;
-  const vertical = scroller.scrollHeight - scroller.clientHeight;
+  const clientHeight = scroller.clientHeight;
+  const vertical = scroller.scrollHeight - clientHeight;
   const remaining = edge ? horizontal - scroller.scrollLeft : 0;
+  const scrollbarHeight = edge ? scroller.offsetHeight - clientHeight : 0;
   const scrollTop = vertical > 1 ? scroller.scrollTop : 0;
   const fade = vertical > 1 ? VERTICAL_FADE_EM * parseFloat(getComputedStyle(scroller).fontSize) : 0;
 
@@ -20,6 +22,10 @@ function sync(scroller: HTMLElement, edge: HTMLElement | null) {
   if (edge && !edge.toggleAttribute('hidden', horizontal <= 1 || remaining <= 1)) {
     const opacity = String(progress(remaining, HORIZONTAL_FADE_PX));
     if (edge.style.opacity !== opacity) edge.style.opacity = opacity;
+    const scrollbar = `${scrollbarHeight}px`;
+    if (edge.style.getPropertyValue('--code-scrollbar-height') !== scrollbar) {
+      edge.style.setProperty('--code-scrollbar-height', scrollbar);
+    }
   }
 
   scroller.toggleAttribute('data-code-scroll', vertical > 1);
