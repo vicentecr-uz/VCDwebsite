@@ -717,6 +717,16 @@ import TextField from './ui/TextField.astro';
         if (event.target.closest('[data-editor-select-popup]')) return;
       }
 
+      const openPanels = [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
+        .filter((candidate) => !candidate.hidden && !candidate.hasAttribute('data-embedded'));
+      const frontmost = openPanels.reduce<HTMLElement | null>((front, candidate) => {
+        if (!front) return candidate;
+        const candidateZ = Number.parseInt(getComputedStyle(candidate).zIndex, 10) || 0;
+        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
+        return candidateZ >= frontZ ? candidate : front;
+      }, null);
+      if (frontmost && frontmost !== panel) return;
+
       if (pickMode) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -746,6 +756,8 @@ import TextField from './ui/TextField.astro';
         closePanel();
         return;
       }
+
+      if (document.activeElement === titleInput || document.activeElement === bodyInput) return;
 
       // Form open: Esc acts like Cancel.
       event.preventDefault();

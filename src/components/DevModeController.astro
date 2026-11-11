@@ -488,7 +488,9 @@ import '../styles/site-annotation-editor.css';
       // to panel-close / leave-Dev-Mode.
       if (event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.isContentEditable || target?.closest('select')) return;
+      if (target?.isContentEditable) return;
+      const nativeSelect = target?.closest('select');
+      if (nativeSelect instanceof HTMLSelectElement && nativeSelect.matches(':open')) return;
       if (isPlainField(event.target)) {
         const inEditChrome = Boolean(target?.closest('[data-dev-panel-key], .dev-overlay')) || devMode || isSectionEditor();
         if (!inEditChrome) return;
