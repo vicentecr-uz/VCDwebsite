@@ -15,7 +15,11 @@ const sliders = [
     <h1>Continuous corner</h1>
     <div class="comparison">
       <figure>
-        <div class="plot" role="img" aria-label="Top-right corner with overlaid SwiftUI continuous, circular, and CSS superellipse outlines">
+        <fieldset class="view-picker" aria-label="Plot view">
+          <label><input type="radio" name="corner-view" value="square" /> Square</label>
+          <label><input type="radio" name="corner-view" value="corner" checked /> Top-right corner</label>
+        </fieldset>
+        <div class="plot" role="img" aria-label="Comparison of SwiftUI continuous, circular, and CSS superellipse outlines">
           <div class="geometry" aria-hidden="true">
             <svg viewBox="0 0 288 288">
               <rect class="bounds" x="24" y="24" width="240" height="240" />
@@ -29,9 +33,9 @@ const sliders = [
           </div>
         </div>
         <figcaption>
-          <span class="key ios">iOS continuous</span>
-          <span class="key circle">Circular radius</span>
-          <span class="key css">CSS superellipse</span>
+          <label class="key ios"><input type="checkbox" value="ios" checked /> iOS continuous</label>
+          <label class="key circle"><input type="checkbox" value="circle" checked /> Circular radius</label>
+          <label class="key css"><input type="checkbox" value="css" checked /> CSS superellipse</label>
         </figcaption>
       </figure>
 
@@ -182,11 +186,15 @@ const sliders = [
 
   .geometry {
     position: absolute;
+    width: 100%;
+    container-type: inline-size;
+  }
+
+  figure:has([value='corner']:checked) .geometry {
     /* Crop the 288-unit drawing to x: 134–274, y: 14–154. */
     width: calc(288 / 140 * 100%);
     left: calc(-134 / 140 * 100%);
     top: calc(-14 / 140 * 100%);
-    container-type: inline-size;
   }
 
   svg { display: block; width: 100%; height: auto; }
@@ -210,12 +218,27 @@ const sliders = [
     }
   }
 
-  figcaption { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-top: 1rem; }
-  .key { display: inline-flex; align-items: center; gap: .4rem; font-size: .875rem; }
-  .key::before { content: ''; width: 1rem; border-top: 2px solid var(--key); }
+  figure:has([value='ios']:not(:checked)) #ios-outline,
+  figure:has([value='circle']:not(:checked)) #circle-outline,
+  figure:has([value='css']:not(:checked)) :is(#css-fallback, .native-outline) { display: none; }
+
+  .view-picker, figcaption { display: flex; flex-wrap: wrap; column-gap: 1rem; }
+  .view-picker { border: 0; padding: 0; margin: 0 0 .5rem; }
+  figcaption { margin-top: .5rem; }
+  .view-picker label, .key {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    min-height: 44px;
+    font-size: .875rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .view-picker input, .key input { margin: 0; accent-color: var(--key, var(--plot-css)); }
+  .key::after { content: ''; width: .8rem; border-top: 2px solid var(--key); }
   .ios { --key: var(--plot-ios); }
   .circle { --key: var(--plot-circle); }
-  .circle::before { border-top-style: dashed; }
+  .circle::after { border-top-style: dashed; }
   .css { --key: var(--plot-css); }
 
   form { display: grid; gap: var(--space-unit); min-width: 0; }
