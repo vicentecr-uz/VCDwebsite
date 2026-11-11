@@ -38,6 +38,9 @@
     let active: Preset = 'desktop';
     let open = false;
     let frameSaveBusy = false;
+    let preparing = false;
+    let morph: Animation | undefined;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     let previousFocus: HTMLElement | null = null;
     let previousOverflow = '';
     let initialScrollY: number | undefined;
@@ -61,7 +64,10 @@
           element.inert = true;
         });
     };
-    const syncFrame = () => {
+    const syncFrame = (animate = false) => {
+      if (!open) return;
+      const previous = animate && !reducedMotion.matches ? frameShell.getBoundingClientRect() : null;
+      morph?.cancel();
       const [presetWidth, presetHeight] = presets[active];
       const stageStyles = getComputedStyle(veil);
       const padX = parseFloat(stageStyles.paddingLeft) + parseFloat(stageStyles.paddingRight);
@@ -77,61 +83,88 @@
       frameShell.style.width = `${width * scale}px`;
       frameShell.style.height = `${height * scale}px`;
       frame.style.setProperty('--viewport-scale', String(scale));
-      size.textContent = `${width} × ${height}`;
+      size.textContent = `${Math.round(width)} × ${Math.round(height)}`;
       root.dataset.viewportStagePreset = active;
       root.querySelectorAll('[data-viewport-preset]').forEach((button) => {
         button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.viewportPreset === active));
       });
+      if (!previous?.width || !previous.height) return;
+      const next = frameShell.getBoundingClientRect();
+      if (previous.width === next.width && previous.height === next.height) return;
+      const x = previous.x + (previous.width - next.width) / 2 - next.x;
+      const y = previous.y + (previous.height - next.height) / 2 - next.y;
+      morph = frameShell.animate([
+        { transform: `translate(${x}px, ${y}px) scale(${previous.width / next.width}, ${previous.height / next.height})` },
+        { transform: 'none' },
+      ], { duration: 260, easing: 'cubic-bezier(.32,.72,0,1)' });
+    };
+    const afterPendingWrites = (target: Window & typeof globalThis, run: () => void) => {
+      const pending: Promise<unknown>[] = [];
+      target.dispatchEvent(new target.CustomEvent('vcd:dev-viewport-prepare', {
+        detail: { waitUntil: (write: Promise<unknown>) => pending.push(write) },
+      }));
+      if (!pending.length) { run(); return; }
+      preparing = true;
+      void Promise.allSettled(pending).then((results) => {
+        preparing = false;
+        if (!scope.signal.aborted && results.every((result) => result.status === 'fulfilled')) run();
+      });
     };
     const close = (refresh = true) => {
-      if (!open) return true;
+      if (!open || (refresh && preparing)) return;
       const childWindow = frame.contentDocument?.defaultView as (Window & typeof globalThis) | null;
-      if (refresh && childWindow) {
-        const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
-        if (!childWindow.dispatchEvent(beforeReload)) return false;
-      }
-      open = false;
-      root.hidden = true;
-      root.removeAttribute('data-open');
-      initialScrollY = undefined;
-      isolationObserver?.disconnect();
-      isolationObserver = null;
-      document.documentElement.style.overflow = previousOverflow;
-      isolatedSiblings.forEach(({ element, inert }) => { element.inert = inert; });
-      isolatedSiblings = [];
-      frame.src = 'about:blank';
-      previousFocus?.focus();
-      previousFocus = null;
-      if (refresh) {
-        sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY: window.scrollY }));
-        window.location.reload();
-      }
-      return true;
+      const finish = () => {
+        morph?.cancel();
+        open = false;
+        root.hidden = true;
+        root.removeAttribute('data-open');
+        initialScrollY = undefined;
+        isolationObserver?.disconnect();
+        isolationObserver = null;
+        document.documentElement.style.overflow = previousOverflow;
+        isolatedSiblings.forEach(({ element, inert }) => { element.inert = inert; });
+        isolatedSiblings = [];
+        frame.src = 'about:blank';
+        previousFocus?.focus();
+        previousFocus = null;
+        if (refresh) {
+          sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY: window.scrollY }));
+          window.location.reload();
+        }
+      };
+      if (!refresh || !childWindow) { finish(); return; }
+      const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
+      if (childWindow.dispatchEvent(beforeReload)) afterPendingWrites(childWindow, finish);
     };
     const show = (preset: Preset, preserveScroll = true) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return false;
-      active = preset;
+      if (preparing || !document.documentElement.classList.contains('is-dev-mode')) return false;
       if (!open) {
         const dirtyCheck = { dirty: false };
         window.dispatchEvent(new CustomEvent('vcd:dev-viewport-preview-dirty-check', { detail: dirtyCheck }));
         if (dirtyCheck.dirty) return false;
         const beforeReload = new CustomEvent('vcd:before-reload', { cancelable: true });
         if (!window.dispatchEvent(beforeReload)) return false;
-        initialScrollY = preserveScroll ? window.scrollY : undefined;
-        previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        open = true;
-        root.hidden = false;
-        root.setAttribute('data-open', '');
-        previousOverflow = document.documentElement.style.overflow;
-        document.documentElement.style.overflow = 'hidden';
-        isolatePage();
-        requestAnimationFrame(isolatePage);
-        isolationObserver = new MutationObserver(isolatePage);
-        isolationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
-        frame.src = window.location.href;
-        root.querySelector<HTMLElement>('[data-viewport-preset="desktop"]')?.focus();
+        afterPendingWrites(window, () => {
+          active = preset;
+          initialScrollY = preserveScroll ? window.scrollY : undefined;
+          previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          open = true;
+          root.hidden = false;
+          root.setAttribute('data-open', '');
+          previousOverflow = document.documentElement.style.overflow;
+          document.documentElement.style.overflow = 'hidden';
+          isolatePage();
+          requestAnimationFrame(isolatePage);
+          isolationObserver = new MutationObserver(isolatePage);
+          isolationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
+          frame.src = window.location.href;
+          syncFrame();
+          root.querySelector<HTMLElement>(`[data-viewport-preset="${preset}"]`)?.focus();
+        });
+      } else if (preset !== active) {
+        active = preset;
+        syncFrame(true);
       }
-      syncFrame();
       return true;
     };
     const requestEditMode = () => {
@@ -141,7 +174,7 @@
     };
 
     scope.listen(frame, 'load', requestEditMode);
-    scope.listen(window, 'resize', syncFrame);
+    scope.listen(window, 'resize', () => syncFrame());
     scope.listen(veil, 'click', (event) => { if (event.target === veil) close(); });
     scope.listen(root, 'click', (event) => {
       const target = event.target as HTMLElement;
@@ -233,21 +266,16 @@
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; width: 100%; height: 100%; background: var(--ref-palette-grey-800); color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__stage { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; padding: 0.75rem; gap: 0.75rem; }
-  .dev-viewport-preview__controls { position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0.5rem 1rem; border: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 14%, transparent); }
+  .dev-viewport-preview__controls { position: relative; z-index: 2; place-self: center; max-width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; padding: 0.5rem 1rem; border: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 14%, transparent); }
   .dev-viewport-preview__presets { display: flex; gap: 0.25rem; }
   .dev-viewport-preview__presets [aria-pressed="true"] { background: var(--comp-button-page-container-selected); }
   .dev-viewport-preview__size { min-width: 7rem; font: var(--dev-text-status); text-align: center; }
-  .dev-viewport-preview__frame-shell { position: relative; place-self: center; flex: none; overflow: hidden; contain: layout paint size; border-radius: 0; box-shadow: var(--elevated-surface-shadow); transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1), border-radius 320ms cubic-bezier(.2,.8,.2,1); }
-  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: calc(var(--viewport-radius, 0px) * var(--viewport-corner-scale, 1)); background: var(--sys-color-srf); transition: border-radius 320ms cubic-bezier(.2,.8,.2,1); }
-  [data-viewport-stage-preset="desktop"] .dev-viewport-preview__stage iframe { --viewport-radius: 0px; }
-  [data-viewport-stage-preset="tablet"] .dev-viewport-preview__frame-shell { border-radius: calc(20px * 1.841); }
-  [data-viewport-stage-preset="mobile"] .dev-viewport-preview__frame-shell { border-radius: calc(42px * 1.841); }
-  [data-viewport-stage-preset="tablet"] .dev-viewport-preview__stage iframe { --viewport-radius: 20px; }
-  [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 42px; }
+  .dev-viewport-preview__frame-shell { position: relative; place-self: center; overflow: hidden; contain: layout paint size; border-radius: var(--viewport-radius, 0px); background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); }
+  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; background: var(--sys-color-srf); }
+  [data-viewport-stage-preset="tablet"] .dev-viewport-preview__frame-shell { --viewport-radius: 20px; }
+  [data-viewport-stage-preset="mobile"] .dev-viewport-preview__frame-shell { --viewport-radius: 42px; }
   @supports (corner-shape: squircle) {
-    [data-viewport-stage-preset="tablet"] .dev-viewport-preview__stage iframe,
-    [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-corner-scale: 1.841; corner-shape: squircle; }
+    .dev-viewport-preview__frame-shell { border-radius: calc(var(--viewport-radius, 0px) * 1.841); corner-shape: squircle; }
   }
   @media (max-width: 40em) { .dev-viewport-preview__stage { padding: 0.5rem; gap: 0.5rem; } .dev-viewport-preview__controls { justify-content: flex-start; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
-  @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__frame-shell, .dev-viewport-preview__stage iframe { transition: none; } }
 </style>
