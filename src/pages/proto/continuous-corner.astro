@@ -15,16 +15,18 @@ const sliders = [
     <h1>Continuous corner</h1>
     <div class="comparison">
       <figure>
-        <div class="plot" role="img" aria-label="Overlaid SwiftUI continuous corner, circular radius, and CSS superellipse">
-          <svg viewBox="0 0 288 288" aria-hidden="true">
-            <rect class="bounds" x="24" y="24" width="240" height="240" />
-            <g transform="translate(24 24)">
-              <path id="ios-outline" />
-              <rect id="circle-outline" width="240" height="240" />
-              <path id="css-fallback" />
-            </g>
-          </svg>
-          <div class="native-outline" aria-hidden="true"></div>
+        <div class="plot" role="img" aria-label="Top-right corner with overlaid SwiftUI continuous, circular, and CSS superellipse outlines">
+          <div class="geometry" aria-hidden="true">
+            <svg viewBox="0 0 288 288">
+              <rect class="bounds" x="24" y="24" width="240" height="240" />
+              <g transform="translate(24 24)">
+                <path id="ios-outline" />
+                <rect id="circle-outline" width="240" height="240" />
+                <path id="css-fallback" />
+              </g>
+            </svg>
+            <div class="native-outline"></div>
+          </div>
         </div>
         <figcaption>
           <span class="key ios">iOS continuous</span>
@@ -53,7 +55,7 @@ const sliders = [
 </Layout>
 
 <script>
-  const plot = document.querySelector<HTMLElement>('.plot')!;
+  const geometry = document.querySelector<HTMLElement>('.geometry')!;
   const exponent = document.querySelector<HTMLInputElement>('#exponent')!;
   const cssRadius = document.querySelector<HTMLInputElement>('#css-radius')!;
   const referenceRadius = document.querySelector<HTMLInputElement>('#reference-radius')!;
@@ -102,8 +104,8 @@ const sliders = [
     ios.setAttribute('d', outline(iosCorner, reference, ['C', 'C', 'C']));
     circle.setAttribute('rx', String(reference));
 
-    plot.style.setProperty('--css-radius', `${100 * css / 288}cqw`);
-    plot.style.setProperty('--css-shape', `superellipse(${k.toFixed(2)})`);
+    geometry.style.setProperty('--css-radius', `${100 * css / 288}cqw`);
+    geometry.style.setProperty('--css-shape', `superellipse(${k.toFixed(2)})`);
     code.textContent = `border-radius: ${css}px;\ncorner-shape: superellipse(${k.toFixed(2)});`;
 
     if (!native) {
@@ -170,11 +172,21 @@ const sliders = [
 
   .plot {
     position: relative;
-    container-type: inline-size;
+    aspect-ratio: 1;
+    overflow: hidden;
     background-image: radial-gradient(var(--plot-grid) 1px, transparent 1px);
     background-size: calc(100% / 24) calc(100% / 24);
     outline: 1px solid var(--plot-grid);
     border-radius: 6px;
+  }
+
+  .geometry {
+    position: absolute;
+    /* Crop the 288-unit drawing to x: 134–274, y: 14–154. */
+    width: calc(288 / 140 * 100%);
+    left: calc(-134 / 140 * 100%);
+    top: calc(-14 / 140 * 100%);
+    container-type: inline-size;
   }
 
   svg { display: block; width: 100%; height: auto; }
