@@ -1,7 +1,6 @@
 ---
 import DocumentationLayout from '../layouts/DocumentationLayout.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
-import DocumentationContents from '../components/DocumentationContents.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
 import ProjectSectionNavEditor from '../components/project/ProjectSectionNavEditor.astro';
 import ProjectImage from '../components/project/ProjectImage.astro';
@@ -632,8 +631,8 @@ const visibleOutline = outline.filter((entry) =>
 const sectionLinks = deriveNavFromOutline(visibleOutline);
 const contents = sectionLinks.flatMap((entry) => 'children' in entry ? entry.children : [entry]);
 const documentationPages = [
-  { href: '/styles', label: 'Design system', group: 'VCD', current: true },
-  ...foundationLinks.map((link) => ({ ...link, group: 'Foundations' })),
+  { href: '#styles-intro', label: 'Overview', group: 'Design system' },
+  ...foundationLinks.map(({ id, label }) => ({ href: `#${id}`, label, group: 'Foundations' })),
   ...catalogByCategory
     .filter(({ category }) => category !== 'ui-primitives')
     .flatMap(({ label, items }) => items.map((component) => ({ href: `#${component.id}`, label: component.name, group: label }))),
@@ -814,25 +813,6 @@ const documentationPages = [
                       </div>
                     </div>
 
-                    <div class="component-meta-grid">
-                      <div>
-                        <p class="meta-label">Source</p>
-                        <p class="meta-values"><code>{component.source}</code></p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Props</p>
-                        <p class="meta-values"><code>{component.props}</code></p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Class reference</p>
-                        <p class="meta-values">{component.classRef}</p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Used on</p>
-                        <p class="meta-values">{component.usedOn.join(', ')}</p>
-                      </div>
-                    </div>
-
                     <div class:list={['component-preview', { 'component-preview--video': component.preview === 'video' }]}>
                       {component.preview === 'header' && (
                         <a href="/" class="project-inline-link">View the site header</a>
@@ -844,7 +824,7 @@ const documentationPages = [
                         <a href="/sabi/introduction" class="project-inline-link">View the documentation template</a>
                       )}
                       {component.preview === 'documentation-contents' && (
-                        <DocumentationContents contents={[{ id: 'component-documentation-layout', label: 'Documentation layout' }, { id: 'component-documentation-contents', label: 'On this page' }]} />
+                        <a href="/sabi/introduction" class="project-inline-link">View the On this page rail</a>
                       )}
                       {component.preview === 'sidebar-nav' && (
                         <a href={examples.referenceProject.href} class="project-inline-link">View case-study navigation</a>
@@ -1049,6 +1029,25 @@ const documentationPages = [
                         </div>
                       )}
                     </div>
+                    <div class="component-meta-grid">
+                      <div>
+                        <p class="meta-label">Source</p>
+                        <p class="meta-values"><code>{component.source}</code></p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Props</p>
+                        <p class="meta-values"><code>{component.props}</code></p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Class reference</p>
+                        <p class="meta-values">{component.classRef}</p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Used on</p>
+                        <p class="meta-values">{component.usedOn.join(', ')}</p>
+                      </div>
+                    </div>
+
                   </article>
                 ))}
               </div>
@@ -1497,9 +1496,6 @@ const documentationPages = [
     flex-direction: column;
     gap: 0.8em;
   }
-
-  .component-preview { order: 1; }
-  .component-meta-grid { order: 2; }
 
   .card-heading {
     font-size: 1.05rem;
