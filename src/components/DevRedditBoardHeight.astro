@@ -2,7 +2,7 @@
 import RangeField from './ui/RangeField.astro';
 import ViewportSelector from './ui/ViewportSelector.astro';
 import Button from './ui/Button.astro';
-import PanelActions from './ui/PanelActions.astro';
+import { sizeIcon } from '../lib/icons';
 import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
 ---
@@ -11,23 +11,23 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
   <ViewportSelector label="Viewport" dataAttr="data-reddit-board-viewport" />
   <div class="reddit-board-height__field">
     <RangeField label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value />
-    <Button emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={undoIcon} /></Button>
+    <span class="reddit-board-height__source" data-reddit-board-source></span>
+    <Button emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
   </div>
   <div class="reddit-board-height__detents" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <span style={`--detent:${index}`} />)}</div>
-  <PanelActions>
-    <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
-  </PanelActions>
+  <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
 </div>
 
 <style>
   .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: var(--dev-panel-pad); border-radius: var(--dev-radius-surface); }
   .reddit-board-height[hidden] { display: none; }
   .reddit-board-height__field { position: relative; }
-  .reddit-board-height__field :global(.dev-range-field__output) { right: 42px; }
-  .reddit-board-height__field :global(.dev-btn) { position: absolute; top: 50%; right: 4px; translate: 0 -50%; min-height: 32px; padding: 6px; }
+  .reddit-board-height__field:has([data-reddit-board-reset]:not([hidden])) :global(.dev-range-field__output) { right: 38px; }
+  .reddit-board-height__source { position: absolute; inset: 0 auto 0 58px; display: flex; align-items: center; pointer-events: none; color: var(--sys-color-on-srf-variant); font: var(--dev-text-status); }
+  .reddit-board-height__field :global(.dev-btn) { position: absolute; top: 50%; right: 4px; translate: 0 -50%; min-height: 28px; min-width: 28px; padding: 4px; }
   .reddit-board-height__field :global(.dev-btn[hidden]) { display: none; }
-  .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; min-height: 1.25em; padding-top: 0; }
-  .reddit-board-height__status { flex: 1 1 0; min-width: 0; margin: 0; font: var(--dev-text-label); }
+  .reddit-board-height__status { margin: 0; font: var(--dev-text-status); }
+  .reddit-board-height__status:empty { display: none; }
   .reddit-board-height__detents { position: relative; height: 4px; margin: calc(var(--space-unit) * -0.75) 0 0; pointer-events: none; }
   .reddit-board-height__detents span { position: absolute; left: calc(var(--detent) * 100% / 13); width: 1px; height: 4px; translate: -50% 0; background: var(--sys-color-on-srf-container-faint); }
   .reddit-board-height :global([data-reddit-board-viewport][data-override])::after { content: ''; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: var(--sys-color-on-srf); }
@@ -51,9 +51,10 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
     const input = panel?.querySelector<HTMLInputElement>('[data-reddit-board-height-value]');
     const reset = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
+    const source = panel?.querySelector<HTMLElement>('[data-reddit-board-source]');
     const status = panel?.querySelector<HTMLElement>('[data-reddit-board-status]');
     const viewportButtons = panel ? [...panel.querySelectorAll<HTMLButtonElement>('[data-reddit-board-viewport]')] : [];
-    if (!panel || !input || !reset || !status || viewportButtons.length !== 3) return;
+    if (!panel || !input || !reset || !source || !status || viewportButtons.length !== 3) return;
 
     const scope = createPageScope();
     const { signal } = scope;
@@ -71,9 +72,8 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     let pointerY = 0;
     let frame = 0;
     let settling: Animation | undefined;
-    const saveTimers = new WeakMap<HTMLElement, number>();
-    const saves = new WeakMap<HTMLElement, Promise<void>>();
-    const revisions = new WeakMap<HTMLElement, number>();
+    const saveTimers = new Map<HTMLElement, number>();
+    let writeQueue = Promise.resolve();
 
     const actualViewport = (): Breakpoint => matchMedia('(max-width: 36em)').matches
       ? 'mobile' : matchMedia('(max-width: 52em)').matches ? 'tablet' : 'desktop';
@@ -82,46 +82,48 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       board.dataset.redditBoardDocument, board.dataset.devContentId || board.dataset.redditBoardPath,
     ]);
     const resolveValues = () => { values = resolveRedditBoardHeights(authored); };
-    const persist = (board: HTMLElement, submitted: BoardHeights) => {
-      const saved = board.dataset.redditBoardAuthored || '{}';
-      if (!board.dataset.redditBoardDocument || JSON.stringify(submitted) === saved) return Promise.resolve();
-      const current = saves.get(board);
-      if (current) return current.then(() => persist(board, submitted));
-      const revision = revisions.get(board) || 0;
-      const request = (async () => {
-        if (root === board) status.textContent = 'Saving…';
+    const persist = (board: HTMLElement) => {
+      const timer = saveTimers.get(board);
+      if (timer !== undefined) window.clearTimeout(timer);
+      saveTimers.delete(board);
+      const write = writeQueue.then(async () => {
+        const draft = drafts.get(board);
+        const value = JSON.stringify(draft);
+        if (!draft || value === (board.dataset.redditBoardAuthored || '{}')) return;
+        const document = board.dataset.redditBoardDocument;
+        const path = JSON.parse(board.dataset.redditBoardPath!);
+        const sectionId = board.dataset.devContentId;
         try {
-          const response = await fetch('/api/content-spacing', { method: 'POST', headers: { 'content-type': 'application/json' }, signal, body: JSON.stringify({ changes: [{ document: board.dataset.redditBoardDocument, path: JSON.parse(board.dataset.redditBoardPath || '[]'), target: { sectionId: board.dataset.devContentId }, value: submitted }] }) });
+          const response = await fetch('/api/content-spacing', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify({ changes: [{ document, path, ...(sectionId && { target: { sectionId } }), value: draft }] }),
+          });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || 'Could not save height.');
-          if ((revisions.get(board) || 0) === revision) {
-            board.dataset.redditBoardHeights = JSON.stringify(resolveRedditBoardHeights(submitted));
-            board.dataset.redditBoardAuthored = JSON.stringify(submitted);
-            if (root === board) status.textContent = 'Saved automatically';
-          }
+          board.dataset.redditBoardAuthored = value;
+          if (root === board) status.textContent = '';
+          if (!signal.aborted) window.dispatchEvent(new Event('vcd:dev-content-written'));
         } catch (error) {
-          if (!signal.aborted && root === board) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+          if (root === board) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+          throw error;
         }
-      })();
-      saves.set(board, request);
-      return request.finally(() => saves.delete(board));
+      });
+      writeQueue = write.catch(() => { /* The board shows the error and its draft can be retried. */ });
+      return write;
     };
     const scheduleSave = (board: HTMLElement) => {
-      const timer = saveTimers.get(board);
-      if (timer) window.clearTimeout(timer);
-      saveTimers.set(board, window.setTimeout(() => {
-        saveTimers.delete(board);
-        const snapshot = drafts.get(board);
-        if (snapshot) void persist(board, { ...snapshot });
-      }, 350));
+      window.clearTimeout(saveTimers.get(board));
+      saveTimers.set(board, window.setTimeout(() => { void persist(board).catch(() => {}); }, 300));
     };
     const setHeight = (height: number | null) => {
-      authored[selected] = height;
-      if (root) revisions.set(root, (revisions.get(root) || 0) + 1);
+      if (!root) return;
+      authored = { ...authored, [selected]: height };
+      drafts.set(root, authored);
       resolveValues();
-      status.textContent = 'Saving…';
       sync();
-      if (root) scheduleSave(root);
+      scheduleSave(root);
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
     const positionPanel = () => {
@@ -132,7 +134,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       panel.style.top = `${rect.bottom + 6}px`;
     };
     const sync = () => {
-      if (root) drafts.set(root, authored);
       input.value = String(Math.round(values[selected]));
       input.dispatchEvent(new Event('vcd:range-refresh'));
       viewportButtons.forEach((button) => {
@@ -144,7 +145,11 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
         if (overridden) button.setAttribute('aria-description', 'Custom height');
         else button.removeAttribute('aria-description');
       });
-      reset.hidden = typeof authored[selected] !== 'number';
+      const local = typeof authored[selected] === 'number';
+      let from = selected;
+      while (authored[from] === null && from !== 'desktop') from = breakpoints[breakpoints.indexOf(from) - 1];
+      source.textContent = local ? 'Set here' : from === selected ? 'Default' : `From ${from[0].toUpperCase()}${from.slice(1)}`;
+      reset.hidden = !local;
       preview();
       positionPanel();
     };
@@ -262,15 +267,14 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     viewportButtons.forEach((button) => button.addEventListener('click', () => {
       const viewport = button.dataset.redditBoardViewport as Breakpoint;
       if (!root || !breakpoints.includes(viewport)) return;
-      const board = root;
-      const pending = drafts.get(board);
-      if (pending) void persist(board, { ...pending });
       selected = viewport;
-      if (window.parent === window && viewport !== actualViewport()) {
-        const handoff: Handoff = { key: identity(root), preset: viewport, authored, expires: Date.now() + 15_000 };
-        sessionStorage.setItem(handoffKey, JSON.stringify(handoff));
+      if (viewport !== actualViewport()) {
+        if (window.parent === window) {
+          const handoff: Handoff = { key: identity(root), preset: viewport, authored, expires: Date.now() + 15_000 };
+          sessionStorage.setItem(handoffKey, JSON.stringify(handoff));
+        }
+        window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: viewport } }));
       }
-      if (viewport !== actualViewport()) window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: viewport } }));
       sync();
     }, { signal }));
     input.addEventListener('input', () => { if (input.validity.valid) setHeight(input.valueAsNumber); }, { signal });
@@ -284,11 +288,19 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
     scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
     scope.listen(window, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); close(); } }, true);
-    scope.listen(window, 'vcd:before-reload', () => {
-      if (!root) return;
-      const snapshot = drafts.get(root);
-      if (snapshot) void persist(root, { ...snapshot });
-    }, true);
+    const flush = () => Promise.all([...handles.keys()].filter((board) => drafts.has(board)).map(persist));
+    scope.listen(window, 'vcd:dev-viewport-prepare', (event) => {
+      (event as CustomEvent<{ waitUntil: (write: Promise<unknown>) => void }>).detail.waitUntil(flush());
+    });
+    const syncViewport = () => {
+      const viewport = actualViewport();
+      if (!root || selected === viewport) return;
+      selected = viewport;
+      sync();
+    };
+    for (const query of ['(max-width: 36em)', '(max-width: 52em)']) {
+      scope.listen(matchMedia(query), 'change', syncViewport);
+    }
     scope.listen(window, 'resize', positionPanel);
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];
@@ -302,11 +314,9 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
           const board = boards.find((candidate) => identity(candidate) === handoff.key);
           if (board && handoff.expires > Date.now()) {
             bind(board);
-            if (JSON.stringify(authored) !== JSON.stringify(handoff.authored)) status.textContent = 'Unsaved';
             authored = handoff.authored;
             selected = handoff.preset;
             drafts.set(board, authored);
-            revisions.set(board, (revisions.get(board) || 0) + 1);
             resolveValues();
             const reopen = () => scope.frame(() => {
               grabber?.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -322,8 +332,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     }
     return () => {
       if (frame) cancelAnimationFrame(frame);
-      const timer = root && saveTimers.get(root);
-      if (timer) window.clearTimeout(timer);
+      for (const timer of saveTimers.values()) window.clearTimeout(timer);
       settling?.cancel();
       scope.destroy();
     };
