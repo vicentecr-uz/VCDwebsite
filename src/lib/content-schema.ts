@@ -42,7 +42,7 @@ const shared = {
 };
 const modern: Record<string, z.ZodRawShape> = {
   ...shared,
-  sidenotes: { items: z.array(object.extend({ paragraph: text, note: text })) },
+  sidenotes: { items: z.array(object.extend({ paragraph: text, continuation: text.optional(), note: text })) },
   imageCarousel: { items: images, visible: strings.optional() },
   interactiveDemo: { demo: text.refine((id) => Boolean(craftDemo(id)), 'unsupported craft demo'), sample: object.optional() },
   signup: { label: text.optional(), placeholder: text.optional() },

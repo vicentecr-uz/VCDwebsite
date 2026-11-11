@@ -44,7 +44,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 </template>
 
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
-<template data-sidenotes-template><ProjectSidenotes documentKey="sidenotes-template" sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', note: '' }]} /></template>
+<template data-sidenotes-template><ProjectSidenotes documentKey="sidenotes-template" sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', continuation: '', note: '' }]} /></template>
 
 <div class="dev-text-action-stack">
   <SaveBar data-dev-text-actions hidden>
@@ -2501,17 +2501,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         section.dataset.devSectionDeletable = 'sidenotes';
         const fields = [...section.querySelectorAll<HTMLElement>('[data-dev-text-path]')];
         const paragraph = fields[0];
-        const note = fields[1];
-        if (!paragraph || !note) throw new Error('Sidenotes template fields are unavailable.');
-        const noteElement = section.querySelector<HTMLElement>('[data-sidenote-note]');
-        const toggle = section.querySelector<HTMLButtonElement>('[data-sidenote-toggle]');
+        if (!paragraph || fields.length !== 3) throw new Error('Sidenotes template fields are unavailable.');
         const noteId = `sidenote-note-${crypto.randomUUID()}`;
-        noteElement?.setAttribute('id', noteId);
-        toggle?.setAttribute('aria-controls', noteId);
-        paragraph.dataset.devTextDocument = documentKey;
-        paragraph.dataset.devTextPath = JSON.stringify([...sectionPath, 'items', 0, 'paragraph']);
-        note.dataset.devTextDocument = documentKey;
-        note.dataset.devTextPath = JSON.stringify([...sectionPath, 'items', 0, 'note']);
+        section.querySelector('[data-sidenote-note]')?.setAttribute('id', noteId);
+        section.querySelector('[data-sidenote-toggle]')?.setAttribute('aria-controls', noteId);
+        section.querySelector('.sidenotes__marker--reference')?.setAttribute('aria-describedby', noteId);
+        fields.forEach((field, index) => {
+          field.dataset.devTextDocument = documentKey;
+          field.dataset.devTextPath = JSON.stringify([...sectionPath, 'items', 0, ['paragraph', 'continuation', 'note'][index]]);
+        });
         return { root: section, textElement: paragraph, textKind: 'text' as const, textPath: [...sectionPath, 'items', 0, 'paragraph'] };
       }
 
@@ -3003,7 +3001,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             id: sectionId,
             sectionId,
             ...(type === 'sidenotes'
-              ? { items: [{ paragraph: '', note: '' }] }
+              ? { items: [{ paragraph: '', continuation: '', note: '' }] }
               : type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
           },
           ...(type === 'sectionTitle' ? { outlineEntries: [] } : {}),

@@ -2313,7 +2313,7 @@ export function contentSectionDevWriter() {
               type: 'sidenotes',
               id,
               spacing: insertSpacing,
-              items: [{ paragraph: '', note: '' }],
+              items: [{ paragraph: '', continuation: '', note: '' }],
             };
           } else if (type === 'divider') {
             section = {
