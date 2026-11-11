@@ -8,15 +8,19 @@ const stops = ['0', 'unit', '4em', '8em', '12em'];
 <div class="proto-panel slider-demo" data-slider-demo>
   <DevPanel title="Slider" titleTag="h1" showLights={false}>
     <div class="proto-group">
-      <div class="proto-row"><span class="dev-field__label" id="slider-height">Max view height</span><output class="proto-status" data-output="height"></output></div>
-      <input class="proto-slider" type="range" min="40" max="100" step="1" value="72" aria-labelledby="slider-height" data-slider="height" data-unit="vh" />
+      <div class="slider-demo__field">
+        <span class="dev-field__label" id="slider-height">Max view height</span>
+        <input class="proto-slider" type="range" min="40" max="100" step="1" value="72" aria-labelledby="slider-height" data-slider="height" data-unit="vh" />
+        <output class="proto-status" data-output="height"></output>
+      </div>
     </div>
 
     <div class="proto-group">
-      <div class="proto-row"><span class="dev-field__label" id="slider-gap">Gap</span><output class="proto-status" data-output="gap"></output></div>
-      <div class="slider-demo__stops">
+      <div class="slider-demo__field">
+        <span class="dev-field__label" id="slider-gap">Gap</span>
         <input class="proto-slider" type="range" min="0" max={stops.length - 1} step="1" value="2" aria-labelledby="slider-gap" data-slider="gap" data-stops={JSON.stringify(stops)} />
         <div class="slider-demo__ticks" aria-hidden="true">{stops.map(() => <i></i>)}</div>
+        <output class="proto-status" data-output="gap"></output>
       </div>
     </div>
 
@@ -76,7 +80,12 @@ const stops = ['0', 'unit', '4em', '8em', '12em'];
 </script>
 
 <style>
-  .slider-demo__stops { position: relative; }
+  .slider-demo__field { position: relative; display: flex; align-items: center; min-height: var(--dev-control-height); overflow: hidden; border-radius: var(--dev-radius-control); background: var(--comp-field-container); }
+  .slider-demo__field .dev-field__label { position: absolute; left: var(--dev-field-padding); z-index: 1; pointer-events: none; }
+  .slider-demo__field output { position: absolute; right: var(--dev-field-padding); z-index: 1; pointer-events: none; color: var(--sys-color-on-srf); }
+  .slider-demo__field .proto-slider { width: 100%; height: 100%; margin: 0; border-radius: inherit; background: linear-gradient(to right, var(--comp-button-soft-container-hover) calc(var(--v, 0) * 100%), transparent calc(var(--v, 0) * 100%)); }
+  .slider-demo__field .proto-slider::-webkit-slider-runnable-track { background: transparent; }
+  .slider-demo__field .proto-slider::-moz-range-track { background: transparent; }
 
   .slider-demo__ticks {
     position: absolute;

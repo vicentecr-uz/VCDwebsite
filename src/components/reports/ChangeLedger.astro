@@ -2,6 +2,7 @@
 import Button from '../ui/Button.astro';
 import Hairline from '../ui/Hairline.astro';
 import chevronIcon from 'lucide-static/icons/chevron-up.svg?raw';
+import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 import '../../styles/saveBar.css';
 import '../../styles/reportPrototypes.css';
@@ -21,7 +22,9 @@ const changes = [
         {changes.map(([page, target, change]) => (
           <li class="ledger__item" data-item>
             <span class="ledger__text"><span class="ledger__target">{target}</span><span class="ledger__meta">{page} · {change}</span></span>
-            <Button emphasis="ghost" label="Revert" data-revert />
+            <Button emphasis="ghost" label="" aria-label={`Reset ${target} on ${page}`} data-revert>
+              <span slot="icon" set:html={sizeIcon(undoIcon, 14)} />
+            </Button>
           </li>
         ))}
       </ul>
@@ -104,10 +107,13 @@ const changes = [
     translate: 0 6px;
     visibility: hidden;
     transition: opacity 200ms ease, translate 200ms ease, visibility 0s linear 200ms;
+    position: relative;
+    z-index: 0;
   }
 
   .ledger__sheet[hidden] { display: block; }
   .is-open .ledger__sheet { opacity: 1; translate: 0; visibility: visible; transition-delay: 0s; }
+  .ledger .dev-text-actions { position: relative; z-index: 1; }
 
   .ledger__list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 
