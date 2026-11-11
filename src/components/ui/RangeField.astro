@@ -1,5 +1,5 @@
 ---
-import '../../styles/dev-chrome.css';
+import Field from './Field.astro';
 
 interface Props {
   label: string;
@@ -12,18 +12,20 @@ const { label, id, unit = '', class: className, ...rest } = Astro.props;
 const labelId = `${id}-label`;
 ---
 
-<div class:list={['dev-range-field', className]} data-dev-range-field>
-  <label class="dev-range-field__label" id={labelId} for={id}>{label}</label>
-  <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
-  <input
-    {...rest}
-    id={id}
-    class="dev-range-field__input"
-    type="range"
-    aria-labelledby={labelId}
-    data-range-unit={unit}
-  />
-</div>
+<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', className]}>
+  <Fragment slot="labelAccessory"><slot name="labelAccessory" /></Fragment>
+  <div class="dev-range-field" data-dev-range-field>
+    <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
+    <input
+      {...rest}
+      id={id}
+      class="dev-range-field__input"
+      type="range"
+      aria-labelledby={labelId}
+      data-range-unit={unit}
+    />
+  </div>
+</Field>
 
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
@@ -55,6 +57,8 @@ const labelId = `${id}-label`;
 </script>
 
 <style>
+  :global(.dev-field--range > .dev-field__value) { padding: 0; }
+
   .dev-range-field {
     position: relative;
     display: flex;
@@ -62,21 +66,16 @@ const labelId = `${id}-label`;
     width: 100%;
     min-height: var(--dev-control-height);
     overflow: hidden;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-field-container);
-    color: var(--sys-color-on-srf);
-    font: var(--dev-text-label);
+    border-radius: inherit;
   }
 
-  .dev-range-field__label,
   .dev-range-field__output {
     position: absolute;
+    inset-inline-start: var(--dev-field-padding);
     z-index: 1;
     pointer-events: none;
+    font-variant-numeric: tabular-nums;
   }
-
-  .dev-range-field__label { left: var(--dev-field-padding); color: var(--sys-color-on-srf-variant); }
-  .dev-range-field__output { right: var(--dev-field-padding); font-variant-numeric: tabular-nums; }
 
   .dev-range-field__input {
     width: 100%;
