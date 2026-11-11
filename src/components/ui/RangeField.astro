@@ -26,6 +26,8 @@ const labelId = `${id}-label`;
 </div>
 
 <script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
   const format = (input: HTMLInputElement) => {
     const min = Number(input.min);
     const max = Number(input.max);
@@ -39,11 +41,17 @@ const labelId = `${id}-label`;
     if (output) output.textContent = valueText;
   };
 
-  document.querySelectorAll<HTMLInputElement>('[data-dev-range-field] input[type="range"]').forEach((input) => {
-    input.addEventListener('input', () => format(input));
-    input.addEventListener('change', () => format(input));
-    format(input);
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    document.querySelectorAll<HTMLInputElement>('[data-dev-range-field] input[type="range"]').forEach((input) => {
+      scope.listen(input, 'input', () => format(input));
+      scope.listen(input, 'change', () => format(input));
+      scope.listen(input, 'vcd:range-refresh', () => format(input));
+      format(input);
+    });
+    return () => scope.destroy();
   });
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>
