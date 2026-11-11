@@ -1,6 +1,6 @@
-<dialog class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview">
-  <div class="dev-viewport-preview__veil" data-viewport-veil>
-    <div class="dev-viewport-preview__toolbar dev-surface" role="toolbar" aria-label="Viewport preview">
+<div class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview" hidden>
+  <div class="dev-viewport-preview__stage" data-viewport-veil>
+    <nav class="dev-viewport-preview__controls" aria-label="Viewport preset">
       <div class="dev-viewport-preview__presets" role="group" aria-label="Viewport preset">
         <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="desktop">Desktop</button>
         <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="tablet">Tablet</button>
@@ -9,21 +9,19 @@
       </div>
       <span class="dev-viewport-preview__size" data-viewport-size></span>
       <button type="button" class="dev-btn dev-btn--ghost" data-viewport-close aria-label="Close viewport preview">Close</button>
-    </div>
-    <div class="dev-viewport-preview__stage">
-      <div class="dev-viewport-preview__frame-shell" data-viewport-frame-shell>
-        <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
-      </div>
+    </nav>
+    <div class="dev-viewport-preview__frame-shell" data-viewport-frame-shell>
+      <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
     </div>
   </div>
-</dialog>
+</div>
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
-    const root = document.querySelector<HTMLDialogElement>('[data-dev-viewport-preview]');
+    const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
     const veil = root?.querySelector<HTMLElement>('[data-viewport-veil]');
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const frameShell = root?.querySelector<HTMLElement>('[data-viewport-frame-shell]');
@@ -56,6 +54,7 @@
       frameShell.style.height = `${height * scale}px`;
       frame.style.setProperty('--viewport-scale', String(scale));
       size.textContent = `${width} × ${height}`;
+      root.dataset.viewportPreset = active;
       root.querySelectorAll('[data-viewport-preset]').forEach((button) => {
         button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.viewportPreset === active));
       });
@@ -68,7 +67,8 @@
         if (!childWindow.dispatchEvent(beforeReload)) return false;
       }
       open = false;
-      root.close();
+      root.hidden = true;
+      root.removeAttribute('data-open');
       frame.src = 'about:blank';
       previousFocus?.focus();
       previousFocus = null;
@@ -89,7 +89,8 @@
         if (!window.dispatchEvent(beforeReload)) return false;
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         open = true;
-        root.showModal();
+        root.hidden = false;
+        root.setAttribute('data-open', '');
         frame.src = window.location.href;
         root.querySelector<HTMLElement>('[data-viewport-preset="desktop"]')?.focus();
       }
@@ -102,7 +103,6 @@
       } catch { /* frame may still be loading */ }
     };
 
-    scope.listen(root, 'cancel', (event) => { event.preventDefault(); close(); });
     scope.listen(frame, 'load', requestEditMode);
     scope.listen(window, 'resize', syncFrame);
     scope.listen(veil, 'click', (event) => { if (event.target === veil) close(); });
@@ -121,6 +121,10 @@
       }
       if (event.data?.type === 'vcd-viewport-preview-close') close();
     });
+    scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+      const preset = event.detail?.preset;
+      if (preset && preset in presets) show(preset as Preset);
+    }) as EventListener);
     scope.listen(window, 'message', (event) => {
       if (!frameMode || event.origin !== window.location.origin || event.source !== window.parent) return;
       if (event.data?.type === 'vcd-viewport-preview-edit') {
@@ -161,6 +165,12 @@
       scope.listen(window, 'vcd:before-reload', (event) => {
         if (frameSaveBusy) event.preventDefault();
       }, true);
+      scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+        const preset = event.detail?.preset;
+        if (preset === 'desktop' || preset === 'tablet' || preset === 'mobile') {
+          window.parent.postMessage({ type: 'vcd-viewport-preview-preset', preset }, window.location.origin);
+        }
+      }) as EventListener);
       window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
       return () => scope.destroy();
     }
@@ -179,16 +189,22 @@
 </script>
 
 <style>
-  .dev-viewport-preview { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; }
+  .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; width: 100%; height: 100%; background: var(--ref-palette-grey-800); color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
-  .dev-viewport-preview__veil { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; padding: 1rem; background: color-mix(in oklab, var(--sys-color-srf) 70%, transparent); backdrop-filter: blur(8px); pointer-events: auto; }
-  .dev-viewport-preview__toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem; }
+  .dev-viewport-preview__stage { position: absolute; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); place-items: start center; overflow: auto; padding: 0; }
+  .dev-viewport-preview__controls { z-index: 1; display: flex; align-items: center; gap: 0.5rem; width: min(100%, 40rem); padding: 0.75rem 1rem; }
   .dev-viewport-preview__presets { display: flex; gap: 0.25rem; }
   .dev-viewport-preview__presets [aria-pressed="true"] { background: var(--comp-button-page-container-selected); }
   .dev-viewport-preview__size { min-width: 7rem; font: var(--dev-text-status); text-align: center; }
-  .dev-viewport-preview__stage { display: grid; place-items: start center; flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 0.5rem; }
-  .dev-viewport-preview__frame-shell { position: relative; flex: none; }
-  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: 0.75rem; background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); }
-  @media (max-width: 40em) { .dev-viewport-preview__toolbar { width: 100%; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
-  @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__stage iframe { transition: none; } }
+  .dev-viewport-preview__frame-shell { position: relative; align-self: start; flex: none; overflow: hidden; transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1); }
+  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: var(--viewport-radius, 0); background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1), border-radius 320ms cubic-bezier(.2,.8,.2,1); }
+  [data-viewport-preset="desktop"] .dev-viewport-preview__stage iframe { --viewport-radius: 0px; }
+  [data-viewport-preset="tablet"] .dev-viewport-preview__stage iframe,
+  [data-viewport-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 1rem; }
+  @supports (corner-shape: squircle) {
+    [data-viewport-preset="tablet"] .dev-viewport-preview__stage iframe,
+    [data-viewport-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 1.841rem; corner-shape: squircle; }
+  }
+  @media (max-width: 40em) { .dev-viewport-preview__controls { width: 100%; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
+  @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__frame-shell, .dev-viewport-preview__stage iframe { transition: none; } }
 </style>
