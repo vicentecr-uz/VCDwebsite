@@ -718,10 +718,6 @@ import TextField from './ui/TextField.astro';
         if (event.target.closest('[data-editor-select-popup]')) return;
       }
 
-      if (panel.hidden && !pickMode) return;
-      const frontmost = frontmostOpenPanel();
-      if (frontmost && frontmost !== panel) return;
-
       if (pickMode) {
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -731,6 +727,8 @@ import TextField from './ui/TextField.astro';
       }
 
       if (panel.hidden) return;
+      const frontmost = frontmostOpenPanel();
+      if (frontmost !== panel) return;
 
       if (veilMode === 'cancel') {
         event.preventDefault();
