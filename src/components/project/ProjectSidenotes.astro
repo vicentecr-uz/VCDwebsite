@@ -48,12 +48,20 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
               aria-label={editable ? 'Text before note reference' : undefined}
               data-dev-text-path={editable ? JSON.stringify(paragraphPath) : undefined}
               data-dev-text-kind={editable ? 'text' : undefined}
-            >{item.paragraph}</span>
-            <button class="sidenotes__marker sidenotes__marker--reference" type="button" aria-label={`Note ${index + 1}`} aria-describedby={noteId}>{index + 1}</button>
-            <button class="sidenotes__marker sidenotes__marker--toggle" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
-            {item.continuation !== undefined && (item.continuation || editable) && <>
-              {item.continuation && !/^[.,;:!?)]/.test(item.continuation) ? ' ' : ''}
-              <span
+            >{item.paragraph}</span><button
+              class="sidenotes__marker sidenotes__marker--reference"
+              type="button"
+              aria-label={`Note ${index + 1}`}
+              aria-describedby={noteId}
+            >{index + 1}</button><button
+              class="sidenotes__marker sidenotes__marker--toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls={noteId}
+              aria-label={`Note ${index + 1}`}
+              data-sidenote-toggle={index + 1}
+            >{index + 1}</button>{item.continuation !== undefined && (item.continuation || editable) && <>
+              {item.continuation && !/^[.,;:!?)]/.test(item.continuation) ? ' ' : ''}<span
                 aria-label={editable ? 'Text after note reference' : undefined}
                 data-dev-text-document={editable ? documentKey : undefined}
                 data-dev-text-path={editable ? JSON.stringify([...itemPath, 'continuation']) : undefined}
@@ -102,12 +110,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   .sidenotes__paragraph > [contenteditable]:empty { display: inline-block; min-inline-size: 1ch; }
   .sidenotes__marker {
     position: relative;
-    padding: 0 2px;
+    margin: 0;
+    padding: 0;
     border: 0;
     background: transparent;
     color: var(--sys-color-on-srf-subtle);
-    font: 500 0.7em/1 var(--font-sans);
-    font-variant-numeric: tabular-nums;
+    font: 500 0.62em/1 var(--font-sans);
     vertical-align: super;
     cursor: pointer;
     transition: color 150ms ease;
