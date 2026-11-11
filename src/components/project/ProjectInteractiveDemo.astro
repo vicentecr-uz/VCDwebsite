@@ -46,7 +46,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       {demo.id === 'url-field' ? (
         <div class="project-interactive-demo__url-field"><SabiUrlField value={sampleText('url')} prefix={sampleText('prefix')} suffix={sampleText('suffix')} /></div>
       ) : demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : demo.id === 'bar-chart' ? <BarChartDemo sample={sample} /> : demo.id === 'image-framing' ? <CropFrameDemo sample={sample} authoring={authoring} /> : <iframe
-        src={`/preview/${demo.id}`}
+        src={'route' in demo ? demo.route : `/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
         sandbox={`allow-scripts allow-same-origin${demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}

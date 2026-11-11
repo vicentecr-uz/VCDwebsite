@@ -1,0 +1,140 @@
+---
+import Button from '../ui/Button.astro';
+import Hairline from '../ui/Hairline.astro';
+import chevronIcon from 'lucide-static/icons/chevron-up.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import '../../styles/saveBar.css';
+import '../../styles/reportPrototypes.css';
+
+const changes = [
+  ['Tapico Typer', 'Body text', 'Edited'],
+  ['Tapico Typer', 'Lead image', 'Cropped on Mobile'],
+  ['Tapico Typer', 'Gap after gallery', '4em → 8em'],
+  ['Home', 'Project grid', 'Reordered'],
+];
+---
+
+<div class="ledger" data-ledger>
+  <div class="ledger__stack">
+    <div class="ledger__sheet dev-surface" id="ledger-list" data-sheet hidden>
+      <ul class="ledger__list" data-list>
+        {changes.map(([page, target, change]) => (
+          <li class="ledger__item" data-item>
+            <span class="ledger__text"><span class="ledger__target">{target}</span><span class="ledger__meta">{page} · {change}</span></span>
+            <Button emphasis="ghost" label="Revert" data-revert />
+          </li>
+        ))}
+      </ul>
+    </div>
+    <div class="dev-text-actions dev-surface">
+      <div class="dev-text-actions__surface">
+        <Button emphasis="ghost" label="" class="ledger__count" aria-expanded="false" aria-controls="ledger-list" data-toggle>
+          <span data-count></span><span class="ledger__chevron" slot="icon" set:html={sizeIcon(chevronIcon, 14)} />
+        </Button>
+        <Hairline orientation="vertical" />
+        <Button emphasis="ghost" label="Revert all" data-revert-all />
+        <Button emphasis="ghost" label="Save" data-save />
+        <Button emphasis="filled" label="Save & Publish" class="dev-text-actions__save" data-save />
+      </div>
+    </div>
+  </div>
+  <div class="demo-controls"><Button label="Reset" data-reset-all /></div>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-ledger]')!;
+  const sheet = root.querySelector<HTMLElement>('[data-sheet]')!;
+  const list = root.querySelector<HTMLElement>('[data-list]')!;
+  const toggle = root.querySelector<HTMLButtonElement>('[data-toggle]')!;
+  const count = root.querySelector<HTMLElement>('[data-count]')!;
+  const original = list.innerHTML;
+
+  const open = (next: boolean) => {
+    sheet.hidden = false;
+    requestAnimationFrame(() => root.classList.toggle('is-open', next));
+    toggle.setAttribute('aria-expanded', String(next));
+  };
+  const render = () => {
+    const total = list.querySelectorAll('[data-item]:not(.is-leaving)').length;
+    count.textContent = total ? `${total} unsaved change${total === 1 ? '' : 's'}` : 'Saved';
+    root.classList.toggle('is-clean', !total);
+    if (!total) open(false);
+  };
+  const remove = (item: Element) => {
+    item.classList.add('is-leaving');
+    item.addEventListener('transitionend', () => item.remove(), { once: true });
+    setTimeout(() => item.remove(), 400);
+    render();
+  };
+
+  root.addEventListener('click', (event) => {
+    const target = event.target as Element;
+    if (target.closest('[data-toggle]') && !root.classList.contains('is-clean')) open(!root.classList.contains('is-open'));
+    if (target.closest('[data-revert]')) remove(target.closest('[data-item]')!);
+    if (target.closest('[data-revert-all], [data-save]')) list.querySelectorAll('[data-item]').forEach(remove);
+    if (target.closest('[data-reset-all]')) { list.innerHTML = original; render(); }
+  });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') open(false); });
+  render();
+</script>
+
+<style>
+  .ledger { width: min(100%, 30rem); align-self: end; }
+
+  .ledger__stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .ledger :global(.dev-text-actions__surface) { justify-content: space-between; }
+  .ledger :global(.dev-btn) { white-space: nowrap; }
+  .ledger :global(.ledger__count) { flex-direction: row-reverse; gap: 4px; color: var(--sys-color-on-srf-variant); font: var(--dev-text-status); margin-right: auto; }
+
+  .ledger__chevron { display: inline-flex; transition: rotate 200ms ease; }
+  .is-open .ledger__chevron { rotate: 180deg; }
+  .is-clean .ledger__chevron { visibility: hidden; }
+  .is-clean :global([data-revert-all]), .is-clean :global([data-save]), .is-clean :global(.dev-hairline) { opacity: var(--dev-opacity-disabled); pointer-events: none; }
+
+  .ledger__sheet {
+    border-radius: 12px;
+    padding: 6px;
+    opacity: 0;
+    translate: 0 6px;
+    visibility: hidden;
+    transition: opacity 200ms ease, translate 200ms ease, visibility 0s linear 200ms;
+  }
+
+  .ledger__sheet[hidden] { display: block; }
+  .is-open .ledger__sheet { opacity: 1; translate: 0; visibility: visible; transition-delay: 0s; }
+
+  .ledger__list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+
+  .ledger__item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: 1fr;
+    align-items: center;
+    gap: 8px;
+    padding-left: 7px;
+    overflow: hidden;
+    transition: grid-template-rows 250ms cubic-bezier(0.32, 0.72, 0, 1), opacity 150ms ease;
+  }
+
+  .ledger__item > * { min-height: 0; }
+  .ledger__item.is-leaving { grid-template-rows: 0fr; opacity: 0; }
+
+  .ledger__text { display: flex; flex-direction: column; gap: 3px; padding-block: 7px; overflow: hidden; }
+  .ledger__target { font: var(--dev-text-label); color: var(--sys-color-on-srf); }
+  .ledger__meta { font: var(--dev-text-status); color: var(--sys-color-on-srf-variant); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ledger__sheet { translate: 0; }
+    .ledger__item { transition: opacity 150ms ease; }
+  }
+
+  @media (max-width: 30em) {
+    .ledger :global([data-revert-all]) { display: none; }
+  }
+</style>

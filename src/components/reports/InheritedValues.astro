@@ -1,0 +1,151 @@
+---
+import Button from '../ui/Button.astro';
+import DevPanel from '../ui/DevPanel.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import '../../styles/reportPrototypes.css';
+
+const viewports = [['desktop', 'Desktop'], ['tablet', 'Tablet'], ['mobile', 'Mobile']];
+const ratios = ['Original', '3:2', '1:1', '16:9'];
+---
+
+<div class="proto-panel inherited" data-inherited>
+  <DevPanel title="Image" titleTag="h1" showLights={false}>
+    <SegmentedControl label="Viewport" data-slide-selection data-viewports>
+      {viewports.map(([value, label], index) => (
+        <Button emphasis="ghost" width="fill" label={label} data-value={value} selected={index === 0}>{label}<span class="inherited__dot" data-dot aria-hidden="true"></span></Button>
+      ))}
+    </SegmentedControl>
+
+    <div class="proto-group" data-field="ratio">
+      <div class="proto-row">
+        <span class="dev-field__label">Aspect ratio</span>
+        <span class="inherited__source proto-status" data-source></span>
+        <Button emphasis="ghost" label="" aria-label="Reset aspect ratio to inherited" class="inherited__reset" data-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
+      </div>
+      <SegmentedControl label="Aspect ratio" data-slide-selection data-ratio>
+        {ratios.map((ratio) => <Button emphasis="ghost" width="fill" label={ratio} data-value={ratio} />)}
+      </SegmentedControl>
+    </div>
+
+    <div class="proto-group" data-field="height">
+      <div class="proto-row">
+        <span class="dev-field__label" id="inherited-height-label">Max view height</span>
+        <span class="inherited__source proto-status" data-source></span>
+        <Button emphasis="ghost" label="" aria-label="Reset max view height to inherited" class="inherited__reset" data-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
+        <output class="proto-status" data-output></output>
+      </div>
+      <div class="inherited__track">
+        <span class="inherited__ghost" data-ghost aria-hidden="true"></span>
+        <input class="proto-slider" type="range" min="40" max="100" step="5" aria-labelledby="inherited-height-label" data-height />
+      </div>
+    </div>
+  </DevPanel>
+  <div class="demo-controls"><Button label="Reset" data-reset-all /></div>
+</div>
+
+<script>
+  import { choiceGroup } from '../../lib/reportPrototype';
+
+  type Viewport = 'desktop' | 'tablet' | 'mobile';
+  type Values = { ratio?: string; height?: number };
+  const order: Viewport[] = ['desktop', 'tablet', 'mobile'];
+  const names = { desktop: 'Desktop', tablet: 'Tablet', mobile: 'Mobile' };
+  const initial = (): Record<Viewport, Values> => ({ desktop: { ratio: '3:2', height: 80 }, tablet: {}, mobile: { ratio: '1:1' } });
+
+  const root = document.querySelector<HTMLElement>('[data-inherited]')!;
+  const slider = root.querySelector<HTMLInputElement>('[data-height]')!;
+  const ghost = root.querySelector<HTMLElement>('[data-ghost]')!;
+  let state = initial();
+  let viewport: Viewport = 'desktop';
+
+  // A value falls through from the nearest wider viewport that sets it.
+  const resolve = (key: keyof Values, at: Viewport, skipOwn = false) => {
+    for (let index = order.indexOf(at) - (skipOwn ? 1 : 0); index >= 0; index--) {
+      const value = state[order[index]][key];
+      if (value !== undefined) return { value, from: order[index] };
+    }
+    return undefined;
+  };
+
+  const render = () => {
+    for (const button of root.querySelectorAll<HTMLElement>('[data-viewports] button')) {
+      const key = button.dataset.value as Viewport;
+      button.querySelector<HTMLElement>('[data-dot]')!.hidden = key === 'desktop' || !Object.keys(state[key]).length;
+    }
+    for (const field of root.querySelectorAll<HTMLElement>('[data-field]')) {
+      const key = field.dataset.field as keyof Values;
+      const own = state[viewport][key] !== undefined;
+      const resolved = resolve(key, viewport)!;
+      const overridden = own && viewport !== 'desktop';
+      field.classList.toggle('is-inherited', !own);
+      field.querySelector<HTMLElement>('[data-source]')!.textContent = own ? '' : names[resolved.from];
+      field.querySelector<HTMLElement>('[data-reset]')!.hidden = !overridden;
+      if (key === 'ratio') selectRatio(String(resolved.value), false);
+      else {
+        slider.value = String(resolved.value);
+        slider.style.setProperty('--v', String((Number(resolved.value) - 40) / 60));
+        field.querySelector('output')!.textContent = `${resolved.value}vh`;
+        const parent = overridden ? resolve('height', viewport, true) : undefined;
+        ghost.hidden = !parent;
+        if (parent) ghost.style.setProperty('--v', String((Number(parent.value) - 40) / 60));
+      }
+    }
+  };
+
+  const selectRatio = choiceGroup(root.querySelector('[data-ratio]'), (value) => { state[viewport].ratio = value; render(); });
+  const selectViewport = choiceGroup(root.querySelector('[data-viewports]'), (value) => { viewport = value as Viewport; render(); });
+  slider.addEventListener('input', () => { state[viewport].height = Number(slider.value); render(); });
+  root.addEventListener('click', (event) => {
+    const reset = (event.target as Element).closest('[data-reset]');
+    if (reset) { delete state[viewport][reset.closest<HTMLElement>('[data-field]')!.dataset.field as keyof Values]; render(); }
+    if ((event.target as Element).closest('[data-reset-all]')) { state = initial(); viewport = 'desktop'; selectViewport('desktop', false); render(); }
+  });
+  render();
+</script>
+
+<style>
+  .inherited :global(.dev-btn) { gap: 6px; }
+
+  .inherited__dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .inherited__dot[hidden] { display: none; }
+
+  .inherited__source { margin-right: auto; color: var(--sys-color-on-srf-subtle); }
+
+  .inherited :global(.inherited__reset) {
+    min-height: 16px;
+    margin-block: -4px;
+    padding: 1px;
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .inherited :global(.inherited__reset[hidden]) { display: none; }
+
+  /* Inherited values sit back: the control shows what applies, in the ink of something not set here. */
+  .is-inherited :global(.dev-segmented .dev-btn.is-selected) { color: var(--sys-color-on-srf-subtle); }
+  .is-inherited .proto-slider { --slider-ink: var(--sys-color-on-srf-faint); }
+  .is-inherited output { color: var(--sys-color-on-srf-subtle); }
+
+  .inherited__track { position: relative; }
+
+  .inherited__ghost {
+    position: absolute;
+    top: 50%;
+    left: calc(8px + (100% - 16px) * var(--v));
+    width: 2px;
+    height: 10px;
+    margin: -5px 0 0 -1px;
+    border-radius: 1px;
+    background: var(--sys-color-on-srf-subtle);
+    pointer-events: none;
+  }
+
+  .inherited__ghost[hidden] { display: none; }
+</style>

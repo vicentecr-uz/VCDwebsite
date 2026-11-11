@@ -1,0 +1,91 @@
+---
+import Badge from '../ui/Badge.astro';
+import gripIcon from 'lucide-static/icons/chevrons-left-right.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import '../../styles/reportPrototypes.css';
+---
+
+<figure class="compare" data-compare style="--split: 50%">
+  <img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="After" />
+  <div class="compare__before"><img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="Before" /></div>
+  <Badge label="Before" class="compare__label compare__label--before" />
+  <Badge label="After" class="compare__label compare__label--after" />
+  <span class="compare__handle" aria-hidden="true"><span class="compare__grip dev-surface" set:html={sizeIcon(gripIcon, 14)} /></span>
+  <input class="compare__range" type="range" min="0" max="100" value="50" step="0.1" aria-label="Before and after" data-range />
+</figure>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-compare]')!;
+  const range = root.querySelector<HTMLInputElement>('[data-range]')!;
+  range.addEventListener('input', () => root.style.setProperty('--split', `${range.value}%`));
+  // Arrow keys move in whole steps; the pointer keeps sub-pixel precision.
+  range.addEventListener('keydown', (event) => { range.step = event.key.startsWith('Arrow') ? '2' : '0.1'; });
+  range.addEventListener('pointerdown', () => { range.step = '0.1'; });
+</script>
+
+<style>
+  .compare {
+    position: relative;
+    width: min(100%, 34rem);
+    aspect-ratio: 3 / 2;
+    margin: 0;
+    overflow: hidden;
+    border-radius: var(--radius-control-smooth);
+    background: var(--sys-color-srf-container-low);
+  }
+
+  .compare__before {
+    position: absolute;
+    inset: 0;
+    clip-path: inset(0 calc(100% - var(--split)) 0 0);
+    filter: invert(1);
+  }
+
+  .compare :global(.compare__label) {
+    position: absolute;
+    top: 12px;
+  }
+
+  .compare :global(.compare__label--before) { left: 12px; }
+  .compare :global(.compare__label--after) { right: 12px; }
+
+  .compare__handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--split);
+    width: 1px;
+    background: var(--ref-palette-grey-1000);
+    box-shadow: 0 0 0 0.75px rgb(0 0 0 / 0.12);
+    pointer-events: none;
+  }
+
+  .compare__grip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    translate: -50% -50%;
+    border-radius: 50%;
+    color: var(--sys-color-on-srf-variant);
+    transition: scale 150ms ease-out;
+  }
+
+  .compare:has(.compare__range:active) .compare__grip { scale: 0.94; }
+  .compare:has(.compare__range:focus-visible) .compare__grip { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+
+  /* The native range covers the image, so the whole frame is the drag target. */
+  .compare__range {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: ew-resize;
+    touch-action: pan-y;
+  }
+</style>

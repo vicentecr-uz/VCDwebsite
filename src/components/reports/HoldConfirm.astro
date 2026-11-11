@@ -1,0 +1,80 @@
+---
+import Button from '../ui/Button.astro';
+import DevPanel from '../ui/DevPanel.astro';
+import TextField from '../ui/TextField.astro';
+import '../../styles/reportPrototypes.css';
+---
+
+<div class="proto-panel hold" data-hold>
+  <DevPanel title="Page settings" titleTag="h1" showLights={false}>
+    <TextField label="Slug" prefix="vicentecr.uz/" value="tapico" />
+    <div class="hold__actions">
+      <button class="dev-btn dev-btn--danger hold__button" type="button" data-hold-button>
+        <span class="hold__fill" aria-hidden="true"></span>
+        <span class="hold__label" data-label>Hold to delete</span>
+      </button>
+      <Button emphasis="ghost" label="Undo" data-undo hidden />
+    </div>
+  </DevPanel>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-hold]')!;
+  const button = root.querySelector<HTMLButtonElement>('[data-hold-button]')!;
+  const label = root.querySelector<HTMLElement>('[data-label]')!;
+  const undo = root.querySelector<HTMLButtonElement>('[data-undo]')!;
+  const fill = root.querySelector<HTMLElement>('.hold__fill')!;
+  let holding = false;
+
+  const press = () => { if (!button.disabled && !holding) { holding = true; button.classList.add('is-holding'); } };
+  const release = () => { holding = false; button.classList.remove('is-holding'); };
+  // The fill's own transition is the timer: reaching the far edge while still held is the confirmation.
+  fill.addEventListener('transitionend', () => {
+    if (!holding) return;
+    release();
+    button.disabled = true;
+    button.classList.add('is-done');
+    label.textContent = 'Deleted';
+    undo.hidden = false;
+  });
+  button.addEventListener('pointerdown', press);
+  for (const type of ['pointerup', 'pointerleave', 'pointercancel', 'blur'] as const) button.addEventListener(type, release);
+  button.addEventListener('keydown', (event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) press(); });
+  button.addEventListener('keyup', release);
+  button.addEventListener('contextmenu', (event) => event.preventDefault());
+  undo.addEventListener('click', () => {
+    button.disabled = false;
+    button.classList.remove('is-done');
+    label.textContent = 'Hold to delete';
+    undo.hidden = true;
+    button.focus();
+  });
+</script>
+
+<style>
+  .hold__actions { display: flex; align-items: center; gap: var(--dev-panel-spacing); }
+  .hold :global([data-undo][hidden]) { display: none; }
+
+  .hold__button {
+    overflow: hidden;
+    min-width: 8.5rem;
+    touch-action: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .hold__button:disabled { cursor: default; }
+
+  .hold__fill {
+    position: absolute;
+    inset: 0;
+    background: var(--sys-color-error-container-pressed);
+    clip-path: inset(0 100% 0 0);
+    /* Letting go rewinds faster than holding fills. */
+    transition: clip-path 200ms ease-out;
+  }
+
+  .hold__button.is-holding .hold__fill { clip-path: inset(0); transition: clip-path 1100ms linear; }
+  .hold__button.is-done .hold__fill { clip-path: inset(0); transition: none; }
+  .hold__label { position: relative; }
+</style>

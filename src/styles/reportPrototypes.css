@@ -1,0 +1,118 @@
+/* Shared scenery for the /reports prototypes: a stand-in page column, skeleton text and the
+   floating bar surface the save bar and format bar already use. */
+.proto-page {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--space-unit) * 2);
+  width: min(100%, 30rem);
+}
+
+.proto-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-unit);
+}
+
+.proto-lines span {
+  display: block;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--sys-color-srf-container);
+}
+
+.proto-lines span:nth-child(2) { width: 86%; }
+.proto-lines span:nth-child(3) { width: 62%; }
+.proto-lines span:only-child { width: 38%; background: var(--sys-color-srf-container-high); }
+
+.proto-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  font: var(--dev-text-label);
+  color: var(--sys-color-on-srf);
+}
+
+.proto-bar .dev-segmented { width: auto; }
+
+.proto-status {
+  font: var(--dev-text-status);
+  color: var(--sys-color-on-srf-variant);
+  font-variant-numeric: tabular-nums;
+}
+
+.proto-media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* Slider: a native range, so keyboard, touch and assistive tech come for free. `--v` is 0–1. */
+.proto-slider {
+  --v: 0.5;
+  --fill: calc(8px + (100% - 16px) * var(--v));
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.proto-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--slider-ink, var(--sys-color-on-srf)) var(--fill), var(--sys-color-srf-container-high) var(--fill));
+}
+
+.proto-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--slider-ink, var(--sys-color-on-srf)) var(--fill), var(--sys-color-srf-container-high) var(--fill));
+}
+
+.proto-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--ref-palette-grey-1000);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.22), 0 0 0 0.75px rgb(0 0 0 / 0.1);
+  transition: scale 150ms ease-out;
+}
+
+.proto-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ref-palette-grey-1000);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.22), 0 0 0 0.75px rgb(0 0 0 / 0.1);
+}
+
+.proto-slider:active::-webkit-slider-thumb { scale: 1.15; }
+.proto-slider:focus-visible { outline: none; }
+.proto-slider:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+.proto-slider:focus-visible::-moz-range-thumb { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+
+.proto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+}
+
+.proto-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proto-panel { width: min(100%, 22rem); }
