@@ -1,0 +1,63 @@
+---
+import codeIcon from 'lucide-static/icons/code-xml.svg?raw';
+import atomIcon from 'lucide-static/icons/atom.svg?raw';
+import triangleIcon from 'lucide-static/icons/triangle.svg?raw';
+import rocketIcon from 'lucide-static/icons/rocket.svg?raw';
+import svelteIcon from './ui/Svelte.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
+interface Props {
+  guides: Array<{ slug: string; label: string; href: string }>;
+}
+
+const { guides } = Astro.props;
+const icons: Record<string, string | undefined> = {
+  'web-components': codeIcon,
+  'react-nextjs': atomIcon,
+  'vue-nuxt': triangleIcon,
+  'svelte-sveltekit': svelteIcon,
+  astro: rocketIcon,
+};
+---
+
+<nav class="project-stack--related" aria-label="Framework guides">
+  <ul class="tiles" role="list">
+    {guides.map(({ slug, label, href }) => {
+      const icon = icons[slug];
+      return (
+        <li>
+          <a href={href}>
+            {icon && <span aria-hidden="true" set:html={sizeIcon(icon, 16)} />}
+            {label}
+          </a>
+        </li>
+      );
+    })}
+  </ul>
+</nav>
+
+<style>
+  .tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--space-unit) * 0.5);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  a {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    min-height: 44px;
+    padding: 0.375em 0.75em;
+    border-radius: var(--radius-control);
+    background: var(--sys-color-srf-container-low);
+    font-weight: 500;
+    text-decoration: none;
+  }
+  span { display: flex; color: var(--sys-color-on-srf-subtle); }
+  @media (hover: hover) { a:hover { background: var(--comp-button-ghost-container-pressed); } }
+  a:active { background: var(--sys-color-srf-container-high); }
+  a:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+</style>
