@@ -2440,8 +2440,8 @@ function contentSpacingDevWriter() {
               && target.path.length === 3
               && target.path[0] === 'sections'
               && value && typeof value === 'object' && !Array.isArray(value)
-              && Object.keys(value).sort().join(',') === 'desktop,mobile,tablet'
-              && Object.values(value).every((height) => Number.isInteger(height) && height >= 8 && height <= 60);
+              && Object.keys(value).every((key) => ['desktop', 'tablet', 'mobile'].includes(key))
+              && Object.values(value).every((height) => height === null || (Number.isInteger(height) && height >= 8 && height <= 60));
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||

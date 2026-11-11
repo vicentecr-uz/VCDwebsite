@@ -1,4 +1,5 @@
 ---
+import { resolveRedditBoardHeights, type BoardHeights } from '../../lib/redditBoardHeight';
 /**
  * Reddit-comment masonry board (Pinterest-style).
  * 3 columns with staggered tops (no flush horizon), 1em gaps.
@@ -33,7 +34,7 @@ interface Props {
   sectionId?: string;
   contentId?: string;
   annotations?: unknown;
-  viewportMaxEm?: { desktop?: number; tablet?: number; mobile?: number };
+  viewportMaxEm?: BoardHeights;
 }
 
 const {
@@ -47,11 +48,7 @@ const {
   viewportMaxEm,
 } = Astro.props;
 
-const heights = {
-  desktop: viewportMaxEm?.desktop ?? 20,
-  tablet: viewportMaxEm?.tablet ?? 32,
-  mobile: viewportMaxEm?.mobile ?? 26,
-};
+const heights = resolveRedditBoardHeights(viewportMaxEm ?? {});
 
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const stackClass = projectStackClass(spacing);
