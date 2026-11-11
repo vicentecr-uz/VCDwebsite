@@ -37,7 +37,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     const itemPath = [...sectionPath, 'items', index];
     const paragraphPath = [...itemPath, 'paragraph'];
     const notePath = [...itemPath, 'note'];
-    const noteId = `${sectionId ?? contentId ?? 'sidenote'}-note-${index + 1}`;
+    const noteId = `${documentKey ?? 'page'}-${sectionPath.join('-')}-note-${index + 1}`.replace(/[^a-zA-Z0-9_-]/g, '-');
     return (
       <div class="sidenotes__row">
         <div class="sidenotes__body">
@@ -48,7 +48,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
               data-dev-text-kind={editable ? 'text' : undefined}
               set:html={item.paragraph}
             ></span>
-            <button class="sidenotes__marker" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Show note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
+            <span class="sidenotes__marker sidenotes__marker--reference" aria-hidden="true">{index + 1}</span>
+            <button class="sidenotes__marker sidenotes__marker--toggle" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Show note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
           </p>
         </div>
         <aside class="sidenotes__note" id={noteId} data-sidenote-note>
@@ -95,13 +96,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   .sidenotes__note { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; padding-top: 0.15em; color: var(--sys-color-on-srf-variant); font-size: 0.9em; line-height: 1.35; }
   .sidenotes__note p { margin: 0; }
   .sidenotes__number { font-variant-numeric: tabular-nums; }
-  .sidenotes__marker { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; margin-left: 0.2em; padding: 0; border: 0; border-radius: 50%; background: var(--sys-color-on-srf); color: var(--sys-color-srf); font: inherit; font-size: 0.68em; line-height: 1; vertical-align: 0.35em; cursor: pointer; }
+  .sidenotes__marker { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; margin-left: 0.2em; border-radius: 50%; background: var(--sys-color-on-srf); color: var(--sys-color-srf); font: inherit; font-size: 0.68em; line-height: 1; vertical-align: 0.35em; }
+  .sidenotes__marker--toggle { display: none; padding: 0; border: 0; cursor: pointer; }
   .sidenotes__marker:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
   @media (max-width: 60em) {
     .sidenotes__row { display: block; }
+    .sidenotes__marker--reference { display: none; }
+    .sidenotes__marker--toggle { display: inline-grid; }
     .sidenotes__note { display: none; margin-top: 0.75rem; padding: 0.75rem; border-left: 1px solid var(--sys-color-on-srf-variant); }
     .sidenotes__note.is-open { display: grid; }
   }
-  @media (min-width: 60.0625em) { .sidenotes__marker { pointer-events: none; } }
   @media (prefers-reduced-motion: reduce) { .sidenotes__note { transition: none; } }
 </style>
