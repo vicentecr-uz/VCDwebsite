@@ -7446,20 +7446,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
-  /*
-    Below 40em the gutter is 16px but a chip plus its gap needs ~36px, so the
-    outward translate lands trash off the right edge and its ::after bridge
-    sets the document's scroll width (section right + 4.5em), making the page
-    scroll sideways — issue #100. Flip the chip inside the media box and drop
-    the bridge; it only spans the gutter gap, which is gone once the chip sits
-    on the block. Mirrors .dev-section-drag-handle in DevSectionReorderEditor.
-  */
   @media (max-width: 40em) {
     .dev-gap-toolbar,
     .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::before {
       width: min(var(--page-max-width), calc(100vw - 4rem));
     }
+  }
 
+  /* At tablet widths the media column can leave less room than a gutter chip. */
+  @media (max-width: 52em) {
     .dev-section-delete {
       transform: translate(-0.55em, -50%);
     }
@@ -7505,7 +7500,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
-  @media (max-width: 40em) {
+  @media (max-width: 52em) {
     .dev-section-delete:hover,
     .dev-section-delete:focus-visible,
     .dev-section-delete:active {

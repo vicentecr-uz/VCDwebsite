@@ -3,13 +3,13 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 ---
 
 <div class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview" hidden>
-  <div class="dev-viewport-preview__backdrop" data-viewport-backdrop></div>
+  <div class="dev-viewport-preview__backdrop"></div>
   <div class="dev-viewport-preview__shadow" data-viewport-shadow></div>
   <div class="dev-viewport-preview__surface" data-viewport-surface>
     <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
   </div>
   <div class="dev-viewport-preview__controls dev-surface" data-viewport-controls>
-    <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" bare />
+    <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" bare slideSelection={false} />
   </div>
 </div>
 
@@ -19,12 +19,11 @@ import ViewportSelector from './ui/ViewportSelector.astro';
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
     const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
-    const backdrop = root?.querySelector<HTMLElement>('[data-viewport-backdrop]');
     const surface = root?.querySelector<HTMLElement>('[data-viewport-surface]');
     const shadow = root?.querySelector<HTMLElement>('[data-viewport-shadow]');
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const controls = root?.querySelector<HTMLElement>('[data-viewport-controls]');
-    if (!root || !backdrop || !surface || !shadow || !frame || !controls) return scope.destroy;
+    if (!root || !surface || !shadow || !frame || !controls) return scope.destroy;
     const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
 
     const presets = {
@@ -82,7 +81,9 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     type Geometry = { width: number; height: number; radius: number; device: number };
     const desktop = (): Geometry => ({ width: window.innerWidth, height: window.innerHeight, radius: 0, device: 0 });
     let current = desktop();
-    const render = (value: Geometry, barZone = 0) => {
+    let frameWidth = 0;
+    let frameHeight = 0;
+    const render = (value: Geometry, barZone = 0, reflow = true) => {
       current = value;
       const width = Math.round(value.width);
       const height = Math.round(value.height);
@@ -93,13 +94,19 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       const top = 12 * value.device + (hostHeight - height * scale) / 2;
       const radius = value.radius * scale;
       const bounds = {
-        left: `${left}px`, top: `${top}px`, width: `${width * scale}px`, height: `${height * scale}px`,
+        transform: `translate(${left}px, ${top}px)`, width: `${width * scale}px`, height: `${height * scale}px`,
       };
       Object.assign(surface.style, bounds);
       Object.assign(shadow.style, bounds, { opacity: String(value.device) });
       surface.style.setProperty('--viewport-radius', `${radius}px`);
       shadow.style.setProperty('--viewport-radius', `${radius}px`);
-      Object.assign(frame.style, { width: `${width}px`, height: `${height}px`, transform: `scale(${scale})` });
+      if (reflow && (width !== frameWidth || height !== frameHeight)) {
+        frameWidth = width;
+        frameHeight = height;
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+      }
+      frame.style.transform = `scale(${width * scale / frameWidth}, ${height * scale / frameHeight})`;
     };
     const cancelMorph = () => {
       window.cancelAnimationFrame(raf);
@@ -184,18 +191,22 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       };
       if (reducedMotion.matches) { render(target, barZone); finish(); return; }
       const start = performance.now();
-      const omega = 2 * Math.PI / (0.42 * 1.2);
+      const omega = 2 * Math.PI / (0.35 * 1.2);
+      // Keep the shell moving every frame while limiting full page layout to roughly 30Hz.
+      let lastReflow = -Infinity;
       const tick = (now: number) => {
         if (token !== revision || scope.signal.aborted) return;
         const t = (now - start) / 1000;
         const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
-        if (1 - x <= 0.001) { render(target, barZone); finish(); return; }
+        if (1 - x <= 0.004) { render(target, barZone); finish(); return; }
+        const reflow = now - lastReflow >= 32;
+        if (reflow) lastReflow = now;
         render({
           width: from.width + (target.width - from.width) * x,
           height: from.height + (target.height - from.height) * x,
           radius: from.radius + (target.radius - from.radius) * x,
           device: from.device + (target.device - from.device) * x,
-        }, barZone);
+        }, barZone, reflow);
         raf = window.requestAnimationFrame(tick);
       };
       raf = window.requestAnimationFrame(tick);
@@ -236,19 +247,21 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         opening = true;
         const token = cancelMorph();
         void (async () => {
-          loadWarmFrame();
-          const pendingFrame = frameReady;
-          await capped(pendingFrame, 1500);
-          if (token !== revision || scope.signal.aborted) return;
-          if (!ready || pendingFrame !== frameReady) { opening = false; return; }
-          const id = ++scrollRequest;
-          const synced = new Promise<void>((resolve) => { resolveScroll = resolve; });
-          frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-scroll', scrollY: window.scrollY, id }, window.location.origin);
-          await capped(synced, 150);
-          if (token !== revision || scope.signal.aborted) return;
-          resolveScroll = undefined;
+          while (token === revision && !scope.signal.aborted) {
+            loadWarmFrame();
+            const pendingFrame = frameReady;
+            await pendingFrame;
+            if (token !== revision || scope.signal.aborted) return;
+            if (!ready || pendingFrame !== frameReady) continue;
+            const id = ++scrollRequest;
+            const synced = new Promise<void>((resolve) => { resolveScroll = resolve; });
+            frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-scroll', scrollY: window.scrollY, id }, window.location.origin);
+            await capped(synced, 150);
+            if (token !== revision || scope.signal.aborted) return;
+            resolveScroll = undefined;
+            if (ready && pendingFrame === frameReady) break;
+          }
           opening = false;
-          if (!ready || pendingFrame !== frameReady) return;
           previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
           open = true;
           saved = false;
@@ -265,7 +278,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
           isolationObserver = new MutationObserver(isolatePage);
           isolationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
           transition(requested);
-          root.querySelector<HTMLElement>(`[data-viewport-preset="${requested}"]`)?.focus();
+          root.querySelector<HTMLElement>(`[data-viewport-preset="${requested}"]`)?.focus({ preventScroll: true });
         })();
       });
       return true;
@@ -277,7 +290,6 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
     scope.listen(frame, 'load', requestEditMode);
     scope.listen(window, 'resize', () => { if (open) transition(requested); else render(desktop()); });
-    scope.listen(backdrop, 'click', () => close());
     scope.listen(root, 'click', (event) => {
       const target = event.target as HTMLElement;
       const preset = target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset;
@@ -407,16 +419,25 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
 <style>
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
+  :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__backdrop { position: absolute; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }
   .dev-viewport-preview__shadow, .dev-viewport-preview__surface {
     border-radius: calc(var(--viewport-radius, 0px) * var(--continuous-corner-scale, 1));
     corner-shape: var(--squircle-shape);
   }
-  .dev-viewport-preview__shadow { position: absolute; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
-  .dev-viewport-preview__surface { position: absolute; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
+  .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
   .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
   .dev-viewport-preview__controls { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
+  .dev-viewport-preview__controls :global(.dev-btn) { transition: none; }
+  .dev-viewport-preview__controls :global(.dev-btn:active) { transform: none; }
+  .dev-viewport-preview__controls :global(.dev-btn[aria-pressed='false']:is(:hover, :active)) { background: transparent; }
+  .dev-viewport-preview__controls :global(.dev-btn:focus-visible) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+    text-decoration: none;
+  }
   :global(.dev-text-action-stack), :global(.dev-launcher) { transition: opacity 120ms ease, visibility 120ms; }
   :global(html[data-viewport-previewing] .dev-text-action-stack), :global(html[data-viewport-previewing] .dev-launcher) { opacity: 0; visibility: hidden; }
 </style>

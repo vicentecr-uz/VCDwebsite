@@ -124,29 +124,30 @@
   }
 
   /*
-    Below 40em full-bleed media has no external gutter, so keep its handle
-    inside the media box. Text blocks start after the page gutter, so their
-    handle can occupy that gutter without overlapping the prose.
+    At tablet widths the media column can leave less room than a gutter chip.
+    At phone widths the text gutter can still hold the handle beside the prose.
   */
-  @media (max-width: 40em) {
+  @media (max-width: 52em) {
     .dev-section-drag-handle {
-      --dev-section-handle-mobile-transform: translate(0.55em, -50%);
-      --dev-section-handle-mobile-active-transform: translate(0.55em, -50%) scale(1.08);
-      transform: var(--dev-section-handle-mobile-transform);
+      --dev-section-handle-inset-transform: translate(0.55em, -50%);
+      --dev-section-handle-inset-active-transform: translate(0.55em, -50%) scale(1.08);
+      transform: var(--dev-section-handle-inset-transform);
     }
 
+    .dev-section-drag-bridge {
+      display: none;
+    }
+  }
+
+  @media (max-width: 40em) {
     [data-dev-section-reorderable].project-block--text > .dev-section-drag-handle {
       left: 0;
       width: var(--page-gutter, 2rem);
       height: 44px;
       padding: 0;
       box-sizing: border-box;
-      --dev-section-handle-mobile-transform: translate(-100%, -50%);
-      --dev-section-handle-mobile-active-transform: translate(-100%, -50%);
-    }
-
-    .dev-section-drag-bridge {
-      display: none;
+      --dev-section-handle-inset-transform: translate(-100%, -50%);
+      --dev-section-handle-inset-active-transform: translate(-100%, -50%);
     }
   }
 
@@ -185,14 +186,14 @@
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
-  @media (max-width: 40em) {
+  @media (max-width: 52em) {
     .is-dev-mode .dev-section-drag-handle:hover,
     .is-dev-mode .dev-section-drag-handle:focus-visible,
     .is-dev-mode .dev-section-drag-handle:active,
     html.is-section-reorder-holding
       [data-dev-section-reorderable].is-section-lifted-session
       > .dev-section-drag-handle {
-      transform: var(--dev-section-handle-mobile-active-transform);
+      transform: var(--dev-section-handle-inset-active-transform);
     }
   }
 

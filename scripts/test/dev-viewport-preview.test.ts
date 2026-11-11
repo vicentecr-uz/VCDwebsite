@@ -12,7 +12,7 @@ function fixture(reduced = false, frameMode = false, idleSupported = true) {
   const document = window.document;
   document.documentElement.classList.add('is-dev-mode');
   document.body.innerHTML = `<main><button id="focus">Edit</button></main><div data-dev-viewport-preview hidden>
-    <div data-viewport-backdrop></div><div data-viewport-shadow></div>
+    <div data-test-backdrop></div><div data-viewport-shadow></div>
     <div data-viewport-surface><iframe data-viewport-frame></iframe></div>
     <div data-viewport-controls>${['desktop', 'tablet', 'mobile'].map(p => `<button data-viewport-preset="${p}">${p}</button>`).join('')}</div></div>`;
   const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]')!;
@@ -103,7 +103,7 @@ test('warms at Desktop size, inert and invisible, and refreshes after disk write
     expect(f.frame.inert).toBe(true);
     expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
     expect(f.frame.style.height).toBe(`${f.window.innerHeight}px`);
-    expect(f.frame.style.transform).toBe('scale(1)');
+    expect(f.frame.style.transform).toBe('scale(1, 1)');
     expect(f.document.querySelector('main')!.inert).toBe(false);
     f.message('vcd-viewport-preview-ready');
     expect(f.outgoing.at(-1).type).toBe('vcd-viewport-preview-edit');
@@ -167,7 +167,7 @@ test('samples the specified spring and interrupts from current size without a pa
   try {
     await f.open();
     f.step(100);
-    const omega = 2 * Math.PI / (0.42 * 1.2);
+    const omega = 2 * Math.PI / (0.35 * 1.2);
     const x = 1 - Math.exp(-omega * 0.1) * (1 + omega * 0.1);
     expect(parseFloat(f.frame.style.width)).toBe(Math.round(f.window.innerWidth + (820 - f.window.innerWidth) * x));
     const before = f.frame.style.width;
@@ -185,20 +185,38 @@ test('samples the specified spring and interrupts from current size without a pa
   } finally { await f.dispose(); }
 });
 
-test('caps cold readiness at 1500ms without exposing an unready page and scroll acknowledgement at 150ms', async () => {
+test('a single Option+2 waits for a cold frame and the scroll acknowledgement is bounded', async () => {
   const f = fixture();
   try {
-    f.request('mobile');
-    f.timers.find(timer => timer.delay === 1500)!.callback();
+    const shortcut = new f.window.KeyboardEvent('keydown', { altKey: true, code: 'Digit2', bubbles: true, cancelable: true });
+    f.document.dispatchEvent(shortcut);
+    expect(shortcut.defaultPrevented).toBe(true);
+    f.step(4200);
     await flush();
     expect(f.root.style.visibility).toBe('hidden');
     expect(f.frames.size).toBe(0);
     f.message('vcd-viewport-preview-edited');
-    f.request('mobile');
     await flush();
     f.timers.findLast(timer => timer.delay === 150)!.callback();
     await f.settle();
-    expect(f.frame.style.width).toBe('390px');
+    expect(f.frame.style.width).toBe('820px');
+  } finally { await f.dispose(); }
+});
+
+test('the surface keeps moving between iframe layout updates and background clicks keep the preset', async () => {
+  const f = fixture();
+  try {
+    await f.open();
+    f.step(16);
+    const width = f.frame.style.width;
+    const surfaceWidth = f.surface.style.width;
+    f.step(16);
+    expect(f.frame.style.width).toBe(width);
+    expect(f.surface.style.width).not.toBe(surfaceWidth);
+    f.document.querySelector<HTMLElement>('[data-test-backdrop]')!.click();
+    await f.settle();
+    expect(f.root.dataset.viewportStagePreset).toBe('tablet');
+    expect(f.frame.style.width).toBe('820px');
   } finally { await f.dispose(); }
 });
 
@@ -239,13 +257,13 @@ test('reduced motion jumps size with no content fades; only the stationary botto
     expect(f.controls.style.opacity).toBe('1');
     f.request('desktop');
     expect(f.root.style.visibility).toBe('hidden');
-    expect(f.frame.style.transform).toBe('scale(1)');
+    expect(f.frame.style.transform).toBe('scale(1, 1)');
   } finally { await f.dispose(); }
   expect(source).toContain('bottom: max(12px, env(safe-area-inset-bottom))');
   expect(source).toContain('transition: opacity 150ms');
   expect(source).not.toContain('data-viewport-size');
   expect(source).toContain('label="Viewport" bare');
-  expect(source).not.toContain('slideSelection={false}');
+  expect(source).toContain('slideSelection={false}');
   expect(source).not.toContain('element.animate');
 });
 
