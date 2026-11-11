@@ -153,7 +153,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
 <script>
   import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
-  import { devEditPendingId, withDevEditTarget } from '../../scripts/devEditTarget';
+  import { devEditPendingId, withDevEditTarget, canConvertImageToCarousel } from '../../scripts/devEditTarget';
   import {
     imageGridConstrainedStyle,
     imageHasWidthConstraint,
@@ -1968,7 +1968,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
       if (makeCarouselButton) {
-        makeCarouselButton.hidden = !isGridTarget(target) || isCarouselItem(target);
+        makeCarouselButton.hidden = !canConvertImageToCarousel(target);
       }
       editedImage = image;
       resizeObserver?.observe(editTarget);
@@ -3339,44 +3339,47 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     pageScope.listen(saveButton, 'click', saveDraft);
-    pageScope.listen(makeCarouselButton, 'click', async () => {
-      const target = editTarget;
-      if (!isGridTarget(target) || isCarouselItem(target) || makeCarouselButton.disabled) return;
-      const documentKey = target.dataset.devDocument || '';
-      let path: Array<string | number> = [];
-      try { path = JSON.parse(target.dataset.devImagePath || '[]'); } catch { path = []; }
-      if (!documentKey || path.length !== 4) return;
-      makeCarouselButton.disabled = true;
-      const identity = withDevEditTarget({ document: documentKey, path }, target).target;
+    let convertingToCarousel = false;
+    const convertToCarousel = async (target: HTMLElement) => {
+      if (!target.isConnected || !canConvertImageToCarousel(target) || convertingToCarousel) return;
+      const documentKey = target.dataset.devDocument!;
+      convertingToCarousel = true;
+      if (makeCarouselButton) makeCarouselButton.disabled = true;
       try {
-        commitDraftSettings();
         await new Promise<void>((resolve, reject) => {
           window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', {
             detail: { documentKey, resolve, reject },
           }));
         });
+        const path = JSON.parse(target.dataset.devImagePath!);
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            document: documentKey,
-            action: 'convertGridItemToCarousel',
-            path,
-            target: identity,
+            ...withDevEditTarget({ document: documentKey, path }, target),
+            action: 'convertImageToCarousel',
           }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not make this image a carousel.');
         if (editTarget === target) closePanel();
         window.dispatchEvent(new Event('vcd:dev-content-written'));
-        window.dispatchEvent(new CustomEvent('vcd:dev-grid-media-appended', {
+        window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
           detail: { documentKey, index: payload.index, section: payload.section },
         }));
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not make this image a carousel.';
+        const message = error instanceof Error ? error.message : 'Could not make this image a carousel.';
+        if (editTarget === target && editingSession) status.textContent = message;
+        else window.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message } }));
       } finally {
-        makeCarouselButton.disabled = false;
+        convertingToCarousel = false;
+        if (makeCarouselButton) makeCarouselButton.disabled = false;
       }
+    };
+    pageScope.listen(makeCarouselButton, 'click', () => { void convertToCarousel(editTarget); });
+    pageScope.listen(window, 'vcd:dev-convert-image-to-carousel', (event) => {
+      const target = (event as CustomEvent<HTMLElement>).detail;
+      if (target instanceof HTMLElement) void convertToCarousel(target);
     });
     pageScope.listen(window, 'vcd:dev-before-save', (event) => {
       if (!editingSession) return;

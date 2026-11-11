@@ -3572,9 +3572,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       if (!entry.pendingInsert) pendingSectionDeletes.push(entry);
       let deletion = entry;
+      const undo = () => undoSectionDelete(deletion);
       pageHistory.push({
         label: 'Delete block',
-        undo: () => undoSectionDelete(deletion),
+        undo,
         redo: async () => {
           const next = await deleteSectionAt(element);
           if (!next) throw new Error('This block can no longer be deleted.');
@@ -3594,6 +3595,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncPageTopSpacingControls();
       updateActions();
+      if (!pageHistory.replaying) {
+        window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
+          detail: {
+            message: 'Block deleted',
+            action: {
+              label: 'Undo',
+              run: async () => {
+                if (actionsBusy || !await pageHistory.undoIfCurrent(undo)) {
+                  throw new Error('Use the page’s undo shortcut to step back to this edit.');
+                }
+              },
+            },
+          },
+        }));
+      }
       return entry;
     };
 

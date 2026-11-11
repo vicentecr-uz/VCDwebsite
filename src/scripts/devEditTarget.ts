@@ -1,3 +1,4 @@
+import { isVideoSrc } from '../lib/imageUpload.mjs';
 type FieldChange = { document?: unknown; path?: unknown; target?: unknown };
 
 export function sectionEditTarget(element?: HTMLElement | null): { sectionId: string } | undefined {
@@ -63,4 +64,12 @@ export function withDevEditTarget<T extends FieldChange>(change: T, element?: HT
     }
   }
   return { ...change, target };
+}
+
+export function canConvertImageToCarousel(target: HTMLElement) {
+  const { devDocument, devImagePath, devImageSrc } = target.dataset;
+  return Boolean(devDocument && devImagePath && devImageSrc && !isVideoSrc(devImageSrc) && (
+    target.matches('figure.project-image-grid__item')
+    || target.matches('[data-dev-section-deletable="image"] > figure.project-media')
+  ));
 }

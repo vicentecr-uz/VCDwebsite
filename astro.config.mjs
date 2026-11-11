@@ -1824,8 +1824,8 @@ export function contentSectionDevWriter() {
                 ? 'appendMediaItems'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
-              : body.action === 'convertGridItemToCarousel'
-                ? 'convertGridItemToCarousel'
+              : body.action === 'convertImageToCarousel'
+                ? 'convertImageToCarousel'
               : body.action === 'updateProjectDetailsRows'
                 ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
@@ -2034,7 +2034,7 @@ export function contentSectionDevWriter() {
             return;
           }
 
-          if (action === 'convertGridItemToCarousel') {
+          if (action === 'convertImageToCarousel') {
             const fieldPath = Array.isArray(body.path) ? body.path : [];
             let resolvedPath;
             try {
@@ -2043,41 +2043,43 @@ export function contentSectionDevWriter() {
               send(400, { error: error instanceof Error ? error.message : 'That image path is invalid.' });
               return;
             }
-            if (resolvedPath.length !== 4 || resolvedPath[0] !== 'sections' || resolvedPath[2] !== 'items') {
+            const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+            const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+            const nested = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid';
+            const image = nested ? section.items?.[itemIndex] : resolvedPath.length === 2 && section?.type === 'image' ? section : undefined;
+            if (!image || typeof image.src !== 'string' || !image.src || isVideoSrc(image.src) || image.type === 'imageCarousel') {
               send(400, { error: 'That image cannot become a carousel.' });
               return;
             }
-            const grid = data.sections?.[resolvedPath[1]];
-            const item = grid?.type === 'imageGrid' ? grid.items?.[resolvedPath[3]] : null;
-            if (!item || typeof item !== 'object' || Array.isArray(item)) {
-              send(400, { error: 'That image is no longer in this grid.' });
-              return;
-            }
-            if (item.type === 'imageCarousel') {
-              send(400, { error: 'That image is already a carousel.' });
-              return;
-            }
-            const itemId = String(item.id || '');
-            if (!itemId) {
+            const imageId = String(image.id || '');
+            if (nested && !imageId) {
               send(400, { error: 'That grid image has no stable ID.' });
               return;
             }
-            grid.items[resolvedPath[3]] = {
+            const slideId = imageId ? `${imageId}-slide` : 'slide-1';
+            const {
+              id, sectionId, spacing, annotations, intro, constrained, maxVh, maxHeightVh,
+              ...slide
+            } = image;
+            const carousel = {
+              ...(!nested && { sectionId, spacing, annotations, intro, constrained, maxHeightVh: maxHeightVh ?? maxVh }),
               type: 'imageCarousel',
-              id: itemId,
+              id,
               orientation: 'horizontal',
               heightMode: 'dynamic',
               dotsPlacement: 'outside',
-              defaultAspectRatio: grid.defaultAspectRatio || 'original',
-              ...(item.mobileInset === true ? { mobileInset: true } : {}),
-              ...(item.hideOnMobile === true ? { hideOnMobile: true } : {}),
-              items: [{ ...item, id: `${itemId}-slide` }],
-              visible: [`${itemId}-slide`],
+              defaultAspectRatio: nested ? section.defaultAspectRatio || 'original' : 'original',
+              ...(image.mobileInset === true ? { mobileInset: true } : {}),
+              ...(image.hideOnMobile === true ? { hideOnMobile: true } : {}),
+              items: [{ ...(nested ? image : slide), id: slideId, ...(nested ? {} : { type: undefined }) }],
+              visible: [slideId],
             };
+            if (nested) section.items[itemIndex] = carousel;
+            else data.sections[sectionIndex] = carousel;
             await writeContentJson(file, data);
             send(200, {
               ok: true,
-              action: 'convertGridItemToCarousel',
+              action: 'convertImageToCarousel',
               path: fieldPath,
               index: resolvedPath[1],
               section: data.sections[resolvedPath[1]],

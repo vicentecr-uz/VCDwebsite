@@ -12,6 +12,7 @@ const listId = contextual ? 'image-command-list' : 'command-list';
 const commands = contextual ? [
   ['Image', 'Edit image', '', 'image'],
   ['Image', 'Caption', '', 'caption'],
+  ['Image', 'Make carousel', '', 'carousel'],
 ] : [
   ['Insert', 'Image', ''], ['Insert', 'Text section', ''], ['Insert', 'Section header', ''], ['Insert', 'Carousel', ''], ['Insert', 'Interactive demo', ''],
   ['Page', 'Page settings', ''], ['Page', 'Save', '⌘ S'], ['Page', 'Save & Publish', '⌘ ⇧ S'], ['Page', 'Preview on Mobile', '⌥ 3'],
@@ -43,13 +44,14 @@ const commands = contextual ? [
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
   import { clampToViewport } from '../../lib/floatingLayer';
+  import { canConvertImageToCarousel } from '../../scripts/devEditTarget';
 
   const dispose = onPageLoad(() => {
     const root = document.querySelector<HTMLElement>('[data-command]');
     if (!root) return;
     const scope = createPageScope();
     const contextual = root.hasAttribute('data-contextual');
-    const actions = new Map<string, HTMLButtonElement>();
+    const actions = new Map<string, () => void>();
     let previousFocus: HTMLElement | null = null;
     const close = (restoreFocus = false) => {
       if (!contextual || !root.matches(':popover-open')) return;
@@ -92,7 +94,7 @@ const commands = contextual ? [
       if (contextual) {
         const action = actions.get(item.dataset.commandAction!);
         close(true);
-        if (action?.isConnected) action.click();
+        action?.();
         return;
       }
       status.textContent = `${item.dataset.group} · ${item.dataset.label}`;
@@ -132,17 +134,23 @@ const commands = contextual ? [
         if (html.classList.contains('is-remote-editor') && matchMedia('(max-width: 40em)').matches) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || target.closest('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], video, media-controller')) return;
-        const image = target.closest('[data-dev-image-target]');
+        const image = target.closest<HTMLElement>('[data-dev-image-target]');
         if (!image) return;
         actions.clear();
         for (const item of items) {
           const key = item.dataset.commandAction!;
+          if (key === 'carousel') {
+            if (canConvertImageToCarousel(image)) actions.set(key, () => window.dispatchEvent(
+              new CustomEvent('vcd:dev-convert-image-to-carousel', { detail: image }),
+            ));
+            continue;
+          }
           const trigger = image.querySelector<HTMLButtonElement>(`[data-dev-edit-trigger="${key}"]`);
           if (!trigger || trigger.disabled) continue;
           const label = trigger.textContent?.trim() || item.dataset.label!;
           item.querySelector('.command__label')!.textContent = label;
           item.dataset.label = label;
-          actions.set(key, trigger);
+          actions.set(key, () => { if (trigger.isConnected) trigger.click(); });
         }
         if (!actions.size) return;
         event.preventDefault();
@@ -239,6 +247,7 @@ const commands = contextual ? [
     padding-inline: 10px;
     font: var(--dev-text-menu-item);
     cursor: default;
+    transition: none;
   }
 
   .command__item[hidden] { display: none; }

@@ -7,18 +7,32 @@ import '../../styles/reportPrototypes.css';
 <div class="toasts" data-toasts>
   <div class="toasts__triggers">
     <Button label="Save" data-toast="Saved" />
-    <Button label="Publish" data-toast="Published" data-action="View" />
-    <Button label="Delete block" data-toast="Image block deleted" data-action="Undo" />
+    <Button label="Publish" data-toast="Published" />
+    <Button label="Delete block" data-toast="Image block deleted" data-demo-delete />
   </div>
   <ToastStack />
 </div>
 
 <script>
-  document.querySelector('[data-toasts]')?.addEventListener('click', (event) => {
-    const trigger = (event.target as Element).closest<HTMLElement>('[data-toast]');
-    if (trigger) window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
-      detail: { message: trigger.dataset.toast, action: trigger.dataset.action },
-    }));
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const demo = document.querySelector('[data-toasts]');
+    const stack = demo?.querySelector('[data-toast-stack]');
+    if (!demo || !stack) return;
+    const scope = createPageScope();
+    const show = (message: string, action?: { label: string; run: () => void }) => {
+      stack.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message, action } }));
+    };
+    scope.listen(demo, 'click', (event) => {
+      const trigger = (event.target as Element).closest<HTMLElement>('[data-toast]');
+      if (!trigger?.dataset.toast) return;
+      const action = trigger.hasAttribute('data-demo-delete')
+        ? { label: 'Undo', run: () => show('Image block restored') }
+        : undefined;
+      show(trigger.dataset.toast, action);
+    });
+    return scope.destroy;
   });
 </script>
 

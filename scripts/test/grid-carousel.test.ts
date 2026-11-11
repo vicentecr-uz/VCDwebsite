@@ -40,7 +40,7 @@ async function fixture(run: (file: string) => Promise<void>) {
 test('conversion preserves the grid layout and first-slide crop, then supports nested append and removal', async () => {
   await fixture(async (file) => {
     const before = source().sections[0];
-    const converted = await post({ document: 'fixture', action: 'convertGridItemToCarousel', path: ['sections', 8, 'items', 0], target: { sectionId: 'grid', itemId: 'cell' } });
+    const converted = await post({ document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 8, 'items', 0], target: { sectionId: 'grid', itemId: 'cell' } });
     expect(converted.status).toBe(200);
     const grid = converted.body.section;
     expect(grid.layouts).toEqual(before.layouts);
@@ -57,6 +57,31 @@ test('conversion preserves the grid layout and first-slide crop, then supports n
     expect(saved.sections[0].items).toHaveLength(2);
     expect(saved.sections[0].items[1].items).toHaveLength(1);
     expect(saved.sections[0].items[0]).toEqual(before.items[0]);
+  });
+});
+
+test('standalone conversion keeps section identity and first-slide media', async () => {
+  await fixture(async (file) => {
+    const image = {
+      id: 'photo', type: 'image', src: 'photo.jpg', alt: 'Prototype',
+      sectionId: 'gallery', spacing: 'major', constrained: 80, maxVh: 70,
+      captions: { desktop: 'Design inspiration' },
+    };
+    await writeFile(file, JSON.stringify({ sections: [source().sections[0], image] }));
+    const result = await post({
+      document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 0], target: { sectionId: 'photo' },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body.index).toBe(1);
+    expect(result.body.section).toMatchObject({
+      id: 'photo', type: 'imageCarousel', sectionId: 'gallery', spacing: 'major',
+      constrained: 80, maxHeightVh: 70, visible: ['photo-slide'],
+      items: [{ id: 'photo-slide', src: 'photo.jpg', alt: 'Prototype', captions: image.captions }],
+    });
+    const repeated = await post({
+      document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 1], target: { sectionId: 'photo' },
+    });
+    expect(repeated.status).toBe(400);
   });
 });
 

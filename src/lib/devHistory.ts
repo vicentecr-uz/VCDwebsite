@@ -56,6 +56,11 @@ export function createHistory() {
       changed();
     },
     undo: () => move(past, future, 'undo'),
+    async undoIfCurrent(undo: HistoryCommand['undo']) {
+      if (busy || past.at(-1)?.undo !== undo) return false;
+      await move(past, future, 'undo');
+      return true;
+    },
     redo: () => move(future, past, 'redo'),
     breakGroup() { grouping = false; },
     clear() {
