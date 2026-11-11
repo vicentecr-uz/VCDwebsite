@@ -30,6 +30,7 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     const interrupted = animating;
     if (animate && minimized === wasMinimized && !interrupted) return;
     const fromHeight = panel.getBoundingClientRect().height;
+    const fromRadius = win.getComputedStyle(panel).borderRadius;
     const fromOpacity = wasMinimized && !interrupted ? 0 : Number(win.getComputedStyle(body).opacity);
     let morphBodyHeight = minimized ? body.getBoundingClientRect().height : 0;
     cancel();
@@ -58,6 +59,7 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     options.afterStateChange?.();
 
     const toHeight = panel.getBoundingClientRect().height;
+    const toRadius = win.getComputedStyle(panel).borderRadius;
     if (!minimized) morphBodyHeight = body.getBoundingClientRect().height;
     if (Number.isFinite(morphBodyHeight) && morphBodyHeight >= 0) {
       panel.style.setProperty('--dev-overlay-morph-body-height', `${morphBodyHeight}px`);
@@ -102,7 +104,10 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     }
     if (!reduced) {
       // Only this bounded panel changes size; animating its box avoids scaling text and controls.
-      animations.push(panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], timing));
+      animations.push(panel.animate([
+        { height: `${fromHeight}px`, borderRadius: fromRadius },
+        { height: `${toHeight}px`, borderRadius: toRadius },
+      ], timing));
     } else {
       // Keep the final geometry while the body fades, including the header-only collapsed size.
       animations.push(panel.animate([{ height: `${toHeight}px` }, { height: `${toHeight}px` }], { duration, fill: 'both' }));
