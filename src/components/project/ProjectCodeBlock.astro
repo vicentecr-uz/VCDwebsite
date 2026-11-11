@@ -40,12 +40,17 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       ))}
     </SegmentedControl>
   )}
-  {options.map(({ lang, code }, index) => (
-    <div class="code-block__panel" data-option-panel hidden={index > 0}>
-      <Code code={code.trim()} lang={lang as never} theme={codeTheme} />
-      <ProjectCodeCopy code={code} top={code.includes('\n')} />
-    </div>
-  ))}
+  {options.map(({ lang, code }, index) => {
+    const displayedCode = code.trim();
+    const singleLine = !/[\r\n]/.test(displayedCode);
+    return (
+      <div class="code-block__panel" data-option-panel data-code-single-line={singleLine ? '' : undefined} hidden={index > 0}>
+        <Code code={displayedCode} lang={lang as never} theme={codeTheme} />
+        {singleLine && <span class="code-block__edge" data-code-edge hidden aria-hidden="true"></span>}
+        <ProjectCodeCopy code={displayedCode} top={!singleLine} />
+      </div>
+    );
+  })}
   {editable && (
     <span
       class="code-block__resize"
@@ -97,6 +102,39 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: transparent !important;
     --on-surface-faint: var(--sys-color-on-srf-container-faint);
     font: 0.875rem/1.6 var(--font-mono);
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.astro-code) {
+    direction: ltr;
+    padding-inline-end: 0;
+  }
+
+  .code-block__panel[data-code-single-line] > :global(.astro-code > code) {
+    display: block;
+    inline-size: max-content;
+    padding-inline-end: calc(var(--dev-control-height) + 1.25rem);
+  }
+
+  .code-block__panel:has(> .astro-code:focus-visible) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+  }
+
+  .code-block__edge {
+    --code-edge-mask: linear-gradient(to right, transparent, #000 55%);
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 5rem;
+    pointer-events: none;
+    background: linear-gradient(to right, transparent, var(--sys-color-srf-container-low) 55%);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    -webkit-mask-image: var(--code-edge-mask);
+    mask-image: var(--code-edge-mask);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .code-block__edge { -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
 
   /* A height set in Edit mode caps the code at whole lines; the rest scrolls inside the panel. */

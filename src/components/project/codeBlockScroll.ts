@@ -1,36 +1,79 @@
-// Scroll fade for code blocks capped to a number of lines (ProjectCodeBlock maxLines). Each edge
-// fades in proportion to how much is hidden past it, up to one fade length, as Sabi does
-// horizontally (src/lib/sabi/core.ts #syncFades). Replace with Sabi once it supports multi-line text.
+import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
-const FADE_EM = 2.5;
+const VERTICAL_FADE_EM = 2.5;
+const HORIZONTAL_FADE_PX = 24;
+const progress = (distance: number, length: number) => Math.min(1, Math.max(0, distance / length));
 
-function sync(scroller: HTMLElement) {
-  const hidden = scroller.scrollHeight - scroller.clientHeight;
-  if (hidden <= 1) {
-    scroller.removeAttribute('data-code-scroll');
-    return;
+function sync(scroller: HTMLElement, edge: HTMLElement | null) {
+  const horizontal = scroller.scrollWidth - scroller.clientWidth;
+  const vertical = scroller.scrollHeight - scroller.clientHeight;
+  const remaining = edge ? horizontal - scroller.scrollLeft : 0;
+  const scrollTop = vertical > 1 ? scroller.scrollTop : 0;
+  const fade = vertical > 1 ? VERTICAL_FADE_EM * parseFloat(getComputedStyle(scroller).fontSize) : 0;
+
+  if (horizontal > 1 || vertical > 1) {
+    if (scroller.getAttribute('tabindex') !== '0') scroller.tabIndex = 0;
+  } else {
+    scroller.removeAttribute('tabindex');
   }
-  const fade = FADE_EM * parseFloat(getComputedStyle(scroller).fontSize);
-  scroller.setAttribute('data-code-scroll', '');
-  scroller.style.setProperty('--code-fade-top', String(Math.min(1, scroller.scrollTop / fade)));
-  scroller.style.setProperty('--code-fade-bottom', String(Math.min(1, (hidden - scroller.scrollTop) / fade)));
+
+  if (edge && !edge.toggleAttribute('hidden', horizontal <= 1 || remaining <= 1)) {
+    const opacity = String(progress(remaining, HORIZONTAL_FADE_PX));
+    if (edge.style.opacity !== opacity) edge.style.opacity = opacity;
+  }
+
+  scroller.toggleAttribute('data-code-scroll', vertical > 1);
+  if (vertical <= 1) return;
+  scroller.style.setProperty('--code-fade-top', String(progress(scrollTop, fade)));
+  scroller.style.setProperty('--code-fade-bottom', String(progress(vertical - scrollTop, fade)));
 }
 
-const observer = new ResizeObserver((entries) => entries.forEach((entry) => sync(entry.target as HTMLElement)));
-
-function bind(scroller: HTMLElement) {
-  if (scroller.dataset.codeScrollBound) return;
-  scroller.dataset.codeScrollBound = '';
-  scroller.addEventListener('scroll', () => sync(scroller), { passive: true });
-  observer.observe(scroller);
-  sync(scroller);
-}
+let syncBlock: ((root: Element) => void) | undefined;
 
 export function syncCodeBlock(root: Element) {
-  root.querySelectorAll<HTMLElement>('.astro-code').forEach((scroller) => {
-    bind(scroller);
-    sync(scroller);
-  });
+  syncBlock?.(root);
 }
 
-document.querySelectorAll('[data-code-block]').forEach(syncCodeBlock);
+onPageLoad(() => {
+  const scope = createPageScope();
+  const edges = new WeakMap<HTMLElement, HTMLElement | null>();
+  const pending = new Set<HTMLElement>();
+  let frame = 0;
+
+  const schedule = (scroller: HTMLElement) => {
+    pending.add(scroller);
+    if (frame) return;
+    frame = scope.frame(() => {
+      frame = 0;
+      for (const scroller of pending) sync(scroller, edges.get(scroller) ?? null);
+      pending.clear();
+    });
+  };
+  const observer = new ResizeObserver((entries) => {
+    for (const { target } of entries) {
+      const scroller = target.closest<HTMLElement>('.astro-code');
+      if (scroller) schedule(scroller);
+    }
+  });
+  scope.add(() => observer.disconnect());
+
+  syncBlock = (root) => {
+    for (const scroller of root.querySelectorAll<HTMLElement>('.astro-code')) {
+      if (!edges.has(scroller)) {
+        const edge = scroller.parentElement?.querySelector<HTMLElement>('[data-code-edge]') ?? null;
+        edges.set(scroller, edge);
+        scope.listen(scroller, 'scroll', () => schedule(scroller), { passive: true });
+        observer.observe(scroller);
+        if (edge && scroller.firstElementChild) observer.observe(scroller.firstElementChild);
+      }
+      sync(scroller, edges.get(scroller) ?? null);
+    }
+  };
+  document.querySelectorAll('[data-code-block]').forEach(syncCodeBlock);
+
+  return () => {
+    syncBlock = undefined;
+    scope.destroy();
+    pending.clear();
+  };
+});
