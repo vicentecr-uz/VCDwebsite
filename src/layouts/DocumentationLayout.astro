@@ -22,19 +22,15 @@ interface Props {
   contents: Array<{ id: string; label: string }>;
   previous?: AdjacentPage;
   next?: AdjacentPage;
-  sectionNavDocument?: string;
-  sectionNavOutlineOnly?: boolean;
-  sectionNav?: string;
-  sectionOutline?: string;
   githubHref?: string;
   hideContents?: boolean;
 }
-const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next, sectionNavDocument, sectionNavOutlineOnly = false, sectionNav, sectionOutline, githubHref, hideContents = false } = Astro.props;
+const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next, githubHref, hideContents = false } = Astro.props;
 const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
 ---
 
 <Layout persistentNavigation title={`${title} · ${product}`} description={description} canonicalUrl={canonicalUrl}>
-  <div class="documentation-page" data-page-shell data-documentation-page data-hide-contents={hideContents ? '' : undefined} data-section-nav-root={sectionNavDocument ? '' : undefined} data-section-nav-document={sectionNavDocument} data-section-nav-outline-only={sectionNavOutlineOnly ? 'true' : undefined} data-section-nav={sectionNav} data-section-outline={sectionOutline}>
+  <div class="documentation-page" data-page-shell data-documentation-page data-hide-contents={hideContents ? '' : undefined}>
     <header class="documentation-mobile-header">
       <p class="documentation-brand"><a class="text-link" href={homeHref}>{product}</a>{' '}<span>by <a class="text-link" href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
       <Button label="" emphasis="ghost" aria-label="Open documentation navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="documentation-drawer" data-documentation-open>
