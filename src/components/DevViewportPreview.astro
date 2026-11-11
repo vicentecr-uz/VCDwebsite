@@ -12,7 +12,7 @@
     </div>
     <div class="dev-viewport-preview__stage">
       <div class="dev-viewport-preview__frame-shell" data-viewport-frame-shell>
-        <iframe title="Viewport preview" data-viewport-frame></iframe>
+        <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
       </div>
     </div>
   </div>
@@ -29,7 +29,7 @@
     const frameShell = root?.querySelector<HTMLElement>('[data-viewport-frame-shell]');
     const size = root?.querySelector<HTMLElement>('[data-viewport-size]');
     if (!root || !veil || !frame || !frameShell || !size) return scope.destroy;
-    const frameMode = window.parent !== window && new URLSearchParams(window.location.search).has('vcd-viewport-preview');
+    const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
 
     const presets = {
       desktop: [1440, 900],
@@ -39,14 +39,8 @@
     type Preset = keyof typeof presets;
     let active: Preset = 'desktop';
     let open = false;
-    let frameWrote = false;
     let frameSaveBusy = false;
     let previousFocus: HTMLElement | null = null;
-    const previewUrl = () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set('vcd-viewport-preview', '1');
-      return url.href;
-    };
     const isTypingTarget = (target: EventTarget | null) => {
       const element = target instanceof HTMLElement ? target : null;
       return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
@@ -66,10 +60,10 @@
         button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.viewportPreset === active));
       });
     };
-    const close = () => {
+    const close = (refresh = true) => {
       if (!open) return true;
       const childWindow = frame.contentDocument?.defaultView as (Window & typeof globalThis) | null;
-      if (childWindow) {
+      if (refresh && childWindow) {
         const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
         if (!childWindow.dispatchEvent(beforeReload)) return false;
       }
@@ -78,7 +72,7 @@
       frame.src = 'about:blank';
       previousFocus?.focus();
       previousFocus = null;
-      if (frameWrote) {
+      if (refresh) {
         sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY: window.scrollY }));
         window.location.reload();
       }
@@ -96,7 +90,7 @@
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         open = true;
         root.showModal();
-        frame.src = previewUrl();
+        frame.src = window.location.href;
         root.querySelector<HTMLElement>('[data-viewport-preset="desktop"]')?.focus();
       }
       syncFrame();
@@ -122,7 +116,6 @@
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
-      if (event.data?.type === 'vcd-viewport-preview-content-written') frameWrote = true;
       if (event.data?.type === 'vcd-viewport-preview-preset' && event.data.preset in presets) {
         show(event.data.preset as Preset);
       }
@@ -168,9 +161,6 @@
       scope.listen(window, 'vcd:before-reload', (event) => {
         if (frameSaveBusy) event.preventDefault();
       }, true);
-      scope.listen(window, 'vcd:dev-save-complete', () => {
-        window.parent.postMessage({ type: 'vcd-viewport-preview-content-written' }, window.location.origin);
-      });
       window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
       return () => scope.destroy();
     }
@@ -183,7 +173,7 @@
         requestAnimationFrame(() => window.scrollTo(0, Number(scrollY) || 0));
       } catch { /* Ignore a stale restore marker. */ }
     }
-    return () => { close(); scope.destroy(); };
+    return () => { close(false); scope.destroy(); };
   });
   import.meta.hot?.dispose(dispose);
 </script>
