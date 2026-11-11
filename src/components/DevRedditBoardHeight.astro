@@ -7,21 +7,26 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
 ---
 
-<div class="reddit-board-height" id="reddit-board-height-panel" data-reddit-board-height-panel data-dev-overlay data-dev-panel-key="reddit-board-height" hidden>
+<div class="reddit-board-height dev-surface" id="reddit-board-height-panel" data-reddit-board-height-panel data-dev-overlay data-dev-panel-key="reddit-board-height" hidden>
   <ViewportSelector label="Viewport" dataAttr="data-reddit-board-viewport" />
-  <RangeField label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value />
+  <div class="reddit-board-height__field">
+    <RangeField label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value />
+    <Button emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={undoIcon} /></Button>
+  </div>
   <div class="reddit-board-height__detents" aria-hidden="true">{Array.from({ length: 14 }, (_, index) => <span style={`--detent:${index}`} />)}</div>
   <PanelActions>
     <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
-    <Button emphasis="ghost" label="" aria-label="Reset" data-reddit-board-reset><span slot="icon" set:html={undoIcon} /></Button>
-    <Button emphasis="filled" label="Save" data-reddit-board-save />
   </PanelActions>
 </div>
 
 <style>
-  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: 6px; border: 1px solid var(--sys-color-outline-variant); border-radius: 12px; background: var(--sys-color-srf-container); box-shadow: var(--elevated-surface-shadow); }
+  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: var(--dev-panel-pad); border-radius: var(--dev-radius-surface); }
   .reddit-board-height[hidden] { display: none; }
-  .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; }
+  .reddit-board-height__field { position: relative; }
+  .reddit-board-height__field :global(.dev-range-field__output) { right: 42px; }
+  .reddit-board-height__field :global(.dev-btn) { position: absolute; top: 50%; right: 4px; translate: 0 -50%; min-height: 32px; padding: 6px; }
+  .reddit-board-height__field :global(.dev-btn[hidden]) { display: none; }
+  .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; min-height: 1.25em; padding-top: 0; }
   .reddit-board-height__status { flex: 1 1 0; min-width: 0; margin: 0; font: var(--dev-text-label); }
   .reddit-board-height__detents { position: relative; height: 4px; margin: calc(var(--space-unit) * -0.75) 0 0; pointer-events: none; }
   .reddit-board-height__detents span { position: absolute; left: calc(var(--detent) * 100% / 13); width: 1px; height: 4px; translate: -50% 0; background: var(--sys-color-on-srf-container-faint); }
@@ -46,10 +51,9 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
     const input = panel?.querySelector<HTMLInputElement>('[data-reddit-board-height-value]');
     const reset = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
-    const save = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
     const status = panel?.querySelector<HTMLElement>('[data-reddit-board-status]');
     const viewportButtons = panel ? [...panel.querySelectorAll<HTMLButtonElement>('[data-reddit-board-viewport]')] : [];
-    if (!panel || !input || !reset || !save || !status || viewportButtons.length !== 3) return;
+    if (!panel || !input || !reset || !status || viewportButtons.length !== 3) return;
 
     const scope = createPageScope();
     const { signal } = scope;
@@ -67,6 +71,8 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     let pointerY = 0;
     let frame = 0;
     let settling: Animation | undefined;
+    let saveTimer: number | undefined;
+    let saving = false;
 
     const actualViewport = (): Breakpoint => matchMedia('(max-width: 36em)').matches
       ? 'mobile' : matchMedia('(max-width: 52em)').matches ? 'tablet' : 'desktop';
@@ -75,11 +81,36 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       board.dataset.redditBoardDocument, board.dataset.devContentId || board.dataset.redditBoardPath,
     ]);
     const resolveValues = () => { values = resolveRedditBoardHeights(authored); };
+    const persist = async () => {
+      if (!root?.dataset.redditBoardDocument || saving) return;
+      const board = root;
+      const submitted = { ...authored };
+      saving = true;
+      status.textContent = 'Saving…';
+      try {
+        const response = await fetch('/api/content-spacing', { method: 'POST', headers: { 'content-type': 'application/json' }, signal, body: JSON.stringify({ changes: [{ document: board.dataset.redditBoardDocument, path: JSON.parse(board.dataset.redditBoardPath || '[]'), target: { sectionId: board.dataset.devContentId }, value: submitted }] }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not save height.');
+        board.dataset.redditBoardHeights = JSON.stringify(resolveRedditBoardHeights(submitted));
+        board.dataset.redditBoardAuthored = JSON.stringify(submitted);
+        status.textContent = 'Saved automatically';
+      } catch (error) {
+        if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+      } finally {
+        saving = false;
+        if (JSON.stringify(submitted) !== JSON.stringify(authored)) scheduleSave();
+      }
+    };
+    const scheduleSave = () => {
+      if (saveTimer) window.clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => { saveTimer = undefined; void persist(); }, 350);
+    };
     const setHeight = (height: number | null) => {
       authored[selected] = height;
       resolveValues();
-      status.textContent = 'Unsaved';
+      status.textContent = 'Saving…';
       sync();
+      scheduleSave();
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
     const positionPanel = () => {
@@ -102,6 +133,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
         if (overridden) button.setAttribute('aria-description', 'Custom height');
         else button.removeAttribute('aria-description');
       });
+      reset.hidden = typeof authored[selected] !== 'number';
       preview();
       positionPanel();
     };
@@ -171,7 +203,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       if (panel.hidden) open();
     };
     const onPointerDown = (event: PointerEvent) => {
-      if (!grabber || event.button !== 0 || save.disabled) return;
+      if (!grabber || event.button !== 0) return;
       dragging = true;
       moved = false;
       pointerStartY = pointerY = event.clientY;
@@ -218,7 +250,9 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     };
     viewportButtons.forEach((button) => button.addEventListener('click', () => {
       const viewport = button.dataset.redditBoardViewport as Breakpoint;
-      if (!root || !breakpoints.includes(viewport) || save.disabled) return;
+      if (!root || !breakpoints.includes(viewport)) return;
+      if (saveTimer) { window.clearTimeout(saveTimer); saveTimer = undefined; }
+      void persist();
       selected = viewport;
       if (window.parent === window && viewport !== actualViewport()) {
         const handoff: Handoff = { key: identity(root), preset: viewport, authored, expires: Date.now() + 15_000 };
@@ -229,24 +263,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     }, { signal }));
     input.addEventListener('input', () => { if (input.validity.valid) setHeight(input.valueAsNumber); }, { signal });
     reset.addEventListener('click', () => setHeight(null), { signal });
-    save.addEventListener('click', async () => {
-      if (!root?.dataset.redditBoardDocument || save.disabled) return;
-      const board = root;
-      const submitted = { ...authored };
-      save.disabled = true;
-      input.disabled = true;
-      reset.disabled = true;
-      status.textContent = 'Saving…';
-      try {
-        const response = await fetch('/api/content-spacing', { method: 'POST', headers: { 'content-type': 'application/json' }, signal, body: JSON.stringify({ changes: [{ document: board.dataset.redditBoardDocument, path: JSON.parse(board.dataset.redditBoardPath || '[]'), target: { sectionId: board.dataset.devContentId }, value: submitted }] }) });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Could not save height.');
-        board.dataset.redditBoardHeights = JSON.stringify(resolveRedditBoardHeights(submitted));
-        board.dataset.redditBoardAuthored = JSON.stringify(submitted);
-        status.textContent = 'Saved';
-      } catch (error) { if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.'; }
-      finally { save.disabled = false; input.disabled = false; reset.disabled = false; }
-    }, { signal });
     scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
       if (event.detail?.panel !== panel) return;
       const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]') ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
@@ -256,16 +272,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
     scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
     scope.listen(window, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); close(); } }, true);
-    scope.listen(window, 'vcd:before-reload', (event) => {
-      if (save.disabled) {
-        event.preventDefault();
-        return;
-      }
-      if (window.parent !== window && root && JSON.stringify(authored) !== root.dataset.redditBoardAuthored
-        && !window.confirm('Leave this preview and discard unsaved Reddit board height changes?')) {
-        event.preventDefault();
-      }
-    }, true);
     scope.listen(window, 'resize', positionPanel);
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];
@@ -295,7 +301,12 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
         } catch { /* Ignore a stale viewport handoff. */ }
       }
     }
-    return () => { if (frame) cancelAnimationFrame(frame); settling?.cancel(); scope.destroy(); };
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      if (saveTimer) window.clearTimeout(saveTimer);
+      settling?.cancel();
+      scope.destroy();
+    };
   };
   const dispose = onPageLoad(init);
   import.meta.hot?.dispose(dispose);
