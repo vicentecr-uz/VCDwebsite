@@ -3,44 +3,46 @@ import Layout from '../../../layouts/Layout.astro';
 import Badge from '../../../components/ui/Badge.astro';
 import '../../../styles/demoFrame.css';
 import '../../../styles/project.css';
+
+if (import.meta.env.PROD) return new Response(null, { status: 404 });
 ---
 
 <Layout title="Badge layout explorations · VCD" description="Three layout directions for the VCD Badge component.">
   <main class="badge-prototype">
     <header class="badge-prototype__header">
       <a class="text-link" href="/styles">← Design System</a>
-      <p class="badge-prototype__eyebrow">Component exploration</p>
       <h1>Badge layout explorations</h1>
-      <p>Three ways to document the same Badge component. Each uses the real component and a demo frame so the layout can be judged with production materials.</p>
+      <p><a class="project-inline-link" href="/styles/component-ui-badge">Current Badge page</a></p>
     </header>
 
     <div id="stage" class="badge-prototype__stage">
-      <section class="badge-variant badge-variant--quiet demo-frame" data-variant="1" aria-labelledby="quiet-title">
+      <section class="badge-variant badge-variant--quiet" data-variant="1" aria-labelledby="quiet-title">
         <div class="badge-variant__copy">
-          <p class="badge-prototype__eyebrow">Quiet · specimen first</p>
+
           <h2 id="quiet-title">Badge</h2>
           <p>Short status labels for compact metadata and asset states.</p>
           <dl class="badge-variant__meta"><div><dt>Source</dt><dd><code>src/components/ui/Badge.astro</code></dd></div><div><dt>Props</dt><dd><code>label, ...rest</code></dd></div></dl>
         </div>
-        <div class="badge-variant__demo"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div>
+        <div class="badge-variant__demo demo-frame"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div>
       </section>
 
-      <section class="badge-variant badge-variant--split demo-frame" data-variant="2" aria-labelledby="split-title" hidden>
-        <div class="badge-variant__demo"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div>
+      <section class="badge-variant badge-variant--split" data-variant="2" aria-labelledby="split-title" hidden>
+        <div class="badge-variant__demo demo-frame"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div>
         <div class="badge-variant__copy">
-          <p class="badge-prototype__eyebrow">Split reference · example beside API</p>
+
           <h2 id="split-title">Badge</h2>
-          <p>Use when a component needs to be compared with its contract at a glance.</p>
+          <p>Short status labels for compact metadata and asset states.</p>
           <dl class="badge-variant__meta"><div><dt>Source</dt><dd><code>src/components/ui/Badge.astro</code></dd></div><div><dt>Props</dt><dd><code>label, ...rest</code></dd></div></dl>
         </div>
       </section>
 
-      <section class="badge-variant badge-variant--sections demo-frame" data-variant="3" aria-labelledby="sections-title" hidden>
+      <section class="badge-variant badge-variant--sections" data-variant="3" aria-labelledby="sections-title" hidden>
         <div class="badge-variant__copy">
-          <p class="badge-prototype__eyebrow">Reference sections · scan by task</p>
+
           <h2 id="sections-title">Badge</h2>
-          <div class="badge-variant__section"><h3>Example</h3><div class="badge-variant__demo"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div></div>
-          <div class="badge-variant__section"><h3>API</h3><p><code>label</code> is the visible status text. Additional attributes pass through to the root element.</p></div>
+          <p>Short status labels for compact metadata and asset states.</p>
+          <div class="badge-variant__section"><h3>Example</h3><div class="badge-variant__demo demo-frame"><Badge label="On page" /><Badge label="Library" /><Badge label="Draft" /></div></div>
+          <div class="badge-variant__section"><h3>API</h3><p><code>label</code> is the visible status text. Additional attributes pass through to the root element.</p><p><code>src/components/ui/Badge.astro</code></p></div>
           <div class="badge-variant__section"><h3>Usage</h3><p>Keep labels short enough to scan in a gallery or asset list.</p></div>
         </div>
       </section>
@@ -103,26 +105,29 @@ import '../../../styles/project.css';
   .badge-prototype__header { margin-bottom: 3rem; }
   .badge-prototype__header h1 { margin: .4rem 0 .8rem; font-size: clamp(2rem, 5vw, 4rem); }
   .badge-prototype__header > p:last-child { max-width: 38rem; color: var(--sys-color-on-srf-variant); }
-  .badge-prototype__eyebrow { margin: 0; color: var(--sys-color-on-srf-variant); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; }
-  .badge-variant { min-height: 24rem; padding: clamp(1.25rem, 4vw, 3rem); display: grid; gap: 2rem; align-content: center; background: var(--comp-demo-frame-container); }
+  .badge-variant { min-height: 24rem; padding: clamp(1.25rem, 4vw, 3rem); display: grid; gap: 2rem; align-content: center; }
   .badge-variant__copy { max-width: 32rem; }
   .badge-variant h2 { margin: .35rem 0 .65rem; font-size: clamp(1.8rem, 4vw, 3rem); }
   .badge-variant p { color: var(--sys-color-on-srf-variant); }
-  .badge-variant__demo { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .badge-variant__demo { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: var(--demo-frame-inset); min-width: 0; }
   .badge-variant__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
   .badge-variant__meta dt, .badge-variant__section h3 { margin-bottom: .35rem; color: var(--sys-color-on-srf-variant); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; }
   .badge-variant__meta dd { margin: 0; }
   .badge-variant--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
-  .badge-variant--split .badge-variant__demo { justify-content: center; min-height: 10rem; padding: 2rem; background: var(--sys-color-srf); border-radius: var(--radius-card); }
+  .badge-variant--split .badge-variant__demo { justify-content: center; min-height: 10rem;  }
   .badge-variant--sections { display: block; }
+  .badge-variant[hidden] { display: none; }
+  .badge-variant code { overflow-wrap: anywhere; }
   .badge-variant__section { padding-block: 1rem; border-top: 1px solid var(--sys-color-outline-variant); }
   .badge-variant__section h3 { margin-top: 0; }
   .badge-variant__section .badge-variant__demo { margin-top: .75rem; }
-  .proto-picker { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483647; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: rgba(10,10,10,.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 8px 24px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.12); font: 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; user-select: none; }
+  .proto-picker { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 2147483647; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: rgba(10,10,10,.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgba(255,255,255,.08) inset, 0 8px 24px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.12); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; line-height: 1; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
   .proto-picker-highlight { position: absolute; top: 4px; left: 0; height: 28px; border-radius: 999px; background: rgba(255,255,255,.12); will-change: transform; }
   .proto-picker[data-ready] .proto-picker-highlight { transition: transform 250ms cubic-bezier(.23,1,.32,1), width 250ms cubic-bezier(.23,1,.32,1); }
   .proto-picker-item { position: relative; display: flex; align-items: center; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: rgba(255,255,255,.55); font: inherit; cursor: pointer; transition: color 150ms ease-out; }
-  .proto-picker-item:hover, .proto-picker-item[data-active] { color: #fff; }
+  .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
+  .proto-picker-item:active { transform: scale(0.97); }
+  .proto-picker-item[data-active] { color: #fff; }
   .proto-picker-item:focus-visible { outline: 2px solid rgba(255,255,255,.4); outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { .proto-picker[data-ready] .proto-picker-highlight { transition: none; } }
   @media (max-width: 42em) { .badge-variant--split { grid-template-columns: 1fr; } .badge-variant__meta { grid-template-columns: 1fr; } }
