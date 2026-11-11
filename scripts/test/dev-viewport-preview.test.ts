@@ -117,7 +117,7 @@ test('warms at Desktop size, inert and invisible, and refreshes after disk write
   } finally { await f.dispose(); }
 });
 
-test('opens only after scroll acknowledgement, reflows real dimensions, and closes without a fade', async () => {
+test('opens after scroll acknowledgement, commits the destination width once, and closes without a fade', async () => {
   const f = fixture();
   try {
     const focus = f.document.getElementById('focus')!;
@@ -137,15 +137,15 @@ test('opens only after scroll acknowledgement, reflows real dimensions, and clos
     expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
     expect(f.frame.style.opacity).toBe('');
     f.step(100);
-    const width = parseFloat(f.frame.style.width);
-    expect(width).toBeGreaterThan(820);
-    expect(width).toBeLessThan(f.window.innerWidth);
-    expect(width).toBe(Math.round(width));
+    expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
+    expect(parseFloat(f.surface.style.width)).toBeLessThan(f.window.innerWidth);
     expect(parseFloat(f.surface.style.getPropertyValue('--viewport-radius'))).toBeGreaterThan(0);
     await f.settle();
     expect(f.frame.style.width).toBe('820px');
     const src = f.frame.src;
     f.request('mobile');
+    f.step(160);
+    expect(f.frame.style.width).toBe('820px');
     await f.settle();
     expect(f.frame.src).toBe(src);
     expect(f.frame.style.width).toBe('390px');
@@ -169,13 +169,14 @@ test('samples the specified spring and interrupts from current size without a pa
     f.step(100);
     const omega = 2 * Math.PI / (0.35 * 1.2);
     const x = 1 - Math.exp(-omega * 0.1) * (1 + omega * 0.1);
-    expect(parseFloat(f.frame.style.width)).toBe(Math.round(f.window.innerWidth + (820 - f.window.innerWidth) * x));
-    const before = f.frame.style.width;
+    expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
+    expect(parseFloat(f.surface.style.width)).toBeLessThanOrEqual(Math.round(f.window.innerWidth + (820 - f.window.innerWidth) * x));
+    const before = f.surface.style.width;
     f.request('mobile');
-    expect(f.frame.style.width).toBe(before);
+    expect(f.surface.style.width).toBe(before);
     expect(f.frames.size).toBe(1);
     f.step(16);
-    expect(parseFloat(f.frame.style.width)).toBeLessThan(parseFloat(before));
+    expect(parseFloat(f.surface.style.width)).toBeLessThan(parseFloat(before));
     f.request('desktop');
     f.step(100);
     f.request('tablet');
@@ -203,7 +204,7 @@ test('a single Option+2 waits for a cold frame and the scroll acknowledgement is
   } finally { await f.dispose(); }
 });
 
-test('the surface keeps moving between iframe layout updates and background clicks keep the preset', async () => {
+test('the surface moves with the iframe layout frozen and background clicks keep the preset', async () => {
   const f = fixture();
   try {
     await f.open();
@@ -217,6 +218,22 @@ test('the surface keeps moving between iframe layout updates and background clic
     await f.settle();
     expect(f.root.dataset.viewportStagePreset).toBe('tablet');
     expect(f.frame.style.width).toBe('820px');
+  } finally { await f.dispose(); }
+});
+
+test('returning to Desktop retains the warm frame on the same page', async () => {
+  const f = fixture(true);
+  try {
+    f.window.dispatchEvent(new f.window.CustomEvent('vcd:dev-mode-change', { detail: { active: true } }));
+    expect(f.frame.src).toBe(f.window.location.href);
+    expect(f.idle.size).toBe(0);
+    await f.open();
+    f.request('desktop');
+    expect(f.frame.src).toBe(f.window.location.href);
+    expect(f.idle.size).toBe(0);
+    f.request('mobile');
+    await f.acknowledge();
+    expect(f.frame.style.width).toBe('390px');
   } finally { await f.dispose(); }
 });
 
