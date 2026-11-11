@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import { WRITEUP_CARD_WIDTH, WRITEUP_CARD_HEIGHT } from '../lib/writeupShareCard';
 import Footer from './Footer.astro';
+import DocumentationContents from './DocumentationContents.astro';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCarouselTuner from './project/ProjectImageCarouselTuner.astro';
 import ProjectImageCaptionTuner from './project/ProjectImageCaptionTuner.astro';
@@ -12,9 +13,13 @@ interface Props {
   title: string;
   description?: string;
   ogImage?: string;
+  /** Where the Index control returns to. */
+  indexHref?: string;
+  /** Section anchors for an On this page rail beside the column. */
+  contents?: Array<{ id: string; label: string }>;
 }
 
-const { title, description, ogImage } = Astro.props;
+const { title, description, ogImage, indexHref = '/digital', contents = [] } = Astro.props;
 const showDevTools = import.meta.env.DEV;
 const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-research-paper';
 ---
@@ -30,7 +35,7 @@ const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-rese
 >
   <div data-page-shell data-writeup-page class="writeup-page flex flex-col min-h-dvh">
     <header class="writeup-masthead">
-      <a href={isTapicoResearch ? '/' : '/digital'} class="writeup-backlink">
+      <a href={isTapicoResearch ? '/' : indexHref} class="writeup-backlink">
         <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />
         <span class="writeup-backlink__label">Index</span>
       </a>
@@ -50,6 +55,7 @@ const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-rese
     <main id="main-content" class="project-page__main flex-1">
       <slot />
     </main>
+    {contents.length > 0 && <aside class="writeup-contents"><DocumentationContents contents={contents} /></aside>}
 
     <Footer />
   </div>
@@ -72,6 +78,26 @@ const isTapicoResearch = Astro.url.pathname.replace(/\/$/, '') === '/tapico-rese
     font-size: var(--text-body-size);
     line-height: var(--text-body-leading);
     letter-spacing: var(--text-body-tracking);
+  }
+
+  /* The docs' On this page rail, in the gutter beside the single column. It needs the column,
+     a 3rem gap, its own 12rem and a margin: 37.5em + 2 × (3rem + 12rem + 1rem) = 69.5em. */
+  .writeup-contents {
+    --documentation-navigation-muted: var(--ref-palette-grey-450);
+    --documentation-divider: var(--comp-documentation-divider);
+    display: none;
+  }
+
+  @media (min-width: 70em) {
+    .writeup-contents {
+      display: block;
+      position: fixed;
+      top: var(--page-top-offset);
+      left: calc(50% + var(--page-text-max-width) / 2 + 3rem);
+      width: 12rem;
+      max-height: calc(var(--vh-safe, 1svh) * 100 - var(--page-top-offset) - 2rem);
+      overflow-y: auto;
+    }
   }
 
   .writeup-backlink {

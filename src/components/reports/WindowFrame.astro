@@ -1,0 +1,119 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import '../../styles/reportPrototypes.css';
+---
+
+<div class="window" data-window data-frame="browser">
+  <div class="window__stage">
+    <figure class="window__frame">
+      <div class="window__bar" aria-hidden="true">
+        <span class="window__lights"><i></i><i></i><i></i></span>
+        <span class="window__address">vicentecr.uz</span>
+        <span class="window__island"></span>
+      </div>
+      <div class="window__media"><img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" /></div>
+    </figure>
+  </div>
+  <div class="demo-controls">
+    <SegmentedControl label="Frame" data-slide-selection data-frames>
+      <Button emphasis="ghost" label="None" data-value="none" />
+      <Button emphasis="ghost" label="Browser" data-value="browser" selected />
+      <Button emphasis="ghost" label="App" data-value="app" />
+      <Button emphasis="ghost" label="Phone" data-value="phone" />
+    </SegmentedControl>
+  </div>
+</div>
+
+<script>
+  import { choiceGroup } from '../../lib/reportPrototype';
+  const root = document.querySelector<HTMLElement>('[data-window]')!;
+  choiceGroup(root.querySelector('[data-frames]'), (value) => { root.dataset.frame = value; });
+</script>
+
+<style>
+  .window { width: 100%; }
+
+  .window__stage {
+    display: grid;
+    place-items: center;
+    height: 19rem;
+  }
+
+  .window__frame {
+    --bar: 2.25rem;
+    position: relative;
+    width: min(100%, 27rem);
+    margin: 0;
+    padding-top: var(--bar);
+    overflow: hidden;
+    border-radius: var(--radius-card-smooth);
+    background: var(--sys-color-srf);
+    box-shadow: var(--elevated-surface-shadow);
+    transition: width 450ms cubic-bezier(0.32, 0.72, 0, 1), padding 450ms cubic-bezier(0.32, 0.72, 0, 1), border-radius 450ms cubic-bezier(0.32, 0.72, 0, 1), box-shadow 300ms ease;
+  }
+
+  .window__bar {
+    position: absolute;
+    inset: 0 0 auto;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    height: var(--bar);
+    padding-inline: 0.875rem;
+    transition: opacity 250ms ease;
+  }
+
+  .window__lights { display: flex; gap: 6px; }
+  .window__lights i { width: 10px; height: 10px; border-radius: 50%; background: var(--comp-traffic-light-rest); transition: background-color 200ms ease; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .window__frame:hover .window__lights i:nth-child(1) { background: var(--comp-traffic-light-hide-hover); }
+    .window__frame:hover .window__lights i:nth-child(2) { background: var(--comp-traffic-light-minimize-hover); }
+    .window__frame:hover .window__lights i:nth-child(3) { background: var(--comp-traffic-light-expand-hover); }
+  }
+
+  .window__address {
+    min-width: 12rem;
+    padding: 4px 12px;
+    border-radius: 999px;
+    background: var(--sys-color-srf-container-low);
+    color: var(--sys-color-on-srf-subtle);
+    font: var(--dev-text-status);
+    text-align: center;
+    transition: opacity 200ms ease;
+  }
+
+  .window__island {
+    position: absolute;
+    top: 0.6rem;
+    left: 50%;
+    width: 4.25rem;
+    height: 1.25rem;
+    translate: -50%;
+    border-radius: 999px;
+    background: var(--ref-palette-grey-0);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+
+  .window__media {
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    transition: aspect-ratio 450ms cubic-bezier(0.32, 0.72, 0, 1), border-radius 450ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  [data-frame='none'] .window__frame { padding-top: 0; border-radius: var(--radius-control-smooth); box-shadow: none; }
+  [data-frame='none'] .window__bar { opacity: 0; }
+  [data-frame='app'] .window__address { opacity: 0; }
+
+  [data-frame='phone'] .window__frame { --bar: 0px; width: 9.5rem; padding: 6px; border-radius: 1.75rem; background: var(--ref-palette-grey-125); }
+  [data-frame='phone'] .window__media { aspect-ratio: 9 / 19.5; border-radius: calc(1.75rem - 6px); }
+  [data-frame='phone'] .window__lights, [data-frame='phone'] .window__address { opacity: 0; }
+  [data-frame='phone'] .window__island { opacity: 1; z-index: 1; }
+  [data-frame='phone'] .window__bar { height: 2.25rem; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .window__frame, .window__media { transition: box-shadow 300ms ease; }
+  }
+</style>

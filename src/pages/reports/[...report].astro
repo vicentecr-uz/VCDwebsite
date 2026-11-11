@@ -1,0 +1,30 @@
+---
+import WriteupLayout from '../../components/WriteupLayout.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import { validateProjectDocument } from '../../lib/content-schema';
+
+// Design exploration reports. Engine-tracked documents in the page-block schema, rendered by the
+// same block renderer as a write-up.
+const documents = import.meta.glob<{ default: unknown }>('../../reports/*.json', { eager: true });
+const reports = Object.fromEntries(Object.entries(documents).map(([file, module]) => [
+  file.split('/').pop()!.replace('.json', ''),
+  validateProjectDocument(module.default, file),
+]));
+
+export function getStaticPaths() {
+  const files = import.meta.glob('../../reports/*.json');
+  return Object.keys(files).map((file) => {
+    const slug = file.split('/').pop()!.replace('.json', '');
+    return { params: { report: slug === 'index' ? undefined : slug } };
+  });
+}
+
+const slug = Astro.params.report ?? 'index';
+const report = reports[slug];
+const contents = report.sections.filter((section) => section.type === 'sectionTitle' && section.sectionId)
+  .map((section) => ({ id: String(section.sectionId), label: String(section.title) }));
+---
+
+<WriteupLayout title={report.title} description={report.description} indexHref={slug === 'index' ? '/' : '/reports'} contents={contents}>
+  <ProjectSections documentKey="" sections={report.sections} />
+</WriteupLayout>

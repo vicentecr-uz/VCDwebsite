@@ -1,0 +1,135 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import '../../styles/reportPrototypes.css';
+
+const notes = [
+  'The dashed hairline is reserved for this one meaning across Edit.',
+  'Measured on a 2021 MacBook Pro; a phone lands closer to 9ms.',
+];
+---
+
+<div class="notes" data-notes data-width="wide">
+  <div class="notes__stage">
+    <article class="notes__column">
+      <div class="notes__para">
+        <p>A block shows a dashed outline only while it can be edited<button class="notes__ref" type="button" aria-describedby="note-1" data-ref="1">1</button>, so the page reads as it will in View the moment the pointer leaves.</p>
+        <aside class="notes__note" id="note-1" data-note="1"><span class="notes__number">1</span><span>{notes[0]}</span></aside>
+      </div>
+      <div class="notes__para">
+        <p>Reordering lifts the block, slides its neighbours, and settles in under 6ms of scripting per frame<button class="notes__ref" type="button" aria-describedby="note-2" data-ref="2">2</button>. Nothing else on the page moves.</p>
+        <aside class="notes__note" id="note-2" data-note="2"><span class="notes__number">2</span><span>{notes[1]}</span></aside>
+      </div>
+    </article>
+  </div>
+  <div class="demo-controls">
+    <SegmentedControl label="Page width" data-slide-selection data-widths>
+      <Button emphasis="ghost" label="Wide" data-value="wide" selected />
+      <Button emphasis="ghost" label="Narrow" data-value="narrow" />
+    </SegmentedControl>
+  </div>
+</div>
+
+<script>
+  import { choiceGroup } from '../../lib/reportPrototype';
+
+  const root = document.querySelector<HTMLElement>('[data-notes]')!;
+  const narrow = matchMedia('(max-width: 34em)');
+  let selectedWidth = root.dataset.width!;
+  const syncWidth = () => { root.dataset.width = narrow.matches ? 'narrow' : selectedWidth; };
+  narrow.addEventListener('change', syncWidth);
+  syncWidth();
+  choiceGroup(root.querySelector('[data-widths]'), (value) => { selectedWidth = value; syncWidth(); root.querySelectorAll('.is-open').forEach((note) => note.classList.remove('is-open')); });
+  const mark = (id?: string) => root.querySelectorAll<HTMLElement>('[data-note], [data-ref]').forEach((element) => element.classList.toggle('is-active', (element.dataset.note ?? element.dataset.ref) === id));
+  root.addEventListener('pointerover', (event) => { const element = (event.target as Element).closest<HTMLElement>('[data-note], [data-ref]'); mark(element?.dataset.note ?? element?.dataset.ref); });
+  root.addEventListener('focusin', (event) => mark((event.target as HTMLElement).dataset?.ref));
+  root.addEventListener('focusout', () => mark());
+  // Narrow: the margin is gone, so a note opens in the flow under its paragraph.
+  root.addEventListener('click', (event) => {
+    const ref = (event.target as Element).closest<HTMLElement>('[data-ref]');
+    if (ref && root.dataset.width === 'narrow') root.querySelector(`[data-note="${ref.dataset.ref}"]`)!.classList.toggle('is-open');
+  });
+</script>
+
+<style>
+  .notes { width: 100%; align-self: start; }
+
+  .notes__stage {
+    width: min(100%, 34rem);
+    margin-inline: auto;
+    transition: width 450ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .notes[data-width='narrow'] .notes__stage { width: min(100%, 19rem); }
+
+  .notes__column {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space-unit) * 2);
+    width: min(100%, 19rem);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+  }
+
+  .notes__column p { margin: 0; }
+
+  .notes__ref {
+    position: relative;
+    margin: 0 0 0 1px;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    color: var(--sys-color-on-srf-subtle);
+    font: 500 0.7em/1 var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    vertical-align: super;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+
+  .notes__ref::before { content: ''; position: absolute; inset: -8px -6px; }
+  .notes__ref.is-active { color: var(--sys-color-on-srf); }
+
+  .notes__note {
+    display: flex;
+    gap: 0.5em;
+    color: var(--sys-color-on-srf-subtle);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    transition: color 150ms ease;
+  }
+
+  .notes__note.is-active { color: var(--sys-color-on-srf-variant); }
+  .notes__number { font-variant-numeric: tabular-nums; }
+
+  .notes__para { position: relative; }
+
+  /* Wide: the note leaves the flow and hangs in the margin, level with the paragraph that cites it. */
+  .notes[data-width='wide'] .notes__note {
+    position: absolute;
+    top: 0.25em;
+    left: calc(100% + 2rem);
+    width: 13rem;
+  }
+
+  .notes[data-width='narrow'] .notes__note {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: 0fr;
+    overflow: hidden;
+    opacity: 0;
+    transition: grid-template-rows 300ms cubic-bezier(0.32, 0.72, 0, 1), opacity 200ms ease, margin-top 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .notes[data-width='narrow'] .notes__note > * { min-height: 0; }
+  .notes[data-width='narrow'] .notes__note.is-open { grid-template-rows: 1fr; margin-top: var(--space-unit); opacity: 1; }
+
+  @media (max-width: 34em) {
+    .notes :global([data-widths]) { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .notes__stage, .notes[data-width='narrow'] .notes__note { transition: opacity 200ms ease; }
+  }
+</style>

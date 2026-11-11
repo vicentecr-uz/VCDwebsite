@@ -1,0 +1,125 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import '../../styles/reportPrototypes.css';
+
+const entries = [
+  ['Draggable Block System', 'Editor', '10 Oct 2026', 0],
+  ['On-page image crop', 'Editor', '2 Oct 2026', 40],
+  ['Building Sabi', 'Open source', '18 Sep 2026', 80],
+  ['Low-res image loader', 'Performance', '4 Sep 2026', 20],
+  ['Performance improvements', 'Performance', '21 Aug 2026', 60],
+  ['Tapico research paper', 'Research', '30 Jul 2026', 100],
+] as const;
+---
+
+<div class="index" data-index data-view="list">
+  <div class="index__views">
+    <ul class="index__list">
+      {entries.map(([title, kind, date, position], index) => (
+        <li>
+          <a class="index__row" href="#" data-row={index} style={`--position:${position}%`}>
+            <span class="index__title">{title}</span>
+            <span class="index__kind">{kind}</span>
+            <time class="index__date">{date}</time>
+          </a>
+        </li>
+      ))}
+    </ul>
+    <ul class="index__grid">
+      {entries.map(([title, , , position]) => (
+        <li><a class="index__card" href="#" style={`--position:${position}%`}><span class="index__cover"></span><span class="index__card-title">{title}</span></a></li>
+      ))}
+    </ul>
+    <div class="index__preview" aria-hidden="true" data-preview></div>
+  </div>
+  <div class="demo-controls">
+    <SegmentedControl label="View" data-slide-selection data-views>
+      <Button emphasis="ghost" label="List" data-value="list" selected />
+      <Button emphasis="ghost" label="Grid" data-value="grid" />
+    </SegmentedControl>
+  </div>
+</div>
+
+<script>
+  import { choiceGroup } from '../../lib/reportPrototype';
+
+  const root = document.querySelector<HTMLElement>('[data-index]')!;
+  const preview = root.querySelector<HTMLElement>('[data-preview]')!;
+  const views = root.querySelector<HTMLElement>('.index__views')!;
+  choiceGroup(root.querySelector('[data-views]'), (value) => { root.dataset.view = value; });
+  root.addEventListener('click', (event) => { if ((event.target as Element).closest('a')) event.preventDefault(); });
+
+  // The cover of the row under the pointer rides beside it; rows stay text until asked.
+  const show = (row?: HTMLElement) => {
+    root.classList.toggle('is-previewing', Boolean(row));
+    if (!row) return;
+    preview.style.setProperty('--position', row.style.getPropertyValue('--position'));
+    preview.style.setProperty('--y', `${row.offsetTop + row.offsetHeight}px`);
+  };
+  views.addEventListener('pointerover', (event) => { if (event.pointerType === 'mouse') show((event.target as Element).closest<HTMLElement>('[data-row]') ?? undefined); });
+  views.addEventListener('pointerleave', () => show());
+  views.addEventListener('focusin', (event) => show((event.target as Element).closest<HTMLElement>('[data-row]') ?? undefined));
+  views.addEventListener('focusout', () => show());
+</script>
+
+<style>
+  .index { width: min(100%, 34rem); align-self: start; }
+  .index__views { position: relative; font-size: var(--text-body-size); line-height: var(--text-body-leading); }
+  .index ul { margin: 0; padding: 0; list-style: none; }
+
+  [data-view='grid'] .index__list, [data-view='list'] .index__grid, [data-view='grid'] .index__preview { display: none; }
+
+  .index__list { transition: opacity 200ms ease; }
+  .index__list li + li { border-top: 1px solid var(--sys-color-outline-subtle); }
+
+  .index__row {
+    display: grid;
+    grid-template-columns: 1fr 7rem 6.5rem;
+    gap: var(--space-unit);
+    padding-block: calc(var(--space-unit) * 0.75);
+    transition: opacity 150ms ease;
+  }
+
+  .index__title { font-weight: var(--text-body-emphasis-weight); }
+  .index__kind { color: var(--sys-color-on-srf-variant); }
+  .index__date { color: var(--sys-color-on-srf-subtle); font-variant-numeric: tabular-nums; text-align: right; }
+  .is-previewing .index__row:not(:hover, :focus-visible) { opacity: 0.45; }
+
+  .index__preview, .index__cover {
+    background: url('/demo-fixtures/studio.preview.webp') var(--position, 0%) 50% / 240% auto var(--sys-color-srf-container-low);
+  }
+
+  .index__preview {
+    position: absolute;
+    top: 0;
+    right: 7.5rem;
+    width: 9rem;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--radius-control-smooth);
+    box-shadow: var(--elevated-surface-shadow);
+    translate: 0 calc(var(--y, 0px) + 6px);
+    scale: 0.96;
+    opacity: 0;
+    pointer-events: none;
+    transition: translate 350ms cubic-bezier(0.32, 0.72, 0, 1), opacity 150ms ease, scale 250ms cubic-bezier(0.32, 0.72, 0, 1), background-position 350ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .is-previewing .index__preview { opacity: 1; scale: 1; }
+
+  .index__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-unit); }
+  .index__card { display: flex; flex-direction: column; gap: calc(var(--space-unit) / 2); }
+  .index__cover { display: block; aspect-ratio: 4 / 3; border-radius: var(--radius-control-smooth); }
+  .index__card-title { font-size: 0.875rem; line-height: 1.3; }
+
+  @media (max-width: 34em) {
+    .index__row { grid-template-columns: 1fr auto; }
+    .index__kind { display: none; }
+    .index__grid { grid-template-columns: repeat(2, 1fr); }
+    .index__preview { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .index__preview { scale: 1; transition: opacity 150ms ease; }
+  }
+</style>

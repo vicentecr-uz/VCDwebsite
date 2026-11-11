@@ -1,0 +1,159 @@
+---
+import DevPanel from '../ui/DevPanel.astro';
+import '../../styles/reportPrototypes.css';
+
+const stops = ['0', 'unit', '4em', '8em', '12em'];
+---
+
+<div class="proto-panel slider-demo" data-slider-demo>
+  <DevPanel title="Slider" titleTag="h1" showLights={false}>
+    <div class="proto-group">
+      <div class="slider-demo__field">
+        <span class="dev-field__label" id="slider-height">Max view height</span>
+        <input class="proto-slider" type="range" min="40" max="100" step="1" value="72" aria-labelledby="slider-height" data-slider="height" data-unit="vh" />
+        <output class="proto-status" data-output="height"></output>
+      </div>
+    </div>
+
+    <div class="proto-group">
+      <div class="slider-demo__field">
+        <span class="dev-field__label" id="slider-gap">Gap</span>
+        <input class="proto-slider" type="range" min="0" max={stops.length - 1} step="1" value="2" aria-labelledby="slider-gap" data-slider="gap" data-stops={JSON.stringify(stops)} />
+        <div class="slider-demo__ticks" aria-hidden="true">{stops.map(() => <i></i>)}</div>
+        <output class="proto-status" data-output="gap"></output>
+      </div>
+    </div>
+
+    <div class="proto-group">
+      <span class="dev-field__label">Crop</span>
+      <div class="slider-demo__scrubs">
+        {[['X', 12], ['Y', 0], ['W', 76], ['H', 64]].map(([axis, value]) => (
+          <label class="slider-demo__scrub" data-scrub>
+            <span class="slider-demo__axis">{axis}</span>
+            <input type="text" size="1" inputmode="numeric" value={value} aria-label={`Crop ${axis}`} />
+            <span class="slider-demo__unit">%</span>
+          </label>
+        ))}
+      </div>
+    </div>
+  </DevPanel>
+</div>
+
+<script>
+  import { clamp } from '../../lib/reportPrototype';
+
+  for (const slider of document.querySelectorAll<HTMLInputElement>('[data-slider]')) {
+    const output = document.querySelector<HTMLElement>(`[data-output="${slider.dataset.slider}"]`)!;
+    const stops: string[] | undefined = slider.dataset.stops && JSON.parse(slider.dataset.stops);
+    const sync = () => {
+      const min = Number(slider.min);
+      slider.style.setProperty('--v', String((Number(slider.value) - min) / (Number(slider.max) - min)));
+      const valueText = stops ? stops[Number(slider.value)] : `${slider.value}${slider.dataset.unit}`;
+      output.textContent = valueText;
+      slider.setAttribute('aria-valuetext', valueText);
+    };
+    slider.addEventListener('input', sync);
+    sync();
+  }
+
+  // Scrub: drag a field's axis letter sideways to change its number. Shift is ×10.
+  for (const scrub of document.querySelectorAll<HTMLElement>('[data-scrub]')) {
+    const handle = scrub.querySelector<HTMLElement>('.slider-demo__axis')!;
+    const input = scrub.querySelector<HTMLInputElement>('input')!;
+    let start: { x: number; value: number } | undefined;
+    const set = (value: number) => { input.value = String(clamp(Math.round(value), 0, 100)); };
+    handle.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      start = { x: event.clientX, value: Number(input.value) || 0 };
+      handle.setPointerCapture(event.pointerId);
+      scrub.classList.add('is-scrubbing');
+    });
+    handle.addEventListener('pointermove', (event) => { if (start) set(start.value + (event.clientX - start.x) * (event.shiftKey ? 2 : 0.2)); });
+    const end = () => { start = undefined; scrub.classList.remove('is-scrubbing'); };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      set((Number(input.value) || 0) + (event.key === 'ArrowUp' ? 1 : -1) * (event.shiftKey ? 10 : 1));
+    });
+    input.addEventListener('change', () => set(Number(input.value) || 0));
+  }
+</script>
+
+<style>
+  .slider-demo__field { position: relative; display: flex; align-items: center; min-height: var(--dev-control-height); overflow: hidden; border-radius: var(--dev-radius-control); background: var(--comp-field-container); }
+  .slider-demo__field .dev-field__label { position: absolute; left: var(--dev-field-padding); z-index: 1; pointer-events: none; }
+  .slider-demo__field output { position: absolute; right: var(--dev-field-padding); z-index: 1; pointer-events: none; color: var(--sys-color-on-srf); }
+  .slider-demo__field .proto-slider { width: 100%; height: var(--dev-control-height); margin: 0; border-radius: inherit; background: linear-gradient(to right, var(--comp-button-soft-container-hover) calc(var(--v, 0) * 100%), transparent calc(var(--v, 0) * 100%)); }
+  .slider-demo__field .proto-slider::-webkit-slider-runnable-track { background: transparent; }
+  .slider-demo__field .proto-slider::-moz-range-track { background: transparent; }
+  .slider-demo__field .proto-slider::-webkit-slider-thumb { opacity: 0; }
+  .slider-demo__field .proto-slider::-moz-range-thumb { opacity: 0; }
+  .slider-demo__field:has(:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+
+  .slider-demo__ticks {
+    position: absolute;
+    inset: 0 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  /* Detents: gaps cut into the track at each stop, so the snap points read without labels. */
+  .slider-demo__ticks i {
+    width: 2px;
+    height: 4px;
+    margin-inline: -1px;
+    background: var(--sys-color-srf);
+  }
+
+  .slider-demo__ticks i:first-child, .slider-demo__ticks i:last-child { visibility: hidden; }
+
+  .slider-demo__scrubs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--dev-panel-spacing);
+  }
+
+  .slider-demo__scrub {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: var(--dev-control-height);
+    padding-inline: var(--dev-field-padding);
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-field-container);
+    font: var(--dev-text-label);
+    transition: background-color 200ms ease;
+  }
+
+  .slider-demo__scrub:is(:hover, .is-scrubbing) { background: var(--comp-button-soft-container-hover); }
+
+  .slider-demo__axis {
+    position: relative;
+    color: var(--sys-color-on-srf-subtle);
+    cursor: ew-resize;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .slider-demo__axis::before { content: ''; position: absolute; inset: -8px -6px -8px -8px; }
+
+  .slider-demo__scrub input {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .slider-demo__scrub:has(input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+  .slider-demo__unit { color: var(--sys-color-on-srf-subtle); }
+</style>

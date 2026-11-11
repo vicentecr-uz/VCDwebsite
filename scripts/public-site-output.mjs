@@ -9,7 +9,7 @@ const GENERATED_EXTENSIONS = new Set(['.html', '.css', '.js']);
 const URL_ATTRIBUTES = new Set(['src', 'href', 'poster', 'data', 'action', 'srcset']);
 // Pages that ship without being linked; see docs/dev-authoring.md → Unlinked pages.
 // /analytics/ is owner-only. Sabi links are relative to its own subdomain.
-const UNLINKED_ROUTES = ['/analytics/', '/sabi/', ...sabiDocsPages.map(({ slug }) => `/sabi/${slug}/`)];
+const UNLINKED_ROUTES = ['/analytics/', '/reports/', '/sabi/', ...sabiDocsPages.map(({ slug }) => `/sabi/${slug}/`)];
 
 /** @param {string} dir @returns {Promise<string[]>} */
 async function listFiles(dir) {

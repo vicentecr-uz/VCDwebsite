@@ -1,0 +1,19 @@
+---
+import DemoLayout from '../../../layouts/DemoLayout.astro';
+import { CRAFT_DEMOS } from '../../../lib/craftDemos';
+
+const components = import.meta.glob<{ default: any }>('../../../components/reports/*.astro', { eager: true });
+const prototypes = CRAFT_DEMOS.filter((demo) => 'route' in demo);
+
+export function getStaticPaths() {
+  return CRAFT_DEMOS.filter((demo) => 'route' in demo)
+    .map((demo) => ({ params: { prototype: demo.id.replace('future-', '') } }));
+}
+
+const id = Astro.params.prototype!;
+const demo = prototypes.find((entry) => entry.id === `future-${id}`)!;
+const pascal = id.replace(/(^|-)(\w)/g, (_, __, letter) => letter.toUpperCase());
+const Prototype = components[`../../../components/reports/${pascal}.astro`].default;
+---
+
+<DemoLayout title={demo.title}><Prototype /></DemoLayout>

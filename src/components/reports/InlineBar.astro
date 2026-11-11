@@ -1,0 +1,163 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import Hairline from '../ui/Hairline.astro';
+import Menu from '../ui/Menu.astro';
+import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
+import cropIcon from 'lucide-static/icons/crop.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import '../../styles/reportPrototypes.css';
+
+const ratios = [['original', 'Original'], ['3 / 2', '3:2'], ['1 / 1', '1:1'], ['16 / 9', '16:9']];
+---
+
+<div class="proto-page inline-bar" data-inline-bar>
+  <div class="proto-lines"><span></span></div>
+  <div class="proto-lines"><span></span><span></span><span></span></div>
+  <figure class="inline-bar__block" data-block tabindex="0" aria-label="Image block">
+    <div class="proto-bar dev-surface inline-bar__bar" role="toolbar" aria-label="Image">
+      <SegmentedControl label="Aspect ratio" data-slide-selection data-ratio>
+        {ratios.map(([value, label], index) => <Button emphasis="ghost" label={label} data-value={value} selected={index === 0} />)}
+      </SegmentedControl>
+      <Hairline orientation="vertical" />
+      <Button emphasis="ghost" label="Crop" data-crop><span slot="icon" set:html={sizeIcon(cropIcon, 16)} /></Button>
+      <Button emphasis="ghost" label="" aria-label="More image settings" aria-haspopup="menu" aria-expanded="false" data-more><span slot="icon" set:html={sizeIcon(ellipsisIcon, 16)} /></Button>
+    </div>
+    <div class="inline-bar__frame" data-frame>
+      <img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" data-image />
+      <span class="inline-bar__crop" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    </div>
+  </figure>
+  <div class="proto-lines"><span></span><span></span></div>
+  <Menu popover="manual" role="menu" aria-label="More image settings" class="inline-bar__menu" data-menu>
+    <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" label="Replace image" />
+    <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" label="Caption" />
+    <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" label="Max view height" />
+    <Hairline />
+    <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" role="menuitem" label="Open Image panel" />
+  </Menu>
+</div>
+
+<script>
+  import { choiceGroup } from '../../lib/reportPrototype';
+  import { placeBeside } from '../../lib/floatingLayer';
+
+  const root = document.querySelector<HTMLElement>('[data-inline-bar]')!;
+  const block = root.querySelector<HTMLElement>('[data-block]')!;
+  const frame = root.querySelector<HTMLElement>('[data-frame]')!;
+  const menu = root.querySelector<HTMLElement>('[data-menu]')!;
+  const more = root.querySelector<HTMLButtonElement>('[data-more]')!;
+  const crop = root.querySelector<HTMLButtonElement>('[data-crop]')!;
+
+  choiceGroup(root.querySelector('[data-ratio]'), (value) => {
+    frame.style.aspectRatio = value === 'original' ? '3 / 2' : value;
+    frame.dataset.ratio = value;
+  });
+
+  const closeMenu = () => { if (menu.matches(':popover-open')) menu.hidePopover(); more.setAttribute('aria-expanded', 'false'); };
+  more.addEventListener('click', () => {
+    if (menu.matches(':popover-open')) return closeMenu();
+    menu.showPopover();
+    placeBeside(menu, more);
+    more.setAttribute('aria-expanded', 'true');
+    menu.querySelector<HTMLElement>('button')?.focus();
+  });
+  menu.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeMenu(); block.classList.remove('is-cropping'); crop.setAttribute('aria-pressed', 'false'); } });
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target as Element;
+    if (!target.closest('[data-menu], [data-more]')) closeMenu();
+    block.classList.toggle('is-selected', Boolean(target.closest('[data-block]')));
+  });
+  crop.addEventListener('click', () => crop.setAttribute('aria-pressed', String(block.classList.toggle('is-cropping'))));
+  block.addEventListener('focusin', () => block.classList.add('is-selected'));
+</script>
+
+<style>
+  .inline-bar__block {
+    position: relative;
+    margin: 0;
+    border-radius: var(--radius-control-smooth);
+    outline: 1px solid transparent;
+    outline-offset: 4px;
+    transition: outline-color 150ms ease;
+  }
+
+  .inline-bar__block.is-selected { outline-color: var(--sys-color-outline); }
+
+  .inline-bar__bar {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 12px);
+    z-index: 2;
+    translate: -50% 4px;
+    opacity: 0;
+    visibility: hidden;
+    white-space: nowrap;
+    transition: opacity 150ms ease, translate 150ms ease, visibility 0s linear 150ms;
+  }
+
+  .inline-bar__block.is-selected .inline-bar__bar {
+    translate: -50% 0;
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .inline-bar__frame {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    max-height: 17rem;
+    margin-inline: auto;
+    overflow: hidden;
+    border-radius: var(--radius-control-smooth);
+    background: var(--sys-color-srf-container-low);
+    transition: aspect-ratio 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .inline-bar__crop {
+    position: absolute;
+    inset: 10%;
+    border: 1px solid var(--sys-color-inverse-on-srf);
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
+    opacity: 0;
+    transition: opacity 200ms ease;
+    pointer-events: none;
+  }
+
+  .inline-bar__block.is-cropping .inline-bar__crop { opacity: 1; }
+
+  .inline-bar__crop i {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    margin: -5px;
+    border: 1px solid var(--ref-palette-grey-150);
+    background: var(--ref-palette-grey-1000);
+  }
+
+  .inline-bar__crop i:nth-child(1) { top: 0; left: 0; }
+  .inline-bar__crop i:nth-child(2) { top: 0; right: 0; }
+  .inline-bar__crop i:nth-child(3) { bottom: 0; left: 0; }
+  .inline-bar__crop i:nth-child(4) { bottom: 0; right: 0; }
+
+  .inline-bar__menu {
+    inset: auto;
+    margin: 0;
+    border: 0;
+    overflow: visible;
+    position: fixed;
+    width: 12rem;
+  }
+
+  .inline-bar__menu:not(:popover-open) { display: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .inline-bar__frame { transition: none; }
+    .inline-bar__bar { translate: -50% 0; }
+  }
+
+  @media (max-width: 30em) {
+    .inline-bar__bar :global([data-crop]) { display: none; }
+  }
+</style>

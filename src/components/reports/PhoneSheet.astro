@@ -1,0 +1,198 @@
+---
+import Button from '../ui/Button.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
+import '../../styles/reportPrototypes.css';
+
+const ratios = ['Original', '3:2', '1:1', '16:9'];
+---
+
+<div class="phone" data-phone>
+  <div class="phone__screen">
+    <div class="phone__page" data-page>
+      <div class="proto-lines"><span></span></div>
+      <div class="proto-lines"><span></span><span></span><span></span></div>
+      <div class="phone__image" data-image><img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" /></div>
+      <div class="proto-lines"><span></span><span></span><span></span></div>
+      <div class="proto-lines"><span></span><span></span></div>
+    </div>
+    <section class="phone__sheet dev-surface" aria-label="Image" data-sheet data-detent="peek">
+      <button class="phone__grip" type="button" aria-label="Resize Image sheet" data-grip><span></span></button>
+      <header class="phone__head">
+        <h1 class="dev-panel__title">Image</h1>
+        <Button emphasis="filled" label="Done" data-done />
+      </header>
+      <div class="phone__body">
+        <div class="proto-group">
+          <span class="dev-field__label">Aspect ratio</span>
+          <SegmentedControl label="Aspect ratio" data-slide-selection data-ratio>
+            {ratios.map((ratio, index) => <Button emphasis="ghost" width="fill" label={ratio} data-value={ratio} selected={index === 1} />)}
+          </SegmentedControl>
+        </div>
+        <ToggleRow label="Constrain width" />
+        <div class="proto-group">
+          <div class="proto-row"><span class="dev-field__label" id="phone-height">Max view height</span><output class="proto-status" data-output>80vh</output></div>
+          <input class="proto-slider" type="range" min="40" max="100" step="5" value="80" aria-labelledby="phone-height" data-height />
+        </div>
+        <ToggleRow label="Show caption" checked />
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  import { choiceGroup, clamp } from '../../lib/reportPrototype';
+
+  const root = document.querySelector<HTMLElement>('[data-phone]')!;
+  const sheet = root.querySelector<HTMLElement>('[data-sheet]')!;
+  const grip = root.querySelector<HTMLElement>('[data-grip]')!;
+  const image = root.querySelector<HTMLElement>('[data-image]')!;
+  const page = root.querySelector<HTMLElement>('[data-page]')!;
+  const slider = root.querySelector<HTMLInputElement>('[data-height]')!;
+  const detents = ['peek', 'half', 'full'] as const;
+  // Visible sheet height at each detent, as a share of the screen.
+  const share = { peek: 0.17, half: 0.5, full: 0.86 };
+
+  const settle = (detent: typeof detents[number]) => {
+    sheet.dataset.detent = detent;
+    sheet.style.removeProperty('--drag');
+    // Keep the block being edited in view above the sheet.
+    const screen = sheet.parentElement!.clientHeight;
+    const free = screen * (1 - share[detent]);
+    const overflow = image.offsetTop + image.offsetHeight + 16 - free;
+    page.style.translate = `0 ${-Math.max(0, overflow)}px`;
+  };
+
+  let start: { y: number; visible: number } | undefined;
+  grip.addEventListener('pointerdown', (event) => {
+    const screen = sheet.parentElement!.clientHeight;
+    start = { y: event.clientY, visible: screen * share[sheet.dataset.detent as keyof typeof share] };
+    grip.setPointerCapture(event.pointerId);
+    sheet.classList.add('is-dragging');
+  });
+  grip.addEventListener('pointermove', (event) => {
+    if (!start) return;
+    const screen = sheet.parentElement!.clientHeight;
+    const visible = clamp(start.visible + start.y - event.clientY, screen * 0.1, screen * 0.9);
+    sheet.style.setProperty('--drag', `${screen - visible}px`);
+  });
+  const release = (event: PointerEvent) => {
+    if (!start) return;
+    const screen = sheet.parentElement!.clientHeight;
+    const moved = start.y - event.clientY;
+    const visible = (start.visible + moved) / screen;
+    start = undefined;
+    sheet.classList.remove('is-dragging');
+    if (Math.abs(moved) < 4) return settle(detents[(detents.indexOf(sheet.dataset.detent as never) + 1) % detents.length]);
+    settle(detents.reduce((best, detent) => Math.abs(share[detent] - visible) < Math.abs(share[best] - visible) ? detent : best));
+  };
+  grip.addEventListener('pointerup', release);
+  grip.addEventListener('pointercancel', release);
+  grip.addEventListener('keydown', (event) => {
+    const index = detents.indexOf(sheet.dataset.detent as never);
+    if (event.key === 'ArrowUp') settle(detents[Math.min(2, index + 1)]);
+    if (event.key === 'ArrowDown') settle(detents[Math.max(0, index - 1)]);
+  });
+  root.querySelector('[data-done]')!.addEventListener('click', () => settle('peek'));
+
+  choiceGroup(root.querySelector('[data-ratio]'), (value) => {
+    image.style.aspectRatio = value === 'Original' ? '4 / 3' : value.replace(':', ' / ');
+    requestAnimationFrame(() => settle(sheet.dataset.detent as never));
+  });
+  const syncSlider = () => {
+    slider.style.setProperty('--v', String((Number(slider.value) - 40) / 60));
+    root.querySelector('[data-output]')!.textContent = `${slider.value}vh`;
+  };
+  slider.addEventListener('input', syncSlider);
+  syncSlider();
+  settle('half');
+</script>
+
+<style>
+  .phone {
+    width: 17.5rem;
+    padding: 6px;
+    border-radius: 2.6rem;
+    background: var(--sys-color-srf-container);
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline-variant);
+  }
+
+  .phone__screen {
+    position: relative;
+    height: 33rem;
+    overflow: hidden;
+    border-radius: calc(2.6rem - 6px);
+    background: var(--sys-color-srf);
+  }
+
+  .phone__page {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 3rem 1.5rem;
+    transition: translate 450ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .phone__image {
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    border-radius: var(--radius-control-smooth);
+    outline: 1px solid var(--sys-color-outline);
+    outline-offset: 4px;
+    transition: aspect-ratio 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .phone__sheet {
+    --offset: 83%;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--dev-radius-panel) var(--dev-radius-panel) 0 0;
+    translate: 0 var(--drag, var(--offset));
+    transition: translate 450ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .phone__sheet[data-detent='half'] { --offset: 50%; }
+  .phone__sheet[data-detent='full'] { --offset: 14%; }
+  .phone__sheet.is-dragging { transition: none; }
+
+  .phone__grip {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 20px;
+    border: 0;
+    background: none;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .phone__grip span {
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--sys-color-outline);
+  }
+
+  .phone__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--dev-panel-pad) var(--dev-panel-pad);
+  }
+
+  .phone__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-content-gap);
+    padding: 4px var(--dev-panel-pad) var(--dev-panel-pad);
+  }
+
+  .phone :global(.dev-segmented .dev-btn), .phone :global(.dev-btn--filled) { min-height: 36px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .phone__page, .phone__image { transition: none; }
+    .phone__sheet { transition: none; }
+  }
+</style>

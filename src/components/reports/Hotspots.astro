@@ -1,0 +1,119 @@
+---
+import '../../styles/reportPrototypes.css';
+
+const spots = [
+  { x: 31, y: 44, label: 'Cylinder', value: 'Turned aluminium, bead-blasted' },
+  { x: 59, y: 15, label: 'Ground', value: 'Split on the diagonal, light to dark' },
+  { x: 71, y: 60, label: 'Cube', value: 'Cast, left dark to hold the edge' },
+];
+---
+
+<div class="hotspots" data-hotspots>
+  <div class="hotspots__frame">
+    <img class="proto-media" src="/demo-fixtures/studio.svg" width="1200" height="800" alt="A cylinder and a cube on a split ground" />
+    {spots.map((spot, index) => (
+      <button class="hotspots__pin" type="button" style={`left:${spot.x}%;top:${spot.y}%`} aria-label={`${index + 1}. ${spot.label}`} aria-pressed="false" data-spot={index}>{index + 1}</button>
+    ))}
+  </div>
+  <ol class="hotspots__legend">
+    {spots.map((spot, index) => (
+      <li class="hotspots__row" data-spot={index}>
+        <span class="hotspots__index">{index + 1}</span>
+        <span class="hotspots__label">{spot.label}</span>
+        <span class="hotspots__value">{spot.value}</span>
+      </li>
+    ))}
+  </ol>
+</div>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-hotspots]')!;
+  let pinned: string | undefined;
+  const show = (spot?: string) => {
+    const active = spot ?? pinned;
+    root.classList.toggle('has-active', active !== undefined);
+    for (const element of root.querySelectorAll<HTMLElement>('[data-spot]')) {
+      element.classList.toggle('is-active', element.dataset.spot === active);
+      if (element.matches('button')) element.setAttribute('aria-pressed', String(element.dataset.spot === pinned));
+    }
+  };
+  for (const type of ['pointerover', 'focusin'] as const) root.addEventListener(type, (event) => show((event.target as Element).closest<HTMLElement>('[data-spot]')?.dataset.spot));
+  for (const type of ['pointerleave', 'focusout'] as const) root.addEventListener(type, () => show());
+  root.addEventListener('click', (event) => {
+    const spot = (event.target as Element).closest<HTMLElement>('[data-spot]')?.dataset.spot;
+    pinned = spot === pinned ? undefined : spot;
+    show();
+  });
+</script>
+
+<style>
+  .hotspots {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space-unit) * 2);
+    width: min(100%, 34rem);
+  }
+
+  .hotspots__frame {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    border-radius: var(--radius-control-smooth);
+    background: var(--sys-color-srf-container-low);
+  }
+
+  .hotspots__pin {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    margin: -11px;
+    border: 0;
+    border-radius: 50%;
+    background: var(--ref-palette-grey-1000);
+    color: var(--ref-palette-grey-150);
+    font: 600 11px/1 var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.25), 0 0 0 0.75px rgb(0 0 0 / 0.1);
+    cursor: pointer;
+    transition: scale 200ms cubic-bezier(0.32, 0.72, 0, 1), background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+  }
+
+  .hotspots__pin::before { content: ''; position: absolute; inset: -11px; }
+  .hotspots__pin.is-active, .hotspots__pin[aria-pressed='true'] { scale: 1.2; background: var(--ref-palette-grey-150); color: var(--ref-palette-grey-1000); }
+  .has-active .hotspots__pin:not(.is-active) { opacity: 0.6; }
+
+  .hotspots__legend {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+  }
+
+  .hotspots__row {
+    display: grid;
+    grid-template-columns: 1.5rem 7rem 1fr;
+    padding-block: calc(var(--space-unit) / 2);
+    border-top: 1px solid var(--sys-color-outline-subtle);
+    cursor: default;
+    transition: opacity 150ms ease;
+  }
+
+  .hotspots__row:last-child { border-bottom: 1px solid var(--sys-color-outline-subtle); }
+  .hotspots__index { color: var(--sys-color-on-srf-subtle); font-variant-numeric: tabular-nums; }
+  .hotspots__label { font-weight: var(--text-body-emphasis-weight); }
+  .hotspots__value { color: var(--sys-color-on-srf-variant); }
+  .has-active .hotspots__row:not(.is-active) { opacity: 0.4; }
+
+  @media (max-width: 30em) {
+    .hotspots__row { grid-template-columns: 1.5rem 1fr; }
+    .hotspots__value { grid-column: 2; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hotspots__pin.is-active, .hotspots__pin[aria-pressed='true'] { scale: 1; }
+  }
+</style>

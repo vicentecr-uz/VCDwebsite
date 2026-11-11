@@ -1,0 +1,112 @@
+{
+  "title": "Design futures",
+  "description": "An audit of the site and its design system, and where each part could go next.",
+  "layout": "writeup",
+  "sections": [
+    {
+      "type": "bodyText",
+      "spacing": "none",
+      "paragraphs": [
+        "Design futures<br><span class=\"text-subtle\">11 November 2026</span>"
+      ]
+    },
+    {
+      "type": "bodyText",
+      "spacing": "group",
+      "paragraphs": [
+        "I asked Claude to audit my portfolio and its design system, then worked through its proposals with Codex. The four reports below include 16 interactive prototypes built with the site’s existing tokens and editing controls.",
+        "The reports: <a href=\"/reports/panels\">Editor panels</a>, <a href=\"/reports/page-blocks\">Page blocks</a>, <a href=\"/reports/components\">Components</a> and <a href=\"/reports/page-layouts\">Page layouts</a>."
+      ]
+    },
+    {
+      "type": "sectionTitle",
+      "sectionId": "what-i-read",
+      "title": "What I looked at",
+      "spacing": "group",
+      "level": 3
+    },
+    {
+      "type": "bodyText",
+      "spacing": "related",
+      "paragraphs": [
+        "The audit covered the engine source, repository docs, open issues, the site in View and Edit modes, and the structure of the Design System page in Figma. It examined the Tokens, Atom Variants, Dev Panel Contents and Dev Panels sections in Figma."
+      ]
+    },
+    {
+      "type": "sectionTitle",
+      "sectionId": "the-system",
+      "title": "The system today",
+      "spacing": "group",
+      "level": 3
+    },
+    {
+      "type": "bodyText",
+      "spacing": "related",
+      "paragraphs": [
+        "It is unusually coherent. One spacing unit is derived from the body type and everything hangs off it. Colour is three tiers of tokens with a written role for each ink. Edit chrome is monochrome on purpose, with amber on a single warning icon as its one colour. A dashed hairline means editable and nothing else. Motion fades and rises but does not pop.",
+        "The parts that carry the personality are small and specific: the segmented control whose two edges ride separate springs, the gap pill that freezes while you choose, the field whose edge fades follow the caret. The proposals try to add things of that kind, and to avoid adding anything that would need a new colour, a new radius or a new shadow."
+      ]
+    },
+    {
+      "type": "sectionTitle",
+      "sectionId": "direction",
+      "title": "Where it is heading",
+      "spacing": "group",
+      "level": 3
+    },
+    {
+      "type": "bodyText",
+      "spacing": "related",
+      "paragraphs": [
+        "These are the ideas shaping the next round of work.",
+        "<strong>Controls move onto the page.</strong> The vision calls pop-up tuners a current means, not the destination. Seventeen panel titles are registered today, and the image tools alone are about 3,500 lines of tuner.",
+        "<strong>Edit goes online, at full parity.</strong> That means a phone. A 352px floating panel that you drag by its title bar has no equivalent on a touch screen yet.",
+        "<strong>Build in public, for yourself.</strong> Open-sourcing the engine and blocks makes the work visible and gives other people a place to fork it. The point is to document what I am making and explore ideas that interest me, with useful additions from forks able to find their way back into the main repo.",
+        "<strong>Pages need to be skimmed.</strong> Several open issues are about a case study reading in a few scrolls, and text, titles and images are about two thirds of every block in use.",
+        "<strong>Make the site unmistakably mine.</strong> The next design work is the homepage: a material, physical-product point of view that is legible in the first few seconds. The current veil and cursor demo are useful placeholders while that direction develops."
+      ]
+    },
+    {
+      "type": "sectionTitle",
+      "sectionId": "findings",
+      "title": "Audit findings",
+      "spacing": "group",
+      "level": 3
+    },
+    {
+      "type": "bodyText",
+      "spacing": "related",
+      "paragraphs": [
+        "<strong>Width docs have drifted.</strong> <code>interface-conventions.md</code> and <code>page-width.md</code> both give the text column as 40em. <code>global.css</code> ships 37.5em. The sidebar threshold derived from it is still correct because it reads the media column.",
+        "<strong>Panel names differ between Figma and code.</strong> Figma has Gallery manager and Project settings; code and the UI say Pages and Page settings. Figma has no frames for Video, Add image, New project or the award sizers.",
+        "<strong>The save bar restyles buttons itself.</strong> <code>saveBar.css</code> redefines padding, radius and fills for every button inside it and has its own filled class, so a <code>Button</code> with <code>emphasis=\"filled\"</code> placed in the bar renders as a ghost. I hit this building the change ledger. It is the same drift the button plan describes, in the one place that plan does not list.",
+        "<strong>There is no slider.</strong> Numeric settings are selects of preset steps. <a href=\"https://github.com/vicentecr-uz/VCDwebsite/issues/134\">#134</a> already asks for one, and three of the proposals here need it.",
+        "<strong>Per-viewport overrides are invisible.</strong> Panels switch between Desktop, Tablet and Mobile, but nothing shows which viewport has its own value or where an inherited one comes from.",
+        "<strong>Dark mode is half a system.</strong> The dark token set exists and Figma has a Dark frame, but <code>#transition-overlay</code> is a literal white, <code>DemoLayout</code> pins <code>data-theme=\"light\"</code>, and <a href=\"https://github.com/vicentecr-uz/VCDwebsite/issues/137\">#137</a> is open on the demo frame. I kept every prototype on semantic tokens so they follow the theme when it lands.",
+        "<strong>Dev stale-style trap.</strong> Editing a layout’s scoped style in a running review preview served the old stylesheet until I restarted it, exactly as <code>dev-authoring.md</code> warns. New prototype routes also needed a restart to appear."
+      ]
+    },
+    {
+      "type": "sectionTitle",
+      "sectionId": "how-to-read",
+      "title": "How to read the reports",
+      "spacing": "group",
+      "level": 3
+    },
+    {
+      "type": "bodyText",
+      "spacing": "related",
+      "paragraphs": [
+        "Each proposal says what exists, what I would change and why, then shows it. The prototypes are real DOM built from <code>Button</code>, <code>SegmentedControl</code>, <code>DevPanel</code>, <code>Menu</code>, <code>ToggleRow</code>, <code>TextField</code>, <code>Badge</code> and <code>Hairline</code>, plus the tokens. Where I needed something the system lacks, that gap is itself a proposal in the Components report.",
+        "They are prototypes. None of them writes content, and none is wired into Edit. The layout you are reading is the one real change: a write-up with the docs’ On this page rail borrowed into its gutter."
+      ]
+    },
+    {
+      "type": "bodyText",
+      "spacing": "group",
+      "paragraphs": [
+        "Next: <a href=\"/reports/panels\">Editor panels</a>"
+      ]
+    }
+  ]
+}
