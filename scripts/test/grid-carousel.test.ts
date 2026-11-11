@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { syncNestedCarouselChrome } from '../../src/lib/devEditChrome';
 import { mountInsertedSection } from '../../src/scripts/devSectionMount';
 import { devEditPendingId, editsRemovedMedia, withDevEditTarget } from '../../src/scripts/devEditTarget';
 import { resolveContentTarget } from '../../src/lib/devContentTarget.mjs';
@@ -165,6 +166,25 @@ function nested() {
   document.body.append(root);
   return { grid, root, slide: root.querySelector<HTMLElement>('[data-carousel-slide]')! };
 }
+
+test('only the nested carousel under the grid chip gets a vertical offset', () => {
+  const { root } = nested();
+  const gridButton = root.querySelector<HTMLButtonElement>('[data-dev-edit-trigger="grid"]')!;
+  const carousel = root.querySelector<HTMLElement>('[data-dev-carousel-target]')!;
+  const cell = carousel.closest<HTMLElement>('.project-image-grid__item')!;
+  const carouselButton = carousel.querySelector<HTMLButtonElement>('[data-dev-edit-trigger="carousel"]')!;
+  const rect = (left: number, top: number, width: number, height: number) =>
+    ({ left, top, width, height, right: left + width, bottom: top + height }) as DOMRect;
+  gridButton.hidden = false;
+  gridButton.getBoundingClientRect = () => rect(10, 10, 60, 24);
+  carousel.getBoundingClientRect = () => rect(0, 4, 180, 180);
+  cell.getBoundingClientRect = () => rect(0, 0, 180, 180);
+  syncNestedCarouselChrome(root);
+  expect(carouselButton.style.getPropertyValue('--dev-carousel-trigger-top')).toBe('36px');
+  cell.getBoundingClientRect = () => rect(190, 0, 180, 180);
+  syncNestedCarouselChrome(root);
+  expect(carouselButton.style.getPropertyValue('--dev-carousel-trigger-top')).toBe('');
+});
 
 test('mounted nested media has one section root and captures slide and container identity separately', () => {
   const { root, slide } = nested();

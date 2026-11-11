@@ -70,16 +70,22 @@ export function syncNestedCarouselChrome(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.dev-carousel-edit-target').forEach((carousel) => {
     const nestedTrigger = carousel.querySelector<HTMLElement>(':scope > [data-dev-edit-trigger="carousel"]');
     if (!nestedTrigger) return;
-    nestedTrigger.style.removeProperty('--dev-carousel-trigger-top');
     const grid = carousel.closest<HTMLElement>('.dev-grid-edit-target');
     const gridTrigger = grid?.querySelector<HTMLElement>(':scope > [data-dev-edit-trigger="grid"]');
-    if (!grid || !gridTrigger || gridTrigger.hidden) return;
-    const gridRect = gridTrigger.getBoundingClientRect();
-    const cellRect = carousel.closest<HTMLElement>('.project-image-grid__item')?.getBoundingClientRect()
-      ?? carousel.getBoundingClientRect();
-    const centerX = gridRect.left + gridRect.width / 2;
-    const centerY = gridRect.top + gridRect.height / 2;
-    if (centerX < cellRect.left || centerX > cellRect.right || centerY < cellRect.top || centerY > cellRect.bottom) return;
-    nestedTrigger.style.setProperty('--dev-carousel-trigger-top', `${Math.max(0, gridRect.bottom - carousel.getBoundingClientRect().top + 6)}px`);
+    const cell = carousel.closest<HTMLElement>('.project-image-grid__item');
+    let top = '';
+    if (gridTrigger && !gridTrigger.hidden && cell) {
+      const gridRect = gridTrigger.getBoundingClientRect();
+      const cellRect = cell.getBoundingClientRect();
+      const centerX = gridRect.left + gridRect.width / 2;
+      const centerY = gridRect.top + gridRect.height / 2;
+      if (gridRect.width > 0 && gridRect.height > 0 && centerX >= cellRect.left && centerX <= cellRect.right
+        && centerY >= cellRect.top && centerY <= cellRect.bottom) {
+        top = `${Math.max(0, gridRect.bottom - carousel.getBoundingClientRect().top + 6)}px`;
+      }
+    }
+    if (nestedTrigger.style.getPropertyValue('--dev-carousel-trigger-top') !== top) {
+      nestedTrigger.style.setProperty('--dev-carousel-trigger-top', top);
+    }
   });
 }
