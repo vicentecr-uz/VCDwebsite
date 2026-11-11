@@ -1,6 +1,6 @@
 ---
 import DevOverlay from './DevOverlay.astro';
-import Field from './ui/Field.astro';
+import RangeField from './ui/RangeField.astro';
 import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
 
@@ -10,10 +10,15 @@ const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
 <DevOverlay title="Board height" storageKey="reddit-board-height" panelKey="reddit-board-height" defaultHidden>
   <div class="reddit-board-height" data-reddit-board-height-panel>
     {breakpoints.map((breakpoint) => (
-      <Field label={breakpoint[0].toUpperCase() + breakpoint.slice(1)} labelFor={`reddit-board-height-${breakpoint}`}>
-        <output slot="labelAccessory" for={`reddit-board-height-${breakpoint}`} data-reddit-board-output={breakpoint}></output>
-        <input id={`reddit-board-height-${breakpoint}`} type="range" min="8" max="60" step="1" data-reddit-board-height={breakpoint} />
-      </Field>
+      <RangeField
+        label={breakpoint[0].toUpperCase() + breakpoint.slice(1)}
+        id={`reddit-board-height-${breakpoint}`}
+        min="8"
+        max="60"
+        step="1"
+        unit="em"
+        data-reddit-board-height={breakpoint}
+      />
     ))}
     <PanelActions>
       <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
@@ -25,8 +30,6 @@ const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
 
 <style>
   .reddit-board-height { display: grid; gap: var(--space-unit); }
-  .reddit-board-height input { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
-  .reddit-board-height input:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
   .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; }
   .reddit-board-height__status { flex: 1 1 0; min-width: 0; margin: 0; font: var(--dev-text-label); }
 </style>
@@ -62,7 +65,7 @@ const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
       for (const input of inputs) {
         const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
         input.value = String(values[breakpoint]);
-        const output = panel.querySelector<HTMLOutputElement>(`[data-reddit-board-output="${breakpoint}"]`);
+        const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
         if (output) output.textContent = `${values[breakpoint]}em`;
       }
       preview();

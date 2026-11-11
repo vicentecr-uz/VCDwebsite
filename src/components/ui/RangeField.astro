@@ -1,0 +1,92 @@
+---
+import '../../styles/dev-chrome.css';
+
+interface Props {
+  label: string;
+  id: string;
+  unit?: string;
+  [key: string]: any;
+}
+
+const { label, id, unit = '', class: className, ...rest } = Astro.props;
+const labelId = `${id}-label`;
+---
+
+<div class:list={['dev-range-field', className]} data-dev-range-field>
+  <label class="dev-range-field__label" id={labelId} for={id}>{label}</label>
+  <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
+  <input
+    {...rest}
+    id={id}
+    class="dev-range-field__input"
+    type="range"
+    aria-labelledby={labelId}
+    data-range-unit={unit}
+  />
+</div>
+
+<script>
+  const format = (input: HTMLInputElement) => {
+    const min = Number(input.min);
+    const max = Number(input.max);
+    const value = Number(input.value);
+    const progress = max > min ? (value - min) / (max - min) : 0;
+    const unit = input.dataset.rangeUnit || '';
+    const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
+    const valueText = `${input.value}${unit}`;
+    input.style.setProperty('--range-progress', String(progress));
+    input.setAttribute('aria-valuetext', valueText);
+    if (output) output.textContent = valueText;
+  };
+
+  document.querySelectorAll<HTMLInputElement>('[data-dev-range-field] input[type="range"]').forEach((input) => {
+    input.addEventListener('input', () => format(input));
+    input.addEventListener('change', () => format(input));
+    format(input);
+  });
+</script>
+
+<style>
+  .dev-range-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: var(--dev-control-height);
+    overflow: hidden;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-field-container);
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-label);
+  }
+
+  .dev-range-field__label,
+  .dev-range-field__output {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .dev-range-field__label { left: var(--dev-field-padding); color: var(--sys-color-on-srf-variant); }
+  .dev-range-field__output { right: var(--dev-field-padding); font-variant-numeric: tabular-nums; }
+
+  .dev-range-field__input {
+    width: 100%;
+    height: var(--dev-control-height);
+    margin: 0;
+    appearance: none;
+    border: 0;
+    border-radius: inherit;
+    outline: 0;
+    background: linear-gradient(to right, var(--comp-button-soft-container-hover) calc(var(--range-progress, 0) * 100%), transparent calc(var(--range-progress, 0) * 100%));
+    cursor: ew-resize;
+  }
+
+  .dev-range-field__input::-webkit-slider-runnable-track { background: transparent; }
+  .dev-range-field__input::-moz-range-track { background: transparent; }
+  .dev-range-field__input::-webkit-slider-thumb { width: 1px; height: 1px; appearance: none; opacity: 0; }
+  .dev-range-field__input::-moz-range-thumb { width: 1px; height: 1px; border: 0; opacity: 0; }
+  .dev-range-field:has(.dev-range-field__input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+  .dev-range-field:has(.dev-range-field__input:disabled) { opacity: var(--dev-opacity-disabled); }
+  .dev-range-field__input:disabled { cursor: default; }
+</style>
