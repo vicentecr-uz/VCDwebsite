@@ -6605,6 +6605,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       void refreshPublishState();
     }, { signal: editorSignal });
 
+    window.addEventListener('vcd:dev-viewport-preview-dirty-check', ((event: CustomEvent<{ dirty?: boolean }>) => {
+      const draft = { dirty: false };
+      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
+      event.detail.dirty = actionsBusy || draft.dirty || hasPendingEdits();
+    }) as EventListener, { signal: editorSignal });
+
     window.addEventListener('vcd:dev-mode-change', (event) => {
       const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
       setEditingEnabled(active && isDevContentEditing());

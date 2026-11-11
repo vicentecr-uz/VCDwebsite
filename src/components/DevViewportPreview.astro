@@ -33,13 +33,14 @@
 
     const presets = {
       desktop: [1440, 900],
-      tablet: [1024, 768],
+      tablet: [820, 1180],
       mobile: [390, 844],
     } as const;
     type Preset = keyof typeof presets;
     let active: Preset = 'desktop';
     let open = false;
     let frameWrote = false;
+    let frameSaveBusy = false;
     let previousFocus: HTMLElement | null = null;
     const previewUrl = () => {
       const url = new URL(window.location.href);
@@ -67,7 +68,7 @@
     };
     const close = () => {
       if (!open) return true;
-      const childWindow = frame.contentWindow;
+      const childWindow = frame.contentDocument?.defaultView as (Window & typeof globalThis) | null;
       if (childWindow) {
         const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
         if (!childWindow.dispatchEvent(beforeReload)) return false;
@@ -88,7 +89,9 @@
       if (!document.documentElement.classList.contains('is-dev-mode')) return false;
       active = preset;
       if (!open) {
-        if (document.querySelector<HTMLElement>('[data-dev-text-actions]:not([hidden])')) return false;
+        const dirtyCheck = { dirty: false };
+        window.dispatchEvent(new CustomEvent('vcd:dev-viewport-preview-dirty-check', { detail: dirtyCheck }));
+        if (dirtyCheck.dirty) return false;
         const beforeReload = new CustomEvent('vcd:before-reload', { cancelable: true });
         if (!window.dispatchEvent(beforeReload)) return false;
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -135,11 +138,6 @@
     scope.listen(document, 'keydown', (event) => {
       if (isTypingTarget(event.target)) return;
       if (frameMode) {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          window.parent.postMessage({ type: 'vcd-viewport-preview-close' }, window.location.origin);
-          return;
-        }
         if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         const preset = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
         if (!preset) return;
@@ -147,13 +145,28 @@
         window.parent.postMessage({ type: 'vcd-viewport-preview-preset', preset }, window.location.origin);
         return;
       }
-      if (event.key === 'Escape' && open) { event.preventDefault(); close(); return; }
+      if (event.key === 'Escape' && open) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        close();
+        return;
+      }
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
       if (event.code === 'Digit1' && show('desktop')) event.preventDefault();
       if (event.code === 'Digit2' && show('tablet')) event.preventDefault();
       if (event.code === 'Digit3' && show('mobile')) event.preventDefault();
     }, true);
     if (frameMode) {
+      scope.listen(document, 'keydown', (event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        window.parent.postMessage({ type: 'vcd-viewport-preview-close' }, window.location.origin);
+      });
+      scope.listen(window, 'vcd:dev-save-state', ((event: CustomEvent<{ saving?: boolean }>) => {
+        frameSaveBusy = Boolean(event.detail?.saving);
+      }) as EventListener);
+      scope.listen(window, 'vcd:before-reload', (event) => {
+        if (frameSaveBusy) event.preventDefault();
+      }, true);
       scope.listen(window, 'vcd:dev-save-complete', () => {
         window.parent.postMessage({ type: 'vcd-viewport-preview-content-written' }, window.location.origin);
       });
