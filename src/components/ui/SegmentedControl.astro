@@ -112,10 +112,14 @@ const { label, class: className, ...rest } = Astro.props;
       oldPill?.remove();
       group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
 
-      // The pill spans the group and clip-path cuts it to the two edges, so each edge moves on its
-      // own and inset()'s round keeps the corners exact (a scaled pill would stretch them).
+      // Move each edge independently without scaling the corners. A circular clip
+      // works for arc corners. Native continuous corners need the shaped box.
       const target = box(next, group);
       const span = group.clientWidth;
+      const buttonStyle = getComputedStyle(next);
+      const shape = buttonStyle.getPropertyValue('corner-shape');
+      const continuous = shape === 'superellipse(1.33)';
+      const radius = buttonStyle.borderTopLeftRadius;
       const pill = document.createElement('span');
       pill.className = 'dev-segmented__indicator';
       pill.setAttribute('aria-hidden', 'true');
@@ -123,11 +127,11 @@ const { label, class: className, ...rest } = Astro.props;
         width: `${span}px`,
         height: `${target.height}px`,
         transform: `translateY(${target.top}px)`,
-        borderRadius: '0',
+        borderRadius: continuous ? radius : '0',
       });
       next.setAttribute('data-segment-target', '');
       group.prepend(pill);
-      const radius = getComputedStyle(next).borderTopLeftRadius;
+      if (continuous) pill.style.setProperty('corner-shape', shape);
 
       const to = { left: target.left, right: target.left + target.width };
       const rightward = to.left > from.left;
@@ -141,7 +145,9 @@ const { label, class: className, ...rest } = Astro.props;
       edges.push([to.left, to.right]);
 
       const animation = pill.animate(
-        edges.map(([left, right]) => ({ clipPath: `inset(0 ${span - right}px 0 ${left}px round ${radius})` })),
+        edges.map(([left, right]) => continuous
+          ? { width: `${Math.max(0, right - left)}px`, transform: `translate(${left}px, ${target.top}px)` }
+          : { clipPath: `inset(0 ${span - right}px 0 ${left}px round ${radius})` }),
         { duration: t + STEP, easing: 'linear', fill: 'forwards' },
       );
       flights.set(pill, { edges, animation });
