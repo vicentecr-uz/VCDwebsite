@@ -1,5 +1,6 @@
 ---
 import Hairline from '../ui/Hairline.astro';
+import Keycap from '../ui/Keycap.astro';
 import searchIcon from 'lucide-static/icons/search.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 import '../../styles/reportPrototypes.css';
@@ -16,14 +17,14 @@ const commands = [
   <label class="command__search">
     <span class="command__icon" aria-hidden="true" set:html={sizeIcon(searchIcon, 16)} />
     <input type="text" role="combobox" aria-expanded="true" aria-controls="command-list" aria-autocomplete="list" aria-label="Command" placeholder="Command" autocomplete="off" spellcheck="false" data-input />
-    <kbd class="command__key">esc</kbd>
+    <Keycap>esc</Keycap>
   </label>
   <Hairline />
   <ul class="command__list" id="command-list" role="listbox" aria-label="Commands" data-list>
     {commands.map(([group, label, keys], index) => (
       <li class="command__item dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="option" id={`command-${index}`} data-group={group} data-label={label}>
         <span class="command__label">{label}</span>
-        {keys && <span class="command__keys">{keys.split(' ').map((key) => <kbd class="command__key">{key}</kbd>)}</span>}
+        {keys && <span class="command__keys">{keys.split(' ').map((key) => <Keycap>{key}</Keycap>)}</span>}
       </li>
     ))}
     <li class="command__empty proto-status" data-empty hidden>No matches</li>
@@ -160,22 +161,7 @@ const commands = [
 
   .command__keys { display: inline-flex; gap: 3px; }
 
-  .command__key {
-    display: inline-grid;
-    place-items: center;
-    min-width: 20px;
-    height: 20px;
-    padding-inline: 5px;
-    box-sizing: border-box;
-    border-radius: calc(5px * var(--continuous-corner-scale, 1));
-    corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    box-shadow: inset 0 -1px 0 var(--sys-color-outline-variant);
-    color: var(--sys-color-on-srf-variant);
-    font: 500 11px/1 var(--font-sans);
-  }
-
-  .command__item[aria-selected='true'] .command__key { background: var(--sys-color-srf); }
+  .command__item[aria-selected='true'] :global(.dev-keycap) { background: var(--sys-color-srf); }
   .command__empty { padding: 12px 10px; }
   .command__status { margin: 0; padding: 10px 14px; letter-spacing: 0.1em; }
   .command__status:not(:empty) { min-height: 12px; }
