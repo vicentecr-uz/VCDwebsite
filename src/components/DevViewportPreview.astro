@@ -39,6 +39,7 @@
     let frameSaveBusy = false;
     let previousFocus: HTMLElement | null = null;
     let previousOverflow = '';
+    let initialScrollY: number | undefined;
     let isolatedSiblings: Array<{ element: HTMLElement; inert: boolean }> = [];
     let isolationObserver: MutationObserver | null = null;
     const isTypingTarget = (target: EventTarget | null) => {
@@ -46,6 +47,7 @@
       return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
     };
     const isolatePage = () => {
+      if (!open) return;
       [...document.body.children]
         .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== root)
         .forEach((element) => {
@@ -86,6 +88,7 @@
       open = false;
       root.hidden = true;
       root.removeAttribute('data-open');
+      initialScrollY = undefined;
       isolationObserver?.disconnect();
       isolationObserver = null;
       document.documentElement.style.overflow = previousOverflow;
@@ -100,7 +103,7 @@
       }
       return true;
     };
-    const show = (preset: Preset) => {
+    const show = (preset: Preset, preserveScroll = true) => {
       if (!document.documentElement.classList.contains('is-dev-mode')) return false;
       active = preset;
       if (!open) {
@@ -109,6 +112,7 @@
         if (dirtyCheck.dirty) return false;
         const beforeReload = new CustomEvent('vcd:before-reload', { cancelable: true });
         if (!window.dispatchEvent(beforeReload)) return false;
+        initialScrollY = preserveScroll ? window.scrollY : undefined;
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         open = true;
         root.hidden = false;
@@ -127,7 +131,7 @@
     };
     const requestEditMode = () => {
       try {
-        frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-edit' }, window.location.origin);
+        frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-edit', scrollY: initialScrollY }, window.location.origin);
       } catch { /* frame may still be loading */ }
     };
 
@@ -139,11 +143,11 @@
       const preset = target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset;
       if (preset === 'actual') { close(); return; }
       if (preset && preset in presets) show(preset as Preset);
-      if (target.closest('[data-viewport-close]')) close();
     });
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
+      if (event.data?.type === 'vcd-viewport-preview-restored') initialScrollY = undefined;
       if (event.data?.type === 'vcd-viewport-preview-preset' && event.data.preset in presets) {
         show(event.data.preset as Preset);
       }
@@ -151,12 +155,16 @@
     });
     scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
       const preset = event.detail?.preset;
-      if (preset && preset in presets) show(preset as Preset);
+      if (preset && preset in presets) show(preset as Preset, false);
     }) as EventListener);
     scope.listen(window, 'message', (event) => {
       if (!frameMode || event.origin !== window.location.origin || event.source !== window.parent) return;
       if (event.data?.type === 'vcd-viewport-preview-edit') {
         window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+        if (typeof event.data.scrollY === 'number' && Number.isFinite(event.data.scrollY)) {
+          scope.frame(() => window.scrollTo({ top: event.data.scrollY, behavior: 'instant' }));
+          window.parent.postMessage({ type: 'vcd-viewport-preview-restored' }, window.location.origin);
+        }
       }
     });
     scope.listen(document, 'keydown', (event) => {
