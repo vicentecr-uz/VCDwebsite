@@ -631,7 +631,14 @@ const visibleOutline = outline.filter((entry) =>
 );
 const sectionLinks = deriveNavFromOutline(visibleOutline);
 const contents = sectionLinks.flatMap((entry) => 'children' in entry ? entry.children : [entry]);
-const documentationPages = [{ href: '/styles', label: 'Design system', group: 'VCD', current: true }];
+const documentationPages = [
+  { href: '/styles', label: 'Design system', group: 'VCD', current: true },
+  ...foundationLinks.map((link) => ({ ...link, group: 'Foundations' })),
+  ...catalogByCategory
+    .filter(({ category }) => category !== 'ui-primitives')
+    .flatMap(({ label, items }) => items.map((component) => ({ href: `#${component.id}`, label: component.name, group: label }))),
+  ...(devComponentLinks.map((link) => ({ href: `#${link.id}`, label: link.label, group: 'Dev Components' }))),
+];
 ---
 
 <DocumentationLayout
@@ -645,6 +652,7 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
   sectionNavOutlineOnly
   sectionNav={JSON.stringify(sectionLinks)}
   sectionOutline={JSON.stringify(visibleOutline)}
+  hideContents
 >
   <div class="styles-editor-shell">
     <SectionSidebarNav sectionLinks={sectionLinks} ariaLabel="Design System editor sections" desktopOnly />
@@ -1096,29 +1104,8 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
     flex-direction: column;
   }
 
-  .styles-editor-shell > .section-sidebar-nav {
-    display: none;
-  }
-
-  html.show-section-nav-editor.is-dev-mode .styles-editor-shell > .section-sidebar-nav {
-    display: block;
-    position: fixed;
-    top: 6.75em;
-    left: 0.75em;
-    width: 12.5em;
-    max-height: calc(100dvh - 8em);
-    overflow: hidden;
-    z-index: 20;
-    padding: 0;
-    border-radius: var(--radius-card-smooth);
-    background: color-mix(in srgb, var(--sys-color-srf) 92%, transparent);
-    box-shadow: var(--elevated-surface-shadow);
-  }
-
-  html.show-section-nav-editor.is-dev-mode .styles-editor-shell > .section-sidebar-nav .section-sidebar-nav__scroll {
-    max-height: inherit;
-    overflow: hidden;
-    padding: 0.5em;
+  .styles-editor-shell > :global(.section-sidebar-nav) {
+    display: none !important;
   }
 
   .styles-main {
@@ -1510,6 +1497,9 @@ const documentationPages = [{ href: '/styles', label: 'Design system', group: 'V
     flex-direction: column;
     gap: 0.8em;
   }
+
+  .component-preview { order: 1; }
+  .component-meta-grid { order: 2; }
 
   .card-heading {
     font-size: 1.05rem;
