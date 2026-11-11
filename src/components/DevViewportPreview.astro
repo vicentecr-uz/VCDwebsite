@@ -36,6 +36,7 @@
     type Preset = keyof typeof presets;
     let active: Preset = 'desktop';
     let open = false;
+    let frameSaveBusy = false;
     const previewUrl = () => {
       const url = new URL(window.location.href);
       url.searchParams.set('vcd-viewport-preview', '1');
@@ -59,23 +60,31 @@
       });
     };
     const close = () => {
-      if (!open) return;
+      if (!open) return true;
+      const childWindow = frame.contentWindow;
+      if (childWindow) {
+        const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
+        if (!childWindow.dispatchEvent(beforeReload)) return false;
+      }
       open = false;
       root.hidden = true;
       frame.src = 'about:blank';
       document.documentElement.classList.remove('is-viewport-preview-open');
-      window.dispatchEvent(new Event('vcd:dev-content-written'));
+      return true;
     };
     const show = (preset: Preset) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!document.documentElement.classList.contains('is-dev-mode')) return false;
       active = preset;
       if (!open) {
+        const beforeReload = new CustomEvent('vcd:before-reload', { cancelable: true });
+        if (!window.dispatchEvent(beforeReload)) return false;
         open = true;
         root.hidden = false;
         frame.src = previewUrl();
       }
       syncFrame();
       document.documentElement.classList.add('is-viewport-preview-open');
+      return true;
     };
     const requestEditMode = () => {
       try {
@@ -96,6 +105,12 @@
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
+      if (event.data?.type === 'vcd-viewport-preview-content-written') {
+        window.dispatchEvent(new Event('vcd:dev-content-written'));
+      }
+      if (event.data?.type === 'vcd-viewport-preview-preset' && event.data.preset in presets) {
+        show(event.data.preset as Preset);
+      }
     });
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || window.parent === window) return;
@@ -104,15 +119,31 @@
       }
     });
     scope.listen(document, 'keydown', (event) => {
-      if (frameMode) return;
       if (isTypingTarget(event.target)) return;
+      if (frameMode) {
+        if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const preset = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
+        if (!preset) return;
+        event.preventDefault();
+        window.parent.postMessage({ type: 'vcd-viewport-preview-preset', preset }, window.location.origin);
+        return;
+      }
       if (event.key === 'Escape' && open) { event.preventDefault(); close(); return; }
       if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-      if (event.code === 'Digit1') { event.preventDefault(); show('desktop'); }
-      if (event.code === 'Digit2') { event.preventDefault(); show('tablet'); }
-      if (event.code === 'Digit3') { event.preventDefault(); show('mobile'); }
+      if (event.code === 'Digit1' && show('desktop')) event.preventDefault();
+      if (event.code === 'Digit2' && show('tablet')) event.preventDefault();
+      if (event.code === 'Digit3' && show('mobile')) event.preventDefault();
     }, true);
     if (frameMode) {
+      scope.listen(window, 'vcd:dev-save-state', ((event: CustomEvent<{ saving?: boolean }>) => {
+        frameSaveBusy = Boolean(event.detail?.saving);
+      }) as EventListener);
+      scope.listen(window, 'vcd:dev-content-written', () => {
+        window.parent.postMessage({ type: 'vcd-viewport-preview-content-written' }, window.location.origin);
+      });
+      scope.listen(window, 'vcd:before-reload', (event) => {
+        if (frameSaveBusy) event.preventDefault();
+      }, true);
       window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
       return () => scope.destroy();
     }
