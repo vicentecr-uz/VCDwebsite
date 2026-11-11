@@ -1184,7 +1184,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       });
       const target = event.target;
       const menu = target instanceof Element
-        ? target.closest<HTMLElement>('.dev-gap-toolbar__menu')
+        ? target.closest<HTMLElement>('.dev-gap-toolbar__menu, .dev-gap-toolbar__pill')
         : null;
       if (menu && menu.scrollWidth > menu.clientWidth) {
         if (event instanceof WheelEvent && event.deltaX === 0 && !event.shiftKey) {
@@ -1240,7 +1240,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const syncSpacingControlVisibility = () => {
       const devEnabled = isDevContentEditing();
+      const narrow = window.matchMedia('(max-width: 40em)').matches;
       spacingStates.forEach(({ control, element }) => {
+        if (narrow && control.dataset.pageTop === 'true') unpinGapToolbarTop(control);
         const suppressed = followsHiddenTitle(element);
         control.hidden = !devEnabled || suppressed;
         if (suppressed) {
@@ -1248,7 +1250,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           clearGapProximity(control);
         }
       });
-      if (!devEnabled) document.documentElement.classList.remove('is-page-top-gap-above-header');
+      if (!devEnabled || narrow) document.documentElement.classList.remove('is-page-top-gap-above-header');
     };
 
     /** Distance to the closest point on a rect (0 if inside) — symmetric halo. */
@@ -1313,7 +1315,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     /** Escape drop-zone isolation so page-top chips paint/hit above the sticky header. */
     const syncPageTopGapStacking = () => {
-      const pageTopActive = spacingStates.some(
+      const pageTopActive = !window.matchMedia('(max-width: 40em)').matches && spacingStates.some(
         ({ control }) =>
           isPageTopGapControl(control) &&
           !control.hidden &&
@@ -7062,6 +7064,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       .dev-spacing-control__reset-separator
     ) {
     display: none;
+  }
+
+  @media (max-width: 40em) {
+    /* Reserve a chrome row outside the media box, below the header slot. */
+    .is-dev-mode [data-dev-project-drop-zone]:has(> [data-dev-spacing-document] > .dev-gap-toolbar[data-page-top='true']:not([hidden]):is(:not([data-dev-suppress-gallery-page-top]), :has(.dev-intro-height-control))) {
+      padding-top: calc(var(--dev-control-height) + 24px);
+    }
+
+    .is-dev-mode [data-dev-spacing-document] > .dev-gap-toolbar[data-page-top='true'] {
+      top: calc(-1 * (var(--dev-control-height) + 24px));
+      transform: none;
+    }
+
+    .is-dev-mode [data-dev-spacing-document]:is(.project-block--centered, .project-image-grid, .project-image-carousel) > .dev-gap-toolbar[data-page-top='true'] {
+      transform: translateX(-50%);
+    }
   }
 
   /* Above mid-page siblings; drop zone still traps under header until lifted. */
