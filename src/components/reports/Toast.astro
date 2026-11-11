@@ -1,136 +1,42 @@
 ---
 import Button from '../ui/Button.astro';
-import { sizeIcon } from '../../lib/icons';
-import checkIcon from 'lucide-static/icons/check.svg?raw';
-import imagesIcon from 'lucide-static/icons/images.svg?raw';
-import infoIcon from 'lucide-static/icons/info.svg?raw';
-import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
-import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
-import uploadIcon from 'lucide-static/icons/upload.svg?raw';
+import ToastStack from '../ui/ToastStack.astro';
 import '../../styles/reportPrototypes.css';
-const reportToastIcons = {
-  success: sizeIcon(checkIcon, 18),
-  publish: sizeIcon(uploadIcon, 18),
-  delete: sizeIcon(trashIcon, 18),
-  carousel: sizeIcon(imagesIcon, 18),
-  warning: sizeIcon(triangleAlertIcon, 18),
-  info: sizeIcon(infoIcon, 18),
-};
 ---
 
 <div class="toasts" data-toasts>
   <div class="toasts__triggers">
-    <Button label="Save" data-toast="Saved" data-toast-icon="success" />
-    <Button label="Publish" data-toast="Published" data-toast-icon="publish" data-action="View" />
-    <Button label="Delete block" data-toast="Image block deleted" data-toast-icon="delete" data-action="Undo" />
+    <Button label="Save" data-toast="Saved" data-icon="success" />
+    <Button label="Publish" data-toast="Published" data-icon="publish" />
+    <Button label="Delete block" data-toast="Image block deleted" data-icon="delete" data-demo-delete />
   </div>
-  <ol class="toasts__region" aria-label="Notifications" data-region></ol>
-  <template data-template>
-    <li class="toasts__toast dev-surface" role="status">
-      <span class="toasts__icon" data-toast-icon aria-hidden="true"></span>
-      <span class="toasts__text"></span>
-      <button class="dev-btn dev-btn--ghost toasts__action" type="button"></button>
-    </li>
-  </template>
+  <ToastStack />
 </div>
 
-<script define:vars={{ reportToastIcons }}>
-  const root = document.querySelector<HTMLElement>('[data-toasts]')!;
-  const region = root.querySelector<HTMLElement>('[data-region]')!;
-  const template = root.querySelector<HTMLTemplateElement>('[data-template]')!;
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
-  // Newest in front; older toasts step back and shrink. Hovering the stack fans it out and holds the timers.
-  const layout = () => [...region.children].reverse().forEach((toast, depth) => {
-    (toast as HTMLElement).style.setProperty('--depth', String(depth));
-    toast.toggleAttribute('data-buried', depth > 2);
+  onPageLoad(() => {
+    const demo = document.querySelector('[data-toasts]');
+    const stack = demo?.querySelector('[data-toast-stack]');
+    if (!demo || !stack) return;
+    const scope = createPageScope();
+    const show = (message: string, icon: string, action?: { label: string; run: () => void }) => {
+      stack.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message, icon, action } }));
+    };
+    scope.listen(demo, 'click', (event) => {
+      const trigger = (event.target as Element).closest<HTMLElement>('[data-toast]');
+      if (!trigger?.dataset.toast) return;
+      const action = trigger.hasAttribute('data-demo-delete')
+        ? { label: 'Undo', run: () => show('Image block restored', 'success') }
+        : undefined;
+      show(trigger.dataset.toast, trigger.dataset.icon ?? 'info', action);
+    });
+    return scope.destroy;
   });
-  const dismiss = (toast: HTMLElement) => {
-    if (toast.dataset.leaving) return;
-    toast.dataset.leaving = 'true';
-    setTimeout(() => { toast.remove(); layout(); }, 300);
-  };
-  const arm = (toast: HTMLElement) => { toast.dataset.timer = String(setTimeout(() => dismiss(toast), 4000)); };
-
-  root.addEventListener('click', (event) => {
-    const trigger = (event.target as Element).closest<HTMLElement>('[data-toast]');
-    if (trigger) {
-      const toast = (template.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
-      toast.querySelector('.toasts__text')!.textContent = trigger.dataset.toast!;
-      const icon = reportToastIcons[trigger.dataset.toastIcon as keyof typeof reportToastIcons] || reportToastIcons.info;
-      toast.querySelector<HTMLElement>('[data-toast-icon]')!.innerHTML = icon;
-      const action = toast.querySelector<HTMLElement>('.toasts__action')!;
-      if (trigger.dataset.action) action.textContent = trigger.dataset.action; else action.remove();
-      region.append(toast);
-      layout();
-      requestAnimationFrame(() => { toast.dataset.shown = 'true'; });
-      arm(toast);
-    }
-    const action = (event.target as Element).closest<HTMLElement>('.toasts__action');
-    if (action) dismiss(action.closest<HTMLElement>('.toasts__toast')!);
-  });
-  region.addEventListener('pointerenter', () => [...region.children].forEach((toast) => clearTimeout(Number((toast as HTMLElement).dataset.timer))));
-  region.addEventListener('pointerleave', () => [...region.children].forEach((toast) => arm(toast as HTMLElement)));
 </script>
 
 <style>
-  .toasts {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-    align-self: stretch;
-    width: 100%;
-  }
-
+  .toasts { display: flex; flex-direction: column; align-items: center; justify-content: space-between; align-self: stretch; width: 100%; }
   .toasts__triggers { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--dev-panel-spacing); }
-
-  .toasts__region {
-    position: relative;
-    width: min(100%, 18rem);
-    height: 44px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  /* A bridge above the stack, so the pointer can travel up a fanned stack without leaving it. */
-  .toasts__region:hover::before { content: ''; position: absolute; inset: -110px 0 0; }
-
-  .toasts__toast {
-    --depth: 0;
-    position: absolute;
-    inset: auto 0 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 44px;
-    box-sizing: border-box;
-    padding: 10px 12px;
-    border-radius: calc(12px * var(--continuous-corner-scale, 1));
-    corner-shape: var(--squircle-shape);
-    font: var(--dev-text-label);
-    color: var(--sys-color-on-srf);
-    opacity: 0;
-    translate: 0 16px;
-    transform-origin: bottom center;
-    transition: translate 400ms cubic-bezier(0.32, 0.72, 0, 1), scale 400ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease;
-  }
-  .toasts__icon { display: inline-flex; flex: 0 0 18px; align-items: center; justify-content: center; }
-  .toasts__text { min-width: 0; flex: 1 1 auto; }
-
-  .toasts__toast[data-shown] {
-    opacity: 1;
-    translate: 0 calc(var(--depth) * -8px);
-    scale: calc(1 - var(--depth) * 0.05);
-  }
-
-  .toasts__region:hover .toasts__toast[data-shown] { translate: 0 calc(var(--depth) * -50px); scale: 1; }
-  .toasts__toast[data-buried] { opacity: 0; pointer-events: none; }
-  .toasts__toast[data-leaving] { opacity: 0; translate: 0 calc(var(--depth) * -8px + 8px); }
-  .toasts__action { min-width: 0; padding-inline: 10px; }
-
-  @media (prefers-reduced-motion: reduce) {
-    .toasts__toast { translate: 0 calc(var(--depth) * -8px); transition: opacity 250ms ease; }
-  }
 </style>

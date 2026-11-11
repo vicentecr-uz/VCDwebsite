@@ -89,16 +89,32 @@ test('nested conversion can be undone and redone through an opaque token without
   await fixture(async (file) => {
     const before = source();
     const writer = contentSectionDevWriter();
-    const converted = await post({ document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' } }, writer);
+    const target = { document: 'fixture', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' } };
+    const convert = () => post({ ...target, action: 'convertImageToCarousel' }, writer);
+    const undo = (undoToken: string) => post({ document: 'fixture', action: 'undoImageToCarousel', undoToken }, writer);
+    const converted = await convert();
     expect(converted.status).toBe(200);
     expect(typeof converted.body.undoToken).toBe('string');
-    const undone = await post({ document: 'fixture', action: 'undoImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' }, undoToken: converted.body.undoToken }, writer);
+
+    const disk = JSON.parse(await readFile(file, 'utf8'));
+    disk.sections.unshift({ type: 'bodyText', id: 'intro' });
+    disk.sections[1].items[1].alt = 'Updated sibling';
+    await writeFile(file, JSON.stringify(disk));
+    const undone = await undo(converted.body.undoToken);
     expect(undone.status).toBe(200);
-    const restored = JSON.parse(await readFile(file, 'utf8'));
-    expect(restored.sections[0].items[0]).toEqual(before.sections[0].items[0]);
-    expect(restored.sections[0].items[1]).toEqual(before.sections[0].items[1]);
-    const stale = await post({ document: 'fixture', action: 'undoImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' }, undoToken: converted.body.undoToken }, writer);
-    expect(stale.status).toBe(400);
+    expect(undone.body.index).toBe(1);
+    expect(undone.body.section.items[0]).toEqual(before.sections[0].items[0]);
+    expect(undone.body.section.items[1]).toEqual({ ...before.sections[0].items[1], alt: 'Updated sibling' });
+    expect((await undo(converted.body.undoToken)).status).toBe(400);
+
+    const redone = await convert();
+    expect(redone.status).toBe(200);
+    expect(redone.body.undoToken).not.toBe(converted.body.undoToken);
+    const changed = JSON.parse(await readFile(file, 'utf8'));
+    changed.sections[1].items[0].items.push({ id: 'added', src: 'added.jpg' });
+    await writeFile(file, JSON.stringify(changed));
+    expect((await undo(redone.body.undoToken)).status).toBe(400);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(changed);
   });
 });
 

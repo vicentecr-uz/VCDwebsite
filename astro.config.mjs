@@ -3,6 +3,7 @@ import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
@@ -1784,6 +1785,7 @@ const writeContentJson = async (file, data) => {
  */
 export function contentSectionDevWriter() {
   const restoreStore = createSectionRestoreStore();
+  // Undo tokens last for this dev server and retain at most the 128 most recent conversions.
   const carouselUndoStore = new Map();
   const rememberCarouselUndo = (entry) => {
     const token = randomUUID();
@@ -1953,7 +1955,7 @@ export function contentSectionDevWriter() {
               const current = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid'
                 ? section.items?.[itemIndex]
                 : resolvedPath.length === 2 ? data.sections[sectionIndex] : undefined;
-              if (JSON.stringify(current) !== JSON.stringify(undo.carousel)) throw new Error('That image changed after conversion.');
+              if (!isDeepStrictEqual(current, undo.carousel)) throw new Error('That image changed after conversion.');
               if (resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid') section.items[itemIndex] = structuredClone(undo.original);
               else data.sections[sectionIndex] = structuredClone(undo.original);
               await writeContentJson(file, data);
@@ -2112,14 +2114,14 @@ export function contentSectionDevWriter() {
             };
             if (nested) section.items[itemIndex] = carousel;
             else data.sections[sectionIndex] = carousel;
+            await writeContentJson(file, data);
             const undoToken = rememberCarouselUndo({
               document: documentKey,
-              path: fieldPath,
+              path: resolvedPath,
               target: body.target,
               original: structuredClone(image),
-              carousel: structuredClone(carousel),
+              carousel: JSON.parse(JSON.stringify(carousel)),
             });
-            await writeContentJson(file, data);
             send(200, {
               ok: true,
               action: 'convertImageToCarousel',

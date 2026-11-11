@@ -24,27 +24,31 @@ const toastIcons = {
 
 <div class:list={['toast-stack', fixed && 'toast-stack--fixed']} data-toast-stack>
   <ol class="toasts__region" aria-label="Notifications" aria-live="polite" aria-relevant="additions" data-toast-region></ol>
-  <template>
+  <template data-toast-template>
     <li class="toasts__toast dev-surface">
       <span class="toasts__icon" data-toast-icon aria-hidden="true"></span>
       <span data-toast-message></span>
       <button class="dev-btn dev-btn--ghost toasts__action" type="button"></button>
     </li>
   </template>
+  <template data-toast-icons>
+    {Object.entries(toastIcons).map(([name, svg]) => <span data-icon={name} set:html={svg} />)}
+  </template>
 </div>
 
-<script define:vars={{ toastIcons }}>
+<script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
   type Toast = {
     message: string;
-    icon?: keyof typeof toastIcons;
+    icon?: 'info' | 'success' | 'publish' | 'delete' | 'carousel' | 'warning';
     action?: { label: string; run: () => void | Promise<void> };
   };
 
   const bindStack = (root: HTMLElement) => {
     const region = root.querySelector<HTMLOListElement>('[data-toast-region]')!;
-    const template = root.querySelector<HTMLTemplateElement>('template')!;
+    const template = root.querySelector<HTMLTemplateElement>('[data-toast-template]')!;
+    const icons = root.querySelector<HTMLTemplateElement>('[data-toast-icons]')!.content;
     const scope = createPageScope();
     const actionByToast = new WeakMap<HTMLElement, NonNullable<Toast['action']>>();
     const timers = new Map<HTMLElement, number>();
@@ -73,18 +77,12 @@ const toastIcons = {
       if (toast.hasAttribute('data-leaving')) return;
       timers.set(toast, scope.timeout(() => dismiss(toast), 4000));
     };
-    const iconFor = (message: string, icon?: Toast['icon']) => icon ?? (
-      /saved/i.test(message) ? 'success'
-        : /published/i.test(message) ? 'publish'
-          : /deleted|removed/i.test(message) ? 'delete'
-            : /carousel/i.test(message) ? 'carousel'
-              : /could not|error|failed|cannot/i.test(message) ? 'warning' : 'info'
-    );
-    const show = ({ message, icon, action }: Toast) => {
+    const show = ({ message, icon = 'info', action }: Toast) => {
       const toast = template.content.firstElementChild?.cloneNode(true) as HTMLElement;
       toast.querySelector('[data-toast-message]')!.textContent = message;
       const iconNode = toast.querySelector<HTMLElement>('[data-toast-icon]')!;
-      iconNode.innerHTML = toastIcons[iconFor(message, icon)];
+      const glyph = [...icons.children].find((entry) => entry.getAttribute('data-icon') === icon)?.firstElementChild;
+      if (glyph) iconNode.append(glyph.cloneNode(true));
       const button = toast.querySelector('button')!;
       if (action) {
         button.textContent = action.label;
@@ -223,10 +221,11 @@ const toastIcons = {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    --toast-padding: 12px;
+    gap: var(--toast-padding);
     min-height: 44px;
     box-sizing: border-box;
-    padding: 10px 12px;
+    padding: var(--toast-padding);
     border-radius: calc(12px * var(--continuous-corner-scale, 1));
     corner-shape: var(--squircle-shape);
     font: var(--dev-text-label);
@@ -256,7 +255,7 @@ const toastIcons = {
     transform: translateX(max(var(--toast-swipe, 0px), calc(100% + max(1em, env(safe-area-inset-right)) + 24px)));
   }
   .toasts__toast[data-swiping] { transition: none; user-select: none; }
-  .toasts__action { min-width: 0; padding-inline: 10px; }
+  .toasts__action { flex: none; min-width: 0; padding-inline: 10px; }
 
   @media (prefers-reduced-motion: reduce) {
     .toasts__toast { translate: 0 calc(var(--depth) * -8px); transition: opacity 250ms ease; }

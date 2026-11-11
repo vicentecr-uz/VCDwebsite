@@ -3341,72 +3341,59 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     pageScope.listen(saveButton, 'click', saveDraft);
     let convertingToCarousel = false;
     const convertToCarousel = async (target: HTMLElement) => {
-      if (!target.isConnected || !canConvertImageToCarousel(target) || convertingToCarousel) return;
+      if (!target.isConnected || !canConvertImageToCarousel(target) || convertingToCarousel || pageHistory.busy) return;
       const documentKey = target.dataset.devDocument!;
+      const flushEdits = () => new Promise<void>((resolve, reject) => {
+        window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', { detail: { documentKey, resolve, reject } }));
+      });
       convertingToCarousel = true;
       if (makeCarouselButton) makeCarouselButton.disabled = true;
       try {
-        await new Promise<void>((resolve, reject) => {
-          window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', {
-            detail: { documentKey, resolve, reject },
-          }));
-        });
+        await flushEdits();
         const path = JSON.parse(target.dataset.devImagePath!);
         const requestTarget = withDevEditTarget({ document: documentKey, path }, target);
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            ...requestTarget,
-            action: 'convertImageToCarousel',
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not make this image a carousel.');
-        let undoToken = payload.undoToken as string;
-        const remount = (section: Record<string, unknown>) => {
+        const write = async (action: 'convertImageToCarousel' | 'undoImageToCarousel', undoToken?: string) => {
+          const response = await fetch('/api/content-section', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...requestTarget, action, undoToken }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Could not update this carousel.');
+          return result as { index: number; section: Record<string, unknown>; undoToken: string };
+        };
+        const remount = ({ index, section }: { index: number; section: Record<string, unknown> }) => {
+          window.dispatchEvent(new Event('vcd:dev-content-written'));
           window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
-            detail: { documentKey, index: payload.index, section },
+            detail: { documentKey, index, section },
           }));
         };
+        const result = await write('convertImageToCarousel');
+        let undoToken = result.undoToken;
         const undo = async () => {
-          const undoResponse = await fetch('/api/content-section', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ...requestTarget, action: 'undoImageToCarousel', undoToken }),
-          });
-          const undoPayload = await undoResponse.json();
-          if (!undoResponse.ok) throw new Error(undoPayload.error || 'Could not undo that carousel conversion.');
-          remount(undoPayload.section);
+          await flushEdits();
+          remount(await write('undoImageToCarousel', undoToken));
         };
         const redo = async () => {
-          const redoResponse = await fetch('/api/content-section', {
-            method: 'POST', headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ ...requestTarget, action: 'convertImageToCarousel' }),
-          });
-          const redoPayload = await redoResponse.json();
-          if (!redoResponse.ok) throw new Error(redoPayload.error || 'Could not make this image a carousel.');
-          undoToken = redoPayload.undoToken as string;
-          remount(redoPayload.section);
+          await flushEdits();
+          const converted = await write('convertImageToCarousel');
+          undoToken = converted.undoToken;
+          remount(converted);
         };
+        if (editTarget === target) closePanel();
+        remount(result);
         pageHistory.push({ label: 'Make carousel', undo, redo });
-        if (!pageHistory.replaying) {
-          window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
-            detail: {
-              message: 'Image converted to carousel',
-              icon: 'carousel',
-              action: {
-                label: 'Undo',
-                run: async () => {
-                  if (!await pageHistory.undoIfCurrent(undo)) throw new Error('Use the page’s undo shortcut to step back to this edit.');
-                },
+        window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
+          detail: {
+            message: 'Image converted to carousel',
+            icon: 'carousel',
+            action: {
+              label: 'Undo',
+              run: async () => {
+                if (!await pageHistory.undoIfCurrent(undo)) throw new Error('Use the page’s undo shortcut to step back to this edit.');
               },
             },
-          }));
-        }
-        if (editTarget === target) closePanel();
-        window.dispatchEvent(new Event('vcd:dev-content-written'));
-        window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
-          detail: { documentKey, index: payload.index, section: payload.section },
+          },
         }));
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not make this image a carousel.';
