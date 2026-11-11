@@ -2265,6 +2265,10 @@ export function contentSectionDevWriter() {
             send(400, { error: 'That section cannot be inserted.' });
             return;
           }
+          if (type === 'sidenotes' && data.stack === 'legacy') {
+            send(400, { error: 'Sidenotes are available only on modern pages.' });
+            return;
+          }
 
           let section;
           let insertSpacing;

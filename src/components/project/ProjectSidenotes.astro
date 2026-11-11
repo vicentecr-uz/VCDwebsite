@@ -87,21 +87,37 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 <style>
   .sidenotes { display: grid; gap: var(--space-related); }
-  .sidenotes__row { display: grid; grid-template-columns: minmax(0, 65ch) minmax(10rem, 18rem); align-items: start; justify-content: center; gap: clamp(1.5rem, 5vw, 5rem); }
+  .sidenotes__row { display: block; }
   .sidenotes__body, .sidenotes__note { min-width: 0; }
   .sidenotes__paragraph { margin: 0; }
   .sidenotes__note { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; padding-top: 0.15em; color: var(--sys-color-on-srf-variant); font-size: 0.9em; line-height: 1.35; }
   .sidenotes__note p { margin: 0; }
   .sidenotes__number { font-variant-numeric: tabular-nums; }
   .sidenotes__marker { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; margin-left: 0.2em; border-radius: 50%; background: var(--sys-color-on-srf); color: var(--sys-color-srf); font: inherit; font-size: 0.68em; line-height: 1; vertical-align: 0.35em; }
+  .sidenotes__paragraph > [contenteditable]:empty { display: inline-block; min-width: 1ch; }
   .sidenotes__marker--toggle { display: none; padding: 0; border: 0; cursor: pointer; }
   .sidenotes__marker:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
-  @media (max-width: 60em) {
-    .sidenotes__row { display: block; }
+  @media (width < 69.5em) {
     .sidenotes__marker--reference { display: none; }
     .sidenotes__marker--toggle { display: inline-grid; }
     .sidenotes__note { display: none; margin-top: 0.75rem; padding: 0.75rem; border-left: 1px solid var(--sys-color-on-srf-variant); }
     .sidenotes__note.is-open { display: grid; }
+  }
+  @media (min-width: 69.5em) {
+    .sidenotes__row { display: grid; grid-template-columns: min(100%, var(--page-text-max-width)) 13rem; align-items: start; gap: 2rem; }
+    .sidenotes__marker--reference { display: inline-grid; }
+    .sidenotes__marker--toggle { display: none; }
+    .sidenotes__note { display: grid; }
+    :global(.documentation-page) .sidenotes__row,
+    :global(.writeup-page:has(.writeup-contents)) .sidenotes__row { display: block; }
+    :global(.documentation-page) .sidenotes__marker--reference,
+    :global(.writeup-page:has(.writeup-contents)) .sidenotes__marker--reference { display: none; }
+    :global(.documentation-page) .sidenotes__marker--toggle,
+    :global(.writeup-page:has(.writeup-contents)) .sidenotes__marker--toggle { display: inline-grid; }
+    :global(.documentation-page) .sidenotes__note,
+    :global(.writeup-page:has(.writeup-contents)) .sidenotes__note { display: none; margin-top: 0.75rem; padding: 0.75rem; border-left: 1px solid var(--sys-color-on-srf-variant); }
+    :global(.documentation-page) .sidenotes__note.is-open,
+    :global(.writeup-page:has(.writeup-contents)) .sidenotes__note.is-open { display: grid; }
   }
   @media (prefers-reduced-motion: reduce) { .sidenotes__note { transition: none; } }
 </style>
