@@ -60,41 +60,19 @@ const typographyScale = [
 ];
 
 const spacingScale = [
-  // `value` is injected straight into the sample bar's width/height, so it has
-  // to stay a valid CSS length. Referencing the token keeps the bar honest —
-  // it renders whatever the unit currently is at this breakpoint.
-  {
-    token: '--space-unit',
-    value: 'var(--space-unit)',
-    use: 'Core unit: header/footer padding, grid gaps, related stack step — body line minus cap height (line 1u, paragraph 2u, title 2u)',
-  },
-  { token: '--space-related', value: 'var(--space-related)', use: 'Continuous / related blocks (= --space-unit)' },
-  { token: '--space-group', value: 'var(--space-group)', use: 'Same chapter, new beat (e.g. press → community)' },
-  { token: '--space-section', value: 'var(--space-section)', use: 'Gap between imagery and narrative text' },
-  { token: '--space-major', value: 'var(--space-major)', use: 'Major section / chapter break' },
+  { token: '--space-unit', value: '≈15.4px', length: 'var(--space-unit)', use: 'Line gap, chrome padding, grid gaps' },
+  { token: '--space-related', value: '1u', length: 'var(--space-related)', use: 'Blocks that continue each other' },
+  { token: '--space-group', value: '4rem', length: 'var(--space-group)', use: 'Same chapter, new beat' },
+  { token: '--space-section', value: '8rem', length: 'var(--space-section)', use: 'Imagery to narrative text' },
+  { token: '--space-major', value: '12rem', length: 'var(--space-major)', use: 'Chapter break' },
 ];
 
 const layoutRules = [
-  {
-    name: 'Project stack rhythm',
-    value: 'margin-top on siblings via --space-*',
-    why: 'One gap between sections (related / group / section / major). Blocks do not pad top and bottom.',
-  },
-  {
-    name: 'Fluid site gutter',
-    value: 'max(var(--space-unit), calc((100% - var(--page-max-width)) / 2)); 2rem below 40em',
-    why: 'Keeps content comfortable at every size, with a 32px phone inset matching nelson.co.',
-  },
-  {
-    name: 'Core unit',
-    value: '--space-unit: calc(var(--text-body-size) * (var(--text-body-leading) - 0.697))',
-    why: 'The ink gap between two body lines, about 15.4px, or 14.4px below 40em. Text gaps are whole units: a line is 1u, a paragraph break or title gap is 2u.',
-  },
-  {
-    name: 'Page transition',
-    value: '0.25s entry fade + 0.25s exit fade',
-    why: 'Enter waits for fonts + viewport-visible LQIP/thumbs plus a painted veil frame; both use `Layout.astro` and keep the 4s fallback.',
-  },
+  { name: 'Project stack rhythm', value: 'margin-top: var(--project-stack-margin)', why: 'One gap between sections, set on the following block: related, group, section or major. Blocks never pad their own top and bottom.' },
+  { name: 'Fluid site gutter', value: '--page-gutter: max(var(--space-unit), calc((100% - var(--page-max-width)) / 2))', why: 'Content stays off the edge at every width. Below 40em the gutter is a fixed 2rem.' },
+  { name: 'Core unit', value: '--space-unit: calc(var(--text-body-size) * (var(--text-body-leading) - 0.697))', why: 'The ink gap between two body lines, about 15.4px. A line is 1u; a paragraph break or title gap is 2u.' },
+  { name: 'Column caps', value: '--page-text-max-width: 37.5em; --page-media-max-width: 50em', why: 'Text and media cap separately. The outer column is the wider of the two.' },
+  { name: 'Page transition', value: 'opacity 0.25s', why: 'Pages fade in once fonts and visible image previews are ready, and fade out on navigation. Nothing moves.' },
 ];
 
 const componentCatalog = stylesComponents(examples);
@@ -148,18 +126,17 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
 
         {topic === 'typography' && (
         <section id="styles-typography" class="section-block">
-          <div class="stack">
+          <div class="plate-list">
             {typographyScale.map((item) => (
-              <article class="type-card">
-                <div class="type-card__meta">
-                  <div>
-                    <h3 class="card-heading">{item.label}</h3>
-                    <p class="meta-values">{item.spec}</p>
-                  </div>
-                  <p class="token-note">{item.note}</p>
+              <figure>
+                <div class="demo-frame plate-frame">
+                  <p class:list={['type-preview', `type-preview--${item.role}`]}>{item.sample}</p>
                 </div>
-                <p class:list={['type-preview', `type-preview--${item.role}`]}>{item.sample}</p>
-              </article>
+                <figcaption>
+                  <div class="caption-row"><span class="medium">{item.label}</span><span class="mono variant">{item.spec}</span></div>
+                  <p class="variant small">{item.note}</p>
+                </figcaption>
+              </figure>
             ))}
           </div>
         </section>
@@ -167,28 +144,15 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
 
         {topic === 'spacing' && (
         <section id="styles-spacing" class="section-block">
-          <div class="stack">
+          <div role="table" aria-label="Spacing" class="ledger ledger--spacing">
+            <div role="row" class="ledger-head"><span role="columnheader">Token</span><span role="columnheader">Value</span><span role="columnheader" aria-label="Measure" /><span role="columnheader">Use</span></div>
             {spacingScale.map((item) => (
-              <article class="spacing-row">
-                <div class="spacing-row__meta">
-                  <p class="meta-label">{item.token}</p>
-                  <p class="token-note">{item.use}</p>
-                </div>
-                <div class="spacing-row__samples">
-                  <div class="spacing-row__sample">
-                    <p class="meta-label">Horizontal</p>
-                    <div class="spacing-row__sample-area">
-                      <div class="spacing-row__bar-h" style={`width:${item.value};`}></div>
-                    </div>
-                  </div>
-                  <div class="spacing-row__sample">
-                    <p class="meta-label">Vertical</p>
-                    <div class="spacing-row__sample-area spacing-row__sample-area--vertical">
-                      <div class="spacing-row__bar-v" style={`height:${item.value};`}></div>
-                    </div>
-                  </div>
-                </div>
-              </article>
+              <div role="row" class="ledger-row">
+                <span role="cell" class="mono">{item.token}</span>
+                <span role="cell" class="variant">{item.value}</span>
+                <div role="cell"><div class="space-bar" style={{ width: item.length }} /></div>
+                <span role="cell" class="variant small">{item.use}</span>
+              </div>
             ))}
           </div>
         </section>
@@ -196,17 +160,13 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
 
         {topic === 'layout-rules' && (
         <section id="styles-layout-rules" class="section-block">
-          <div class="stack">
+          <div class="editorial-list">
             {layoutRules.map((rule) => (
-              <article class="rule-card">
-                <div class="token-row__top">
-                  <span class="token-name">{rule.name}</span>
-                  <span class="token-value">{rule.value}</span>
-                </div>
-                <p class="token-note">
-                  {rule.why.split('`').map((part, index) => (index % 2 === 1 ? <code>{part}</code> : part))}
-                </p>
-              </article>
+              <div class="editorial-rule">
+                <h3>{rule.name}</h3>
+                <p>{rule.why}</p>
+                <p class="mono variant rule-value">{rule.value}</p>
+              </div>
             ))}
           </div>
         </section>
@@ -228,10 +188,8 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
         )}
 
         {component && (
-                  <article id={component.id} class="component-card section-block">
-                    <div class="component-card__head">
-                      <ProjectBodyText paragraphs={[component.purpose]} spacing="none" />
-                    </div>
+                  <article id={component.id} class="component-documentation section-block">
+                    <ProjectBodyText paragraphs={[component.purpose]} spacing="none" />
 
                     <div class:list={['component-preview', 'demo-frame', { 'component-preview--video': component.preview === 'video' }]}>
                       {component.preview === 'header' && (
@@ -307,7 +265,7 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         />
                       )}
                       {component.preview === 'ui-button' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.75em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.75em;">
                           <Button emphasis="ghost" label="Ghost" />
                           <Button emphasis="soft" label="Soft" />
                           <Button emphasis="filled" label="Filled" />
@@ -338,7 +296,7 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                       {component.preview === 'ui-segmented-control' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 1.5em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 1.5em;">
                           <SegmentedControl data-slide-selection label="Viewport">
                             <Button emphasis="ghost" width="fill" label="Desktop" selected />
                             <Button emphasis="ghost" width="fill" label="Tablet" />
@@ -354,12 +312,12 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                       {component.preview === 'ui-viewport-selector' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <ViewportSelector dataAttr="data-viewport" />
                         </div>
                       )}
                       {component.preview === 'ui-dev-panel' && (
-                        <div class="component-preview__overlays" style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
+                        <div class="component-preview__overlays" style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
                           <DevOverlay title="Panel title" layout="portrait" embedded storageKey="styles-preview-portrait" panelKey="styles-preview-portrait">
                             <p class="preview-note">Body content</p>
                             <p class="preview-note">Body content</p>
@@ -377,25 +335,25 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                       {component.preview === 'ui-dev-panel-title' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.75em;">
                           <DevPanelTitle panelKey="image" />
                           <DevPanelTitle panelKey="caption" />
                           <DevPanelTitle panelKey="grid" />
                         </div>
                       )}
                       {component.preview === 'ui-field' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <Field label="Label">Value</Field>
                         </div>
                       )}
                       {component.preview === 'ui-text-field' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <TextField label="Normal" placeholder="Placeholder" />
                           <TextField label="Prefixed" prefix="example.com/" placeholder="project-name" />
                         </div>
                       )}
                       {component.preview === 'ui-text-area' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <TextArea
                             label="Notes"
                             value={'First line of notes.\nSecond line with a bit more detail.\nThird line.'}
@@ -403,7 +361,7 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                       {component.preview === 'ui-select-field' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <EditorSelectField
                             label="Label"
                             options={[
@@ -415,13 +373,13 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                       {component.preview === 'ui-toggle-row' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.5em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.5em;">
                           <ToggleRow label="Unchecked" />
                           <ToggleRow label="Checked" checked />
                         </div>
                       )}
                       {component.preview === 'ui-panel-actions' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
                           <PanelActions>
                             <Button emphasis="ghost" label="Cancel" />
                             <Button emphasis="ghost" label="Revert changes" />
@@ -431,7 +389,7 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                       )}
                       {component.preview === 'ui-badge' && (
                         <>
-                          <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.5em;">
+                          <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.5em;">
                             <Badge label="On page" />
                             <Badge label="Library" />
                             <Badge label="Draft" />
@@ -439,7 +397,7 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </>
                       )}
                       {component.preview === 'ui-hairline' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em; max-width: 20em;">
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.75em; max-width: 20em;">
                           <p class="preview-note">Line above</p>
                           <Hairline />
                           <p class="preview-note">Line below</p>
@@ -451,22 +409,20 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
                         </div>
                       )}
                     </div>
-                    <div class="component-meta-grid">
-                      <div>
-                        <p class="meta-label">Source</p>
-                        <p class="meta-values"><code>{component.source}</code></p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Props</p>
-                        <p class="meta-values"><code>{component.props}</code></p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Class reference</p>
-                        <p class="meta-values">{component.classRef}</p>
-                      </div>
-                      <div>
-                        <p class="meta-label">Used on</p>
-                        <p class="meta-values">{component.usedOn.join(', ')}</p>
+                    <div>
+                      <h3 class="subheading">Reference</h3>
+                      <div role="table" aria-label={`${component.name} reference`} class="ledger ledger--reference">
+                        {[
+                          { label: 'Source', value: component.source },
+                          { label: 'Props', value: component.props },
+                          { label: 'Classes', value: component.classRef },
+                          { label: 'Used on', value: component.usedOn.join(', ') },
+                        ].map((item) => (
+                          <div role="row" class="ledger-row">
+                            <span role="cell" class="subtle">{item.label}</span>
+                            <span role="cell" class="mono">{item.value}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
@@ -492,6 +448,8 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
     display: flex;
     flex-direction: column;
     gap: 2.5em;
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .section-block[id] {
@@ -504,76 +462,31 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
     gap: 1em;
   }
 
-  .styles-main .meta-values code { white-space: normal; overflow-wrap: anywhere; }
-
-  .meta-values {
-    font-family: var(--font-mono);
-  }
-
-  .meta-values code,
-  .token-note code {
-    font-size: 0.92em;
-    font-family: var(--font-mono);
-  }
-
-  /* This page prints technical strings — file paths, prop lists, CSS values —
-     that carry no natural break opportunity, so each sets a min-content width
-     as wide as the whole string. Grid and flex items default to a min size of
-     auto and refuse to shrink below that, which pushed the page wider than the
-     viewport on a phone. `anywhere` (not `break-word`) is the one that also
-     lowers min-content, so the tracks can actually shrink. */
-  .meta-values,
-  .meta-values code,
-  .token-note code,
-  .token-value,
-  .token-name,
-  .token-note,
-  .meta-label,
-  .preview-note,
-  .card-heading {
-    overflow-wrap: anywhere;
-  }
-
-  .component-meta-grid > *,
-  .spacing-row > *,
-  .spacing-row__samples > *,
-  .type-card__meta > *,
-  .token-row__top > * {
-    min-width: 0;
-  }
-
-  .stack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85em;
-  }
-
-  .type-card,
-  .rule-card,
-  .spacing-row,
-  .component-card {
-    border: 0;
-    border-radius: var(--radius-card-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    padding: 1em;
-    background-color: var(--sys-color-srf-container-low);
-    --on-surface-faint: var(--sys-color-on-srf-container-faint);
-  }
-
-  .type-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.85em;
-  }
-
-  .type-card__meta {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.35em;
-    border-bottom: 1px solid var(--sys-color-outline-variant);
-    padding-bottom: 0.8em;
+  .styles-main :is(div, section, article, figure, figcaption, p, span) { min-width: 0; }
+  .styles-main :is(p, h3, figure) { margin: 0; }
+  .styles-main h3 { font-size: inherit; line-height: inherit; font-weight: 500; }
+  .mono { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+  .variant { color: var(--sys-color-on-srf-variant); }
+  .subtle { color: var(--sys-color-on-srf-subtle); }
+  .medium { font-weight: 500; }
+  .small { font-size: 0.875rem; }
+  .editorial-list { display: grid; gap: calc(3 * var(--space-unit)); }
+  .editorial-rule .rule-value { margin-top: calc(0.5 * var(--space-unit)); }
+  .ledger { --columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ledger-head, .ledger-row { display: grid; grid-template-columns: var(--columns); column-gap: calc(2 * var(--space-unit)); align-items: baseline; }
+  .ledger-head { font-size: 12px; line-height: 1.4; color: var(--sys-color-on-srf-subtle); padding-bottom: calc(0.5 * var(--space-unit)); border-bottom: 1px solid var(--sys-color-outline); }
+  .ledger-row { padding-block: calc(0.75 * var(--space-unit)); border-bottom: 1px solid var(--sys-color-outline-subtle); }
+  .ledger--spacing { --columns: 10rem 5rem minmax(0, 1fr) minmax(0, 1fr); }
+  .space-bar { height: 4px; max-width: 100%; background: var(--sys-color-on-srf); border-radius: calc(999px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); }
+  .plate-list { display: grid; gap: calc(4 * var(--space-unit)); }
+  .plate-frame { padding: var(--demo-frame-inset); min-height: 8rem; display: grid; place-items: center start; }
+  figcaption { margin-top: var(--space-unit); }
+  .caption-row { display: flex; justify-content: space-between; flex-wrap: wrap; column-gap: var(--space-unit); align-items: baseline; }
+  .component-documentation { gap: calc(2 * var(--space-unit)); }
+  .styles-main .subheading { margin-bottom: var(--space-unit); }
+  @media (width < 40em) {
+    .ledger-row { grid-template-columns: minmax(0, 1fr); gap: calc(0.25 * var(--space-unit)); }
+    .ledger-head { display: none; }
   }
 
   .type-preview {
@@ -659,118 +572,6 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
     font-weight: var(--text-wordmark-weight);
   }
 
-  .caption-preview {
-    position: relative;
-    width: 100%;
-    max-width: 34em;
-    overflow: hidden;
-  }
-
-  .caption-preview img {
-    width: 100%;
-    object-fit: cover;
-    max-height: 20em;
-  }
-
-  .spacing-row {
-    display: grid;
-    grid-template-columns: 14em 1fr;
-    align-items: center;
-    gap: 1em;
-  }
-
-  .spacing-row__meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35em;
-  }
-
-  .spacing-row__samples {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.75em;
-  }
-
-  .spacing-row__sample {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35em;
-  }
-
-  .spacing-row__sample-area {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-high);
-    --on-surface-faint: var(--sys-color-on-srf-container-faint);
-    padding: 0.75em;
-    display: flex;
-    align-items: center;
-    min-height: 3em;
-  }
-
-  .spacing-row__sample-area--vertical {
-    align-items: flex-end;
-    min-height: 6em;
-  }
-
-  .spacing-row__bar-h {
-    height: 1em;
-    background: #c4c4c4;
-  }
-
-  .spacing-row__bar-v {
-    width: 1em;
-    background: #c4c4c4;
-  }
-
-  .token-row__top {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.75em;
-    flex-wrap: wrap;
-    align-items: baseline;
-  }
-
-  .token-name {
-    font-weight: 700;
-  }
-
-  .token-value {
-    font-family: var(--font-mono);
-    color: color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent);
-  }
-
-  .token-note {
-    margin-top: 0.2em;
-    color: var(--sys-color-on-srf-variant);
-    line-height: 1.45;
-  }
-
-  .component-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.8em;
-  }
-
-  .card-heading {
-    font-size: 1.05rem;
-    font-weight: 700;
-  }
-
-  .component-meta-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.8em;
-    border-top: 1px solid var(--sys-color-outline-variant);
-    padding-top: 0.8em;
-  }
-
-  .component-meta-grid__full {
-    grid-column: 1 / -1;
-  }
-
   .component-preview {
     padding: var(--demo-frame-inset);
     overflow: hidden;
@@ -803,60 +604,10 @@ const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
     min-height: 14em;
   }
 
-  .component-preview :global(.project-detail__img) {
-    min-height: 10em;
-  }
-
-  .component-preview :global(.project-context-grid--preview),
-  .component-preview :global(.project-reference-grid--preview) {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1em;
-  }
-
   .preview-note {
     margin: 0;
-    padding: 0.75em 1em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-high);
-    --on-surface-faint: var(--sys-color-on-srf-container-faint);
     line-height: 1.45;
     color: color-mix(in srgb, var(--sys-color-on-srf) 80%, transparent);
-  }
-
-  .meta-label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.07em;
-    color: var(--sys-color-on-srf-variant);
-    margin-bottom: 0.35em;
-  }
-
-  .meta-values {
-    line-height: 1.45;
-  }
-
-  @media (max-width: 63.9375em) {
-    .component-meta-grid,
-    .spacing-row,
-    .spacing-row__samples {
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .component-preview :global(.project-context-grid--preview),
-    .component-preview :global(.project-reference-grid--preview) {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 30em) {
-    .component-meta-grid,
-    .spacing-row,
-    .spacing-row__samples {
-      grid-template-columns: minmax(0, 1fr);
-    }
   }
 </style>
 
