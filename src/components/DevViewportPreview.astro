@@ -11,7 +11,9 @@
       <button type="button" class="dev-btn dev-btn--ghost" data-viewport-close aria-label="Close viewport preview">Close</button>
     </div>
     <div class="dev-viewport-preview__stage">
-      <iframe title="Viewport preview" data-viewport-frame></iframe>
+      <div class="dev-viewport-preview__frame-shell" data-viewport-frame-shell>
+        <iframe title="Viewport preview" data-viewport-frame></iframe>
+      </div>
     </div>
   </div>
 </div>
@@ -24,8 +26,9 @@
     const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
     const veil = root?.querySelector<HTMLElement>('[data-viewport-veil]');
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
+    const frameShell = root?.querySelector<HTMLElement>('[data-viewport-frame-shell]');
     const size = root?.querySelector<HTMLElement>('[data-viewport-size]');
-    if (!root || !veil || !frame || !size) return scope.destroy;
+    if (!root || !veil || !frame || !frameShell || !size) return scope.destroy;
     const frameMode = new URLSearchParams(window.location.search).has('vcd-viewport-preview');
 
     const presets = {
@@ -36,7 +39,8 @@
     type Preset = keyof typeof presets;
     let active: Preset = 'desktop';
     let open = false;
-    let frameSaveBusy = false;
+    let frameWrote = false;
+    let previousFocus: HTMLElement | null = null;
     const previewUrl = () => {
       const url = new URL(window.location.href);
       url.searchParams.set('vcd-viewport-preview', '1');
@@ -53,6 +57,8 @@
       const availableWidth = Math.max(240, window.innerWidth - 32);
       const availableHeight = Math.max(240, window.innerHeight - 96);
       const scale = Math.min(1, availableWidth / width, availableHeight / height);
+      frameShell.style.width = `${width * scale}px`;
+      frameShell.style.height = `${height * scale}px`;
       frame.style.setProperty('--viewport-scale', String(scale));
       size.textContent = `${width} × ${height}`;
       root.querySelectorAll('[data-viewport-preset]').forEach((button) => {
@@ -70,17 +76,26 @@
       root.hidden = true;
       frame.src = 'about:blank';
       document.documentElement.classList.remove('is-viewport-preview-open');
+      previousFocus?.focus();
+      previousFocus = null;
+      if (frameWrote) {
+        sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY: window.scrollY }));
+        window.location.reload();
+      }
       return true;
     };
     const show = (preset: Preset) => {
       if (!document.documentElement.classList.contains('is-dev-mode')) return false;
       active = preset;
       if (!open) {
+        if (document.querySelector<HTMLElement>('[data-dev-text-actions]:not([hidden])')) return false;
         const beforeReload = new CustomEvent('vcd:before-reload', { cancelable: true });
         if (!window.dispatchEvent(beforeReload)) return false;
+        previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         open = true;
         root.hidden = false;
         frame.src = previewUrl();
+        root.querySelector<HTMLElement>('[data-viewport-preset="desktop"]')?.focus();
       }
       syncFrame();
       document.documentElement.classList.add('is-viewport-preview-open');
@@ -105,12 +120,11 @@
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
       if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
-      if (event.data?.type === 'vcd-viewport-preview-content-written') {
-        window.dispatchEvent(new Event('vcd:dev-content-written'));
-      }
+      if (event.data?.type === 'vcd-viewport-preview-content-written') frameWrote = true;
       if (event.data?.type === 'vcd-viewport-preview-preset' && event.data.preset in presets) {
         show(event.data.preset as Preset);
       }
+      if (event.data?.type === 'vcd-viewport-preview-close') close();
     });
     scope.listen(window, 'message', (event) => {
       if (event.origin !== window.location.origin || window.parent === window) return;
@@ -121,6 +135,11 @@
     scope.listen(document, 'keydown', (event) => {
       if (isTypingTarget(event.target)) return;
       if (frameMode) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          window.parent.postMessage({ type: 'vcd-viewport-preview-close' }, window.location.origin);
+          return;
+        }
         if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
         const preset = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
         if (!preset) return;
@@ -135,17 +154,20 @@
       if (event.code === 'Digit3' && show('mobile')) event.preventDefault();
     }, true);
     if (frameMode) {
-      scope.listen(window, 'vcd:dev-save-state', ((event: CustomEvent<{ saving?: boolean }>) => {
-        frameSaveBusy = Boolean(event.detail?.saving);
-      }) as EventListener);
-      scope.listen(window, 'vcd:dev-content-written', () => {
+      scope.listen(window, 'vcd:dev-save-complete', () => {
         window.parent.postMessage({ type: 'vcd-viewport-preview-content-written' }, window.location.origin);
       });
-      scope.listen(window, 'vcd:before-reload', (event) => {
-        if (frameSaveBusy) event.preventDefault();
-      }, true);
       window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
       return () => scope.destroy();
+    }
+    const restore = sessionStorage.getItem('vcd-viewport-preview-restore');
+    if (restore) {
+      sessionStorage.removeItem('vcd-viewport-preview-restore');
+      try {
+        const { scrollY } = JSON.parse(restore) as { scrollY?: number };
+        window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+        requestAnimationFrame(() => window.scrollTo(0, Number(scrollY) || 0));
+      } catch { /* Ignore a stale restore marker. */ }
     }
     return () => { close(); scope.destroy(); };
   });
@@ -160,7 +182,8 @@
   .dev-viewport-preview__presets [aria-pressed="true"] { background: var(--comp-button-page-container-selected); }
   .dev-viewport-preview__size { min-width: 7rem; font: var(--dev-text-status); text-align: center; }
   .dev-viewport-preview__stage { display: grid; place-items: start center; flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 0.5rem; }
-  .dev-viewport-preview__stage iframe { display: block; flex: none; transform: scale(var(--viewport-scale, 1)); transform-origin: top center; border: 0; border-radius: 0.75rem; background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); }
+  .dev-viewport-preview__frame-shell { position: relative; flex: none; }
+  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: 0.75rem; background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); }
   @media (max-width: 40em) { .dev-viewport-preview__toolbar { width: 100%; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
   @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__stage iframe { transition: none; } }
 </style>
