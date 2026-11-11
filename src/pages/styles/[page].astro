@@ -1,0 +1,61 @@
+---
+import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import { loadPageDocument } from '../../lib/projects';
+
+const catalog = [
+  { slug: 'typography', label: 'Typography', group: 'Foundations', title: 'Typography', description: 'Type roles and editorial hierarchy used across the site.' },
+  { slug: 'spacing', label: 'Spacing', group: 'Foundations', title: 'Spacing', description: 'The spacing scale and stack rhythm used by page blocks.' },
+  { slug: 'layout-rules', label: 'Layout rules', group: 'Foundations', title: 'Layout rules', description: 'Page-width, gutter and transition rules for composed pages.' },
+  { slug: 'page-blocks', label: 'Page blocks', group: 'Page Blocks', title: 'Page blocks', description: 'Reusable content blocks for case studies and editorial pages.' },
+  { slug: 'dev-components', label: 'Dev components', group: 'Dev Components', title: 'Dev components', description: 'Editor-facing controls and surfaces used in development tools.' },
+];
+
+export function getStaticPaths() {
+  return ['typography', 'spacing', 'layout-rules', 'page-blocks', 'dev-components']
+    .map((page) => ({ params: { page } }));
+}
+
+const current = catalog.find((entry) => entry.slug === Astro.params.page);
+if (!current) return Astro.redirect('/404');
+const index = catalog.indexOf(current);
+const pageLinks = [
+  { href: '/styles', label: 'Overview', group: 'Design system' },
+  ...catalog.map((entry) => ({ href: `/styles/${entry.slug}`, label: entry.label, group: entry.group, current: entry.slug === current.slug })),
+];
+
+const paragraphs: Record<string, string[]> = {
+  typography: ['Use the type roles below as named decisions. Components own their compact chrome sizing, while narrative copy stays readable and measured.', 'Text and Heading 1 are the workhorses for project pages. Captions, navigation and status copy stay subordinate through size, weight and muted ink.'],
+  spacing: ['Page blocks use a small set of named gaps. Choose the relationship between blocks, then let the stack apply the rhythm consistently.', 'The core unit is the reference point for compact chrome and related gaps. Larger section and major gaps mark a change of subject.'],
+  'layout-rules': ['Layout rules keep page blocks composable. Blocks own their content and the stack owns the distance between them.', 'The page gutter remains fluid across viewport sizes, while the reading measure stays constrained for long-form copy.'],
+  'page-blocks': ['Page blocks are the content primitives used to compose projects and reports. Each block can be reordered, edited and rendered through the same document model.', 'Use the linked component source as the implementation reference, then compose it through the page document rather than adding page-specific markup.'],
+  'dev-components': ['Dev components provide the controls and surfaces used while editing, previewing and inspecting pages. They share the same tokens as the site shell.', 'Keep these controls predictable and compact because they are used repeatedly during authoring.'],
+};
+const componentCopy = current.slug === 'page-blocks'
+  ? ['ProjectBodyText — narrative paragraphs with editable block spacing.', 'ProjectImage and ProjectImageGrid — lead media and responsive image groups.', 'ProjectImageCarousel — image sequences with viewport-aware presentation.', 'ProjectInteractiveDemo — interactive examples in the standard demo frame.', 'ProjectDetails, ProjectDivider and ProjectQuote — supporting editorial blocks.']
+  : current.slug === 'dev-components'
+    ? ['Button, Menu and SegmentedControl — action and selection controls.', 'DevOverlay and DevPanelTitle — inspector surfaces and panel labels.', 'Field, TextField, TextArea and EditorSelectField — labelled editor inputs.', 'ToggleRow, PanelActions, Badge and Hairline — compact compositions.']
+    : [];
+const sections = [
+  { type: 'bodyText', paragraphs: paragraphs[current.slug] },
+  ...(componentCopy.length ? [{ type: 'sectionTitle', sectionId: `styles-${current.slug}-included`, title: 'Included blocks', level: 2 }, { type: 'bodyText', paragraphs: componentCopy }] : []),
+  ...(current.slug === 'layout-rules' ? [{ type: 'sectionTitle', sectionId: `styles-${current.slug}-tokens`, title: 'Read the full token examples', level: 2 }, { type: 'bodyText', paragraphs: ['The complete token specimen remains available from the overview while this page carries the routeable guidance and navigation.'] }] : []),
+];
+const contents = sections.filter((section) => section.type === 'sectionTitle').map((section) => ({ id: String(section.sectionId), label: String(section.title) }));
+const previous = index === 0 ? { href: '/styles', label: 'Overview' } : { href: `/styles/${catalog[index - 1].slug}`, label: catalog[index - 1].label };
+const next = index === catalog.length - 1 ? undefined : { href: `/styles/${catalog[index + 1].slug}`, label: catalog[index + 1].label };
+---
+
+<DocumentationLayout
+  title={current.title}
+  description={current.description}
+  product="VCD"
+  homeHref="/"
+  pages={pageLinks}
+  contents={contents}
+  previous={previous}
+  next={next}
+  githubHref="https://github.com/vicentecr-uz/VCDwebsite"
+>
+  <ProjectSections documentKey="styles" sections={sections} />
+</DocumentationLayout>
