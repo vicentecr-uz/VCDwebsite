@@ -3352,16 +3352,57 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           }));
         });
         const path = JSON.parse(target.dataset.devImagePath!);
+        const requestTarget = withDevEditTarget({ document: documentKey, path }, target);
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            ...withDevEditTarget({ document: documentKey, path }, target),
+            ...requestTarget,
             action: 'convertImageToCarousel',
           }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not make this image a carousel.');
+        let undoToken = payload.undoToken as string;
+        const remount = (section: Record<string, unknown>) => {
+          window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
+            detail: { documentKey, index: payload.index, section },
+          }));
+        };
+        const undo = async () => {
+          const undoResponse = await fetch('/api/content-section', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...requestTarget, action: 'undoImageToCarousel', undoToken }),
+          });
+          const undoPayload = await undoResponse.json();
+          if (!undoResponse.ok) throw new Error(undoPayload.error || 'Could not undo that carousel conversion.');
+          remount(undoPayload.section);
+        };
+        const redo = async () => {
+          const redoResponse = await fetch('/api/content-section', {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ...requestTarget, action: 'convertImageToCarousel' }),
+          });
+          const redoPayload = await redoResponse.json();
+          if (!redoResponse.ok) throw new Error(redoPayload.error || 'Could not make this image a carousel.');
+          undoToken = redoPayload.undoToken as string;
+          remount(redoPayload.section);
+        };
+        pageHistory.push({ label: 'Make carousel', undo, redo });
+        if (!pageHistory.replaying) {
+          window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
+            detail: {
+              message: 'Image converted to carousel',
+              icon: 'carousel',
+              action: {
+                label: 'Undo',
+                run: async () => {
+                  if (!await pageHistory.undoIfCurrent(undo)) throw new Error('Use the page’s undo shortcut to step back to this edit.');
+                },
+              },
+            },
+          }));
+        }
         if (editTarget === target) closePanel();
         window.dispatchEvent(new Event('vcd:dev-content-written'));
         window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
@@ -3370,7 +3411,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Could not make this image a carousel.';
         if (editTarget === target && editingSession) status.textContent = message;
-        else window.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message } }));
+        else window.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message, icon: 'warning' } }));
       } finally {
         convertingToCarousel = false;
         if (makeCarouselButton) makeCarouselButton.disabled = false;

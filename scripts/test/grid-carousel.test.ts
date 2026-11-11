@@ -18,9 +18,9 @@ const source = () => ({ sections: [{ id: 'grid', type: 'imageGrid', columns: 2, 
   }],
 }] });
 
-const post = async (body: unknown) => {
+const post = async (body: unknown, writer = contentSectionDevWriter()) => {
   let handler: any;
-  contentSectionDevWriter().configureServer({ middlewares: { use(_path: string, next: any) { handler = next; } } } as any);
+  writer.configureServer({ middlewares: { use(_path: string, next: any) { handler = next; } } } as any);
   let result: any;
   await handler({ method: 'POST', async *[Symbol.asyncIterator]() { yield Buffer.from(JSON.stringify(body)); } },
     { statusCode: 200, setHeader() {}, end(value: string) { result = { status: this.statusCode, body: JSON.parse(value) }; } }, () => {});
@@ -82,6 +82,23 @@ test('standalone conversion keeps section identity and first-slide media', async
       document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 1], target: { sectionId: 'photo' },
     });
     expect(repeated.status).toBe(400);
+  });
+});
+
+test('nested conversion can be undone and redone through an opaque token without touching siblings', async () => {
+  await fixture(async (file) => {
+    const before = source();
+    const writer = contentSectionDevWriter();
+    const converted = await post({ document: 'fixture', action: 'convertImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' } }, writer);
+    expect(converted.status).toBe(200);
+    expect(typeof converted.body.undoToken).toBe('string');
+    const undone = await post({ document: 'fixture', action: 'undoImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' }, undoToken: converted.body.undoToken }, writer);
+    expect(undone.status).toBe(200);
+    const restored = JSON.parse(await readFile(file, 'utf8'));
+    expect(restored.sections[0].items[0]).toEqual(before.sections[0].items[0]);
+    expect(restored.sections[0].items[1]).toEqual(before.sections[0].items[1]);
+    const stale = await post({ document: 'fixture', action: 'undoImageToCarousel', path: ['sections', 0, 'items', 0], target: { sectionId: 'grid', itemId: 'photo' }, undoToken: converted.body.undoToken }, writer);
+    expect(stale.status).toBe(400);
   });
 });
 

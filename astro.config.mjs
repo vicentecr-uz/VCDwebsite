@@ -2,6 +2,7 @@
 import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
@@ -1783,6 +1784,13 @@ const writeContentJson = async (file, data) => {
  */
 export function contentSectionDevWriter() {
   const restoreStore = createSectionRestoreStore();
+  const carouselUndoStore = new Map();
+  const rememberCarouselUndo = (entry) => {
+    const token = randomUUID();
+    carouselUndoStore.set(token, entry);
+    while (carouselUndoStore.size > 128) carouselUndoStore.delete(carouselUndoStore.keys().next().value);
+    return token;
+  };
   return {
     name: 'content-section-dev-writer',
     apply: 'serve',
@@ -1826,6 +1834,8 @@ export function contentSectionDevWriter() {
                 ? 'removeMediaItem'
               : body.action === 'convertImageToCarousel'
                 ? 'convertImageToCarousel'
+              : body.action === 'undoImageToCarousel'
+                ? 'undoImageToCarousel'
               : body.action === 'updateProjectDetailsRows'
                 ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
@@ -1925,6 +1935,32 @@ export function contentSectionDevWriter() {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not remove that image.',
               });
+            }
+            return;
+          }
+
+          if (action === 'undoImageToCarousel') {
+            const token = typeof body.undoToken === 'string' ? body.undoToken : '';
+            const undo = carouselUndoStore.get(token);
+            if (!undo || undo.document !== documentKey) {
+              send(400, { error: 'That carousel conversion can no longer be undone.' });
+              return;
+            }
+            try {
+              const resolvedPath = resolveContentTarget(data, undo.path, undo.target);
+              const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+              const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+              const current = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid'
+                ? section.items?.[itemIndex]
+                : resolvedPath.length === 2 ? data.sections[sectionIndex] : undefined;
+              if (JSON.stringify(current) !== JSON.stringify(undo.carousel)) throw new Error('That image changed after conversion.');
+              if (resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid') section.items[itemIndex] = structuredClone(undo.original);
+              else data.sections[sectionIndex] = structuredClone(undo.original);
+              await writeContentJson(file, data);
+              carouselUndoStore.delete(token);
+              send(200, { ok: true, action, index: sectionIndex, section: data.sections[sectionIndex] });
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'Could not undo that carousel conversion.' });
             }
             return;
           }
@@ -2076,6 +2112,13 @@ export function contentSectionDevWriter() {
             };
             if (nested) section.items[itemIndex] = carousel;
             else data.sections[sectionIndex] = carousel;
+            const undoToken = rememberCarouselUndo({
+              document: documentKey,
+              path: fieldPath,
+              target: body.target,
+              original: structuredClone(image),
+              carousel: structuredClone(carousel),
+            });
             await writeContentJson(file, data);
             send(200, {
               ok: true,
@@ -2083,6 +2126,7 @@ export function contentSectionDevWriter() {
               path: fieldPath,
               index: resolvedPath[1],
               section: data.sections[resolvedPath[1]],
+              undoToken,
             });
             return;
           }

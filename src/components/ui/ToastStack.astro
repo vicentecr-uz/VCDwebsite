@@ -1,27 +1,44 @@
 ---
 import '../../styles/dev-chrome.css';
+import { sizeIcon } from '../../lib/icons';
+import checkIcon from 'lucide-static/icons/check.svg?raw';
+import imagesIcon from 'lucide-static/icons/images.svg?raw';
+import infoIcon from 'lucide-static/icons/info.svg?raw';
+import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
+import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import uploadIcon from 'lucide-static/icons/upload.svg?raw';
 
 interface Props {
   fixed?: boolean;
 }
 const { fixed = false } = Astro.props;
+const toastIcons = {
+  info: sizeIcon(infoIcon, 18),
+  success: sizeIcon(checkIcon, 18),
+  publish: sizeIcon(uploadIcon, 18),
+  delete: sizeIcon(trashIcon, 18),
+  carousel: sizeIcon(imagesIcon, 18),
+  warning: sizeIcon(triangleAlertIcon, 18),
+};
 ---
 
 <div class:list={['toast-stack', fixed && 'toast-stack--fixed']} data-toast-stack>
   <ol class="toasts__region" aria-label="Notifications" aria-live="polite" aria-relevant="additions" data-toast-region></ol>
   <template>
     <li class="toasts__toast dev-surface">
+      <span class="toasts__icon" data-toast-icon aria-hidden="true"></span>
       <span data-toast-message></span>
       <button class="dev-btn dev-btn--ghost toasts__action" type="button"></button>
     </li>
   </template>
 </div>
 
-<script>
+<script define:vars={{ toastIcons }}>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
   type Toast = {
     message: string;
+    icon?: keyof typeof toastIcons;
     action?: { label: string; run: () => void | Promise<void> };
   };
 
@@ -56,9 +73,18 @@ const { fixed = false } = Astro.props;
       if (toast.hasAttribute('data-leaving')) return;
       timers.set(toast, scope.timeout(() => dismiss(toast), 4000));
     };
-    const show = ({ message, action }: Toast) => {
+    const iconFor = (message: string, icon?: Toast['icon']) => icon ?? (
+      /saved/i.test(message) ? 'success'
+        : /published/i.test(message) ? 'publish'
+          : /deleted|removed/i.test(message) ? 'delete'
+            : /carousel/i.test(message) ? 'carousel'
+              : /could not|error|failed|cannot/i.test(message) ? 'warning' : 'info'
+    );
+    const show = ({ message, icon, action }: Toast) => {
       const toast = template.content.firstElementChild?.cloneNode(true) as HTMLElement;
       toast.querySelector('[data-toast-message]')!.textContent = message;
+      const iconNode = toast.querySelector<HTMLElement>('[data-toast-icon]')!;
+      iconNode.innerHTML = toastIcons[iconFor(message, icon)];
       const button = toast.querySelector('button')!;
       if (action) {
         button.textContent = action.label;
@@ -98,7 +124,7 @@ const { fixed = false } = Astro.props;
       try {
         await action.run();
       } catch (error) {
-        show({ message: error instanceof Error ? error.message : 'Could not complete that action.' });
+        show({ message: error instanceof Error ? error.message : 'Could not complete that action.', icon: 'warning' });
       }
     });
     scope.listen(region, 'pointerenter', () => toasts().forEach(pause));
@@ -197,11 +223,12 @@ const { fixed = false } = Astro.props;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
     min-height: 44px;
     box-sizing: border-box;
-    padding: 6px 6px 6px 14px;
-    border-radius: 12px;
+    padding: 10px 12px;
+    border-radius: calc(12px * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     font: var(--dev-text-label);
     color: var(--sys-color-on-srf);
     opacity: 0;
@@ -211,6 +238,9 @@ const { fixed = false } = Astro.props;
     transform: translateX(var(--toast-swipe, 0px));
     transition: translate 400ms cubic-bezier(0.32, 0.72, 0, 1), scale 400ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease, transform 250ms cubic-bezier(0.32, 0.72, 0, 1);
   }
+
+  .toasts__icon { display: inline-flex; flex: 0 0 18px; align-items: center; justify-content: center; }
+  [data-toast-message] { min-width: 0; flex: 1 1 auto; }
 
   .toasts__toast[data-shown] {
     opacity: 1;
