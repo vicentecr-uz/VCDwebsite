@@ -1,0 +1,135 @@
+<div class="dev-viewport-preview" data-dev-viewport-preview hidden>
+  <div class="dev-viewport-preview__veil" data-viewport-veil>
+    <div class="dev-viewport-preview__toolbar dev-surface" role="toolbar" aria-label="Viewport preview">
+      <div class="dev-viewport-preview__presets" role="group" aria-label="Viewport preset">
+        <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="desktop">Desktop</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="tablet">Tablet</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="mobile">Mobile</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-viewport-preset="actual">Actual</button>
+      </div>
+      <span class="dev-viewport-preview__size" data-viewport-size></span>
+      <button type="button" class="dev-btn dev-btn--ghost" data-viewport-close aria-label="Close viewport preview">Close</button>
+    </div>
+    <div class="dev-viewport-preview__stage">
+      <iframe title="Viewport preview" data-viewport-frame></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
+    const veil = root?.querySelector<HTMLElement>('[data-viewport-veil]');
+    const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
+    const size = root?.querySelector<HTMLElement>('[data-viewport-size]');
+    if (!root || !veil || !frame || !size) return scope.destroy;
+    const frameMode = new URLSearchParams(window.location.search).has('vcd-viewport-preview');
+
+    const presets = {
+      desktop: [1440, 900],
+      tablet: [1024, 768],
+      mobile: [390, 844],
+    } as const;
+    type Preset = keyof typeof presets;
+    let active: Preset = 'desktop';
+    let open = false;
+    const previewUrl = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('vcd-viewport-preview', '1');
+      return url.href;
+    };
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
+    };
+    const syncFrame = () => {
+      const [width, height] = presets[active];
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      const availableWidth = Math.max(240, window.innerWidth - 32);
+      const availableHeight = Math.max(240, window.innerHeight - 96);
+      const scale = Math.min(1, availableWidth / width, availableHeight / height);
+      frame.style.setProperty('--viewport-scale', String(scale));
+      size.textContent = `${width} × ${height}`;
+      root.querySelectorAll('[data-viewport-preset]').forEach((button) => {
+        button.setAttribute('aria-pressed', String((button as HTMLElement).dataset.viewportPreset === active));
+      });
+    };
+    const close = () => {
+      if (!open) return;
+      open = false;
+      root.hidden = true;
+      frame.src = 'about:blank';
+      document.documentElement.classList.remove('is-viewport-preview-open');
+      window.dispatchEvent(new Event('vcd:dev-content-written'));
+    };
+    const show = (preset: Preset) => {
+      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      active = preset;
+      if (!open) {
+        open = true;
+        root.hidden = false;
+        frame.src = previewUrl();
+      }
+      syncFrame();
+      document.documentElement.classList.add('is-viewport-preview-open');
+    };
+    const requestEditMode = () => {
+      try {
+        frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-edit' }, window.location.origin);
+      } catch { /* frame may still be loading */ }
+    };
+
+    scope.listen(frame, 'load', requestEditMode);
+    scope.listen(window, 'resize', syncFrame);
+    scope.listen(veil, 'click', (event) => { if (event.target === veil) close(); });
+    scope.listen(root, 'click', (event) => {
+      const target = event.target as HTMLElement;
+      const preset = target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset;
+      if (preset === 'actual') { close(); return; }
+      if (preset && preset in presets) show(preset as Preset);
+      if (target.closest('[data-viewport-close]')) close();
+    });
+    scope.listen(window, 'message', (event) => {
+      if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+      if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
+    });
+    scope.listen(window, 'message', (event) => {
+      if (event.origin !== window.location.origin || window.parent === window) return;
+      if (event.data?.type === 'vcd-viewport-preview-edit') {
+        window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+      }
+    });
+    scope.listen(document, 'keydown', (event) => {
+      if (frameMode) return;
+      if (isTypingTarget(event.target)) return;
+      if (event.key === 'Escape' && open) { event.preventDefault(); close(); return; }
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.code === 'Digit1') { event.preventDefault(); show('desktop'); }
+      if (event.code === 'Digit2') { event.preventDefault(); show('tablet'); }
+      if (event.code === 'Digit3') { event.preventDefault(); show('mobile'); }
+    }, true);
+    if (frameMode) {
+      window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
+      return () => scope.destroy();
+    }
+    return () => { close(); scope.destroy(); };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .dev-viewport-preview { position: fixed; inset: 0; z-index: 120; pointer-events: none; }
+  .dev-viewport-preview__veil { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; padding: 1rem; background: color-mix(in oklab, var(--sys-color-srf) 70%, transparent); backdrop-filter: blur(8px); pointer-events: auto; }
+  .dev-viewport-preview__toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem; }
+  .dev-viewport-preview__presets { display: flex; gap: 0.25rem; }
+  .dev-viewport-preview__presets [aria-pressed="true"] { background: var(--comp-button-page-container-selected); }
+  .dev-viewport-preview__size { min-width: 7rem; font: var(--dev-text-status); text-align: center; }
+  .dev-viewport-preview__stage { display: grid; place-items: start center; flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 0.5rem; }
+  .dev-viewport-preview__stage iframe { display: block; flex: none; transform: scale(var(--viewport-scale, 1)); transform-origin: top center; border: 0; border-radius: 0.75rem; background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); }
+  @media (max-width: 40em) { .dev-viewport-preview__toolbar { width: 100%; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
+  @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__stage iframe { transition: none; } }
+</style>
