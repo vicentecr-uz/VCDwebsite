@@ -3,6 +3,8 @@ import Layout from '../layouts/Layout.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import SectionSidebarNav from './SectionSidebarNav.astro';
+import DevPageColumn from './DevPageColumn.astro';
+import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCarouselTuner from './project/ProjectImageCarouselTuner.astro';
 import ProjectImageCaptionTuner from './project/ProjectImageCaptionTuner.astro';
@@ -73,7 +75,7 @@ const hasOutlineSurface = hasSidebar || hasOutlineEditor;
     <Header title={title} wordmarkAsH1 titleDocument={navDocument || undefined} />
 
     {hasOutlineSurface ? (
-      <div class="project-layout flex-1">
+      <div class="project-layout flex-1" data-adaptive-sidebar={hasSidebar ? '' : undefined} style={hasSidebar && !ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
         <SectionSidebarNav
           sectionLinks={sectionLinks}
           ariaLabel={sectionNavLabel}
@@ -91,6 +93,7 @@ const hasOutlineSurface = hasSidebar || hasOutlineEditor;
 
     <Footer />
   </div>
+  {showDevTools && hasSidebar && !ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}
   {showDevTools && <ProjectImageGridTuner />}
   {showDevTools && <ProjectImageCarouselTuner />}
   {showDevTools && <ProjectImageCaptionTuner />}

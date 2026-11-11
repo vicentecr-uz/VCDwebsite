@@ -5,7 +5,7 @@
  * `pageColumnStyle()` computes the page's column on the server, but the
  * content HMR gate drops every `full-reload`, so adding or constraining a
  * media block in the browser leaves that inline style stale until a manual
- * reload — the header and gutter would keep the old page's width. This
+ * reload — the content column and gutter would keep the old page's width. This
  * recomputes the same rule from the DOM whenever the sections change.
  *
  * Dev only. It reads `data-dev-constrained`, which is not emitted in a
@@ -25,14 +25,17 @@
       return observer;
     };
 
-  const wrapper = document.querySelector<HTMLElement>('#site-wrapper');
   const zone = document.querySelector<HTMLElement>('[data-dev-project-drop-zone]');
+  const wrapper = document.documentElement.hasAttribute('data-adaptive-page-columns')
+    ? document.getElementById('site-wrapper')
+    : zone?.closest<HTMLElement>('[data-adaptive-sidebar]');
 
   if (wrapper && zone && !zone.hasAttribute('data-dev-page-column-static')) {
     // Media sections. Text blocks only ever contribute the floor, and the
     // trailing spacing sentinel matches nothing here, so both are skipped.
     const MEDIA_SELECTOR = [
       '.project-block:not(.project-block--text)',
+      '.project-image',
       '.project-image-grid',
       '.project-image-carousel',
     ].join(',');

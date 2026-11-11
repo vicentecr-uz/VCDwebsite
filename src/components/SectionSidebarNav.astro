@@ -1504,9 +1504,60 @@ const easingOptions = [
     return () => { scope.destroy(); delete nav.dataset.initialized; };
   };
 
+  const mountProjectGutter = () => {
+    const layout = document.querySelector<HTMLElement>('[data-adaptive-sidebar]');
+    const nav = layout?.querySelector<HTMLElement>(':scope > [data-section-sidebar]');
+    if (!layout || !nav) return;
+
+    // Keep the CSS defaults for pages without an adaptive gutter and for the
+    // first paint. Update the sidebar and its companion title rules together.
+    const rules = new Map<CSSMediaRule, string>();
+    const collect = (list: CSSRuleList) => {
+      for (const rule of list) {
+        if (rule instanceof CSSMediaRule && /\b78\.(?:5|4375)em\b/.test(rule.media.mediaText)) {
+          rules.set(rule, rule.media.mediaText);
+        }
+        if (rule instanceof CSSGroupingRule) collect(rule.cssRules);
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      try { collect(sheet.cssRules); } catch { /* Cross-origin stylesheets. */ }
+    }
+
+    const sync = () => {
+      const viewport = document.documentElement.clientWidth;
+      const { left, right } = layout.getBoundingClientRect();
+      const gutter = Math.min(left, viewport - right);
+      const navEm = Number.parseFloat(getComputedStyle(nav).fontSize);
+      const fits = gutter >= 14.25 * navEm;
+      nav.style.setProperty('--section-sidebar-left', `${gutter - 13.5 * navEm}px`);
+      for (const [rule, original] of rules) {
+        // The measured gutter already accounts for the browser scrollbar and
+        // live width edits. Only the independent 48em tablet floor stays fixed.
+        const desktop = original === '(min-width: 78.5em)';
+        const tablet = original.startsWith('(min-width: 48em)');
+        const next = desktop === fits ? (tablet ? '(min-width: 48em)' : 'all') : 'not all';
+        if (rule.media.mediaText !== next) rule.media.mediaText = next;
+      }
+    };
+    const resize = new ResizeObserver(sync);
+    resize.observe(document.documentElement);
+    resize.observe(layout);
+    sync();
+    return () => {
+      resize.disconnect();
+      nav.style.removeProperty('--section-sidebar-left');
+      for (const [rule, original] of rules) rule.media.mediaText = original;
+    };
+  };
+
   const dispose = onPageLoad(() => {
+    const restoreGutter = mountProjectGutter();
     const cleanups = [...document.querySelectorAll('.section-sidebar-nav')].map(initSectionSidebarNav);
-    return () => cleanups.forEach((cleanup) => cleanup?.());
+    return () => {
+      cleanups.forEach((cleanup) => cleanup?.());
+      restoreGutter?.();
+    };
   });
   import.meta.hot?.dispose(dispose);
 </script>
@@ -1978,20 +2029,15 @@ const easingOptions = [
 
   /*
     Fixed gutter nav needs ~14.25em per side: 12.5em width + 1em gap to the
-    50em outer content column + ≥0.75em from the viewport edge.
-    Viewport: 50em + 2 × 14.25em = 78.5em. Below that, hide (desktop-only)
-    or fall back to the compact sticky strip (Styles).
-
-    DERIVED, NOT CHOSEN: this is outer column + 28.5em, and must be re-derived
-    whenever --page-media-max-width moves. A media query condition cannot read
-    a custom property, so it can't follow on its own. See docs/page-width.md
-    for every literal that has to move with it.
+    outer content column + ≥0.75em from the viewport edge. The initial
+    78.5em query fits the default 50em column; case studies update it
+    together with the title queries once the actual gutter is measured.
   */
   @media (min-width: 78.5em) {
     .section-sidebar-nav {
       position: fixed;
       top: 6.75em;
-      left: max(0.75em, calc((100vw - var(--page-max-width)) / 2 - 13.5em));
+      left: var(--section-sidebar-left, max(0.75em, calc((100vw - var(--page-max-width)) / 2 - 13.5em)));
       width: 12.5em;
       max-height: calc(100dvh - 8em);
       overflow: hidden;

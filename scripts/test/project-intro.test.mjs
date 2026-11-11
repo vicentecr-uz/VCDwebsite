@@ -131,14 +131,17 @@ assert.match(layoutSource, /style=\{ADAPTIVE_PAGE_COLUMNS_ENABLED \? columnStyle
 assert.match(layoutSource, /showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn \/>/);
 assert.match(headerSource, /if \(!adaptivePageColumnsEnabled \|\| !siteWrapper\) return;/);
 assert.match(globalCss, /--page-text-max-width: 37\.5em;[\s\S]*?--page-media-max-width: 50em;/);
-assert.match(projectCss, /\.project-block--text\s*\{[\s\S]*?max-width: var\(--page-text-max-width\);[\s\S]*?margin-inline: 0 auto;/);
+assert.match(projectCss, /\.project-block\s*\{[^}]*margin-inline: 0 auto;/);
+assert.match(projectCss, /\.project-block--text\s*\{[^}]*max-width: var\(--page-text-max-width\);/);
 assert.match(projectBodyText, /'project-block--text'/);
 assert.match(projectSectionTitle, /'project-block--text'/);
 assert.equal(
   pageColumnStyle([{ type: 'bodyText' }]),
   '--page-max-width: var(--page-text-max-width); --page-header-width: var(--page-text-max-width)',
 );
-assert.equal(pageColumnStyle([{ type: 'projectGrid' }]), undefined);
+for (const type of ['projectGrid', 'interactiveDemo', 'codeBlock', 'sabiExample', 'productHero']) {
+  assert.equal(pageColumnStyle([{ type }]), undefined, `${type} uses the media column`);
+}
 assert.equal(
   pageColumnStyle([{ type: 'imageGrid', constrained: { desktop: 50, tablet: 50, mobile: 50 } }]),
   '--page-max-width: max(var(--page-text-max-width), calc(var(--page-media-max-width) * 0.5)); --page-header-width: calc(var(--page-media-max-width) * 0.5)',
