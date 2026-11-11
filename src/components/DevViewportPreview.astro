@@ -225,13 +225,13 @@
   .dev-viewport-preview__presets [aria-pressed="true"] { background: var(--comp-button-page-container-selected); }
   .dev-viewport-preview__size { min-width: 7rem; font: var(--dev-text-status); text-align: center; }
   .dev-viewport-preview__frame-shell { position: relative; align-self: start; flex: none; overflow: hidden; transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1); }
-  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: var(--viewport-radius, 0); background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1), border-radius 320ms cubic-bezier(.2,.8,.2,1); }
+  .dev-viewport-preview__stage iframe { position: absolute; inset: 0; display: block; width: var(--viewport-width); height: var(--viewport-height); transform: scale(var(--viewport-scale, 1)); transform-origin: top left; border: 0; border-radius: calc(var(--viewport-radius, 0px) * var(--viewport-corner-scale, 1)); background: var(--sys-color-srf); box-shadow: var(--elevated-surface-shadow); transition: width 320ms cubic-bezier(.2,.8,.2,1), height 320ms cubic-bezier(.2,.8,.2,1), border-radius 320ms cubic-bezier(.2,.8,.2,1); }
   [data-viewport-stage-preset="desktop"] .dev-viewport-preview__stage iframe { --viewport-radius: 0px; }
-  [data-viewport-stage-preset="tablet"] .dev-viewport-preview__stage iframe,
-  [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 1rem; }
+  [data-viewport-stage-preset="tablet"] .dev-viewport-preview__stage iframe { --viewport-radius: 20px; }
+  [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 42px; }
   @supports (corner-shape: squircle) {
     [data-viewport-stage-preset="tablet"] .dev-viewport-preview__stage iframe,
-    [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-radius: 1.841rem; corner-shape: squircle; }
+    [data-viewport-stage-preset="mobile"] .dev-viewport-preview__stage iframe { --viewport-corner-scale: 1.841; corner-shape: squircle; }
   }
   @media (max-width: 40em) { .dev-viewport-preview__controls { justify-content: flex-start; overflow-x: auto; } .dev-viewport-preview__size { min-width: auto; } }
   @media (prefers-reduced-motion: reduce) { .dev-viewport-preview__frame-shell, .dev-viewport-preview__stage iframe { transition: none; } }
