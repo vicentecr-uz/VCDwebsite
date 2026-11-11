@@ -44,7 +44,7 @@ const commands = contextual ? [
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
   import { clampToViewport } from '../../lib/floatingLayer';
-  import { canConvertImageToCarousel } from '../../scripts/devEditTarget';
+  import { canConvertCarouselToImage, canConvertImageToCarousel } from '../../scripts/devEditTarget';
 
   const dispose = onPageLoad(() => {
     const root = document.querySelector<HTMLElement>('[data-command]');
@@ -140,9 +140,20 @@ const commands = contextual ? [
         for (const item of items) {
           const key = item.dataset.commandAction!;
           if (key === 'carousel') {
-            if (canConvertImageToCarousel(image)) actions.set(key, () => window.dispatchEvent(
-              new CustomEvent('vcd:dev-convert-image-to-carousel', { detail: image }),
-            ));
+            const carousel = image.closest<HTMLElement>('[data-dev-carousel-target]');
+            if (carousel && canConvertCarouselToImage(carousel)) {
+              item.querySelector('.command__label')!.textContent = 'Make single image';
+              item.dataset.label = 'Make single image';
+              actions.set(key, () => window.dispatchEvent(
+                new CustomEvent('vcd:dev-convert-carousel-to-image', { detail: carousel }),
+              ));
+            } else if (canConvertImageToCarousel(image)) {
+              item.querySelector('.command__label')!.textContent = 'Make carousel';
+              item.dataset.label = 'Make carousel';
+              actions.set(key, () => window.dispatchEvent(
+                new CustomEvent('vcd:dev-convert-image-to-carousel', { detail: image }),
+              ));
+            }
             continue;
           }
           const trigger = image.querySelector<HTMLButtonElement>(`[data-dev-edit-trigger="${key}"]`);

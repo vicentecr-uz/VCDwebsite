@@ -118,6 +118,41 @@ test('nested conversion can be undone and redone through an opaque token without
   });
 });
 
+test('single nested carousel reverses to its original image and preserves its cell ID', async () => {
+  await fixture(async (file) => {
+    const before = source();
+    before.sections[0].items[1] = {
+      ...before.sections[0].items[1], type: 'imageCarousel', orientation: 'horizontal',
+      items: [{ ...before.sections[0].items[1], id: 'cell-slide' }], visible: ['cell-slide'],
+    };
+    await writeFile(file, JSON.stringify(before));
+    const writer = contentSectionDevWriter();
+    const result = await post({ document: 'fixture', action: 'convertCarouselToImage', path: ['sections', 0, 'items', 1], target: { sectionId: 'grid', itemId: 'cell' } }, writer);
+    expect(result.status).toBe(200);
+    expect(result.body.section.items[1]).toMatchObject({ id: 'cell', src: 'right.jpg', captions: before.sections[0].items[1].items[0].captions });
+    expect(result.body.section.items[1].type).toBe('image');
+    const undone = await post({ document: 'fixture', action: 'undoImageToCarousel', undoToken: result.body.undoToken }, writer);
+    expect(undone.status).toBe(200);
+    expect(undone.body.section.items[1].type).toBe('imageCarousel');
+    expect(undone.body.section.items[1].items[0].id).toBe('cell-slide');
+  });
+});
+
+test('reverse carousel conversion preserves standalone section metadata and rejects invalid carousels', async () => {
+  await fixture(async (file) => {
+    const carousel = { id: 'photo', type: 'imageCarousel', sectionId: 'gallery', spacing: 'major', constrained: 80, maxHeightVh: 70,
+      annotations: { note: 'keep' }, items: [{ id: 'photo-slide', src: 'photo.jpg', alt: 'Prototype' }], visible: ['photo-slide'] };
+    await writeFile(file, JSON.stringify({ sections: [carousel] }));
+    const result = await post({ document: 'fixture', action: 'convertCarouselToImage', path: ['sections', 0], target: { sectionId: 'photo' } });
+    expect(result.status).toBe(200);
+    expect(result.body.section).toMatchObject({ id: 'photo', type: 'image', sectionId: 'gallery', spacing: 'major', constrained: 80, maxVh: 70, annotations: carousel.annotations });
+    await writeFile(file, JSON.stringify({ sections: [{ ...carousel, items: [{ id: 'a', src: 'a.jpg' }, { id: 'b', src: 'b.jpg' }] }] }));
+    expect((await post({ document: 'fixture', action: 'convertCarouselToImage', path: ['sections', 0], target: { sectionId: 'photo' } })).status).toBe(400);
+    await writeFile(file, JSON.stringify({ sections: [{ ...carousel, items: [{ id: 'a', src: 'placeholder.svg' }] }] }));
+    expect((await post({ document: 'fixture', action: 'convertCarouselToImage', path: ['sections', 0], target: { sectionId: 'photo' } })).status).toBe(400);
+  });
+});
+
 function nested() {
   const window = new Window();
   globalThis.document = window.document as unknown as Document;

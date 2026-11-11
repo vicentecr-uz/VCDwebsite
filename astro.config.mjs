@@ -1838,6 +1838,8 @@ export function contentSectionDevWriter() {
                 ? 'convertImageToCarousel'
               : body.action === 'undoImageToCarousel'
                 ? 'undoImageToCarousel'
+              : body.action === 'convertCarouselToImage'
+                ? 'convertCarouselToImage'
               : body.action === 'updateProjectDetailsRows'
                 ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
@@ -2125,6 +2127,65 @@ export function contentSectionDevWriter() {
             send(200, {
               ok: true,
               action: 'convertImageToCarousel',
+              path: fieldPath,
+              index: resolvedPath[1],
+              section: data.sections[resolvedPath[1]],
+              undoToken,
+            });
+            return;
+          }
+
+          if (action === 'convertCarouselToImage') {
+            const fieldPath = Array.isArray(body.path) ? body.path : [];
+            let resolvedPath;
+            try {
+              resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That carousel path is invalid.' });
+              return;
+            }
+            const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+            const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+            const nested = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid';
+            const carousel = nested ? section.items?.[itemIndex] : resolvedPath.length === 2 && section?.type === 'imageCarousel' ? section : undefined;
+            const slides = carousel && Array.isArray(carousel.items) ? carousel.items : [];
+            const slide = slides.length === 1 ? slides[0] : undefined;
+            if (!carousel || carousel.type !== 'imageCarousel' || !slide || typeof slide.src !== 'string'
+              || !slide.src || isVideoSrc(slide.src) || isPlaceholderSrc(slide.src)) {
+              send(400, { error: 'Only a single non-placeholder image carousel can become a single image.' });
+              return;
+            }
+            const { type: _slideType, id: _slideId, ...slideImage } = slide;
+            const image = {
+              ...slideImage,
+              type: 'image',
+              id: String(carousel.id || slide.id || ''),
+              ...(!nested && {
+                sectionId: carousel.sectionId,
+                spacing: carousel.spacing,
+                annotations: carousel.annotations,
+                intro: carousel.intro,
+                constrained: carousel.constrained,
+                maxVh: carousel.maxHeightVh ?? carousel.maxVh,
+              }),
+            };
+            if (!image.id) {
+              send(400, { error: 'That carousel has no stable ID.' });
+              return;
+            }
+            if (nested) section.items[itemIndex] = image;
+            else data.sections[sectionIndex] = image;
+            await writeContentJson(file, data);
+            const undoToken = rememberCarouselUndo({
+              document: documentKey,
+              path: resolvedPath,
+              target: body.target,
+              original: structuredClone(carousel),
+              carousel: JSON.parse(JSON.stringify(image)),
+            });
+            send(200, {
+              ok: true,
+              action: 'convertCarouselToImage',
               path: fieldPath,
               index: resolvedPath[1],
               section: data.sections[resolvedPath[1]],
