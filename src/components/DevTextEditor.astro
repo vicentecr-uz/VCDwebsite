@@ -6316,6 +6316,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           styleEngineDirtyCount = Math.max(styleEngineDirtyCount, 1);
         }
         setStickyStatus('Saved.');
+        window.dispatchEvent(new Event('vcd:dev-save-complete'));
         return manifest;
       } catch (error) {
         setStickyStatus(error instanceof Error ? error.message : 'Could not save changes.');
@@ -6335,7 +6336,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // A successful Save turns unsaved edits into unpublished ones, so the
         // bar has to stay up — refresh the count rather than letting it hide.
         if (await performSave()) {
-          window.dispatchEvent(new Event('vcd:dev-save-complete'));
           void refreshPublishState();
           void refreshStyleEngineState();
         }

@@ -1,4 +1,4 @@
-<div class="dev-viewport-preview" data-dev-viewport-preview hidden>
+<dialog class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview">
   <div class="dev-viewport-preview__veil" data-viewport-veil>
     <div class="dev-viewport-preview__toolbar dev-surface" role="toolbar" aria-label="Viewport preview">
       <div class="dev-viewport-preview__presets" role="group" aria-label="Viewport preset">
@@ -16,20 +16,20 @@
       </div>
     </div>
   </div>
-</div>
+</dialog>
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
-    const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
+    const root = document.querySelector<HTMLDialogElement>('[data-dev-viewport-preview]');
     const veil = root?.querySelector<HTMLElement>('[data-viewport-veil]');
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const frameShell = root?.querySelector<HTMLElement>('[data-viewport-frame-shell]');
     const size = root?.querySelector<HTMLElement>('[data-viewport-size]');
     if (!root || !veil || !frame || !frameShell || !size) return scope.destroy;
-    const frameMode = new URLSearchParams(window.location.search).has('vcd-viewport-preview');
+    const frameMode = window.parent !== window && new URLSearchParams(window.location.search).has('vcd-viewport-preview');
 
     const presets = {
       desktop: [1440, 900],
@@ -74,9 +74,8 @@
         if (!childWindow.dispatchEvent(beforeReload)) return false;
       }
       open = false;
-      root.hidden = true;
+      root.close();
       frame.src = 'about:blank';
-      document.documentElement.classList.remove('is-viewport-preview-open');
       previousFocus?.focus();
       previousFocus = null;
       if (frameWrote) {
@@ -96,12 +95,11 @@
         if (!window.dispatchEvent(beforeReload)) return false;
         previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         open = true;
-        root.hidden = false;
+        root.showModal();
         frame.src = previewUrl();
         root.querySelector<HTMLElement>('[data-viewport-preset="desktop"]')?.focus();
       }
       syncFrame();
-      document.documentElement.classList.add('is-viewport-preview-open');
       return true;
     };
     const requestEditMode = () => {
@@ -110,6 +108,7 @@
       } catch { /* frame may still be loading */ }
     };
 
+    scope.listen(root, 'cancel', (event) => { event.preventDefault(); close(); });
     scope.listen(frame, 'load', requestEditMode);
     scope.listen(window, 'resize', syncFrame);
     scope.listen(veil, 'click', (event) => { if (event.target === veil) close(); });
@@ -130,7 +129,7 @@
       if (event.data?.type === 'vcd-viewport-preview-close') close();
     });
     scope.listen(window, 'message', (event) => {
-      if (event.origin !== window.location.origin || window.parent === window) return;
+      if (!frameMode || event.origin !== window.location.origin || event.source !== window.parent) return;
       if (event.data?.type === 'vcd-viewport-preview-edit') {
         window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       }
@@ -157,6 +156,8 @@
       if (event.code === 'Digit3' && show('mobile')) event.preventDefault();
     }, true);
     if (frameMode) {
+      document.documentElement.setAttribute('data-edit-viewport-frame', '');
+      scope.add(() => document.documentElement.removeAttribute('data-edit-viewport-frame'));
       scope.listen(document, 'keydown', (event) => {
         if (event.key !== 'Escape' || event.defaultPrevented) return;
         window.parent.postMessage({ type: 'vcd-viewport-preview-close' }, window.location.origin);
@@ -188,7 +189,8 @@
 </script>
 
 <style>
-  .dev-viewport-preview { position: fixed; inset: 0; z-index: 120; pointer-events: none; }
+  .dev-viewport-preview { position: fixed; inset: 0; width: 100%; height: 100%; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: transparent; }
+  :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__veil { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 0.75rem; align-items: center; padding: 1rem; background: color-mix(in oklab, var(--sys-color-srf) 70%, transparent); backdrop-filter: blur(8px); pointer-events: auto; }
   .dev-viewport-preview__toolbar { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem; }
   .dev-viewport-preview__presets { display: flex; gap: 0.25rem; }
