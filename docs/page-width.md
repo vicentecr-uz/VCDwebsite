@@ -135,29 +135,13 @@ tablet ceiling = desktop floor − 0.0625em
 
 At today's 50em outer column: **78.5em** and **78.4375em**.
 
-**A media query condition cannot read a custom property.** There is no CSS
-mechanism for this — not `@media`, not `@container`. So these literals are
-hand-maintained and must be re-derived whenever the outer column moves:
-
-| File | Literal |
-| --- | --- |
-| `src/components/SectionSidebarNav.astro` | `@media (min-width: 78.5em)` — the fixed gutter nav layout |
-| `src/components/SectionSidebarNav.astro` | `@media (max-width: 78.4375em)` ×2 — hides the desktop-only nav, and the dev section-editor override |
-| `src/styles/project.css` | `@media (min-width: 78.5em)` — `hide-desktop` / `hide-when-sidebar` titles |
-| `src/styles/project.css` | `@media (min-width: 48em) and (max-width: 78.4375em)` — `hide-tablet` titles |
-| `src/components/DevTextEditor.astro` | `SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 78.5em)'` — JS `matchMedia`, dev spacing toolbars |
-| `src/components/DevPageWidthToggle.astro` | `BASE_MIN_EM` / `BASE_MAX_EM` — what the A/B rewrites *from* |
-
-Find them all with:
-
-```bash
-grep -rn "78\.5em\|78\.4375em\|78\.5;\|78\.4375;" src/
-```
-
-**Get this wrong and the failure is silent.** A `min-width` lowered without its
-`max-width` companion leaves a band where the nav is positioned *and* hidden at
-once — that shipped on this branch between `71.75em` and `88.4375em`, and the
-lowered breakpoint simply never took effect. If you move one, move all of them.
+The fixed queries provide the initial layout and cover pages without a
+case-study sidebar. On a case study with a sidebar, the content column uses
+the width from `pageColumnStyle()`. The header and footer keep the site-wide
+column. Once mounted, `SectionSidebarNav.astro` measures the available gutter,
+then updates the sidebar and title queries together. It restores the original
+queries when the page is replaced. In Edit, `DevPageColumn.astro` recomputes the
+column when blocks or width constraints change.
 
 The tablet/mobile split at **48em** is a real fixed breakpoint and is unrelated
 to the column — leave it alone. `40em` (phone: `--space-unit` and header
