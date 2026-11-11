@@ -14,17 +14,18 @@ const reports = Object.fromEntries(Object.entries(documents).map(([file, module]
 export function getStaticPaths() {
   const files = import.meta.glob('../../reports/*.json');
   return Object.keys(files).map((file) => {
-    const slug = file.split('/').pop()!.replace('.json', '');
-    return { params: { report: slug === 'index' ? undefined : slug } };
+    const report = file.split('/').pop()!.replace('.json', '');
+    return { params: { report } };
   });
 }
 
-const slug = Astro.params.report ?? 'index';
+const overview = 'design-futures-nov-11';
+const slug = Astro.params.report ?? overview;
 const report = reports[slug];
 const contents = report.sections.filter((section) => section.type === 'sectionTitle' && section.sectionId)
   .map((section) => ({ id: String(section.sectionId), label: String(section.title) }));
 ---
 
-<WriteupLayout title={report.title} description={report.description} indexHref={slug === 'index' ? '/' : '/reports'} contents={contents}>
+<WriteupLayout title={report.title} description={report.description} indexHref={slug === overview ? '/' : `/reports/${overview}/`} contents={contents}>
   <ProjectSections documentKey="" sections={report.sections} />
 </WriteupLayout>
