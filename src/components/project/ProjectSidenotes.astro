@@ -1,0 +1,107 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
+
+interface Props {
+  items: Array<{ paragraph: string; note: string }>;
+  documentKey?: string;
+  sectionPath: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+  annotations?: unknown;
+}
+
+const {
+  items,
+  documentKey,
+  sectionPath,
+  spacing = 'group',
+  sectionId,
+  contentId,
+  annotations,
+} = Astro.props;
+const editable = import.meta.env.DEV && documentKey;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'sidenotes', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+>
+  {items.map((item, index) => {
+    const itemPath = [...sectionPath, 'items', index];
+    const paragraphPath = [...itemPath, 'paragraph'];
+    const notePath = [...itemPath, 'note'];
+    const noteId = `${sectionId ?? contentId ?? 'sidenote'}-note-${index + 1}`;
+    return (
+      <div class="sidenotes__row">
+        <div class="sidenotes__body">
+          <p class="sidenotes__paragraph">
+            <span
+              data-dev-text-document={editable ? documentKey : undefined}
+              data-dev-text-path={editable ? JSON.stringify(paragraphPath) : undefined}
+              data-dev-text-kind={editable ? 'text' : undefined}
+              set:html={item.paragraph}
+            ></span>
+            <button class="sidenotes__marker" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Show note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
+          </p>
+        </div>
+        <aside class="sidenotes__note" id={noteId} data-sidenote-note>
+          <span class="sidenotes__number" aria-hidden="true">{index + 1}</span>
+          <p
+            data-dev-text-document={editable ? documentKey : undefined}
+            data-dev-text-path={editable ? JSON.stringify(notePath) : undefined}
+            data-dev-text-kind={editable ? 'text' : undefined}
+            set:html={item.note}
+          />
+        </aside>
+      </div>
+    );
+  })}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+</section>
+
+<script>
+  import { onPageLoad, createPageScope } from '../../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    document.querySelectorAll<HTMLElement>('.sidenotes').forEach((root) => {
+      scope.listen(root, 'click', (event) => {
+        const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-sidenote-toggle]');
+        if (!toggle) return;
+        const note = toggle.closest('.sidenotes__row')?.querySelector<HTMLElement>('[data-sidenote-note]');
+        if (!note) return;
+        const open = !note.classList.contains('is-open');
+        note.classList.toggle('is-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+    });
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .sidenotes { display: grid; gap: var(--space-related); }
+  .sidenotes__row { display: grid; grid-template-columns: minmax(0, 65ch) minmax(10rem, 18rem); align-items: start; justify-content: center; gap: clamp(1.5rem, 5vw, 5rem); }
+  .sidenotes__body, .sidenotes__note { min-width: 0; }
+  .sidenotes__paragraph { margin: 0; }
+  .sidenotes__note { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; padding-top: 0.15em; color: var(--sys-color-on-srf-variant); font-size: 0.9em; line-height: 1.35; }
+  .sidenotes__note p { margin: 0; }
+  .sidenotes__number { font-variant-numeric: tabular-nums; }
+  .sidenotes__marker { display: inline-grid; place-items: center; width: 1.2em; height: 1.2em; margin-left: 0.2em; padding: 0; border: 0; border-radius: 50%; background: var(--sys-color-on-srf); color: var(--sys-color-srf); font: inherit; font-size: 0.68em; line-height: 1; vertical-align: 0.35em; cursor: pointer; }
+  .sidenotes__marker:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+  @media (max-width: 60em) {
+    .sidenotes__row { display: block; }
+    .sidenotes__note { display: none; margin-top: 0.75rem; padding: 0.75rem; border-left: 1px solid var(--sys-color-on-srf-variant); }
+    .sidenotes__note.is-open { display: grid; }
+  }
+  @media (min-width: 60.0625em) { .sidenotes__marker { pointer-events: none; } }
+  @media (prefers-reduced-motion: reduce) { .sidenotes__note { transition: none; } }
+</style>

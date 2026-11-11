@@ -37,6 +37,7 @@ const shared = {
   image: imageFields,
   imageGrid: { items: gridItems, columns: responsive(number).optional() },
   bodyText: { paragraphs: strings },
+  sidenotes: { items: z.array(object.extend({ paragraph: text, note: text })) },
   sectionTitle: { title: text, level: number.optional() },
   video: { src: text, title: text.optional() },
 };
