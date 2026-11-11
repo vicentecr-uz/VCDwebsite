@@ -1,0 +1,241 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+
+const sliders = [
+  { id: 'exponent', label: 'Superellipse K', min: -3, max: 3, step: 0.01, value: 1.5, display: '1.50' },
+  { id: 'css-radius', label: 'CSS border radius', min: 4, max: 120, step: 0.5, value: 84, display: '84 px' },
+  { id: 'reference-radius', label: 'iOS and circle radius', min: 4, max: 78, step: 0.5, value: 64, display: '64 px' },
+];
+---
+
+<Layout title="Continuous corner prototype">
+  <main class="corner-lab">
+    <h1>Continuous corner</h1>
+    <div class="comparison">
+      <figure>
+        <div class="plot" role="img" aria-label="Overlaid SwiftUI continuous corner, circular radius, and CSS superellipse">
+          <svg viewBox="0 0 288 288" aria-hidden="true">
+            <rect class="bounds" x="24" y="24" width="240" height="240" />
+            <g transform="translate(24 24)">
+              <path id="ios-outline" />
+              <rect id="circle-outline" width="240" height="240" />
+              <path id="css-fallback" />
+            </g>
+          </svg>
+          <div class="native-outline" aria-hidden="true"></div>
+        </div>
+        <figcaption>
+          <span class="key ios">iOS continuous</span>
+          <span class="key circle">Circular radius</span>
+          <span class="key css">CSS superellipse</span>
+        </figcaption>
+      </figure>
+
+      <form aria-label="Corner controls">
+        {sliders.map(({ id, label, display, ...range }) => (
+          <div class="control">
+            <label for={id}>{label}</label>
+            <output for={id} id={`${id}-value`}>{display}</output>
+            <input type="range" id={id} {...range} />
+          </div>
+        ))}
+        <div class="snippet">
+          <pre><code id="corner-code"></code></pre>
+          <button type="button" id="copy-corner">Copy CSS</button>
+          <span role="status" id="copy-status"></span>
+        </div>
+        <small id="render-mode"></small>
+      </form>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  const plot = document.querySelector<HTMLElement>('.plot')!;
+  const exponent = document.querySelector<HTMLInputElement>('#exponent')!;
+  const cssRadius = document.querySelector<HTMLInputElement>('#css-radius')!;
+  const referenceRadius = document.querySelector<HTMLInputElement>('#reference-radius')!;
+  const ios = document.querySelector('#ios-outline')!;
+  const circle = document.querySelector('#circle-outline')!;
+  const fallback = document.querySelector('#css-fallback')!;
+  const code = document.querySelector<HTMLElement>('#corner-code')!;
+  const status = document.querySelector('#copy-status')!;
+  const native = CSS.supports('corner-shape', 'superellipse(1.5)');
+  const side = 240;
+
+  // SwiftUI RoundedRectangle(.continuous), extracted from its macOS 27 path at radius 1.
+  const iosCorner = [
+    [0, 1.5286649465],
+    [0, 1.0884900095], [0, .868407011], [.0749114005, .6314939855],
+    [.1690600065, .372824013], [.372824013, .1690600065], [.6314939855, .0749114005],
+    [.868407011, 0], [1.0884900095, 0], [1.5286649465, 0],
+  ];
+
+  function outline(corner: number[][], radius: number, commands: string[]) {
+    const rotate = [
+      (x: number, y: number) => [x, y],
+      (x: number, y: number) => [side - y, x],
+      (x: number, y: number) => [side - x, side - y],
+      (x: number, y: number) => [y, side - x],
+    ];
+
+    return rotate.map((transform, index) => {
+      const points = corner.map(([x, y]) => transform(x * radius, y * radius).join(' '));
+      const start = points.shift();
+      return `${index ? 'L' : 'M'} ${start} ${commands.map((command) => {
+        const count = command === 'C' ? 3 : 1;
+        return `${command} ${points.splice(0, count).join(' ')}`;
+      }).join(' ')}`;
+    }).join(' ') + ' Z';
+  }
+
+  function update() {
+    const k = exponent.valueAsNumber;
+    const css = cssRadius.valueAsNumber;
+    const reference = referenceRadius.valueAsNumber;
+
+    document.querySelector('#exponent-value')!.textContent = k.toFixed(2);
+    document.querySelector('#css-radius-value')!.textContent = `${css} px`;
+    document.querySelector('#reference-radius-value')!.textContent = `${reference} px`;
+    ios.setAttribute('d', outline(iosCorner, reference, ['C', 'C', 'C']));
+    circle.setAttribute('rx', String(reference));
+
+    plot.style.setProperty('--css-radius', `${100 * css / 288}cqw`);
+    plot.style.setProperty('--css-shape', `superellipse(${k.toFixed(2)})`);
+    code.textContent = `border-radius: ${css}px;\ncorner-shape: superellipse(${k.toFixed(2)});`;
+
+    if (!native) {
+      const power = 2 ** (1 - Math.abs(k));
+      const samples = 96;
+      const points = Array.from({ length: samples + 1 }, (_, i) => {
+        if (i === 0) return [0, 1];
+        if (i === samples) return [1, 0];
+        const angle = i / samples * Math.PI / 2;
+        const x = Math.sin(angle) ** power;
+        const y = Math.cos(angle) ** power;
+        return k < 0 ? [x, y] : [1 - y, 1 - x];
+      });
+      fallback.setAttribute('d', outline(points, css, Array(samples).fill('L')));
+    }
+    status.textContent = '';
+  }
+
+  document.querySelector('#render-mode')!.textContent = native
+    ? 'Native CSS rendering'
+    : 'Mathematical preview · CSS corner-shape unavailable';
+
+  for (const slider of [exponent, cssRadius, referenceRadius]) {
+    slider.addEventListener('input', update);
+  }
+  document.querySelector('#copy-corner')!.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(code.textContent ?? '');
+      status.textContent = 'Copied';
+    } catch {
+      status.textContent = 'Select the CSS to copy it.';
+    }
+  });
+  update();
+</script>
+
+<style>
+  .corner-lab {
+    max-width: 57rem;
+    margin-inline: auto;
+    padding: calc(4 * var(--space-unit)) calc(2 * var(--space-unit));
+    --plot-grid: color-mix(in oklch, currentColor 9%, transparent);
+    --plot-ios: light-dark(#7b43b6, #c4a1f1);
+    --plot-circle: var(--sys-color-on-srf);
+    --plot-css: light-dark(#00716d, #62e1d2);
+  }
+
+  h1 {
+    margin: 0 0 calc(2 * var(--space-unit));
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -.055em;
+  }
+
+  .comparison {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 1fr);
+    align-items: start;
+    gap: calc(3 * var(--space-unit));
+  }
+
+  figure { min-width: 0; margin: 0; }
+
+  .plot {
+    position: relative;
+    container-type: inline-size;
+    background-image: radial-gradient(var(--plot-grid) 1px, transparent 1px);
+    background-size: calc(100% / 24) calc(100% / 24);
+    outline: 1px solid var(--plot-grid);
+    border-radius: 6px;
+  }
+
+  svg { display: block; width: 100%; height: auto; }
+  svg path, svg rect { fill: none; vector-effect: non-scaling-stroke; }
+  .bounds { stroke: var(--plot-grid); stroke-width: 1px; }
+  #ios-outline { stroke: var(--plot-ios); stroke-width: 3px; fill: color-mix(in oklch, var(--plot-ios) 7%, transparent); }
+  #circle-outline { stroke: var(--plot-circle); stroke-width: 1.5px; stroke-dasharray: 5 5; }
+  #css-fallback { stroke: var(--plot-css); stroke-width: 1.5px; }
+
+  .native-outline { display: none; }
+  @supports (corner-shape: superellipse(1.5)) {
+    .native-outline {
+      display: block;
+      position: absolute;
+      inset: calc(100% / 12);
+      box-sizing: border-box;
+      border: 1.5px solid var(--plot-css);
+      border-radius: var(--css-radius, 0);
+      corner-shape: var(--css-shape, round);
+      pointer-events: none;
+    }
+  }
+
+  figcaption { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-top: 1rem; }
+  .key { display: inline-flex; align-items: center; gap: .4rem; font-size: .875rem; }
+  .key::before { content: ''; width: 1rem; border-top: 2px solid var(--key); }
+  .ios { --key: var(--plot-ios); }
+  .circle { --key: var(--plot-circle); }
+  .circle::before { border-top-style: dashed; }
+  .css { --key: var(--plot-css); }
+
+  form { display: grid; gap: var(--space-unit); min-width: 0; }
+  .control { display: grid; grid-template-columns: 1fr auto; }
+  label { font-weight: 600; }
+  output, code { font-variant-numeric: tabular-nums; }
+  input[type='range'] {
+    grid-column: 1 / -1;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    font-size: 1rem;
+    accent-color: var(--plot-css);
+  }
+
+  .snippet { border-top: 1px solid var(--plot-grid); padding-top: var(--space-unit); }
+  pre { margin: 0 0 .5rem; font-size: .82rem; white-space: pre-wrap; }
+  button {
+    min-height: 44px;
+    padding-inline: .8rem;
+    border: 1px solid color-mix(in oklch, currentColor 25%, transparent);
+    border-radius: 6px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:active { background: var(--plot-grid); }
+  input:focus-visible, button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+  small, #copy-status { font-size: .875rem; }
+  #copy-status { margin-inline-start: .5rem; }
+
+  @media (max-width: 42rem) {
+    .comparison { grid-template-columns: minmax(0, 1fr); gap: calc(2 * var(--space-unit)); }
+    .corner-lab { padding-inline: var(--space-unit); }
+  }
+</style>
