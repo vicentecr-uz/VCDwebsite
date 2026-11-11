@@ -256,7 +256,16 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
     scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
     scope.listen(window, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); close(); } }, true);
-    scope.listen(window, 'vcd:before-reload', (event) => { if (save.disabled) event.preventDefault(); }, true);
+    scope.listen(window, 'vcd:before-reload', (event) => {
+      if (save.disabled) {
+        event.preventDefault();
+        return;
+      }
+      if (window.parent !== window && root && JSON.stringify(authored) !== root.dataset.redditBoardAuthored
+        && !window.confirm('Leave this preview and discard unsaved Reddit board height changes?')) {
+        event.preventDefault();
+      }
+    }, true);
     scope.listen(window, 'resize', positionPanel);
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];
