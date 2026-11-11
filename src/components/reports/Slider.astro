@@ -48,7 +48,9 @@ const stops = ['0', 'unit', '4em', '8em', '12em'];
     const sync = () => {
       const min = Number(slider.min);
       slider.style.setProperty('--v', String((Number(slider.value) - min) / (Number(slider.max) - min)));
-      output.textContent = stops ? stops[Number(slider.value)] : `${slider.value}${slider.dataset.unit}`;
+      const valueText = stops ? stops[Number(slider.value)] : `${slider.value}${slider.dataset.unit}`;
+      output.textContent = valueText;
+      slider.setAttribute('aria-valuetext', valueText);
     };
     slider.addEventListener('input', sync);
     sync();
@@ -83,9 +85,12 @@ const stops = ['0', 'unit', '4em', '8em', '12em'];
   .slider-demo__field { position: relative; display: flex; align-items: center; min-height: var(--dev-control-height); overflow: hidden; border-radius: var(--dev-radius-control); background: var(--comp-field-container); }
   .slider-demo__field .dev-field__label { position: absolute; left: var(--dev-field-padding); z-index: 1; pointer-events: none; }
   .slider-demo__field output { position: absolute; right: var(--dev-field-padding); z-index: 1; pointer-events: none; color: var(--sys-color-on-srf); }
-  .slider-demo__field .proto-slider { width: 100%; height: 100%; margin: 0; border-radius: inherit; background: linear-gradient(to right, var(--comp-button-soft-container-hover) calc(var(--v, 0) * 100%), transparent calc(var(--v, 0) * 100%)); }
+  .slider-demo__field .proto-slider { width: 100%; height: var(--dev-control-height); margin: 0; border-radius: inherit; background: linear-gradient(to right, var(--comp-button-soft-container-hover) calc(var(--v, 0) * 100%), transparent calc(var(--v, 0) * 100%)); }
   .slider-demo__field .proto-slider::-webkit-slider-runnable-track { background: transparent; }
   .slider-demo__field .proto-slider::-moz-range-track { background: transparent; }
+  .slider-demo__field .proto-slider::-webkit-slider-thumb { opacity: 0; }
+  .slider-demo__field .proto-slider::-moz-range-thumb { opacity: 0; }
+  .slider-demo__field:has(:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
 
   .slider-demo__ticks {
     position: absolute;
