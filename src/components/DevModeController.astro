@@ -408,6 +408,8 @@ import '../styles/site-annotation-editor.css';
 
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea')));
+    const isPlainField = (target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement =>
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
     // Native <select> is not typing; Esc must still dismiss the frontmost panel (crop Aspect ratio).
 
     // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
@@ -484,15 +486,17 @@ import '../styles/site-annotation-editor.css';
       // Page body-text caret: DevTextEditor handles Esc (deselect like click-away)
       // in capture. Other typing targets (tuner fields, etc.) must not fall through
       // to panel-close / leave-Dev-Mode.
-      if (isTypingTarget(event.target as HTMLElement | null)) return;
-
-      if (isSectionEditor()) {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || target?.closest('select')) return;
+      if (isPlainField(event.target)) {
+        const inEditChrome = Boolean(target?.closest('[data-dev-panel-key], .dev-overlay')) || devMode || isSectionEditor();
+        if (!inEditChrome) return;
         event.preventDefault();
-        setSectionEditor(false);
+        (event.target as HTMLElement).blur();
         return;
       }
 
-      if (!devMode) return;
       if (html.classList.contains('is-dev-mode-exiting')) return;
 
       // Layer Esc: dismiss the frontmost open tuner (highest computed z-index;
@@ -502,12 +506,24 @@ import '../styles/site-annotation-editor.css';
       const frontmost = frontmostOpenPanel();
       if (frontmost) {
         event.preventDefault();
-        frontmost.hidden = true;
-        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
-          detail: { panel: frontmost },
-        }));
+        if (frontmost.dataset.devPanelKey === 'section-nav') {
+          setSectionEditor(false);
+        } else {
+          frontmost.hidden = true;
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+            detail: { panel: frontmost },
+          }));
+        }
         return;
       }
+
+      if (isSectionEditor()) {
+        event.preventDefault();
+        setSectionEditor(false);
+        return;
+      }
+
+      if (!devMode) return;
 
       event.preventDefault();
       setDevMode(false);
