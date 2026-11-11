@@ -1698,6 +1698,7 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'projectDetails',
   'divider',
   'quote',
+  'sidenotes',
   'award',
   'image',
   'imageGrid',
@@ -2301,6 +2302,14 @@ export function contentSectionDevWriter() {
               id: `quote-${Date.now().toString(36)}`,
               spacing: insertSpacing,
               paragraphs: [''],
+            };
+          } else if (type === 'sidenotes') {
+            const id = `sidenotes-${Date.now().toString(36)}`;
+            section = {
+              type: 'sidenotes',
+              id,
+              spacing: insertSpacing,
+              items: [{ paragraph: '', note: '' }],
             };
           } else if (type === 'divider') {
             section = {

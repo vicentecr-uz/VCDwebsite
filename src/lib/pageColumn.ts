@@ -20,6 +20,7 @@ const MEDIA_SECTION_TYPES = new Set([
   'placeholder',
   'projectGrid',
   'interactiveDemo',
+  'sidenotes',
   'codeBlock',
   'sabiExample',
   'productHero',

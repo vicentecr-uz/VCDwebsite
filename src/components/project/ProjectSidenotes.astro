@@ -32,6 +32,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   {...(spacingAttrs ?? {})}
   data-site-annotation-section-id={contentId}
   data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-dev-section-deletable={editable ? 'sidenotes' : undefined}
 >
   {items.map((item, index) => {
     const itemPath = [...sectionPath, 'items', index];
@@ -46,10 +47,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
               data-dev-text-document={editable ? documentKey : undefined}
               data-dev-text-path={editable ? JSON.stringify(paragraphPath) : undefined}
               data-dev-text-kind={editable ? 'text' : undefined}
-              set:html={item.paragraph}
-            ></span>
+            >{item.paragraph}</span>
             <span class="sidenotes__marker sidenotes__marker--reference" aria-hidden="true">{index + 1}</span>
-            <button class="sidenotes__marker sidenotes__marker--toggle" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Show note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
+            <button class="sidenotes__marker sidenotes__marker--toggle" type="button" aria-expanded="false" aria-controls={noteId} aria-label={`Note ${index + 1}`} data-sidenote-toggle={index + 1}>{index + 1}</button>
           </p>
         </div>
         <aside class="sidenotes__note" id={noteId} data-sidenote-note>
@@ -58,8 +58,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
             data-dev-text-document={editable ? documentKey : undefined}
             data-dev-text-path={editable ? JSON.stringify(notePath) : undefined}
             data-dev-text-kind={editable ? 'text' : undefined}
-            set:html={item.note}
-          />
+          >{item.note}</p>
         </aside>
       </div>
     );
@@ -72,16 +71,14 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
-    document.querySelectorAll<HTMLElement>('.sidenotes').forEach((root) => {
-      scope.listen(root, 'click', (event) => {
-        const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-sidenote-toggle]');
-        if (!toggle) return;
-        const note = toggle.closest('.sidenotes__row')?.querySelector<HTMLElement>('[data-sidenote-note]');
-        if (!note) return;
-        const open = !note.classList.contains('is-open');
-        note.classList.toggle('is-open', open);
-        toggle.setAttribute('aria-expanded', String(open));
-      });
+    scope.listen(document, 'click', (event) => {
+      const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-sidenote-toggle]');
+      if (!toggle || !toggle.closest('.sidenotes')) return;
+      const note = toggle.closest('.sidenotes__row')?.querySelector<HTMLElement>('[data-sidenote-note]');
+      if (!note) return;
+      const open = !note.classList.contains('is-open');
+      note.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
     });
     return () => scope.destroy();
   });
