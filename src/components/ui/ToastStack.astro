@@ -126,19 +126,23 @@ const toastIcons = {
     scope.listen(window, 'vcd:dev-history-change', dismissStale);
 
     scope.listen(region, 'click', async (event) => {
-      const toast = (event.target as Element).closest('button')?.closest<HTMLElement>('.toasts__toast');
+      const button = (event.target as Element).closest<HTMLButtonElement>('button');
+      const toast = button?.closest<HTMLElement>('.toasts__toast');
       const action = toast && actionByToast.get(toast);
-      if (!toast || !action) return;
+      if (!button || button.disabled || !toast || !action) return;
       const isRelevant = relevanceByToast.get(toast);
       if (isRelevant && !isRelevant()) {
         dismiss(toast);
         return;
       }
+      button.disabled = true;
       try {
         await action.run();
         dismiss(toast);
       } catch (error) {
         show({ message: error instanceof Error ? error.message : 'Could not complete that action.', icon: 'warning' });
+      } finally {
+        if (!toast.hasAttribute('data-leaving')) button.disabled = false;
       }
     });
     scope.listen(region, 'pointerenter', () => toasts().forEach(pause));
