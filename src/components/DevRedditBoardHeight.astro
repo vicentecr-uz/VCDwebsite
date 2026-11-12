@@ -64,6 +64,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     let valueStart = 0;
     let pointerY = 0;
     let frame = 0;
+    let sliderPointerId: number | null = null;
     let settling: Animation | undefined;
     const saveTimers = new Map<HTMLElement, number>();
     let writeQueue = Promise.resolve();
@@ -120,7 +121,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
     const positionPanel = () => {
-      if (!grabber || panel.hidden) return;
+      if (sliderPointerId !== null || !grabber || panel.hidden) return;
       const rect = grabber.getBoundingClientRect();
       const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
       panel.style.left = `${left}px`;
@@ -162,6 +163,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       sync();
     };
     const close = () => {
+      sliderPointerId = null;
       grabber?.setAttribute('aria-expanded', 'false');
       if (panel.hidden) return;
       panel.hidden = true;
@@ -212,6 +214,15 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
         scope.frame(follow);
       }
       if (panel.hidden) open();
+    };
+    const beginSliderInteraction = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      sliderPointerId = event.pointerId;
+    };
+    const endSliderInteraction = (event?: PointerEvent) => {
+      if (event && sliderPointerId !== event.pointerId) return;
+      sliderPointerId = null;
+      positionPanel();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (!grabber || event.button !== 0) return;
@@ -273,6 +284,10 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       sync();
     }, { signal }));
     input.addEventListener('input', () => { if (input.validity.valid) setHeight(input.valueAsNumber); }, { signal });
+    input.addEventListener('pointerdown', beginSliderInteraction, { signal });
+    input.addEventListener('lostpointercapture', endSliderInteraction, { signal });
+    scope.listen(document, 'pointerup', endSliderInteraction as EventListener, true);
+    scope.listen(document, 'pointercancel', endSliderInteraction as EventListener, true);
     reset.addEventListener('click', () => setHeight(null), { signal });
     scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
       if (event.detail?.panel !== panel) return;

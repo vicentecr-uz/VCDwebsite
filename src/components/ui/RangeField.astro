@@ -38,7 +38,8 @@ const labelId = `${id}-label`;
     const unit = input.dataset.rangeUnit || '';
     const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
     const valueText = `${input.value}${unit}`;
-    input.style.setProperty('--range-progress', String(progress));
+    input.parentElement?.style.setProperty('--range-progress', String(progress));
+    input.parentElement?.toggleAttribute('data-range-empty', progress <= 0);
     input.setAttribute('aria-valuetext', valueText);
     if (output) output.textContent = valueText;
   };
@@ -66,6 +67,8 @@ const labelId = `${id}-label`;
   }
 
   .dev-range-field {
+    --range-thumb-width: 4px;
+    --range-track-inset: 8px;
     position: relative;
     display: flex;
     align-items: center;
@@ -75,32 +78,58 @@ const labelId = `${id}-label`;
     border-radius: inherit;
   }
 
+  .dev-range-field::before,
+  .dev-range-field::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .dev-range-field::before {
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0) + var(--range-thumb-width) / 2 + 4px);
+    background: var(--sys-color-srf-container-high);
+  }
+
+  .dev-range-field[data-range-empty]::before { width: 0; }
+
+  .dev-range-field::after {
+    top: 50%;
+    left: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
+    width: var(--range-thumb-width);
+    height: 20px;
+    translate: -50% -50%;
+    border-radius: 999px;
+    background: var(--sys-color-on-srf-subtle);
+  }
+
   .dev-range-field__output {
     position: absolute;
-    inset-inline-start: var(--dev-field-padding);
+    inset-inline-start: 18px;
     z-index: 1;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
   }
 
   .dev-range-field__input {
-    --range-thumb-width: 4px;
-    --range-fill: calc(var(--range-thumb-width) / 2 + (100% - var(--range-thumb-width)) * var(--range-progress, 0));
     width: 100%;
     height: var(--dev-control-height);
     margin: 0;
+    padding: 0;
+    box-sizing: border-box;
     appearance: none;
     border: 0;
     border-radius: inherit;
     outline: 0;
-    background: linear-gradient(to right, var(--sys-color-srf-container-high) var(--range-fill), transparent var(--range-fill));
+    background: transparent;
     cursor: ew-resize;
   }
 
   .dev-range-field__input::-webkit-slider-runnable-track { background: transparent; }
   .dev-range-field__input::-moz-range-track { background: transparent; }
-  .dev-range-field__input::-webkit-slider-thumb { width: var(--range-thumb-width); height: 24px; appearance: none; border: 0; border-radius: 999px; background: var(--sys-color-on-srf); }
-  .dev-range-field__input::-moz-range-thumb { width: var(--range-thumb-width); height: 24px; border: 0; border-radius: 999px; background: var(--sys-color-on-srf); }
+  .dev-range-field__input::-webkit-slider-thumb { width: 16px; height: 1px; appearance: none; opacity: 0; }
+  .dev-range-field__input::-moz-range-thumb { width: 16px; height: 1px; border: 0; opacity: 0; }
   .dev-range-field:has(.dev-range-field__input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
   .dev-range-field:has(.dev-range-field__input:disabled) { opacity: var(--dev-opacity-disabled); }
   .dev-range-field__input:disabled { cursor: default; }
