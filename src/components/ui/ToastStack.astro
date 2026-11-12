@@ -201,12 +201,15 @@ const toastIcons = {
 </script>
 
 <style>
-  .toast-stack { width: min(100%, 18rem); }
+  .toast-stack {
+    --toast-stack-max-width: 22rem;
+    width: min(100%, var(--toast-stack-max-width));
+  }
   .toast-stack--fixed {
     position: fixed;
     z-index: 100;
     inset: auto max(1em, env(safe-area-inset-right)) max(1em, env(safe-area-inset-bottom)) auto;
-    width: min(calc(100% - 2em), 18rem);
+    width: min(calc(100% - 2em), var(--toast-stack-max-width));
     pointer-events: none;
   }
   .toast-stack--fixed .toasts__toast { pointer-events: auto; }
@@ -275,7 +278,13 @@ const toastIcons = {
     transform: translateX(max(var(--toast-swipe, 0px), calc(100% + max(1em, env(safe-area-inset-right)) + 24px)));
   }
   .toasts__toast[data-swiping] { transition: none; user-select: none; }
-  .toasts__action { flex: none; min-width: 0; padding-inline: 10px; }
+  .toasts__action {
+    flex: none;
+    min-width: 0;
+    padding-inline: 10px;
+    font: inherit;
+    color: var(--sys-color-on-srf-variant);
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .toasts__toast { translate: 0 calc(var(--depth) * -8px); transition: opacity 250ms ease; }
