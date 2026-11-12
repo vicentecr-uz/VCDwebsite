@@ -295,8 +295,9 @@ test('reduced motion jumps size with no content fades; only the stationary botto
   expect(source).toContain('bottom: max(12px, env(safe-area-inset-bottom))');
   expect(source).toContain('transition: opacity 150ms');
   expect(source).not.toContain('data-viewport-size');
-  expect(source).toContain('label="Viewport" bare');
-  expect(source).toContain('slideSelection={false}');
+  expect(source).toContain('label="Viewport"');
+  expect(source).not.toContain('slideSelection={false}');
+  expect(source).toContain('--dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg)');
   expect(source).not.toContain('element.animate');
 });
 

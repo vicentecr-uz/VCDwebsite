@@ -15,7 +15,6 @@ interface Props {
   dataAttr: string;
   selected?: Viewport;
   slideSelection?: boolean;
-  bare?: boolean;
   [key: string]: any;
 }
 
@@ -24,7 +23,6 @@ const {
   dataAttr,
   selected = 'desktop',
   slideSelection = true,
-  bare = false,
   class: className,
   ...rest
 } = Astro.props;
@@ -36,7 +34,7 @@ const LABELS: Record<Viewport, string> = {
 };
 ---
 
-<SegmentedControl bare={bare} data-slide-selection={slideSelection ? "" : undefined} label={label} class={className} {...rest}>
+<SegmentedControl data-slide-selection={slideSelection ? "" : undefined} label={label} class={className} {...rest}>
   {VIEWPORTS.map((bp) => (
     <Button
       emphasis="ghost"
