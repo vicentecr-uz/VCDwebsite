@@ -14,7 +14,7 @@ function fixture(reduced = false, frameMode = false, idleSupported = true) {
   document.body.innerHTML = `<main><button id="focus">Edit</button></main><div data-dev-viewport-preview hidden>
     <div data-test-backdrop></div><div data-viewport-shadow></div>
     <div data-viewport-surface><iframe data-viewport-frame></iframe></div>
-    <div data-viewport-controls>${['desktop', 'tablet', 'mobile'].map(p => `<button data-viewport-preset="${p}">${p}</button>`).join('')}</div></div>`;
+    <div data-viewport-controls><div role="group" tabindex="-1">${['desktop', 'tablet', 'mobile'].map(p => `<button data-viewport-preset="${p}">${p}</button>`).join('')}</div></div></div>`;
   const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]')!;
   const surface = root.querySelector<HTMLElement>('[data-viewport-surface]')!;
   const frame = root.querySelector<HTMLIFrameElement>('iframe')!;
@@ -201,6 +201,8 @@ test('a single Option+2 waits for a cold frame and the scroll acknowledgement is
     f.timers.findLast(timer => timer.delay === 150)!.callback();
     await f.settle();
     expect(f.frame.style.width).toBe('820px');
+    expect(f.document.activeElement).toBe(f.controls.querySelector('[role="group"]'));
+    expect(f.controls.querySelector('[data-viewport-preset="tablet"]')?.getAttribute('aria-pressed')).toBe('true');
   } finally { await f.dispose(); }
 });
 
@@ -295,7 +297,7 @@ test('reduced motion jumps size with no content fades; only the stationary botto
   expect(source).toContain('bottom: max(12px, env(safe-area-inset-bottom))');
   expect(source).toContain('transition: opacity 150ms');
   expect(source).not.toContain('data-viewport-size');
-  expect(source).toContain('label="Viewport"');
+  expect(source).toContain('label="Viewport" tabindex="-1"');
   expect(source).not.toContain('slideSelection={false}');
   expect(source).toContain('--dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg)');
   expect(source).not.toContain('element.animate');

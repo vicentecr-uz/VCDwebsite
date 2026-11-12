@@ -9,7 +9,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
   </div>
   <div class="dev-viewport-preview__controls dev-surface" data-viewport-controls>
-    <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" />
+    <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
   </div>
 </div>
 
@@ -290,7 +290,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
           isolationObserver = new MutationObserver(isolatePage);
           isolationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
           transition(requested);
-          root.querySelector<HTMLElement>(`[data-viewport-preset="${requested}"]`)?.focus({ preventScroll: true });
+          controls.querySelector<HTMLElement>('[role="group"]')?.focus({ preventScroll: true });
         })();
       });
       return true;
@@ -445,9 +445,12 @@ import ViewportSelector from './ui/ViewportSelector.astro';
   .dev-viewport-preview__controls { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
   .dev-viewport-preview__controls :global(.dev-segmented) {
     width: auto;
+    padding: 0;
+    gap: 4px;
     background: transparent;
     --dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg);
   }
+  .dev-viewport-preview__controls :global(.dev-segmented[tabindex='-1']:focus) { outline: none; }
   :global(.dev-text-action-stack), :global(.dev-launcher) { transition: opacity 120ms ease, visibility 120ms; }
   :global(html[data-viewport-previewing] .dev-text-action-stack), :global(html[data-viewport-previewing] .dev-launcher) { opacity: 0; visibility: hidden; }
 </style>
