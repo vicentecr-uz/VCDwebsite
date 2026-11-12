@@ -103,7 +103,7 @@ test('warms at Desktop size, inert and invisible, and refreshes after disk write
     expect(f.frame.inert).toBe(true);
     expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
     expect(f.frame.style.height).toBe(`${f.window.innerHeight}px`);
-    expect(f.frame.style.transform).toBe('scale(1, 1)');
+    expect(f.frame.style.transform).toBe('translate(0px, 0px) scale(1)');
     expect(f.document.querySelector('main')!.inert).toBe(false);
     f.message('vcd-viewport-preview-ready');
     expect(f.outgoing.at(-1).type).toBe('vcd-viewport-preview-edit');
@@ -204,19 +204,35 @@ test('a single Option+2 waits for a cold frame and the scroll acknowledgement is
   } finally { await f.dispose(); }
 });
 
-test('the surface moves with the iframe layout frozen and background clicks keep the preset', async () => {
+test('the moving surface clips the page at a fixed screen position and scale', async () => {
   const f = fixture();
+  const placement = () => {
+    const [left, top] = f.surface.style.transform.match(/-?[\d.]+(?=px)/g)!.map(Number);
+    const [x, y, scale] = f.frame.style.transform.match(/-?[\d.]+(?:e[+-]?\d+)?/g)!.map(Number);
+    return [left + x, top + y, scale].map((value) => Number(value.toFixed(6)));
+  };
   try {
     await f.open();
-    f.step(16);
-    const width = f.frame.style.width;
-    const surfaceWidth = f.surface.style.width;
-    f.step(16);
-    expect(f.frame.style.width).toBe(width);
-    expect(f.surface.style.width).not.toBe(surfaceWidth);
+    f.step(100);
+    expect(placement()).toEqual([0, 0, 1]);
+    expect(f.frame.style.width).toBe(`${f.window.innerWidth}px`);
     f.document.querySelector<HTMLElement>('[data-test-backdrop]')!.click();
     await f.settle();
     expect(f.root.dataset.viewportStagePreset).toBe('tablet');
+    expect(f.frame.style.width).toBe('820px');
+    const tablet = placement();
+    f.request('mobile');
+    f.step(120);
+    expect(placement()).toEqual(tablet);
+    expect(f.frame.style.width).toBe('820px');
+    await f.settle();
+    expect(f.frame.style.width).toBe('390px');
+    const mobile = placement();
+    f.request('tablet');
+    f.step(120);
+    expect(placement()).toEqual(mobile);
+    expect(f.frame.style.width).toBe('390px');
+    await f.settle();
     expect(f.frame.style.width).toBe('820px');
   } finally { await f.dispose(); }
 });
@@ -274,7 +290,7 @@ test('reduced motion jumps size with no content fades; only the stationary botto
     expect(f.controls.style.opacity).toBe('1');
     f.request('desktop');
     expect(f.root.style.visibility).toBe('hidden');
-    expect(f.frame.style.transform).toBe('scale(1, 1)');
+    expect(f.frame.style.transform).toBe('translate(0px, 0px) scale(1)');
   } finally { await f.dispose(); }
   expect(source).toContain('bottom: max(12px, env(safe-area-inset-bottom))');
   expect(source).toContain('transition: opacity 150ms');

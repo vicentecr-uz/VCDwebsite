@@ -83,6 +83,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     let current = desktop();
     let frameWidth = 0;
     let frameHeight = 0;
+    let framePlacement = { left: 0, top: 0, scale: 1 };
     let layoutCommit = 0;
     const render = (value: Geometry, barZone = 0, commitLayout = true) => {
       current = value;
@@ -115,7 +116,11 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         frame.style.width = `${width}px`;
         frame.style.height = `${height}px`;
       }
-      frame.style.transform = `scale(${width * scale / frameWidth}, ${height * scale / frameHeight})`;
+      if (commitLayout) framePlacement = { left, top, scale };
+      // The surface clips the old page at its original screen position until layout commits.
+      const x = framePlacement.left - left;
+      const y = framePlacement.top - top;
+      frame.style.transform = `translate(${x}px, ${y}px) scale(${framePlacement.scale})`;
     };
     const cancelMorph = () => {
       window.cancelAnimationFrame(raf);
