@@ -39,7 +39,6 @@ const labelId = `${id}-label`;
     const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
     const valueText = `${input.value}${unit}`;
     input.parentElement?.style.setProperty('--range-progress', String(progress));
-    input.parentElement?.toggleAttribute('data-range-empty', progress <= 0);
     input.setAttribute('aria-valuetext', valueText);
     if (output) output.textContent = valueText;
   };
@@ -92,8 +91,6 @@ const labelId = `${id}-label`;
     width: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0) + var(--range-thumb-width) / 2 + 4px);
     background: var(--range-fill-color);
   }
-
-  .dev-range-field[data-range-empty]::before { width: 0; }
 
   .dev-range-field::after {
     top: 50%;
