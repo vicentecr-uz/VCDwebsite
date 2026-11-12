@@ -61,6 +61,9 @@ export function createHistory() {
       await move(past, future, 'undo');
       return true;
     },
+    isCurrentUndo(undo: HistoryCommand['undo']) {
+      return past.at(-1)?.undo === undo;
+    },
     redo: () => move(future, past, 'redo'),
     breakGroup() { grouping = false; },
     clear() {

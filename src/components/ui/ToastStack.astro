@@ -43,7 +43,8 @@ const toastIcons = {
 
   type Toast = {
     message: string;
-    icon?: 'info' | 'success' | 'publish' | 'delete' | 'carousel' | 'warning';
+    icon?: 'info' | 'success' | 'publish' | 'delete' | 'carousel' | 'image' | 'warning';
+    isRelevant?: () => boolean;
     action?: { label: string; run: () => void | Promise<void> };
   };
 
@@ -53,6 +54,7 @@ const toastIcons = {
     const icons = root.querySelector<HTMLTemplateElement>('[data-toast-icons]')!.content;
     const scope = createPageScope();
     const actionByToast = new WeakMap<HTMLElement, NonNullable<Toast['action']>>();
+    const relevanceByToast = new WeakMap<HTMLElement, () => boolean>();
     const timers = new Map<HTMLElement, number>();
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
     let swipe: { toast: HTMLElement; id: number; start: number; distance: number } | undefined;
@@ -79,7 +81,8 @@ const toastIcons = {
       if (toast.hasAttribute('data-leaving')) return;
       timers.set(toast, scope.timeout(() => dismiss(toast), 4000));
     };
-    const show = ({ message, icon = 'info', action }: Toast) => {
+    const show = ({ message, icon = 'info', action, isRelevant }: Toast) => {
+      if (isRelevant && !isRelevant()) return;
       const toast = template.content.firstElementChild?.cloneNode(true) as HTMLElement;
       toast.querySelector('[data-toast-message]')!.textContent = message;
       const iconNode = toast.querySelector<HTMLElement>('[data-toast-icon]')!;
@@ -90,11 +93,16 @@ const toastIcons = {
         button.textContent = action.label;
         actionByToast.set(toast, action);
       } else button.remove();
+      if (isRelevant) relevanceByToast.set(toast, isRelevant);
       region.append(toast);
       layout();
       scope.frame(() => { toast.setAttribute('data-shown', ''); });
       if (!region.matches(':hover, :focus-within')) arm(toast);
     };
+    const dismissStale = () => toasts().forEach((toast) => {
+      const isRelevant = relevanceByToast.get(toast);
+      if (isRelevant && !isRelevant()) dismiss(toast);
+    });
     const track = (toast: HTMLElement, distance: number) => {
       toast.setAttribute('data-swiping', '');
       toast.style.setProperty('--toast-swipe', reduced.matches ? '0px' : `${distance}px`);
@@ -115,14 +123,20 @@ const toastIcons = {
     };
     if (root.classList.contains('toast-stack--fixed')) scope.listen(window, 'vcd:edit-toast', onToast);
     else scope.listen(root, 'vcd:edit-toast', onToast);
+    scope.listen(window, 'vcd:dev-history-change', dismissStale);
 
     scope.listen(region, 'click', async (event) => {
       const toast = (event.target as Element).closest('button')?.closest<HTMLElement>('.toasts__toast');
       const action = toast && actionByToast.get(toast);
       if (!toast || !action) return;
-      dismiss(toast);
+      const isRelevant = relevanceByToast.get(toast);
+      if (isRelevant && !isRelevant()) {
+        dismiss(toast);
+        return;
+      }
       try {
         await action.run();
+        dismiss(toast);
       } catch (error) {
         show({ message: error instanceof Error ? error.message : 'Could not complete that action.', icon: 'warning' });
       }
