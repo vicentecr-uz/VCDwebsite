@@ -438,6 +438,10 @@ function mountImageCarouselSection(
   block.setAttribute('data-dev-carousel-visible', JSON.stringify(visibleIds));
   block.setAttribute('data-dev-carousel-settings', JSON.stringify(settingsJson));
   if (!nested) {
+    if (typeof section.sectionId === 'string' && section.sectionId) {
+      block.id = section.sectionId;
+      block.classList.add('section-block');
+    }
     applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
     block.setAttribute('data-dev-section-deletable', 'imageCarousel');
   }

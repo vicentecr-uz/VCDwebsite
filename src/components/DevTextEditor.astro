@@ -3574,9 +3574,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       if (!entry.pendingInsert) pendingSectionDeletes.push(entry);
       let deletion = entry;
+      const undo = () => undoSectionDelete(deletion);
       pageHistory.push({
         label: 'Delete block',
-        undo: () => undoSectionDelete(deletion),
+        undo,
         redo: async () => {
           const next = await deleteSectionAt(element);
           if (!next) throw new Error('This block can no longer be deleted.');
@@ -3596,6 +3597,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncPageTopSpacingControls();
       updateActions();
+      if (!pageHistory.replaying) {
+        window.dispatchEvent(new CustomEvent('vcd:edit-toast', {
+          detail: {
+            message: 'Block deleted',
+            icon: 'delete',
+            isRelevant: () => pageHistory.isCurrentUndo(undo),
+            action: {
+              label: 'Undo',
+              run: async () => {
+                if (actionsBusy || !await pageHistory.undoIfCurrent(undo)) {
+                  throw new Error('Use the page’s undo shortcut to step back to this edit.');
+                }
+              },
+            },
+          },
+        }));
+      }
       return entry;
     };
 
@@ -6318,6 +6336,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           styleEngineDirtyCount = Math.max(styleEngineDirtyCount, 1);
         }
         setStickyStatus('Saved.');
+        window.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message: 'Saved', icon: 'success' } }));
         return manifest;
       } catch (error) {
         setStickyStatus(error instanceof Error ? error.message : 'Could not save changes.');
@@ -6562,6 +6581,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (!payload.ok) {
             throw new Error(payload.error || 'Could not publish.');
           }
+          if (payload.pushed) window.dispatchEvent(new CustomEvent('vcd:edit-toast', { detail: { message: 'Published', icon: 'publish' } }));
           setStickyStatus(payload.pushed
             ? `Published — ${payload.message}`
             : `Committed locally, push failed: ${payload.error}`);
