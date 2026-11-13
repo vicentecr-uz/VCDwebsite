@@ -4,27 +4,36 @@ import slidersHorizontalIcon from 'lucide-static/icons/sliders-horizontal.svg?ra
 import blocksIcon from 'lucide-static/icons/blocks.svg?raw';
 import arrowRightLeftIcon from 'lucide-static/icons/arrow-right-left.svg?raw';
 import { sizeIcon } from '../../lib/icons';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   items: unknown;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
   spacing: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
 }
 
-const { items, spacing, sectionId } = Astro.props;
+const { items, documentKey, sectionPath, spacing, sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
+const textAttrs = (index: number, field: 'title' | 'description') => editable && sectionPath ? {
+  'data-dev-text-document': documentKey,
+  'data-dev-text-path': JSON.stringify([...sectionPath, 'items', index, field]),
+  'data-dev-text-kind': 'text',
+} : {};
 const icons = new Map([
   ['text-cursor', textCursorIcon],
   ['sliders-horizontal', slidersHorizontalIcon],
   ['blocks', blocksIcon],
   ['arrow-right-left', arrowRightLeftIcon],
 ]);
-const cards = (Array.isArray(items) ? items : []).flatMap(item => {
+const cards = (Array.isArray(items) ? items : []).flatMap((item, index) => {
   if (!item || typeof item !== 'object') return [];
   const { title, description, icon } = item;
   if (typeof title !== 'string' || typeof description !== 'string') return [];
-  return title.trim() && description.trim()
-    ? [{ title, description, icon: typeof icon === 'string' ? icons.get(icon) : undefined }]
+  return editable || (title.trim() && description.trim())
+    ? [{ index, title, description, icon: typeof icon === 'string' ? icons.get(icon) : undefined }]
     : [];
 });
 ---
@@ -34,12 +43,13 @@ const cards = (Array.isArray(items) ? items : []).flatMap(item => {
     id={sectionId}
     class:list={['project-block', 'benefit-cards', projectStackClass(spacing), sectionId && 'section-block']}
     role="list"
+    {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
   >
-    {cards.map(({ title, description, icon }) => (
+    {cards.map(({ index, title, description, icon }) => (
       <li>
         {icon && <span class="benefit-cards__icon" aria-hidden="true" set:html={sizeIcon(icon, 20)} />}
-        <h3>{title}</h3>
-        <p>{description}</p>
+        <h3 {...textAttrs(index, 'title')}>{title}</h3>
+        <p {...textAttrs(index, 'description')}>{description}</p>
       </li>
     ))}
   </ul>
@@ -77,5 +87,9 @@ const cards = (Array.isArray(items) ? items : []).flatMap(item => {
     margin: calc(var(--space-unit) / 2) 0 0;
     color: color-mix(in oklab, var(--sys-color-on-srf-variant), var(--sys-color-on-srf-subtle) 45%);
     font-size: 0.875em;
+  }
+
+  [contenteditable] {
+    min-block-size: 1lh;
   }
 </style>
