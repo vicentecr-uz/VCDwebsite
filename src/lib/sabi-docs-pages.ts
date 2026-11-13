@@ -15,6 +15,7 @@ export const sabiDocsPages: ReadonlyArray<{
   { slug: 'svelte-sveltekit', key: 'sabi-svelte-sveltekit', label: 'Svelte and SvelteKit', group: 'Framework Guides', optional: true },
   { slug: 'astro', key: 'sabi-astro', label: 'Astro', group: 'Framework Guides', optional: true },
   { slug: 'api', key: 'sabi-api', label: 'Reference', group: 'Guides' },
+  { slug: 'prefix-and-suffix', key: 'sabi-prefix-and-suffix', label: 'Prefix and suffix', group: 'Guides', optional: true },
   { slug: 'email-and-number-fields', key: 'sabi-email-and-number-fields', label: 'Email and number fields', group: 'Guides' },
   { slug: 'styling', key: 'sabi-styling', label: 'Styling', group: 'Guides' },
 ];
