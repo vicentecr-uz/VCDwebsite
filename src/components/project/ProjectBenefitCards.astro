@@ -1,0 +1,60 @@
+---
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+
+interface Props {
+  items: unknown;
+  spacing: ProjectStackSpacing;
+  sectionId?: string;
+}
+
+const { items, spacing, sectionId } = Astro.props;
+const cards = (Array.isArray(items) ? items : []).flatMap(item => {
+  if (!item || typeof item !== 'object') return [];
+  const { title, description } = item;
+  if (typeof title !== 'string' || typeof description !== 'string') return [];
+  return title.trim() && description.trim() ? [{ title, description }] : [];
+});
+---
+
+{cards.length > 0 && (
+  <ul
+    id={sectionId}
+    class:list={['project-block', 'benefit-cards', projectStackClass(spacing), sectionId && 'section-block']}
+    role="list"
+  >
+    {cards.map(({ title, description }) => (
+      <li>
+        <h3>{title}</h3>
+        <p>{description}</p>
+      </li>
+    ))}
+  </ul>
+)}
+
+<style>
+  .benefit-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, max(16rem, (100% - var(--space-unit)) / 2)), 1fr));
+    gap: var(--space-unit);
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    padding: var(--space-unit);
+    border: 1px solid var(--comp-documentation-divider);
+    border-radius: var(--radius-card);
+    overflow-wrap: anywhere;
+  }
+
+  h3 {
+    margin: 0;
+    font: inherit;
+    font-weight: 600;
+  }
+
+  p {
+    margin: calc(var(--space-unit) / 2) 0 0;
+    color: var(--sys-color-on-srf-subtle);
+  }
+</style>
