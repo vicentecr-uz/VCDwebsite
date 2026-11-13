@@ -54,7 +54,13 @@ const modern: Record<string, z.ZodRawShape> = {
   placeholder: { label: text.optional() },
   projectGrid: { variant: z.enum(['home', 'play']).optional() },
   productHero: { title: text, tagline: text, links: z.array(object.extend({ label: text, href: text })) },
-  benefitCards: { items: z.array(object.extend({ title: text, description: text })) },
+  benefitCards: {
+    items: z.array(object.extend({
+      title: text,
+      description: text,
+      icon: z.enum(['text-cursor', 'sliders-horizontal', 'blocks', 'arrow-right-left']).optional(),
+    })),
+  },
   codeBlock: { options: z.array(object.extend({ label: text.optional(), lang: text, code: text })).min(1), maxLines: number.optional() },
   sabiExample: { example: z.enum(['compare', 'affixes', 'direction', 'fade']) },
 };

@@ -1,4 +1,9 @@
 ---
+import textCursorIcon from 'lucide-static/icons/text-cursor.svg?raw';
+import slidersHorizontalIcon from 'lucide-static/icons/sliders-horizontal.svg?raw';
+import blocksIcon from 'lucide-static/icons/blocks.svg?raw';
+import arrowRightLeftIcon from 'lucide-static/icons/arrow-right-left.svg?raw';
+import { sizeIcon } from '../../lib/icons';
 import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
@@ -8,11 +13,19 @@ interface Props {
 }
 
 const { items, spacing, sectionId } = Astro.props;
+const icons = new Map([
+  ['text-cursor', textCursorIcon],
+  ['sliders-horizontal', slidersHorizontalIcon],
+  ['blocks', blocksIcon],
+  ['arrow-right-left', arrowRightLeftIcon],
+]);
 const cards = (Array.isArray(items) ? items : []).flatMap(item => {
   if (!item || typeof item !== 'object') return [];
-  const { title, description } = item;
+  const { title, description, icon } = item;
   if (typeof title !== 'string' || typeof description !== 'string') return [];
-  return title.trim() && description.trim() ? [{ title, description }] : [];
+  return title.trim() && description.trim()
+    ? [{ title, description, icon: typeof icon === 'string' ? icons.get(icon) : undefined }]
+    : [];
 });
 ---
 
@@ -22,8 +35,9 @@ const cards = (Array.isArray(items) ? items : []).flatMap(item => {
     class:list={['project-block', 'benefit-cards', projectStackClass(spacing), sectionId && 'section-block']}
     role="list"
   >
-    {cards.map(({ title, description }) => (
+    {cards.map(({ title, description, icon }) => (
       <li>
+        {icon && <span class="benefit-cards__icon" aria-hidden="true" set:html={sizeIcon(icon, 20)} />}
         <h3>{title}</h3>
         <p>{description}</p>
       </li>
@@ -45,6 +59,12 @@ const cards = (Array.isArray(items) ? items : []).flatMap(item => {
     border: 1px solid var(--comp-documentation-divider);
     border-radius: var(--radius-card);
     overflow-wrap: anywhere;
+  }
+
+  .benefit-cards__icon {
+    display: flex;
+    margin-bottom: calc(var(--space-unit) / 2);
+    color: var(--sys-color-on-srf-variant);
   }
 
   h3 {
