@@ -5,6 +5,14 @@ import { extname, relative, resolve } from 'node:path';
 
 const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css', '.map']);
 const INSPECTOR_MARKERS = [
+  'vcd-canvas',
+  'vcd:canvas-chrome-moved',
+  'data-canvas-chrome',
+  'data-canvas-mirrored',
+  'hoistCanvasChrome',
+  'data-canvas-resize-observer',
+  'data-viewport-flux',
+  'vcd:viewport-flux-end',
   '@aiforui/lapse',
   'data-lapse-panel',
   'data-agentation',
@@ -95,7 +103,12 @@ export async function checkProductionOutput(distDir = 'dist') {
   if (!contents.get(index.path)?.trim()) {
     throw new Error('dist/index.html: empty production entry HTML; build the site before checking output');
   }
-  for (const file of files) checkText(contents.get(file.path), file.relative);
+  for (const file of files) {
+    if (file.relative.replaceAll('\\', '/').startsWith('dev/canvas-shell')) {
+      throw violation(file.relative, 'development canvas route', 'remove the canvas shell from production output');
+    }
+    checkText(contents.get(file.path), file.relative);
+  }
 
   return { htmlFiles: htmlFiles.length, textFiles: files.length };
 }

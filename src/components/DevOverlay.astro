@@ -60,8 +60,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     const savePosition = (left: number, top: number) => {
       if (embedded) return;
       preferredPosition = {
-        x: clamp(left / window.innerWidth, 0, 1),
-        y: clamp(top / window.innerHeight, 0, 1),
+        x: clamp(left / (overlay.ownerDocument.defaultView ?? window).innerWidth, 0, 1),
+        y: clamp(top / (overlay.ownerDocument.defaultView ?? window).innerHeight, 0, 1),
       };
       try {
         window.localStorage.setItem(positionStorageKey, JSON.stringify(preferredPosition));
@@ -123,8 +123,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     };
 
     const applyPosition = (left: number, top: number, persist: boolean) => {
-      const maxLeft = Math.max(0, window.innerWidth - overlay.offsetWidth);
-      const maxTop = Math.max(0, window.innerHeight - overlay.offsetHeight);
+      const maxLeft = Math.max(0, (overlay.ownerDocument.defaultView ?? window).innerWidth - overlay.offsetWidth);
+      const maxTop = Math.max(0, (overlay.ownerDocument.defaultView ?? window).innerHeight - overlay.offsetHeight);
       const nextLeft = clamp(left, 0, maxLeft);
       const nextTop = clamp(top, 0, maxTop);
       writeLocalFromViewport(nextLeft, nextTop);
@@ -133,7 +133,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
 
     const applyPreferredPosition = () => {
       if (embedded || !preferredPosition || !overlay.offsetWidth || !overlay.offsetHeight) return;
-      applyPosition(preferredPosition.x * window.innerWidth, preferredPosition.y * window.innerHeight, false);
+      applyPosition(preferredPosition.x * (overlay.ownerDocument.defaultView ?? window).innerWidth, preferredPosition.y * (overlay.ownerDocument.defaultView ?? window).innerHeight, false);
     };
 
     const storedPosition = readPosition();
@@ -144,8 +144,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       if (!overlay.offsetWidth || !overlay.offsetHeight) return;
       if (legacyCenter) {
         applyPosition(
-          legacyCenter.u * window.innerWidth - overlay.offsetWidth / 2,
-          legacyCenter.v * window.innerHeight - overlay.offsetHeight / 2,
+          legacyCenter.u * (overlay.ownerDocument.defaultView ?? window).innerWidth - overlay.offsetWidth / 2,
+          legacyCenter.v * (overlay.ownerDocument.defaultView ?? window).innerHeight - overlay.offsetHeight / 2,
           true,
         );
         legacyCenter = null;
@@ -171,8 +171,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         || document.documentElement;
       const layoutRect = layoutEl.getBoundingClientRect();
       const layoutMid = (layoutRect.left + layoutRect.right) / 2;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      const vw = (overlay.ownerDocument.defaultView ?? window).innerWidth;
+      const vh = (overlay.ownerDocument.defaultView ?? window).innerHeight;
       const x = clientX ?? (trig.left + trig.right) / 2;
       const y = clientY ?? (trig.top + trig.bottom) / 2;
       const block = trigger.closest<HTMLElement>(
@@ -418,7 +418,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
 
       const viewportCapPx = () => {
         const em = Number.parseFloat(getComputedStyle(overlay).fontSize) || 16;
-        return window.innerHeight - 2 * em;
+        return (overlay.ownerDocument.defaultView ?? window).innerHeight - 2 * em;
       };
 
       const setBodyScrollable = (scrollable: boolean) => {
@@ -512,7 +512,6 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       // which is neither DOM text content nor an attribute, so the
       // MutationObserver above never fires for it — catch it via `input`.
       scope.listen(body, 'input', scheduleConstrain);
-      scope.listen(window, 'resize', scheduleConstrain);
     }
 
     let lastObservedHeight: number | null = null;
@@ -656,8 +655,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         const dy = clientY - resizeStartY;
         const startRight = resizeStartLeft + resizeStartWidth;
         const startBottom = resizeStartTop + resizeStartHeight;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const vw = (overlay.ownerDocument.defaultView ?? window).innerWidth;
+        const vh = (overlay.ownerDocument.defaultView ?? window).innerHeight;
 
         let width = resizeStartWidth;
         let height = resizeStartHeight;
@@ -738,8 +737,8 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         }
 
         const cs = getComputedStyle(overlay);
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
+        const vw = (overlay.ownerDocument.defaultView ?? window).innerWidth;
+        const vh = (overlay.ownerDocument.defaultView ?? window).innerHeight;
         resizeMinWidth = usedPx(cs.minWidth, 0);
         resizeMaxWidth = embedded ? usedPx(cs.maxWidth, Number.POSITIVE_INFINITY) : Math.min(usedPx(cs.maxWidth, vw), vw);
         resizeMinHeight = usedPx(cs.minHeight, 0);
@@ -846,10 +845,26 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       scope.listen(overlay, 'pointerdown', () => {
         raiseOverlay(overlay);
       });
-      scope.listen(window, 'resize', () => {
-        applyPreferredPosition();
-      });
     }
+    const onViewportResize = () => {
+      portraitScheduleConstrain?.();
+      if (!embedded) applyPreferredPosition();
+    };
+    let viewportWindow: Window = window;
+    const onChromeMoved = () => {
+      if (viewportWindow !== window) viewportWindow.removeEventListener('resize', onViewportResize);
+      viewportWindow = overlay.ownerDocument.defaultView ?? window;
+      if (viewportWindow !== window) viewportWindow.addEventListener('resize', onViewportResize);
+      onViewportResize();
+      if (!embedded && !preferredPosition && !overlay.hidden) {
+        const rect = overlay.getBoundingClientRect();
+        applyPosition(rect.left, rect.top, false);
+      }
+    };
+    scope.listen(window, 'resize', onViewportResize);
+    if (import.meta.env.DEV) scope.listen(window, 'vcd:canvas-chrome-moved', onChromeMoved);
+    scope.add(() => { if (viewportWindow !== window) viewportWindow.removeEventListener('resize', onViewportResize); });
+    if (overlay.ownerDocument.defaultView !== window) onChromeMoved();
   };
 
   document.querySelectorAll<HTMLElement>('[data-dev-overlay]').forEach(initDevOverlay);

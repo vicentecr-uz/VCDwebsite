@@ -20,6 +20,11 @@ const grouped = (options: EditorSelectOption[]) => {
 const encodeValue = (value: string | null) => value === null ? null : `vcd:${value}`;
 const decodeValue = (value: string | null) => value === null ? null : value.slice(4);
 
+// A body portal paints under a modal <dialog>'s top layer; keep the popup inside it. A trigger that
+// has been moved into another document (the Edit canvas shell) needs its popup in that document.
+const resolvePortalContainer = (trigger: HTMLElement | null): HTMLElement | undefined =>
+  trigger?.closest('dialog') ?? (trigger && trigger.ownerDocument !== document ? trigger.ownerDocument.body : undefined);
+
 export default function EditorSelect({
   triggerId,
   label,
@@ -41,12 +46,11 @@ export default function EditorSelect({
   const [selectionReturnedFocus, setSelectionReturnedFocus] = useState(false);
   const [menuValue, setMenuValue] = useState(snapshot.value);
   const [pointerOpen, setPointerOpen] = useState(false);
-  const [portalContainer, setPortalContainer] = useState<HTMLDialogElement | undefined>();
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | undefined>();
 
   useEffect(() => {
     const trigger = document.getElementById(triggerId);
-    // A body portal paints under a modal <dialog>'s top layer; keep the popup inside it.
-    setPortalContainer(trigger?.closest('dialog') ?? undefined);
+    setPortalContainer(resolvePortalContainer(trigger));
     const select = trigger?.closest('.dev-field')?.querySelector<HTMLSelectElement>('select[data-dev-editor-select]');
     if (!select) return;
     return initEditorSelectBridge(select, setSnapshot);
@@ -71,6 +75,7 @@ export default function EditorSelect({
       onValueChange={commit}
       onOpenChange={(open, details) => {
         if (open) setMenuValue(snapshot.value);
+        if (open) setPortalContainer(resolvePortalContainer(document.getElementById(triggerId)));
         setPointerOpen(open && details.reason === 'trigger-press' && details.event instanceof MouseEvent);
         setSelectionReturnedFocus(!open && details.reason === 'item-press');
       }}

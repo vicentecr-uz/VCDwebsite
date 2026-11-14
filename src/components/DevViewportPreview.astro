@@ -15,6 +15,8 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+  import { hoistCanvasChrome } from '../lib/canvasChrome';
+  import { followEditViewport } from '../lib/editViewportFollow';
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
@@ -24,7 +26,73 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const controls = root?.querySelector<HTMLElement>('[data-viewport-controls]');
     if (!root || !surface || !shadow || !frame || !controls) return scope.destroy;
+    const canvasMode = window.parent !== window && window.name === 'vcd-canvas';
     const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
+    };
+    if (canvasMode) {
+      if (document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=1')) hoistCanvasChrome(scope);
+      followEditViewport(scope);
+      scope.listen(window, 'resize', (event) => {
+        if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
+      }, true);
+      let preset = 'desktop';
+      const post = (message: object) => window.parent.postMessage(message, location.origin);
+      const reportLocation = () => post({ type: 'vcd-canvas-location', href: location.href, title: document.title });
+      const reportDevMode = () => post({ type: 'vcd-canvas-dev-mode', active: document.documentElement.classList.contains('is-dev-mode') });
+      const requestPreset = (preset: string) => {
+        if (preset === 'desktop' || preset === 'tablet' || preset === 'mobile') post({ type: 'vcd-canvas-request-preset', preset });
+      };
+      reportLocation();
+      reportDevMode();
+      scope.listen(window, 'popstate', reportLocation);
+      scope.listen(window, 'hashchange', reportLocation);
+      scope.listen(document, 'astro:page-load', reportLocation);
+      scope.listen(window, 'vcd:dev-mode-change', reportDevMode);
+      scope.listen(document, 'keydown', (event) => {
+        if (isTypingTarget(event.target) || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const requested = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
+        if (!requested) return;
+        event.preventDefault();
+        requestPreset(requested);
+      }, true);
+      scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+        if (event.detail?.preset) requestPreset(event.detail.preset);
+      }) as EventListener);
+      scope.listen(window, 'message', (event) => {
+        if (event.origin !== location.origin || event.source !== window.parent) return;
+        if (event.data?.type === 'vcd-canvas-flux') {
+          if (event.data.active === true) document.documentElement.setAttribute('data-viewport-flux', '');
+          if (event.data.active === false) {
+            document.documentElement.removeAttribute('data-viewport-flux');
+            window.dispatchEvent(new CustomEvent('vcd:viewport-flux-end'));
+            window.dispatchEvent(new Event('resize'));
+          }
+          return;
+        }
+        if (event.data?.type !== 'vcd-canvas-preset') return;
+        const next = event.data.preset;
+        if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile') return;
+        preset = next;
+        document.documentElement.toggleAttribute('data-edit-viewport-frame', preset !== 'desktop');
+        window.dispatchEvent(new CustomEvent('vcd:edit-viewport-change', { detail: { preset } }));
+      });
+      scope.listen(document, 'click', (event) => {
+        if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+        if (!anchor || anchor.hasAttribute('target') || new URL(anchor.href).origin === location.origin) return;
+        event.preventDefault();
+        window.top!.location.href = anchor.href;
+      }, true);
+      scope.add(() => {
+        document.documentElement.removeAttribute('data-edit-viewport-frame');
+        document.documentElement.removeAttribute('data-viewport-flux');
+      });
+      return () => scope.destroy();
+    }
 
     const presets = {
       tablet: [820, 1180],
@@ -52,10 +120,6 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     let previousOverflow = '';
     let isolatedSiblings: Array<{ element: HTMLElement; inert: boolean }> = [];
     let isolationObserver: MutationObserver | null = null;
-    const isTypingTarget = (target: EventTarget | null) => {
-      const element = target instanceof HTMLElement ? target : null;
-      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
-    };
     const isolatePage = () => {
       if (!open) return;
       [...document.body.children]
@@ -432,6 +496,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 <style>
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
+  :global(html[data-viewport-flux] .site-header) { transition: none; }
   :global(html[data-viewport-layout-commit] .site-header) { transition: none; }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__backdrop { position: absolute; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }
