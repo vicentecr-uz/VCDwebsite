@@ -788,6 +788,12 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     // The Edit canvas holds back resize while a viewport preview morphs; the fixed header still has to follow.
     window.addEventListener('vcd:viewport-flux-frame', () => {
       viewportFluxUntil = performance.now() + 150;
+      // A header riding away with the page is pinned to a scroll position the morph is about to change.
+      // Settle it: docked if any of it is on screen, otherwise back in the flow and hidden.
+      if (window.innerWidth > 767 && mode === 'riding') {
+        setMode(logicalHeaderRect().bottom > 0 ? 'docked' : 'flow');
+        if (mode === 'flow') header.classList.toggle('is-scrolled-hidden', logicalHeaderRect().bottom <= 0);
+      }
       syncViewportWidth();
     });
   }

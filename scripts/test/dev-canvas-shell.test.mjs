@@ -129,3 +129,10 @@ test('flag toggles return to the page they were clicked on', async () => {
   assert.equal(canvasFlagReturnPath({ host: 'localhost:4360', referer: 'http://localhost:4360/dev/canvas/on' }), '/');
   assert.equal(canvasFlagReturnPath({ host: 'localhost:4360' }), '/');
 });
+
+test('flag toggles accept an explicit return page', async () => {
+  const { canvasFlagReturnPath } = await import('../dev-canvas-shell.mjs');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360' }, '/dev/canvas/chrome-on?to=/tapico'), '/tapico');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360' }, '/dev/canvas/on?to=//evil.test'), '/');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360' }, '/dev/canvas/on?to=/dev/canvas/off'), '/');
+});

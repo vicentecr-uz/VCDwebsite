@@ -131,9 +131,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
           // Registered before any page script, so it also precedes capture-phase resize listeners.
           window.addEventListener('resize', (event) => {
             if (!document.documentElement.hasAttribute('data-viewport-flux')) return;
+            // Layout the page cannot do without (the fixed header) listens for `vcd:viewport-flux-frame`,
+            // which the shell dispatches in the same frame as each width change.
             event.stopImmediatePropagation();
-            // Layout the page cannot do without (the fixed header's width) opts in to this instead.
-            window.dispatchEvent(new CustomEvent('vcd:viewport-flux-frame'));
           }, true);
         }
       </script>

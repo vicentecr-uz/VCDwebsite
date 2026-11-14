@@ -13,7 +13,10 @@ export function shouldServeCanvasShell({ method, url, headers }) {
 }
 
 /** After a flag toggle, go back to the page the link was clicked on (same host only). */
-export function canvasFlagReturnPath(headers) {
+export function canvasFlagReturnPath(headers, url = '') {
+  // A link from outside the site has no referer: `?to=/page` names where to land.
+  const to = new URL(url || '/', 'http://localhost').searchParams.get('to');
+  if (to && to.startsWith('/') && !to.startsWith('//') && !to.startsWith('/dev/canvas/')) return to;
   try {
     const referer = new URL(String(headers.referer ?? ''));
     if (referer.host === headers.host && !referer.pathname.startsWith('/dev/canvas/')) return `${referer.pathname}${referer.search}${referer.hash}`;
@@ -34,7 +37,7 @@ export function devCanvasShell() {
             ? `${cookie}=1; Path=/; SameSite=Lax`
             : `${cookie}=; Path=/; SameSite=Lax; Max-Age=0`);
           res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('Location', canvasFlagReturnPath(req.headers));
+          res.setHeader('Location', canvasFlagReturnPath(req.headers, req.url));
           res.statusCode = 302;
           res.end();
           return;
