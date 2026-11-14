@@ -3,6 +3,10 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 import Button from '../../components/ui/Button.astro';
 import DevOverlayFrame from '../../components/ui/DevOverlayFrame.astro';
 import AssetManagerContent from '../../components/ui/AssetManagerContent.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import ViewportSelector from '../../components/ui/ViewportSelector.astro';
+import PanelActions from '../../components/ui/PanelActions.astro';
+import ImageReplaceControls from '../../components/project/ImageReplaceControls.astro';
 import ImageCropControls from '../../components/project/ImageCropControls.astro';
 import path from 'node:path';
 import { readPublishedDemoAssets } from '../../../scripts/public-demo-assets.mjs';
@@ -25,17 +29,10 @@ const project = loadProjectBySlug('new-classic-utility-knife');
 const published = project?.status === 'published' ? project : undefined;
 const title = published?.title ?? 'New Classic Utility Knife';
 const sections = published?.sections ?? [];
-const blocks: { title: string; paragraphs: string[] }[] = [];
-let heading = 'Overview';
-for (const section of sections) {
-  if (section.type === 'sectionTitle') heading = String(section.title);
-  if (section.type === 'bodyText' && Array.isArray(section.paragraphs)) {
-    blocks.push({ title: heading, paragraphs: section.paragraphs.filter((value): value is string => typeof value === 'string') });
-  }
-}
+const blocks = sections.slice(1);
 if (!blocks.length) blocks.push(
-  { title: 'Overview', paragraphs: ['A utility knife designed for simpler blade handling.'] },
-  { title: 'The brief', paragraphs: ['Improve blade handling while keeping the tool durable and familiar.'] },
+  { type: 'bodyText', paragraphs: ['A utility knife designed for simpler blade handling.'] },
+  { type: 'bodyText', paragraphs: ['Improve blade handling while keeping the tool durable and familiar.'] },
 );
 const lead = sections[0]?.items;
 const photo = Array.isArray(lead) ? lead[0] : undefined;
@@ -43,11 +40,12 @@ const hasPhoto = typeof photo?.src === 'string' && photo.src && photo.srcWidth >
 const imageSrc = hasPhoto ? projectImageTier(photo.src, 'preview') : '/demo-fixtures/studio.preview.webp';
 const dimensions = hasPhoto ? { width: photo.srcWidth, height: photo.srcHeight } : { width: 1200, height: 800 };
 const crop = { aspect: '3:1', cx: 0.5, cy: 0.5, w: 0.84 };
-const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }, crop.aspect, dimensions), dimensions);
+const variants = normalizeImageVariants(photo?.variants ?? { desktop: crop }, crop.aspect, dimensions);
+const imageStyle = responsiveImageStyle(variants, dimensions);
 ---
 
 <DemoLayout title="Site editor canvas" scrolling>
-  <div class="playground is-dev-mode" data-editor-playground data-crop-demo data-initial-crop={JSON.stringify(crop)}>
+  <div class="playground is-dev-mode" data-editor-playground data-crop-demo data-initial-crop={JSON.stringify(variants)}>
     <Button label="Preview mode" class="preview-toggle" data-playground-preview aria-keyshortcuts="Alt+E">
       <span data-preview-label>Preview mode</span> <kbd aria-hidden="true">⌥E</kbd>
     </Button>
@@ -61,27 +59,44 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
     <script is:inline type="application/json" data-published-demo-assets set:html={catalogJson}></script>
     <article class="sample">
       <h1 contenteditable="plaintext-only" role="textbox" aria-label="Project headline" spellcheck="false" data-playground-title>{title}</h1>
-      <div class="hero">
+      <div class="hero dev-image-edit-target">
         <div class="project-cropped" data-playground-image style={imageStyle}>
           <div class="project-crop-clip">
             <img src={imageSrc} width={dimensions.width} height={dimensions.height} alt={hasPhoto ? title : ""} />
           </div>
         </div>
-        <Button label="Crop" class="crop-button" data-playground-crop aria-expanded="false"><span data-crop-label>Crop</span></Button>
+        <button type="button" class="dev-image-edit-trigger crop-button" data-playground-crop aria-expanded="false" aria-controls="playground-image-panel">Crop</button>
       </div>
-      <details class="image-tools" data-image-tools hidden>
-        <summary>Image settings</summary>
-        <ImageCropControls aspect={crop.aspect} imageSrc={imageSrc} />
-      </details>
+      <DevOverlayFrame title="Image" id="playground-image-panel" defaultHidden showMinimize={false} data-image-tools role="dialog" aria-label="Edit image">
+        <div class="tapico-crop-tuner">
+          <ViewportSelector dataAttr="data-playground-viewport" slideSelection={false} />
+          <ImageCropControls aspect={variants.desktop.aspect} imageSrc={imageSrc}>
+            <Fragment slot="frameSettings">
+              <label class="dev-field">Width <input type="range" min="30" max="100" value="100" data-image-width /></label>
+              <label class="dev-field">Max view height <input type="range" min="30" max="100" value="100" data-image-height /></label>
+              <label class="dev-field">Background <input type="color" value="#ffffff" data-image-background /></label>
+              <Button label="None" emphasis="ghost" data-image-background-clear />
+            </Fragment>
+          </ImageCropControls>
+          <ImageReplaceControls />
+          <p data-image-status role="status"></p>
+          <PanelActions>
+            <Button label="Cancel" emphasis="ghost" data-image-cancel />
+            <Button label="Revert changes" emphasis="ghost" data-image-revert />
+            <Button label="Save changes" emphasis="filled" data-image-save />
+          </PanelActions>
+        </div>
+      </DevOverlayFrame>
       <div class="blocks" data-reorder-demo-list>
-        {blocks.map(({ title, paragraphs }) => (
+        {blocks.map((section, index) => {
+          const title = String(section.title ?? `Block ${index + 1}`);
+          return (
           <section class="sample-block" data-reorder-demo-block data-dev-section-reorderable data-title={title}>
             <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
             <Fragment set:html={sectionReorderHandleMarkup({ label: `Reorder ${title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
-            <h2 data-playground-copy>{title}</h2>
-            {paragraphs.map((paragraph) => <p data-playground-copy>{paragraph}</p>)}
+            <ProjectSections sections={[section]} />
           </section>
-        ))}
+        ); })}
       </div>
       <p class="reorder-demo__status" aria-live="polite" aria-atomic="true"></p>
     </article>
@@ -91,6 +106,8 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
 <script>
   import { createDemoBlockReorder } from '../../lib/demoBlockReorder';
   import { createDemoAssetPicker, type DemoAssetProject } from '../../lib/demoAssetPicker';
+  import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
+  import type { ImageViewport } from '../../lib/responsiveImage';
   import { createDemoImageCrop } from '../../lib/demoImageCrop';
 
   const root = document.querySelector<HTMLElement>('[data-editor-playground]')!;
@@ -100,10 +117,10 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   const image = root.querySelector<HTMLElement>('[data-playground-image]')!;
   const bitmap = image.querySelector('img')!;
   const initialTitle = title.textContent;
-  const copy = [...root.querySelectorAll<HTMLElement>('[data-playground-copy]')];
-  const initialCopy = copy.map((element) => element.textContent);
+  const copy = [...root.querySelectorAll<HTMLElement>('.project-body-text p, .project-section-title')];
+  const initialCopy = copy.map((element) => [...element.childNodes].map((node) => node.cloneNode(true)));
   const tools = root.querySelector<HTMLElement>('[data-desktop-tools]')!;
-  const imageTools = root.querySelector<HTMLDetailsElement>('[data-image-tools]')!;
+  const imageTools = root.querySelector<HTMLElement>('[data-image-tools]')!;
   const assetButton = root.querySelector<HTMLButtonElement>('[data-playground-assets]')!;
   const assetPanel = root.querySelector<HTMLElement>('[data-demo-asset-picker]')!;
   const catalog: DemoAssetProject[] = JSON.parse(root.querySelector('[data-published-demo-assets]')!.textContent || '[]');
@@ -117,10 +134,12 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   let assetRequest = 0;
   function syncDesktopTools() {
     const show = desktop && !root.hasAttribute('data-preview');
-    tools.hidden = imageTools.hidden = !show;
+    tools.hidden = !show;
+    if (!show) closeImageEditor(false);
+    else if (imageTools.hidden) setCrop(false);
+    cropButton.textContent = show ? 'Edit image' : 'Crop';
     for (const element of copy) element.contentEditable = show ? 'plaintext-only' : 'false';
     if (!show) {
-      imageTools.open = false;
       assetRequest++;
       picker.close();
     }
@@ -134,24 +153,52 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
     syncDesktopTools();
   });
 
-  assetButton.addEventListener('click', async () => {
+  const assetOpener = imageTools.querySelector<HTMLButtonElement>('[data-crop-replace-assets]')!;
+  async function replaceImage(url: string, name: string, request: number) {
+    const replacement = new Image();
+    replacement.src = url;
+    try { await replacement.decode(); } catch {
+      if (request === assetRequest) imageStatus.textContent = 'This image could not be opened.';
+      return false;
+    }
+    if (request !== assetRequest) return false;
+    crop.setSource({ src: replacement.src, width: replacement.naturalWidth, height: replacement.naturalHeight, alt: name });
+    return true;
+  }
+
+  async function pickAsset() {
     const request = ++assetRequest;
     const asset = await picker.open();
-    if (!asset || request !== assetRequest) return;
-    const replacement = new Image();
-    replacement.src = asset.url;
-    try { await replacement.decode(); } catch { return; }
-    if (request !== assetRequest) return;
-    crop.setSource({ src: replacement.src, width: replacement.naturalWidth, height: replacement.naturalHeight, alt: asset.filename });
+    if (asset && request === assetRequest) await replaceImage(asset.url, asset.filename, request);
+    if (request === assetRequest && !imageTools.hidden) assetOpener.focus({ preventScroll: true });
+  }
+  assetButton.addEventListener('click', pickAsset);
+  assetOpener.addEventListener('click', pickAsset);
+  const imageStatus = imageTools.querySelector<HTMLElement>('[data-image-status]')!;
+  const imageLifecycle = new AbortController();
+  const objectUrls = new Set<string>();
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted) return;
+    imageLifecycle.abort();
+    objectUrls.forEach((url) => URL.revokeObjectURL(url));
   });
+  bindImageReplaceControls(imageTools, { signal: imageLifecycle.signal, onFile: async (file) => {
+    if (!file) return;
+    imageStatus.textContent = '';
+    const url = URL.createObjectURL(file);
+    if (await replaceImage(url, file.name, ++assetRequest)) objectUrls.add(url);
+    else URL.revokeObjectURL(url);
+  } });
   const reorder = createDemoBlockReorder(root, { scroll: true });
+  const variants = JSON.parse(root.dataset.initialCrop!);
   const crop = createDemoImageCrop({
     host: image,
     controls: imageTools,
     active: false,
     initialState: {
       source: { src: bitmap.src, width: Number(bitmap.getAttribute('width')), height: Number(bitmap.getAttribute('height')), alt: bitmap.alt },
-      crop: JSON.parse(root.dataset.initialCrop!),
+      crop: variants.desktop,
+      variants,
       locked: true,
     },
   });
@@ -159,8 +206,57 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   function setCrop(active: boolean) {
     crop.setActive(active);
     cropButton.setAttribute('aria-expanded', String(active));
-    cropButton.querySelector('[data-crop-label]')!.textContent = active ? 'Done' : 'Crop';
+    cropButton.textContent = desktop ? 'Edit image' : active ? 'Done' : 'Crop';
+    image.parentElement?.classList.toggle('is-dev-image-selected', active);
   }
+
+  const width = imageTools.querySelector<HTMLInputElement>('[data-image-width]')!;
+  const height = imageTools.querySelector<HTMLInputElement>('[data-image-height]')!;
+  const background = imageTools.querySelector<HTMLInputElement>('[data-image-background]')!;
+  let colour = '';
+  const applyFrameSettings = () => {
+    image.style.width = `${width.value}%`;
+    image.style.maxHeight = height.value === '100' ? '' : `${height.value}dvh`;
+    image.style.backgroundColor = colour;
+  };
+  width.addEventListener('input', applyFrameSettings);
+  height.addEventListener('input', applyFrameSettings);
+  background.addEventListener('input', () => { colour = background.value; applyFrameSettings(); });
+  imageTools.querySelector('[data-image-background-clear]')!.addEventListener('click', () => { colour = ''; applyFrameSettings(); });
+  const viewportButtons = [...imageTools.querySelectorAll<HTMLButtonElement>('[data-playground-viewport]')];
+  function setViewport(viewport: ImageViewport) {
+    crop.setViewport(viewport);
+    viewportButtons.forEach((button) => {
+      const selected = button.dataset.playgroundViewport === viewport;
+      button.classList.toggle('is-active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  }
+  viewportButtons.forEach((button) => button.addEventListener('click', () => setViewport(button.dataset.playgroundViewport as ImageViewport)));
+  const readImage = () => ({ crop: crop.getState(), width: width.value, height: height.value, colour });
+  function restoreImage(state: ReturnType<typeof readImage>) {
+    crop.restore(state.crop);
+    width.value = state.width;
+    height.value = state.height;
+    colour = state.colour;
+    background.value = colour || '#ffffff';
+    applyFrameSettings();
+  }
+  const originalImage = readImage();
+  let imageBeforeEdit = originalImage;
+  function closeImageEditor(save: boolean) {
+    if (imageTools.hidden) return;
+    assetRequest++;
+    picker.close();
+    if (!save) restoreImage(imageBeforeEdit);
+    imageTools.classList.remove('is-dev-overlay-open');
+    imageTools.hidden = true;
+    setViewport('desktop');
+    setCrop(false);
+  }
+  imageTools.querySelector('[data-image-cancel]')!.addEventListener('click', () => { closeImageEditor(false); cropButton.focus(); });
+  imageTools.querySelector('[data-image-save]')!.addEventListener('click', () => { closeImageEditor(true); cropButton.focus(); });
+  imageTools.querySelector('[data-image-revert]')!.addEventListener('click', () => restoreImage(originalImage));
 
   function setPreview(active: boolean) {
     root.toggleAttribute('data-preview', active);
@@ -178,14 +274,28 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
     syncDesktopTools();
   }
 
-  cropButton.addEventListener('click', () => setCrop(cropButton.getAttribute('aria-expanded') === 'false'));
+  cropButton.addEventListener('click', () => {
+    if (!desktop) { setCrop(cropButton.getAttribute('aria-expanded') === 'false'); return; }
+    if (!imageTools.hidden) { closeImageEditor(false); return; }
+    imageBeforeEdit = readImage();
+    imageStatus.textContent = '';
+    imageTools.hidden = false;
+    imageTools.classList.add('is-dev-overlay-open');
+    setCrop(true);
+    setViewport('desktop');
+    viewportButtons[0]?.focus({ preventScroll: true });
+  });
   preview.addEventListener('click', () => setPreview(!root.hasAttribute('data-preview')));
   root.querySelector('[data-reorder-demo-reset]')!.addEventListener('click', () => {
     title.textContent = initialTitle;
-    copy.forEach((element, index) => { element.textContent = initialCopy[index]; });
+    copy.forEach((element, index) => { element.replaceChildren(...initialCopy[index].map((node) => node.cloneNode(true))); });
     assetRequest++;
     picker.close();
-    crop.reset();
+    closeImageEditor(false);
+    restoreImage(originalImage);
+    setViewport('desktop');
+    objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.clear();
     setCrop(false);
     setPreview(false);
   });
@@ -200,6 +310,7 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
       preview.click();
     }
     if (event.key === 'Escape' && assetPanel.hidden && !event.defaultPrevented && !event.isComposing) {
+      if (!imageTools.hidden) { closeImageEditor(false); cropButton.focus(); return; }
       window.parent.postMessage('vcd:editor-playground-exit', location.origin);
     }
   });
@@ -218,8 +329,9 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   .desktop-tools { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px); }
   [hidden] { display: none; }
   kbd { opacity: 0.65; font: inherit; }
-  .image-tools { margin-block: 12px; }
-  .image-tools summary { cursor: pointer; }
+  .playground :global([data-image-tools]) { z-index: 70; }
+  .playground :global([data-image-tools] [data-overlay-body]) { overflow-y: auto; }
+  .playground :global([data-demo-asset-picker]) { z-index: 80; }
   .sample { width: min(100%, 48rem); margin-inline: auto; padding: 72px clamp(28px, 6vw, 64px) 88px; }
   h1 {
     margin: 0 0 0.48em;
@@ -232,16 +344,14 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   [contenteditable="plaintext-only"] { cursor: text; border-radius: 3px; }
   [contenteditable="plaintext-only"]:is(:hover, :focus-visible) { outline: 1px dashed currentColor; outline-offset: 6px; }
   .hero { position: relative; }
-  .project-cropped { --project-image-ratio: 3 / 1; }
-  .crop-button { position: absolute; top: 6px; right: 6px; z-index: 15; }
+  .project-cropped { margin-inline: auto; }
+  .crop-button { z-index: 15; }
   .blocks { display: flex; flex-direction: column; margin-top: 12px; overflow-anchor: none; }
   .sample-block {
     position: relative;
     border-bottom: 1px solid var(--sys-color-srf-container);
     padding: 14px 0 16px 24px;
   }
-  h2 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.025em; }
-  p { margin-top: 3px; font-size: 1rem; line-height: 1.45; }
   .playground .sample-block > :global(.dev-section-drag-handle) {
     opacity: 1;
     pointer-events: auto;
