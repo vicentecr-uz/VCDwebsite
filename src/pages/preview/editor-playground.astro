@@ -35,6 +35,9 @@ if (!blocks.length) blocks.push(
   { type: 'bodyText', paragraphs: ['Improve blade handling while keeping the tool durable and familiar.'] },
 );
 const lead = sections[0]?.items;
+if (sections[0]?.type === 'imageCarousel' && Array.isArray(lead) && lead.length > 1) {
+  blocks.unshift({ ...sections[0], items: lead.slice(1) });
+}
 const photo = Array.isArray(lead) ? lead[0] : undefined;
 const hasPhoto = typeof photo?.src === 'string' && photo.src && photo.srcWidth > 0 && photo.srcHeight > 0;
 const imageSrc = hasPhoto ? projectImageTier(photo.src, 'preview') : '/demo-fixtures/studio.preview.webp';
@@ -108,15 +111,16 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   import { createDemoAssetPicker, type DemoAssetProject } from '../../lib/demoAssetPicker';
   import { createDevPanelCollapse } from '../../lib/devPanelCollapse';
   import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
-  import type { ImageViewport } from '../../lib/responsiveImage';
+  import { IMAGE_VIEWPORTS, normalizeImageVariants, type ImageViewport } from '../../lib/responsiveImage';
   import { createDemoImageCrop } from '../../lib/demoImageCrop';
 
   const root = document.querySelector<HTMLElement>('[data-editor-playground]')!;
   const title = root.querySelector<HTMLElement>('[data-playground-title]')!;
   const preview = root.querySelector<HTMLButtonElement>('[data-playground-preview]')!;
-  const cropButton = root.querySelector<HTMLButtonElement>('[data-playground-crop]')!;
-  const image = root.querySelector<HTMLElement>('[data-playground-image]')!;
-  const bitmap = image.querySelector('img')!;
+  const leadButton = root.querySelector<HTMLButtonElement>('[data-playground-crop]')!;
+  const leadImage = root.querySelector<HTMLElement>('[data-playground-image]')!;
+  let cropButton = leadButton;
+  let image = leadImage;
   const initialTitle = title.textContent;
   const copy = [...root.querySelectorAll<HTMLElement>('.project-body-text p, .project-section-title')];
   const initialCopy = copy.map((element) => [...element.childNodes].map((node) => node.cloneNode(true)));
@@ -127,8 +131,9 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     imagePanelCollapse.set(!imageTools.classList.contains('is-minimized'));
   });
   imageTools.querySelector('[data-hide-toggle]')!.addEventListener('click', () => {
+    const opener = cropButton;
     closeImageEditor(false);
-    cropButton.focus();
+    opener.focus();
   });
   const assetButton = root.querySelector<HTMLButtonElement>('[data-playground-assets]')!;
   const assetPanel = root.querySelector<HTMLElement>('[data-demo-asset-picker]')!;
@@ -144,8 +149,12 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   function syncDesktopTools() {
     const show = desktop && !root.hasAttribute('data-preview');
     tools.hidden = !show;
-    if (!show) closeImageEditor(false);
-    else if (imageTools.hidden) setCrop(false);
+    if (!show) {
+      closeImageEditor(false);
+      selectLead();
+    }
+    for (const button of imageButtons.keys()) button.hidden = !show;
+    if (show && imageTools.hidden) setCrop(false);
     cropButton.textContent = show ? 'Edit image' : 'Crop';
     for (const element of copy) element.contentEditable = show ? 'plaintext-only' : 'false';
     if (!show) {
@@ -200,23 +209,27 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   } });
   const reorder = createDemoBlockReorder(root, { scroll: true });
   const variants = JSON.parse(root.dataset.initialCrop!);
-  const crop = createDemoImageCrop({
-    host: image,
-    controls: imageTools,
-    active: false,
-    initialState: {
-      source: { src: bitmap.src, width: Number(bitmap.getAttribute('width')), height: Number(bitmap.getAttribute('height')), alt: bitmap.alt },
-      crop: variants.desktop,
-      variants,
-      locked: true,
-    },
-  });
+  let crop = createLeadCrop();
+  function createLeadCrop() {
+    const bitmap = leadImage.querySelector('img')!;
+    return createDemoImageCrop({
+      host: leadImage,
+      controls: imageTools,
+      active: false,
+      initialState: {
+        source: { src: bitmap.src, width: Number(bitmap.getAttribute('width')), height: Number(bitmap.getAttribute('height')), alt: bitmap.alt },
+        crop: variants.desktop,
+        variants,
+        locked: true,
+      },
+    });
+  }
 
   function setCrop(active: boolean) {
     crop.setActive(active);
     cropButton.setAttribute('aria-expanded', String(active));
     cropButton.textContent = desktop ? 'Edit image' : active ? 'Done' : 'Crop';
-    image.parentElement?.classList.toggle('is-dev-image-selected', active);
+    cropButton.parentElement?.classList.toggle('is-dev-image-selected', active);
   }
 
   const width = imageTools.querySelector<HTMLInputElement>('[data-image-width]')!;
@@ -251,8 +264,115 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     background.value = colour || '#ffffff';
     applyFrameSettings();
   }
-  const originalImage = readImage();
+  let originalImage = readImage();
   let imageBeforeEdit = originalImage;
+  type ImageState = ReturnType<typeof readImage>;
+  type ImageTarget = {
+    host: HTMLElement;
+    bitmap: HTMLImageElement;
+    attributes: [Element, string, string | null][];
+    original?: ImageState;
+    saved?: ImageState;
+  };
+  const imageButtons = new Map<HTMLButtonElement, ImageTarget>();
+  for (const bitmap of root.querySelectorAll<HTMLImageElement>('.blocks img[data-image-original]')) {
+    const mediaFrame = bitmap.closest<HTMLElement>('.project-image-grid__frame, .project-crop-clip');
+    const host = mediaFrame?.parentElement;
+    if (!mediaFrame || !host || host.querySelector(':scope > [data-playground-image-edit]')) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dev-image-edit-trigger';
+    button.textContent = 'Edit image';
+    button.hidden = true;
+    button.dataset.playgroundImageEdit = '';
+    button.setAttribute('aria-controls', imageTools.id);
+    button.setAttribute('aria-expanded', 'false');
+    const cropHost = mediaFrame.classList.contains('project-image-grid__frame') ? mediaFrame : host;
+    const triggerHost = host;
+    triggerHost.classList.add('dev-image-edit-target');
+    triggerHost.append(button);
+    imageButtons.set(button, {
+      host: cropHost, bitmap,
+      attributes: [
+        [cropHost, 'style', cropHost.getAttribute('style')],
+        [cropHost, 'class', cropHost.getAttribute('class')],
+        ...['src', 'alt', 'role', 'tabindex', 'aria-label', 'data-image-preview', 'data-image-original'].map(
+          (name): [Element, string, string | null] => [bitmap, name, bitmap.getAttribute(name)],
+        ),
+      ],
+    });
+    button.addEventListener('click', () => void openOtherImage(button));
+  }
+
+  let activeTarget: ImageTarget | undefined;
+  let leadState = originalImage;
+  const leadOriginal = originalImage;
+  function selectLead() {
+    if (!activeTarget) return;
+    crop.destroy();
+    activeTarget = undefined;
+    cropButton = leadButton;
+    image = leadImage;
+    crop = createLeadCrop();
+    originalImage = leadOriginal;
+    restoreImage(leadState);
+  }
+
+  async function openOtherImage(button: HTMLButtonElement) {
+    if (!desktop || button.hidden) return;
+    if (!imageTools.hidden) {
+      const same = cropButton === button;
+      closeImageEditor(false);
+      if (same) return;
+    }
+    const target = imageButtons.get(button)!;
+    button.textContent = 'Edit image';
+    const request = ++assetRequest;
+    if (!target.original) {
+      const source = new Image();
+      source.src = target.bitmap.dataset.imagePreview || target.bitmap.src;
+      try { await source.decode(); } catch {
+        if (request === assetRequest) button.textContent = 'Image unavailable';
+        return;
+      }
+      if (request !== assetRequest || button.hidden) return;
+      const dimensions = { width: source.naturalWidth, height: source.naturalHeight };
+      const style = getComputedStyle(target.host);
+      const read = (key: string) => style.getPropertyValue(key).trim();
+      const poses = Object.fromEntries(IMAGE_VIEWPORTS.map((viewport) => {
+        const ratio = read(`--project-image-ratio-${viewport}`).replace(/\s*\/\s*/, ':');
+        return [viewport, {
+          aspect: /^[\d.]+:[\d.]+$/.test(ratio) ? ratio : 'original',
+          cx: Number(read(`--project-content-cx-${viewport}`) || 0.5),
+          cy: Number(read(`--project-content-cy-${viewport}`) || 0.5),
+          w: Number(read(`--project-content-w-${viewport}`) || 1),
+        }];
+      }));
+      const variants = normalizeImageVariants(poses, 'original', dimensions);
+      target.original = {
+        crop: { source: { src: source.src, ...dimensions, alt: target.bitmap.alt }, crop: variants.desktop, variants, locked: false },
+        width: '100', height: '100', colour: '',
+      };
+    }
+    if (!activeTarget) leadState = readImage();
+    crop.destroy();
+    activeTarget = target;
+    cropButton = button;
+    image = target.host;
+    image.classList.add('project-responsive-image');
+    target.bitmap.removeAttribute('data-image-preview');
+    originalImage = target.original;
+    crop = createDemoImageCrop({ host: image, bitmap: target.bitmap, controls: imageTools, active: false, initialState: originalImage.crop });
+    restoreImage(target.saved ?? originalImage);
+    openImageEditor();
+  }
+
+  function restoreTarget(target: ImageTarget) {
+    for (const [element, name, value] of target.attributes) {
+      if (value === null) element.removeAttribute(name);
+      else element.setAttribute(name, value);
+    }
+  }
   function closeImageEditor(save: boolean) {
     if (imageTools.hidden) return;
     assetRequest++;
@@ -262,9 +382,18 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     imageTools.hidden = true;
     setViewport('desktop');
     setCrop(false);
+    if (activeTarget) {
+      const target = activeTarget;
+      if (save) {
+        target.saved = readImage();
+        target.bitmap.dataset.imageOriginal = target.saved.crop.source.src;
+      }
+      selectLead();
+      if (!target.saved) restoreTarget(target);
+    }
   }
-  imageTools.querySelector('[data-image-cancel]')!.addEventListener('click', () => { closeImageEditor(false); cropButton.focus(); });
-  imageTools.querySelector('[data-image-save]')!.addEventListener('click', () => { closeImageEditor(true); cropButton.focus(); });
+  imageTools.querySelector('[data-image-cancel]')!.addEventListener('click', () => { const opener = cropButton; closeImageEditor(false); opener.focus(); });
+  imageTools.querySelector('[data-image-save]')!.addEventListener('click', () => { const opener = cropButton; closeImageEditor(true); opener.focus(); });
   imageTools.querySelector('[data-image-revert]')!.addEventListener('click', () => restoreImage(originalImage));
 
   function setPreview(active: boolean) {
@@ -283,9 +412,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     syncDesktopTools();
   }
 
-  cropButton.addEventListener('click', () => {
-    if (!desktop) { setCrop(cropButton.getAttribute('aria-expanded') === 'false'); return; }
-    if (!imageTools.hidden) { closeImageEditor(false); return; }
+  function openImageEditor() {
     imageBeforeEdit = readImage();
     imageStatus.textContent = '';
     imageTools.hidden = false;
@@ -294,6 +421,16 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     setCrop(true);
     setViewport('desktop');
     viewportButtons[0]?.focus({ preventScroll: true });
+  }
+  leadButton.addEventListener('click', () => {
+    assetRequest++;
+    if (!desktop) { setCrop(leadButton.getAttribute('aria-expanded') === 'false'); return; }
+    if (!imageTools.hidden) {
+      const same = cropButton === leadButton;
+      closeImageEditor(false);
+      if (same) return;
+    }
+    openImageEditor();
   });
   preview.addEventListener('click', () => setPreview(!root.hasAttribute('data-preview')));
   root.querySelector('[data-reorder-demo-reset]')!.addEventListener('click', () => {
@@ -302,7 +439,11 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     assetRequest++;
     picker.close();
     closeImageEditor(false);
-    restoreImage(originalImage);
+    restoreImage(leadOriginal);
+    for (const target of imageButtons.values()) {
+      restoreTarget(target);
+      target.saved = undefined;
+    }
     setViewport('desktop');
     objectUrls.forEach((url) => URL.revokeObjectURL(url));
     objectUrls.clear();
@@ -320,7 +461,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
       preview.click();
     }
     if (event.key === 'Escape' && assetPanel.hidden && !event.defaultPrevented && !event.isComposing) {
-      if (!imageTools.hidden) { closeImageEditor(false); cropButton.focus(); return; }
+      if (!imageTools.hidden) { const opener = cropButton; closeImageEditor(false); opener.focus(); return; }
       window.parent.postMessage('vcd:editor-playground-exit', location.origin);
     }
   });
@@ -369,6 +510,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   }
   .playground[data-preview] .sample-block > :global(.dev-section-drag-handle),
   .playground[data-preview] .crop-button { display: none; }
+  .playground :global(.dev-image-edit-trigger[data-playground-image-edit]) { z-index: 15; }
   .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   @media (max-width: 40em) {
     .sample { width: min(calc(100% - 4rem), var(--page-text-max-width)); }

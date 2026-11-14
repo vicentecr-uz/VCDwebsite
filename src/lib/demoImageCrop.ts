@@ -12,6 +12,7 @@ export interface DemoImageCropState {
 
 interface CropDemoOptions {
   host: HTMLElement;
+  bitmap?: HTMLImageElement;
   controls?: HTMLElement;
   sourceAspect?: number;
   initialAspect?: string;
@@ -67,12 +68,12 @@ const cloneState = (state: DemoImageCropState): DemoImageCropState => ({
   } : {}),
 });
 
-export function createDemoImageCrop({ host, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true, onChange }: CropDemoOptions) {
+export function createDemoImageCrop({ host, bitmap: suppliedBitmap, controls, sourceAspect: initialSourceAspect = 4 / 3, initialAspect = '4:3', initialState, active = true, onChange }: CropDemoOptions) {
   const document = host.ownerDocument;
   const win = document.defaultView!;
   const lifecycle = new AbortController();
   const { signal } = lifecycle;
-  const image = host.querySelector<HTMLImageElement>('.project-crop-clip img, img')!;
+  const image = suppliedBitmap ?? host.querySelector<HTMLImageElement>('.project-crop-clip img, img')!;
   const original = { src: image.dataset.imagePreview || image.src, alt: image.alt, width: initialSourceAspect, height: 1 };
   const requestedInitialState = isValidState(initialState) ? cloneState(initialState) : undefined;
   let variants = validVariants(requestedInitialState?.variants) ? requestedInitialState.variants : undefined;
