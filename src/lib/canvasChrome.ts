@@ -25,7 +25,8 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   let stopped = false;
 
   const mirrorStyles = () => {
-    const sources = new Set(document.head.querySelectorAll('style, link[rel="stylesheet"]'));
+    // Body styles count too: Astro emits `astro-island { display: contents }` beside the first island.
+    const sources = new Set(queryAll('style, link[rel="stylesheet"]'));
     for (const [source, clone] of styles) {
       if (!sources.has(source)) { clone.remove(); styles.delete(source); }
     }
@@ -52,6 +53,25 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     for (const attr of root.attributes) if (isState(attr.name)) hostRoot.setAttribute(attr.name, attr.value);
   };
   const notifyMoved = () => window.dispatchEvent(new window.CustomEvent('vcd:canvas-chrome-moved'));
+  // Nodes React creates inside hoisted chrome belong to the shell's realm, and hoisted nodes to the
+  // frame's. Let each window's DOM classes accept the other's instances while chrome is hoisted.
+  const hostWindow = host.defaultView as unknown as Record<string, unknown>;
+  const frameWindow = window as unknown as Record<string, unknown>;
+  const realmNames = Object.getOwnPropertyNames(window).filter((name) =>
+    /^(Node|Element|Text|DocumentFragment|(HTML|SVG)\w*Element)$/.test(name)
+    && typeof frameWindow[name] === 'function' && typeof hostWindow[name] === 'function');
+  const hasInstance = Function.prototype[Symbol.hasInstance];
+  const shareRealms = (share: boolean) => {
+    for (const name of realmNames) {
+      const pair = [frameWindow[name], hostWindow[name]] as [object, object];
+      pair.forEach((type, index) => {
+        if (!share) { delete (type as Record<symbol, unknown>)[Symbol.hasInstance]; return; }
+        const other = pair[1 - index];
+        Object.defineProperty(type, Symbol.hasInstance, { configurable: true,
+          value: (value: unknown) => hasInstance.call(type, value) || hasInstance.call(other, value) });
+      });
+    }
+  };
   const restoreLookups = () => {
     lookupNames.forEach((name, index) => {
       const descriptor = lookupDescriptors[index];
@@ -127,6 +147,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     pointers.clear();
     lastPointerTarget = null;
     restoreLookups();
+    shareRealms(false);
     for (const [node, placeholder] of moved) {
       if (node.isConnected) placeholder.replaceWith(node);
       else placeholder.remove();
@@ -152,7 +173,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     notifyMoved();
   };
   const hoist = () => {
-    for (const node of queryAll('.dev-text-action-stack, .site-draw-launcher, [data-dev-overlay], .dev-shortcuts-help')) {
+    for (const node of queryAll('.dev-text-action-stack, .site-draw-launcher, [data-dev-overlay], .dev-shortcuts-help, [data-lapse-panel]')) {
       if (node.matches('.dev-shortcuts-help') && window.getComputedStyle(node).position !== 'fixed') continue;
       move(node);
     }
@@ -160,7 +181,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const sync = () => {
     if (stopped) return;
     if (!root.classList.contains('is-dev-mode')) { if (active) restore(); return; }
-    if (!active) patchLookups();
+    if (!active) { patchLookups(); shareRealms(true); }
     active = true;
     mirrorState();
     mirrorStyles();
@@ -173,6 +194,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const bodyObserver = new MutationObserver((records) => {
     if (!active) return;
     const fromChrome = owns(host.activeElement) || owns(lastPointerTarget);
+    if (records.some((record) => [...record.addedNodes].some((node) => node instanceof window.Element && node.matches('style, link[rel="stylesheet"]')))) mirrorStyles();
     for (const record of records) {
       if (record.target !== document.body || !fromChrome) continue;
       for (const node of record.addedNodes) {

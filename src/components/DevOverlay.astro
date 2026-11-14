@@ -187,6 +187,25 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const right = trig.right + GAP;
       const leftOfTrigger = trig.left - GAP - w;
       const maxLeft = Math.max(VIEW_INSET, vw - VIEW_INSET - w);
+      // Hoisted into the canvas shell while the page is a device preview: sit beside the device,
+      // on the side that was clicked, level with the click.
+      const frameEl = trigger.ownerDocument !== overlay.ownerDocument
+        ? trigger.ownerDocument.defaultView?.frameElement as HTMLElement | null : null;
+      const device = frameEl?.getBoundingClientRect();
+      if (frameEl && device && device.width < vw - 1) {
+        const scale = device.width / frameEl.offsetWidth || 1;
+        const besideRight = device.right + GAP * 2;
+        const besideLeft = device.left - GAP * 2 - w;
+        const fitsRight = besideRight + w <= vw - VIEW_INSET;
+        const fitsLeft = besideLeft >= VIEW_INSET;
+        const preferRight = x >= frameEl.offsetWidth / 2;
+        applyPosition(
+          (preferRight ? fitsRight : !fitsLeft) && fitsRight ? besideRight : fitsLeft ? besideLeft : preferRight ? maxLeft : VIEW_INSET,
+          clamp(device.top + y * scale - h / 2, VIEW_INSET, Math.max(VIEW_INSET, vh - VIEW_INSET - h)),
+          true,
+        );
+        return;
+      }
       // Opened from inside another dev panel (e.g. Pages ⋯): sit beside that
       // panel on the side nearer the cursor, never over it.
       const host = trigger.closest<HTMLElement>('[data-dev-overlay]');

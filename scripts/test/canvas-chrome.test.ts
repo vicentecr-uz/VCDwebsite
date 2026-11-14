@@ -326,3 +326,19 @@ test('the shell generic key forwarder skips hoisted buttons, so Escape reaches t
     expect(transitions).toBe(0);
   } finally { await f.dispose(); }
 });
+
+test('mirrors body styles and lets each realm recognise the other\'s nodes while hoisted', async () => {
+  const f = fixture();
+  try {
+    const { frame, shell } = f as unknown as { frame: Window; shell: Window };
+    const island = frame.document.createElement('style');
+    island.textContent = 'astro-island { display: contents }';
+    frame.document.body.append(island);
+    await flush();
+    expect([...shell.document.head.querySelectorAll('[data-canvas-mirrored]')].some((node) => node.textContent === island.textContent)).toBe(true);
+    const foreign = shell.document.createElement('span');
+    expect(foreign instanceof (frame as unknown as { Element: typeof Element }).Element).toBe(true);
+    expect(frame.document.body instanceof (shell as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement).toBe(true);
+    expect({} instanceof (frame as unknown as { Element: typeof Element }).Element).toBe(false);
+  } finally { await f.dispose?.(); }
+});

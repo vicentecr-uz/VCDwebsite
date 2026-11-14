@@ -70,3 +70,17 @@ test('a panel opened later follows the current preset after two animation frames
     expect(f.clicks).toEqual(['mobile']);
   } finally { await f.dispose(); }
 });
+
+test('choosing a viewport in a panel requests that preview once; following the preview requests nothing', async () => {
+  const f = fixture();
+  try {
+    f.window.document.documentElement.classList.add('is-dev-mode');
+    const requests: string[] = [];
+    f.window.addEventListener('vcd:edit-viewport-request', (event) => requests.push((event as unknown as CustomEvent).detail.preset));
+    f.group.querySelector<HTMLButtonElement>('[data-crop-viewport="mobile"]')!.click();
+    expect(requests).toEqual(['mobile']);
+    f.change('tablet');
+    expect(f.clicks).toEqual(['mobile', 'tablet']);
+    expect(requests).toEqual(['mobile']);
+  } finally { await f.dispose(); }
+});

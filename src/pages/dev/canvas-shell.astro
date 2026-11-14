@@ -182,6 +182,12 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     };
     raf = window.requestAnimationFrame(tick);
   };
+  // Every change goes through the bar's own segment, so its selection slides as it does for a click.
+  const choose = (next: Preset) => {
+    const button = controls.querySelector<HTMLElement>(`[data-viewport-preset="${next}"]`);
+    if (button) button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    else transition(next);
+  };
   scope.listen(window, 'message', (event) => {
     if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     if (event.data?.type === 'vcd-canvas-location') {
@@ -193,16 +199,16 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     }
     if (event.data?.type === 'vcd-canvas-dev-mode') {
       editActive = event.data.active === true;
-      if (!editActive && preset !== 'desktop') transition('desktop');
+      if (!editActive && preset !== 'desktop') choose('desktop');
     }
-    if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) transition(event.data.preset);
+    if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) choose(event.data.preset);
   });
   scope.listen(controls, 'click', (event) => {
     const next = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset : undefined;
     if (isPreset(next)) transition(next);
-    focusFrame();
+    if (event.isTrusted) focusFrame();
   });
-  scope.listen(backdrop, 'click', () => { transition('desktop'); focusFrame(); });
+  scope.listen(backdrop, 'click', focusFrame);
   const forwardKey = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (event.composedPath().some((node) => node instanceof Element && node.hasAttribute('data-canvas-chrome'))) return;
@@ -211,8 +217,8 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       const next = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
         ? event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined
         : undefined;
-      if (next) { event.preventDefault(); transition(next); return; }
-      if (event.key === 'Escape' && preset !== 'desktop') { event.preventDefault(); transition('desktop'); return; }
+      if (next) { event.preventDefault(); choose(next); return; }
+      if (event.key === 'Escape' && preset !== 'desktop') { event.preventDefault(); choose('desktop'); return; }
     }
     const child = frame.contentWindow as (Window & typeof globalThis) | null;
     if (!child || !frame.contentDocument) return;
