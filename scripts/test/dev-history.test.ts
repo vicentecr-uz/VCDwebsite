@@ -30,6 +30,7 @@ class FakeElement extends FakeTarget {
     if (selector === '[data-dev-overlay]') return this.field === 'overlay' ? this : (this.parent as FakeElement | null)?.closest(selector) ?? null;
     if (selector.includes('input') && this.field === 'input') return this;
     if (selector.includes('[hidden') && this.field === 'hidden') return this;
+    if (selector.includes(':popover-open') && this.parent?.name === 'closed command menu') return this.parent;
     return null;
   }
   hasAttribute(attribute: string) { return this.field === attribute; }
@@ -181,6 +182,20 @@ describe('editor history', () => {
     const ordinaryEvent = makeEvent('keydown', ordinary, { metaKey: true, key: 'z', isComposing: false });
     doc.dispatchEvent(ordinaryEvent);
     expect(ordinaryEvent.defaultPrevented).toBe(false);
+  }));
+
+  test('Cmd-Z falls back to the page after the command popover closes', async () => withShortcuts(async (doc) => {
+    const command = new FakeElement('closed command menu');
+    const search = new FakeElement('search', 'input');
+    search.parent = command;
+    doc.dispatchEvent(makeEvent('focusin', search));
+    let converted = true;
+    pageHistory.push({ label: 'Make carousel', undo: () => { converted = false; }, redo: () => { converted = true; } });
+    const shortcut = makeEvent('keydown', doc.body, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(shortcut);
+    await Promise.resolve();
+    expect(shortcut.defaultPrevented).toBe(true);
+    expect(converted).toBe(false);
   }));
 
   test('saving blocks keyboard undo and beforeinput routes history undo', async () => withShortcuts(async (doc, win) => {

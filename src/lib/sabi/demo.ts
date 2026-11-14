@@ -1,4 +1,4 @@
-import { define, type SabiInput } from './core';
+import type { SabiInput } from 'sabi-input';
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const fadeMask = (left: number, right: number, linear: boolean, fadeWidth: number, solid: number) => {
@@ -12,7 +12,6 @@ const fadeMask = (left: number, right: number, linear: boolean, fadeWidth: numbe
 };
 
 export function mountSabiDemo(root: HTMLElement) {
-  define();
   const lifecycle = new AbortController();
   const { signal } = lifecycle;
   const kind = root.dataset.kind!;
@@ -125,7 +124,7 @@ export function mountSabiDemo(root: HTMLElement) {
     strip.scrollLeft = scroll;
     if (focused) input.focus({ preventScroll: true });
     if (choice === 'before') { renderBefore(); fades(); }
-    else (strip as SabiInput).sync();
+    else (strip as SabiInput).sync?.();
   };
   buttons.forEach((button) => button.addEventListener('click', () => { stop(); choose(button.dataset.choice!); }, { signal }));
   input.addEventListener('compositionstart', () => { composing = true; }, { signal });
