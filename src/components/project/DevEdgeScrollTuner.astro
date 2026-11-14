@@ -1,5 +1,5 @@
 ---
-import DevOverlay from '../DevOverlay.astro';
+import DevPanel from '../ui/DevPanel.astro';
 import RangeField from '../ui/RangeField.astro';
 import ToggleRow from '../ui/ToggleRow.astro';
 import PanelActions from '../ui/PanelActions.astro';
@@ -16,7 +16,7 @@ const fields = [
 ];
 ---
 
-<DevOverlay storageKey="edge-scroll-tuner" panelKey="edge-scroll" title="Edge scroll">
+<DevPanel class="edge-scroll-panel" title="Edge scroll" showLights={false} draggable>
   <div class="edge-scroll-tuner" data-edge-scroll-tuner>
     {fields.map((f) => (
       <RangeField
@@ -37,7 +37,19 @@ const fields = [
       <Button emphasis="filled" label="Copy values" data-edge-scroll-copy />
     </PanelActions>
   </div>
-</DevOverlay>
+</DevPanel>
+
+<style>
+  .edge-scroll-panel {
+    position: fixed;
+    right: 1em;
+    bottom: 1em;
+    z-index: 60;
+    max-width: calc(100vw - 2em);
+    max-height: calc(100dvh - 2em);
+    overflow: auto;
+  }
+</style>
 
 <style is:global>
   .edge-scroll-tuner { display: grid; gap: var(--dev-panel-gap); }
