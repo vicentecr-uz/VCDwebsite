@@ -81,7 +81,7 @@ const fields = [
 
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
-  import { edgeScrollOverrides, edgeScrollZoneRegistration } from '../../scripts/sectionReorder';
+  import { edgeScrollOverrides, edgeScrollZoneRegistration, type EdgeScrollZones } from '../../scripts/sectionReorder';
 
   const STORAGE_KEY = 'vcd:edge-scroll-tuning';
   type Key = keyof typeof edgeScrollOverrides;
@@ -105,6 +105,7 @@ const fields = [
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
       } catch {}
+      renderZones();
     };
     const set = (input: HTMLInputElement, value: number) => {
       input.value = String(value);
@@ -116,7 +117,6 @@ const fields = [
       if (typeof value === 'number') set(input, value);
       scope.listen(input, 'input', apply);
     });
-    apply();
 
     scope.listen(root.querySelector('[data-edge-scroll-reset]')!, 'click', () => {
       inputs.forEach((input) => set(input, Number(input.dataset.default)));
@@ -137,7 +137,6 @@ const fields = [
       navigator.clipboard?.writeText(text).catch(() => {});
     });
 
-    // Lifted state: the reorder controller puts `is-section-lifted` on the held block, so poll for it in rAF.
     const bands = (['top', 'bottom'] as const).map((side) => {
       const band = document.createElement('div');
       band.className = `edge-scroll-zone edge-scroll-zone--${side}`;
@@ -145,22 +144,33 @@ const fields = [
       document.body.append(band);
       return band;
     });
-    edgeScrollZoneRegistration.onZones = (z) => bands.forEach((b, i) => {
-      b.style.height = `${z ? (i ? z.bottom : z.top) : 0}px`;
-      b.style.setProperty('--edge-scroll-zone-inset', `${z ? (i ? z.bottomInset : z.topInset) : 0}px`);
-    });
+    let activeZones: EdgeScrollZones | null = null;
+    const renderZones = () => {
+      const show = Boolean(zones?.checked);
+      bands.forEach((band) => { band.hidden = !show; });
+      if (!show) return;
+
+      const height = window.visualViewport?.height ?? window.innerHeight;
+      const depth = Math.min(height / 2, edgeScrollOverrides.edgeZoneMaxPx!,
+        Math.max(edgeScrollOverrides.edgeZoneMinPx!, height * edgeScrollOverrides.edgeZoneRatio!));
+      const inset = Math.min(depth / 2, edgeScrollOverrides.maxSpeedInsetPx!);
+      const { top, bottom, topInset, bottomInset } = activeZones ?? {
+        top: depth, bottom: depth, topInset: inset, bottomInset: inset,
+      };
+      bands.forEach((band, index) => {
+        band.style.height = `${index === 0 ? top : bottom}px`;
+        band.style.setProperty('--edge-scroll-zone-inset', `${index === 0 ? topInset : bottomInset}px`);
+      });
+    };
+    edgeScrollZoneRegistration.onZones = (next) => {
+      activeZones = next;
+      renderZones();
+    };
     scope.add(() => { delete edgeScrollZoneRegistration.onZones; });
     scope.add(() => bands.forEach((b) => b.remove()));
-
-    let frame = 0;
-    const loop = () => {
-      const lifted = Boolean(document.querySelector('.is-section-lifted:not(.is-dropping)'));
-      const show = lifted && Boolean(zones?.checked);
-      bands.forEach((b) => (b.hidden = !show));
-      frame = requestAnimationFrame(loop);
-    };
-    frame = requestAnimationFrame(loop);
-    scope.add(() => cancelAnimationFrame(frame));
+    if (zones) scope.listen(zones, 'change', renderZones);
+    scope.listen(window.visualViewport ?? window, 'resize', renderZones);
+    apply();
 
     return () => scope.destroy();
   });

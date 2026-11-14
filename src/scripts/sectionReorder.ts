@@ -299,7 +299,7 @@ export type ScrollDriver = {
   getLastTickTime: () => number;
   setLastTickTime: (time: number) => void;
 };
-type EdgeScrollZones = { top: number; bottom: number; topInset: number; bottomInset: number };
+export type EdgeScrollZones = { top: number; bottom: number; topInset: number; bottomInset: number };
 
 // Prototype tuning hook, remove once values are locked.
 export const edgeScrollOverrides: Partial<{
