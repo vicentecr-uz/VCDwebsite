@@ -169,3 +169,31 @@ test('drag reorder undoes and redoes section order and responsive spacing in one
   expect(order).toBe(after);
   expect(stateValues()).toEqual(reordered);
 });
+
+test('pending section order identifies the dragged block and survives a structural refresh', () => {
+  const editor = readFileSync(new URL('../../src/components/DevSectionReorderEditor.astro', import.meta.url), 'utf8');
+  const start = editor.indexOf('  const pendingReorderRoots');
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    editor.slice(start, editor.indexOf('  const controller', start)),
+  );
+  const roots = [{ id: 0 }, { id: 1 }, { id: 2 }];
+  let order = [roots[1], roots[2], roots[0]];
+  let event: CustomEvent | undefined;
+  const stage = new Function('env', `with (env) { ${code}; return syncPending; }`)({
+    documentKey: 'sabi', baselineOrder: [0, 1, 2], baselineOrders: new Map([['sabi', [0, 1, 2]]]),
+    dropZone: () => ({ classList: { add() {}, remove() {} } }),
+    captureSectionOrder: () => order.map((root) => root.id),
+    getSectionRootsInDomOrder: () => order,
+    ordersMatch: (left: number[], right: number[]) => JSON.stringify(left) === JSON.stringify(right),
+    syncDevSectionOutlineSidebar() {}, getDevSectionOutline: () => [],
+    window: { dispatchEvent: (next: CustomEvent) => { event = next; } },
+  });
+  stage(undefined, undefined, roots[0]);
+  expect(event?.detail.root).toBe(roots[0]);
+  expect(event?.detail.payload.order).toEqual([1, 2, 0]);
+  stage();
+  expect(event?.detail.root).toBe(roots[0]);
+  order = roots;
+  stage();
+  expect(event?.type).toBe('vcd:dev-pending-remove');
+});

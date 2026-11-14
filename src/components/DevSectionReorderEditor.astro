@@ -158,7 +158,8 @@ import '../styles/sectionReorderChrome.css';
     );
   };
 
-  const syncPending = (key = documentKey, zone = dropZone()) => {
+  const pendingReorderRoots = new Map<string, HTMLElement>();
+  const syncPending = (key = documentKey, zone = dropZone(), moved?: HTMLElement) => {
     if (!zone || !key) return;
 
     const baseline = baselineOrders.get(key) ?? captureSectionOrder(zone);
@@ -173,16 +174,25 @@ import '../styles/sectionReorderChrome.css';
     if (key !== 'home-intro') syncDevSectionOutlineSidebar();
 
     if (ordersMatch(baseline, current)) {
+      pendingReorderRoots.delete(key);
       zone.classList.remove('is-section-order-dirty');
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
       return;
     }
 
+    const roots = getSectionRootsInDomOrder(zone);
+    const preferred = moved ?? pendingReorderRoots.get(key);
+    const index = preferred ? roots.indexOf(preferred) : -1;
+    const root = index >= 0 && current[index] !== baseline[index]
+      ? roots[index]
+      : roots.find((_, position) => current[position] !== baseline[position]);
+    if (root) pendingReorderRoots.set(key, root);
     zone.classList.add('is-section-order-dirty');
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
       detail: {
         id: pendingId,
         kind: 'section-order',
+        root,
         payload: {
           document: key,
           order: current,
@@ -600,7 +610,7 @@ import '../styles/sectionReorderChrome.css';
         if (!zone?.isConnected || !root.isConnected) throw new Error('Restore this section before reordering it.');
         const nodes = direction === 'before' ? beforeNodes : afterNodes;
         if (nodes) restoreNodeOrder(nodes, zone);
-        syncPending(key, zone);
+        syncPending(key, zone, root);
       };
       window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
         detail: {
@@ -629,7 +639,7 @@ import '../styles/sectionReorderChrome.css';
     commitReorderSpacing(root, preserveIndicator);
     grabOrderSnapshot = null;
     grabNodeSnapshot = null;
-    syncPending();
+    syncPending(documentKey, dropZone(), root);
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -1201,10 +1211,12 @@ import '../styles/sectionReorderChrome.css';
     if (ids && !ids.includes(`section-order:${documentKey}`)) return;
     baselineOrder = captureSectionOrder(zone);
     baselineOrders.set(documentKey, baselineOrder);
+    pendingReorderRoots.delete(documentKey);
     zone.classList.remove('is-section-order-dirty');
   }) as EventListener);
 
   pageScope.listen(window, 'vcd:dev-pending-reverted', () => {
+    pendingReorderRoots.clear();
     dropZone()?.classList.remove('is-section-order-dirty');
     if (reorderActive) {
       baselineOrder = captureSectionOrder(dropZone());
