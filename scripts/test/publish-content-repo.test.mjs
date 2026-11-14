@@ -69,6 +69,26 @@ await run('separate content repo publishes content without touching engine index
   check('content origin has edit', (await execFile('git', ['--git-dir', repo.origin, 'show', 'main:src/content/projects/sample.json'])).stdout.includes('after'));
 });
 
+await run('publish status identifies saved blocks without a browser manifest', async (repo) => {
+  const file = 'src/content/projects/sample.json';
+  const intro = { id: 'intro', type: 'bodyText', paragraphs: ['before'] };
+  const hero = { id: 'hero', type: 'productHero', tagline: 'before' };
+  await writeFile(path.join(repo.work, file), JSON.stringify({ sections: [hero, intro] }));
+  await repo.cgit('add', '-f', file);
+  await repo.cgit('commit', '-m', 'publish block baseline');
+  await repo.cgit('push', 'origin', 'main');
+  await writeFile(path.join(repo.work, file), JSON.stringify({
+    sections: [intro, { ...hero, tagline: 'after' }],
+  }));
+  const newFile = 'src/content/projects/new.json';
+  await writeFile(path.join(repo.work, newFile), '{"title":"New"}');
+  const status = await publishStatus({ includeDetails: true });
+  check('one count per file', status.files.length === 2);
+  check('labels changed field and reorder by block ID',
+    JSON.stringify(status.details?.[file]) === JSON.stringify(['hero · tagline', 'Section order']));
+  check('new file without a baseline still has a row', status.details?.[newFile].length === 0);
+});
+
 await run('content branch and rendering gates refuse', async (repo) => {
   await repo.cgit('switch', '-c', 'draft');
   await writeFile(path.join(repo.work, 'src/content/projects/sample.json'), '{"title":"draft"}\n');

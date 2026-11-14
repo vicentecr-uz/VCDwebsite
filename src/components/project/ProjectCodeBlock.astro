@@ -97,7 +97,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   .code-block__panel {
     position: relative;
     overflow: hidden;
-    border-radius: var(--radius-card);
+    border-radius: calc(var(--radius-card) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     background: var(--sys-color-srf-container-low);
   }
 
@@ -229,7 +230,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   .code-block__panel[data-code-single-line] > :global(.astro-code) { overscroll-behavior-x: none; }
 
-  /* Scroll fade, Sabi's eased mask turned vertical (src/lib/sabi/styles.css). codeBlockScroll.ts
+  /* Scroll fade, Sabi's eased mask turned vertical. codeBlockScroll.ts
      sets the progress values from how much is hidden above and below, so each edge fades in only
      when there is more to scroll. Replace with Sabi once it supports multi-line text. */
   .code-block :global(.astro-code[data-code-scroll]) {

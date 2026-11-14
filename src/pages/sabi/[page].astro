@@ -1,6 +1,7 @@
 ---
 import DocumentationLayout from '../../layouts/DocumentationLayout.astro';
 import ProjectSections from '../../components/project/ProjectSections.astro';
+import SabiGuideTiles from '../../components/SabiGuideTiles.astro';
 import { loadPageDocument } from '../../lib/projects';
 
 import { sabiDocsPages } from '../../lib/sabi-docs-pages';
@@ -19,11 +20,15 @@ const page = 'document' in current ? current.document : loadPageDocument(current
 // redirects every /sabi path there), so /sabi links would cost a redirect on each click.
 const base = import.meta.env.DEV ? '/sabi' : '';
 const links = pages.map(({ slug, label, group, document }) => ({
+  slug,
   href: `${base}/${slug}`,
   current: slug === Astro.params.page,
   label: slug === 'introduction' ? document.title ?? label : label,
   group,
 }));
+const frameworkGuides = current.slug === 'installation'
+  ? links.filter(({ group }) => group === 'Framework Guides')
+  : [];
 const contents = page.sections.filter(section => section.type === 'sectionTitle' && section.sectionId)
   .map(section => ({ id: String(section.sectionId), label: String(section.title) }));
 ---
@@ -31,4 +36,5 @@ const contents = page.sections.filter(section => section.type === 'sectionTitle'
   <div data-dev-project-drop-zone>
     <ProjectSections documentKey={current.key} sections={page.sections} />
   </div>
+  {frameworkGuides.length > 0 && <SabiGuideTiles guides={frameworkGuides} />}
 </DocumentationLayout>

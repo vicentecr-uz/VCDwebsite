@@ -5,7 +5,6 @@ import SegmentedControl from '../ui/SegmentedControl.astro';
 import { codeTheme } from '../../lib/codeTheme';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import '../../styles/dev-chrome.css';
-import '../../lib/sabi/styles.css';
 import './sabi-page.css';
 
 interface Props {
@@ -72,8 +71,6 @@ const options = SABI_EXAMPLES[example] ?? [];
 
 <script>
   import './optionPanels';
-  import { define } from '../../lib/sabi/core';
-  define();
 </script>
 
 <style>
@@ -94,7 +91,8 @@ const options = SABI_EXAMPLES[example] ?? [];
   .sabi-example__panel {
     margin: 0;
     overflow: hidden;
-    border-radius: var(--radius-card);
+    border-radius: calc(var(--radius-card) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     background: var(--sys-color-srf-container-low);
     --on-surface-faint: var(--sys-color-on-srf-container-faint);
   }
@@ -107,7 +105,8 @@ const options = SABI_EXAMPLES[example] ?? [];
     background: var(--sys-color-srf);
     border: 1px solid var(--sys-color-srf-container-low);
     border-bottom: 0;
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    border-radius: calc(var(--radius-card) * var(--continuous-corner-scale, 1)) calc(var(--radius-card) * var(--continuous-corner-scale, 1)) 0 0;
+    corner-shape: var(--squircle-shape);
   }
 
   .sabi-example__code {

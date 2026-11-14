@@ -18,7 +18,7 @@ import '../styles/sectionReorderChrome.css';
     resolveGapLaneSide,
     resolveInsertIndexFromY,
   } from '../scripts/sectionReorder';
-  import { shouldKeepLeadingSpacingSeam } from '../lib/projectStack';
+  import { isProjectStackSpacingValue, reorderProjectStackSpacingSeams, shouldKeepLeadingSpacingSeam, type ProjectStackSpacingValue } from '../lib/projectStack';
   import { setIntroFoldOffsets } from '../lib/safeVh';
   import { isDevContentEditing } from '../scripts/devSectionMount';
   import {
@@ -158,46 +158,96 @@ import '../styles/sectionReorderChrome.css';
     );
   };
 
-  const syncPending = () => {
-    const zone = dropZone();
-    if (!zone || !documentKey) return;
+  const pendingReorderRoots = new Map<string, HTMLElement>();
+  const syncPending = (key = documentKey, zone = dropZone(), moved?: HTMLElement) => {
+    if (!zone || !key) return;
 
-    if (!baselineOrder) {
-      baselineOrder = baselineOrders.get(documentKey) ?? captureSectionOrder(zone);
-      baselineOrders.set(documentKey, baselineOrder);
-    }
-    const baseline = baselineOrder;
+    const baseline = baselineOrders.get(key) ?? captureSectionOrder(zone);
+    baselineOrders.set(key, baseline);
+    if (key === documentKey) baselineOrder = baseline;
     const current = captureSectionOrder(zone);
-    const pendingId = `section-order:${documentKey}`;
+    const pendingId = `section-order:${key}`;
 
     // Always rebuild sidebar from page order and fixed group boundaries,
     // including when order returns to baseline (otherwise the sidebar sticks
     // on the intermediate wrong state after a round-trip drag).
-    if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
+    if (key !== 'home-intro') syncDevSectionOutlineSidebar();
 
     if (ordersMatch(baseline, current)) {
+      pendingReorderRoots.delete(key);
       zone.classList.remove('is-section-order-dirty');
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
       return;
     }
 
+    const roots = getSectionRootsInDomOrder(zone);
+    const preferred = moved ?? pendingReorderRoots.get(key);
+    const index = preferred ? roots.indexOf(preferred) : -1;
+    const root = index >= 0 && current[index] !== baseline[index]
+      ? roots[index]
+      : roots.find((_, position) => current[position] !== baseline[position]);
+    if (root) pendingReorderRoots.set(key, root);
     zone.classList.add('is-section-order-dirty');
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
       detail: {
         id: pendingId,
         kind: 'section-order',
+        root,
         payload: {
-          document: documentKey,
+          document: key,
           order: current,
           outline: getDevSectionOutline().map((entry) => ({ ...entry })),
         },
         revert: () => {
           restoreDomOrder(structuredClone(baseline), zone);
           zone.classList.remove('is-section-order-dirty');
-          if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
+          if (key !== 'home-intro') syncDevSectionOutlineSidebar();
         },
       },
     }));
+  };
+
+  const textKind = (block?: HTMLElement) => {
+    if (!block) return;
+    if (block.matches('.project-block--text:has(> h3.project-section-title)')) return 'heading-2';
+    if (block.matches('.project-block--text:has(> .project-section-title)')) return 'heading-1';
+    if (block.matches('.project-block--text:has(> .project-body-text)')) return 'body';
+  };
+
+  const projectedMargin = (spacing: ProjectStackSpacingValue, previous: HTMLElement | undefined, next: HTMLElement) => {
+    if (spacing === 'none') return '0px';
+    if (spacing !== 'related') return `var(--space-${spacing})`;
+    // Mirror project.css's ink insets using the neighbours after the drop.
+    const leading = textKind(previous);
+    const trailing = textKind(next);
+    const insets = trailing?.startsWith('heading')
+      ? [trailing, leading === 'body' ? leading : undefined]
+      : previous && leading?.startsWith('heading')
+        ? [leading, trailing]
+        : previous && ((leading === 'body' && !trailing) || (!leading && trailing === 'body'))
+          ? ['body'] : [];
+    const terms = insets.filter(Boolean).map((kind) =>
+      `(var(--text-${kind}-leading) - 0.697) * var(--text-${kind}-size) / 2`);
+    return terms.length ? `calc(2 * var(--space-related) - ${terms.join(' - ')})` : 'var(--space-related)';
+  };
+
+  const projectDropMargins = (insertIndex: number, placementKey: string) => {
+    const roots = grabSpacingSnapshot;
+    const moved = dragItem;
+    if (!roots || !moved || activeIntroDrag || insertIndex === activeSourceIndex) return;
+    const values = roots.map((root) => root.dataset.devSpacingValue);
+    if (!values.every(isProjectStackSpacingValue)) return;
+    const { values: nextValues } = reorderProjectStackSpacingSeams(
+      values, activeSourceIndex, insertIndex,
+      placementKey === GAP_BEFORE_PLACEMENT_KEY ? 'before' : 'after',
+      roots.map((root) => root.classList.contains('is-dev-spacing-dirty')
+        || root.classList.contains('is-dev-gap-preview-suppressed')),
+    );
+    const future = roots.filter((root) => root !== moved);
+    future.splice(insertIndex, 0, moved);
+    const marginFor = (root: HTMLElement) =>
+      projectedMargin(nextValues[roots.indexOf(root)], future[future.indexOf(root) - 1], root);
+    return marginFor;
   };
 
   const controller = createReorderController({
@@ -262,6 +312,7 @@ import '../styles/sectionReorderChrome.css';
       const movedAway = activeIntroDrag
         ? placementKey !== SOURCE_PLACEMENT_KEY
         : insertIndex !== sourceIndex;
+      const marginFor = projectDropMargins(insertIndex, placementKey);
       const destinationGap = destinationNext
         ? sourceGapPreview?.element === destinationNext && movedAway
           ? sourceGapPreview.marginTop
@@ -270,7 +321,7 @@ import '../styles/sectionReorderChrome.css';
       return {
         top: '0px',
         bottom: '0px',
-        marginTop: !movedAway
+        marginTop: dragItem && marginFor ? marginFor(dragItem) : !movedAway
           ? liftGaps.top
           : insertIndex === 0
             ? '0px'
@@ -379,10 +430,6 @@ import '../styles/sectionReorderChrome.css';
       } else {
         delete indicator.dataset.devIntroHeightValue;
       }
-      indicator.toggleAttribute(
-        'data-dev-section-insert-at-start',
-        movedAway && insertIndex === 0,
-      );
       indicator.removeAttribute('data-dev-section-preserved-gap-dirty');
       indicator.style.removeProperty('--dev-section-preserved-gap-height');
       if (destinationGapPreview?.suppressDirty) {
@@ -399,11 +446,12 @@ import '../styles/sectionReorderChrome.css';
       }
       destinationGapPreview = null;
 
-      if (sourceGapPreview && sourceGapPreview.applied !== movedAway) {
+      const marginFor = projectDropMargins(insertIndex, placementKey);
+      if (sourceGapPreview && (movedAway || sourceGapPreview.applied)) {
         if (movedAway) {
           sourceGapPreview.element.style.setProperty(
             'margin-top',
-            sourceGapPreview.marginTop,
+            marginFor?.(sourceGapPreview.element) ?? sourceGapPreview.marginTop,
             'important',
           );
           if (sourceGapPreview.suppressDirty) {
@@ -455,7 +503,7 @@ import '../styles/sectionReorderChrome.css';
           );
         }
         if (sourceGapMovesToSlot) sourceGapOwner = indicator;
-        destinationNext.style.setProperty('margin-top', 'var(--space-related)', 'important');
+        destinationNext.style.setProperty('margin-top', marginFor?.(destinationNext) ?? 'var(--space-related)', 'important');
       }
       if (sourceGapIndicator && sourceGapOwner) {
         sourceGapIndicatorFollowsSlot = sourceGapOwner === indicator;
@@ -595,9 +643,20 @@ import '../styles/sectionReorderChrome.css';
       && activePlacementKey !== ''
       && activePlacementKey !== SOURCE_PLACEMENT_KEY;
     if (orderChanged || seamChanged) {
+      const key = root.dataset.devSpacingDocument || documentKey;
+      const zone = dropZone();
+      const beforeNodes = grabNodeSnapshot;
+      const afterNodes = [...(zone?.childNodes ?? [])];
+      const restoreOrder = (direction: 'before' | 'after') => {
+        if (!zone?.isConnected || !root.isConnected) throw new Error('Restore this section before reordering it.');
+        const nodes = direction === 'before' ? beforeNodes : afterNodes;
+        if (nodes) restoreNodeOrder(nodes, zone);
+        syncPending(key, zone, root);
+      };
       window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
         detail: {
-          document: root.dataset.devSpacingDocument || documentKey,
+          document: key,
+          restoreOrder,
           moved: root,
           before,
           after,
@@ -615,6 +674,13 @@ import '../styles/sectionReorderChrome.css';
         owner.classList.add('is-dev-gap-preview-suppressed');
       }
     }
+  };
+
+  const commitDrop = (root: HTMLElement, preserveIndicator = false) => {
+    commitReorderSpacing(root, preserveIndicator);
+    grabOrderSnapshot = null;
+    grabNodeSnapshot = null;
+    syncPending(documentKey, dropZone(), root);
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -737,8 +803,7 @@ import '../styles/sectionReorderChrome.css';
     if (lift === 'blocked') return;
     const resumed = lift === 'resumed';
     if (!resumed && previous && previous !== root) {
-      commitReorderSpacing(previous);
-      syncPending();
+      commitDrop(previous);
       releaseSessionRoot(previous);
     }
 
@@ -838,7 +903,7 @@ import '../styles/sectionReorderChrome.css';
         if (sourceGapIndicatorFollowsSlot && sourceGapIndicator && !sourceGapIndicator.isConnected) {
           root.append(sourceGapIndicator);
         }
-        commitReorderSpacing(root, true);
+        if (grabSpacingSnapshot) commitDrop(root, true);
         // Card stays visible through the settle; fade it only after it lands.
         await fadeOutLiftBackdrop();
       }
@@ -848,7 +913,6 @@ import '../styles/sectionReorderChrome.css';
         grabNodeSnapshot = null;
         grabSpacingSnapshot = null;
       }
-      syncPending();
     } finally {
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
@@ -1188,16 +1252,26 @@ import '../styles/sectionReorderChrome.css';
     if (ids && !ids.includes(`section-order:${documentKey}`)) return;
     baselineOrder = captureSectionOrder(zone);
     baselineOrders.set(documentKey, baselineOrder);
+    pendingReorderRoots.delete(documentKey);
     zone.classList.remove('is-section-order-dirty');
   }) as EventListener);
 
   pageScope.listen(window, 'vcd:dev-pending-reverted', () => {
+    pendingReorderRoots.clear();
     dropZone()?.classList.remove('is-section-order-dirty');
     if (reorderActive) {
       baselineOrder = captureSectionOrder(dropZone());
+      if (documentKey) baselineOrders.set(documentKey, baselineOrder);
       syncDevSectionOutlineSidebar();
     }
   });
+
+  // Land a released drag before the document's history shortcut consumes Undo.
+  pageScope.listen(window, 'keydown', (event) => {
+    if (!dragItem || event.isComposing || event.altKey || event.shiftKey
+      || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+    if (controller.settleNow()) commitDrop(dragItem);
+  }, true);
 
   pageScope.listen(document, 'keydown', (event) => {
     if (!reorderActive || event.key !== 'Escape') return;

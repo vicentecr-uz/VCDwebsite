@@ -264,7 +264,6 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
 
 <script>
   import { normalizeHref } from '../lib/normalizeHref.mjs';
-  import { initTextField } from '../lib/devTextField.js';
   import { createHeaderMenuDemo } from '../lib/headerMenuDemo';
   import { trackEvent } from '../lib/analytics';
 
@@ -1267,8 +1266,6 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
   };
 
   if (linkEditor && linkEditorInput) {
-    const linkEditorField = linkEditor.querySelector<HTMLElement>('[data-dev-text-field]');
-    if (linkEditorField) initTextField(linkEditorField);
     document.querySelectorAll<HTMLElement>('[data-dev-header-link-trigger]').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.preventDefault();
@@ -2637,7 +2634,8 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     width: min(20rem, calc(100vw - 2rem));
     padding: 6px;
     gap: 6px;
-    border-radius: 12px;
+    border-radius: calc(12px * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     opacity: 0;
     transition: opacity 0.15s ease, display 0.15s allow-discrete, overlay 0.15s allow-discrete;
   }
@@ -2899,7 +2897,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     }
 
     .site-header {
-      --header-logo-size: calc(var(--space-unit) * 1.5);
+      --header-logo-size: calc(0.75rem * 1.5);
       --header-menu-link-size: var(--text-body-size);
     }
 

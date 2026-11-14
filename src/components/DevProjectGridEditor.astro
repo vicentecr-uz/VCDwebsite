@@ -1050,7 +1050,6 @@ const pageTypeOptions = [
     renderGalleryFields();
     if (slugInput instanceof HTMLInputElement) {
       slugInput.value = entry.draft.slug || panelSlug || '';
-      slugInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     }
     syncBgField(entry.draft.listing.bg || '#efefef');
     const gridLabel = entry.grid === 'home' ? 'Home' : 'Play';
@@ -2283,7 +2282,8 @@ const pageTypeOptions = [
     width: auto;
     height: auto;
     border: 1px solid var(--sys-color-outline);
-    border-radius: max(0px, calc(var(--dev-radius-control) - 4px));
+    border-radius: calc(max(0px, calc(var(--dev-radius-control) - 4px)) * var(--continuous-corner-scale, 1));
+ corner-shape: var(--squircle-shape);
     padding: 0;
     cursor: pointer;
   }

@@ -33,6 +33,10 @@ export const GAP_INTENT_DELAY = 140;
 export const GAP_FAST_POINTER = 0.18;
 
 export function pinGapToolbar(control: HTMLElement) {
+  if (control.dataset.pageTop === 'true' && window.matchMedia('(max-width: 40em)').matches) {
+    unpinGapToolbar(control);
+    return;
+  }
   if (control.dataset.gapPinnedTop == null) {
     const rect = control.getBoundingClientRect();
     control.dataset.gapPinnedTop = String(rect.top);
