@@ -1,5 +1,6 @@
 import { createPageScope } from '../../src/lib/pageLifecycle';
 import { expect, test } from 'bun:test';
+import { sectionScrollDuration, sectionScrollTop } from '../../src/lib/sectionScroll';
 import { readFileSync } from 'node:fs';
 import { createHistory } from '../../src/lib/devHistory';
 
@@ -72,7 +73,7 @@ for (const motion of ['custom', 'native', 'reduced']) {
     }
     const env = {
       scrollRafId: 0, scrollTimeoutId: 0, isAutoScrolling: false, manualLockUntil: 0,
-      clickOffsetPx: 152, clickLockMs: 700, nav: { isConnected: true }, HTMLElement: Block,
+      sectionScrollDuration, sectionScrollTop, clickOffsetPx: 152, clickLockMs: 700, nav: { isConnected: true }, HTMLElement: Block,
       document: { documentElement: { scrollHeight: 10000 }, addEventListener: (type: string, fn: Function) => handlers.set(type, fn) },
       window: {
         scrollY: 0, innerHeight: 900,
@@ -100,9 +101,9 @@ for (const motion of ['custom', 'native', 'reduced']) {
     const reveal = handlers.get('vcd:section-history-reveal')!;
     const previous = new Block('distant', 7000);
     const restored = new Block('research', 2500);
-    reveal({ detail: { block: previous } });
+    reveal({ preventDefault() {}, detail: { block: previous } });
     const previousFrame = env.scrollRafId, previousTimer = env.scrollTimeoutId;
-    reveal({ detail: { block: restored } });
+    reveal({ preventDefault() {}, detail: { block: restored } });
     expect(frames.has(previousFrame)).toBe(false);
     expect(timers.has(previousTimer)).toBe(false);
     if (motion === 'custom') {
@@ -114,7 +115,7 @@ for (const motion of ['custom', 'native', 'reduced']) {
     expect(links.at(-1)).toBe('research');
     restored.isConnected = false;
     const count = scrolls.length;
-    reveal({ detail: { block: restored } });
+    reveal({ preventDefault() {}, detail: { block: restored } });
     expect(scrolls).toHaveLength(count);
     const previousCancel = globalThis.cancelAnimationFrame;
     globalThis.cancelAnimationFrame = env.cancelAnimationFrame;

@@ -5,6 +5,7 @@ import italicIcon from 'lucide-static/icons/italic.svg?raw';
 import underlineIcon from 'lucide-static/icons/underline.svg?raw';
 import linkIcon from 'lucide-static/icons/link.svg?raw';
 import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import chevronDownIcon from 'lucide-static/icons/chevron-down.svg?raw';
 import checkIcon from 'lucide-static/icons/check.svg?raw';
 import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
@@ -17,6 +18,7 @@ import ProjectAward from './project/ProjectAward.astro';
 import ProjectDivider from './project/ProjectDivider.astro';
 import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
 import SaveBar from './ui/SaveBar.astro';
+import { getProjectSlugsForBuild } from '../lib/projects';
 import Menu from './ui/Menu.astro';
 import Button from './ui/Button.astro';
 
@@ -45,11 +47,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
 
 <div class="dev-text-action-stack">
-  <SaveBar data-dev-text-actions hidden>
+  <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(getProjectSlugsForBuild())} hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
       <button type="button" data-dev-save-ledger aria-expanded="false" aria-controls="dev-save-ledger" hidden>
         <span data-dev-save-ledger-label></span>
-        <span aria-hidden="true">▾</span>
+        <span class="dev-save-ledger__chevron" aria-hidden="true" set:html={sizeIcon(chevronDownIcon, 16)} />
       </button>
       <div id="dev-save-ledger" class="dev-save-ledger dev-surface" popover="manual" role="region" aria-label="Changes" tabindex="0"></div>
       <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
@@ -151,6 +153,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
 <script>
   import { clampToViewport, placeBeside } from '../lib/floatingLayer';
+  import { scrollToEditorBlock } from '../lib/sectionScroll';
+  import { sabiDocsPages } from '../lib/sabi-docs-pages';
   import { applyInlineMark } from '../lib/devInlineMarks';
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
@@ -2287,24 +2291,114 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return [target, ...parts].join(' / ');
     };
 
-    const pendingLedgerRows = () => [
-      ...dirtyTextStates().map(({ document, path }) => [ledgerTarget(document, path), 'Text']),
-      ...dirtySpacingStates().map(({ document, path }) => [ledgerTarget(document, path), 'Spacing']),
-      ...dirtyIntroHeightStates().map(({ document, path }) => [ledgerTarget(document, path), 'Intro height']),
-      ...[...pendingMedia.values()].map(({ kind, payload }) => [
-        ledgerTarget(payload.document ?? payload.slug ?? payload.grid ?? (kind === 'style-token' ? 'Styles' : undefined),
-          payload.path ?? (payload.token ? [payload.token] : [])),
-        ledgerOperations[kind],
-      ]),
-      ...pendingSectionDeletes.map(({ documentKey, deletedIndex }) =>
-        [ledgerTarget(documentKey, ['sections', deletedIndex]), 'Removed']),
-      ...pendingSectionInserts.map(({ documentKey, index }) =>
-        [ledgerTarget(documentKey, ['sections', index]), 'Added']),
-      ...pendingBlockConverts.map(({ documentKey, index }) =>
-        [ledgerTarget(documentKey, ['sections', index]), 'Converted']),
-      ...persistedMediaInserts.map(({ documentKey, index }) =>
-        [ledgerTarget(documentKey, ['sections', index]), 'Media added']),
-    ];
+    type PendingLedgerRow = {
+      label: string;
+      operation: string;
+      target?: HTMLElement | null;
+      text?: EditableTextState;
+      href?: string;
+    };
+
+    const hasLedgerTarget = (element: HTMLElement | null | undefined): element is HTMLElement =>
+      Boolean(element?.isConnected && !element.closest('[hidden], [inert]') && element.getClientRects().length);
+
+    const ledgerProjectSlugs = new Set<string>(JSON.parse(actions.dataset.devLedgerProjects || '[]'));
+    const ledgerPageHref = (key: unknown) => {
+      const docs = sabiDocsPages.find((page) => page.key === key);
+      if (docs) return `/sabi/${docs.slug}/`;
+      if (key === 'home' || key === 'home-intro') return '/';
+      if (typeof key === 'string' && (/^(about|styles|analytics|sabi|play|work|digital)$/.test(key)
+        || ledgerProjectSlugs.has(key))) return `/${key}/`;
+    };
+
+    const pendingLedgerRows = (): PendingLedgerRow[] => {
+      const section = (key: string, index: number, operation: string, target: HTMLElement | null) => ({
+        label: ledgerTarget(key, ['sections', index]), operation, target, href: ledgerPageHref(key),
+      });
+      return [
+        ...dirtyTextStates().map((text) => ({
+          label: ledgerTarget(text.document, text.path), operation: 'Text', target: text.element, text,
+          href: ledgerPageHref(text.document),
+        })),
+        ...dirtySpacingStates().map(({ document, path, element }) => ({
+          label: ledgerTarget(document, path), operation: 'Spacing', target: element, href: ledgerPageHref(document),
+        })),
+        ...dirtyIntroHeightStates().map(({ document, path, element }) => ({
+          label: ledgerTarget(document, path), operation: 'Intro height', target: element, href: ledgerPageHref(document),
+        })),
+        ...[...pendingMedia.values()].map(({ kind, payload, root }) => {
+          const key = payload.document ?? payload.slug;
+          const path = payload.path ?? (payload.token ? [payload.token] : []);
+          const grid = typeof payload.grid === 'string'
+            ? document.querySelector<HTMLElement>(`[data-dev-project-grid="${CSS.escape(payload.grid)}"]`)
+            : null;
+          const card = typeof key === 'string'
+            ? (grid ?? document).querySelector<HTMLElement>(`[data-dev-project-slug="${CSS.escape(key)}"]`)
+            : null;
+          const zone = typeof key === 'string' ? getDropZone(key) : null;
+          const sectionId = (payload.target as { sectionId?: unknown } | undefined)?.sectionId;
+          const block = typeof sectionId === 'string'
+            ? zone?.querySelector<HTMLElement>(`[data-dev-content-id="${CSS.escape(sectionId)}"]`)
+            : typeof key === 'string' && Array.isArray(path)
+            && path[0] === 'sections' && typeof path[1] === 'number'
+            ? findSectionRootByIndex(path[1], key)
+            : null;
+          const token = typeof payload.token === 'string'
+            ? document.querySelector<HTMLElement>(`[data-color-token-name="${CSS.escape(payload.token)}"]`)
+            : null;
+          return {
+            label: ledgerTarget(key ?? payload.grid ?? (kind === 'style-token' ? 'Styles' : undefined), path),
+            operation: ledgerOperations[kind],
+            target: [root, block, token, card, grid, zone].find(hasLedgerTarget),
+            href: ledgerPageHref(key ?? payload.grid ?? (kind === 'style-token' ? 'styles' : undefined)),
+          };
+        }),
+        ...pendingSectionDeletes.map(({ documentKey, deletedIndex, insertBefore }) =>
+          section(documentKey, deletedIndex, 'Removed',
+            insertBefore instanceof HTMLElement && insertBefore.isConnected ? insertBefore
+              : findSectionRootByIndex(Math.max(0, deletedIndex - 1), documentKey) ?? getDropZone(documentKey))),
+        ...pendingSectionInserts.map(({ documentKey, index, root }) => section(documentKey, index, 'Added', root)),
+        ...pendingBlockConverts.map(({ documentKey, index, root }) => section(documentKey, index, 'Converted', root)),
+        ...persistedMediaInserts.map(({ documentKey, index, root }) => section(documentKey, index, 'Media added', root)),
+      ];
+    };
+
+    let highlighted: HTMLElement[] = [];
+    let revealTimer = 0;
+    const clearLedgerHighlight = () => {
+      window.clearTimeout(revealTimer);
+      highlighted.forEach((element) => element.classList.remove('is-dev-ledger-target', 'is-dev-ledger-text'));
+      highlighted = [];
+    };
+    const highlightLedgerRow = ({ target, text }: PendingLedgerRow) => {
+      clearLedgerHighlight();
+      if (!hasLedgerTarget(target)) return [];
+      const paragraphs = [...target.children].filter((child): child is HTMLElement =>
+        child instanceof HTMLElement && child.matches('p, div'));
+      // Use paragraph-level highlighting when the live DOM maps directly to saved paragraphs.
+      if (text && Array.isArray(text.savedValue)) {
+        const current = readValue(text);
+        if (Array.isArray(current) && current.length === paragraphs.length
+          && paragraphs.every((element, index) => serializeInlineHtml(element) === current[index])) {
+          let start = 0;
+          let end = current.length;
+          let savedEnd = text.savedValue.length;
+          while (start < end && start < savedEnd && current[start] === text.savedValue[start]) start++;
+          while (end > start && savedEnd > start && current[end - 1] === text.savedValue[savedEnd - 1]) {
+            end--;
+            savedEnd--;
+          }
+          highlighted = current.length === text.savedValue.length
+            ? paragraphs.filter((_, index) => current[index] !== text.savedValue[index])
+            : paragraphs.slice(start, end);
+        }
+      }
+      if (!highlighted.length) highlighted = [target];
+      highlighted.forEach((element) => element.classList.add(text ? 'is-dev-ledger-text' : 'is-dev-ledger-target'));
+      return highlighted;
+    };
+
+    const ledgerRowTargets = new WeakMap<HTMLElement, PendingLedgerRow>();
 
     const placeLedger = () => {
       const bar = actions.getBoundingClientRect();
@@ -2316,44 +2410,115 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const renderLedger = () => {
-      const group = (label: string, rows: string[][], files = false) => {
-        if (!rows.length) return;
+      const group = (label: string, count: number) => {
         const heading = document.createElement('h2');
-        heading.textContent = `${label} · ${rows.length}`;
+        heading.textContent = `${label} · ${count}`;
         const list = document.createElement('ul');
-        for (const [target, operation] of rows) {
-          const row = document.createElement('li');
-          const title = document.createElement('span');
-          title.textContent = target;
-          row.append(title);
-          if (files) {
-            title.className = 'dev-save-ledger__file';
-            title.title = target;
-            for (const detail of unpublishedDetails[target] ?? []) {
-              const field = document.createElement('span');
-              field.className = 'dev-save-ledger__detail';
-              field.textContent = detail;
-              row.append(field);
-            }
-          } else {
-            const kind = document.createElement('span');
-            kind.className = 'dev-save-ledger__operation';
-            kind.textContent = operation;
-            row.append(kind);
-          }
-          list.append(row);
-        }
         ledger.append(heading, list);
+        return list;
       };
+      const active = document.activeElement;
+      const focusedIndex = active instanceof HTMLElement && ledger.contains(active)
+        ? [...ledger.querySelectorAll('[data-ledger-row]')].indexOf(active) : -1;
+      clearLedgerHighlight();
       ledger.replaceChildren();
-      group('Unsaved', pendingLedgerRows());
-      group('Unpublished', unpublishedFiles.map((file) => [file]), true);
+      const pending = pendingLedgerRows();
+      if (pending.length) {
+        const list = group('Unsaved', pending.length);
+        for (const entry of pending) {
+          const item = document.createElement('li');
+          const local = hasLedgerTarget(entry.target);
+          const href = !local && entry.href && location.pathname.replace(/\/?$/, '/') !== entry.href ? entry.href : '';
+          const row = local ? document.createElement('button') : href ? document.createElement('a') : document.createElement('span');
+          row.className = 'dev-save-ledger__row';
+          row.dataset.ledgerRow = '';
+          if (row instanceof HTMLButtonElement) {
+            row.type = 'button';
+            ledgerRowTargets.set(row, entry);
+          } else if (row instanceof HTMLAnchorElement) {
+            row.href = href;
+            row.target = '_blank';
+            row.rel = 'noopener';
+            row.setAttribute('aria-label', `${entry.label} / ${entry.operation} (opens in a new tab)`);
+          }
+          const title = document.createElement('span');
+          title.textContent = entry.label;
+          const operation = document.createElement('span');
+          operation.className = 'dev-save-ledger__operation';
+          operation.textContent = entry.operation;
+          row.append(title, operation);
+          item.append(row);
+          list.append(item);
+        }
+      }
+      if (unpublishedFiles.length) {
+        const list = group('Unpublished', unpublishedFiles.length);
+        for (const file of unpublishedFiles) {
+          const item = document.createElement('li');
+          const title = document.createElement('span');
+          title.textContent = file;
+          item.append(title);
+          for (const detail of unpublishedDetails[file] ?? []) {
+            const field = document.createElement('span');
+            field.className = 'dev-save-ledger__detail';
+            field.textContent = detail;
+            item.append(field);
+          }
+          list.append(item);
+        }
+      }
       placeLedger();
+      if (focusedIndex >= 0) {
+        const row = ledger.querySelectorAll<HTMLElement>('[data-ledger-row]')[focusedIndex];
+        (row?.matches('button, a') ? row : ledgerButton).focus({ preventScroll: true });
+      }
     };
+
+    const getLedgerRow = (target: EventTarget | null) =>
+      target instanceof Element ? target.closest<HTMLElement>('[data-ledger-row]') : null;
+    const previewLedgerRow = (event: Event) => {
+      const row = getLedgerRow(event.target);
+      if (!row) {
+        clearLedgerHighlight();
+        return;
+      }
+      const entry = ledgerRowTargets.get(row);
+      if (entry) highlightLedgerRow(entry);
+      else clearLedgerHighlight();
+    };
+
+    ledger.addEventListener('pointerover', (event) => {
+      if (getLedgerRow(event.target) !== getLedgerRow(event.relatedTarget)) previewLedgerRow(event);
+    }, { signal: editorSignal });
+    ledger.addEventListener('pointerout', (event) => {
+      if (getLedgerRow(event.target) === getLedgerRow(event.relatedTarget)) return;
+      const row = getLedgerRow(document.activeElement);
+      const entry = row && ledgerRowTargets.get(row);
+      if (entry) highlightLedgerRow(entry);
+      else clearLedgerHighlight();
+    }, { signal: editorSignal });
+    ledger.addEventListener('focusin', previewLedgerRow, { signal: editorSignal });
+    ledger.addEventListener('focusout', clearLedgerHighlight, { signal: editorSignal });
+    ledger.addEventListener('click', (event) => {
+      const row = getLedgerRow(event.target);
+      const entry = row && ledgerRowTargets.get(row);
+      if (!entry || !hasLedgerTarget(entry.target)) return;
+      closeLedger(true);
+      const targets = highlightLedgerRow(entry);
+      const headerBottom = Math.max(0, siteHeader?.getBoundingClientRect().bottom ?? 0);
+      const visibleBottom = Math.min(window.innerHeight, actions.getBoundingClientRect().top);
+      const visible = targets.some((target) => {
+        const bounds = target.getBoundingClientRect();
+        return bounds.bottom > headerBottom && bounds.top < visibleBottom;
+      });
+      if (!visible) scrollToEditorBlock(targets[0] ?? entry.target, editorSignal);
+      revealTimer = window.setTimeout(clearLedgerHighlight, 1600);
+    }, { signal: editorSignal });
 
     const closeLedger = (restoreFocus = false) => {
       if (!ledger.matches(':popover-open')) return;
       ledger.hidePopover();
+      clearLedgerHighlight();
       ledgerButton.setAttribute('aria-expanded', 'false');
       if (restoreFocus) ledgerButton.focus({ preventScroll: true });
     };
@@ -2380,7 +2545,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     window.addEventListener('resize', () => {
       if (ledger.matches(':popover-open')) placeLedger();
     }, { signal: editorSignal });
-    editorSignal.addEventListener('abort', () => closeLedger(), { once: true });
+    editorSignal.addEventListener('abort', () => {
+      closeLedger();
+      clearLedgerHighlight();
+    }, { once: true });
 
     const captureFieldHistory = () => {
       historyCaptureQueued = false;
@@ -2494,7 +2662,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ? `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`
         : `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'file' : 'files'}`;
       if (ledgerLabel.textContent !== countLabel) ledgerLabel.textContent = countLabel;
-      if (actions.hidden || ledgerButton.hidden) closeLedger();
+      if (actions.hidden || ledgerButton.hidden) {
+        closeLedger();
+        clearLedgerHighlight();
+      }
       else if (ledger.matches(':popover-open')) renderLedger();
       const message = stickyStatus || (!dirtyCount && !unpublishedCount && styleEngineDirtyCount
         ? `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to publish`
