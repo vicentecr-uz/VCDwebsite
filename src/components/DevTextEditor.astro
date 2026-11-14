@@ -5,6 +5,7 @@ import italicIcon from 'lucide-static/icons/italic.svg?raw';
 import underlineIcon from 'lucide-static/icons/underline.svg?raw';
 import linkIcon from 'lucide-static/icons/link.svg?raw';
 import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 import chevronDownIcon from 'lucide-static/icons/chevron-down.svg?raw';
 import checkIcon from 'lucide-static/icons/check.svg?raw';
 import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
@@ -53,10 +54,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         <span data-dev-save-ledger-label></span>
         <span class="dev-save-ledger__chevron" aria-hidden="true" set:html={sizeIcon(chevronDownIcon, 16)} />
       </button>
+      <span class="dev-hairline dev-hairline--vertical dev-save-ledger__divider" aria-hidden="true"></span>
+      <template data-ledger-undo-icon set:html={sizeIcon(undoIcon, 14)} />
       <div id="dev-save-ledger" class="dev-save-ledger dev-surface" popover="manual" role="region" aria-label="Changes" tabindex="0"></div>
       <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
       <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
-      <button type="button" data-dev-text-revert>Revert changes</button>
+      <button type="button" data-dev-text-revert>Revert all</button>
       <button type="button" data-dev-text-save>Save</button>
       <button type="button" data-dev-text-commit-styles hidden>Publish styles</button>
       <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
@@ -1733,10 +1736,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncPageTopSpacingControls();
     };
 
-    const revertPendingBlockConverts = () => {
-      if (!pendingBlockConverts.length) return;
-      const pending = [...pendingBlockConverts].reverse();
-      pendingBlockConverts.length = 0;
+    const revertPendingBlockConverts = (selected = pendingBlockConverts) => {
+      const pending = [...selected].reverse();
+      if (!pending.length) return;
+      pending.forEach((entry) => pendingBlockConverts.splice(pendingBlockConverts.indexOf(entry), 1));
       pending.forEach((entry) => {
         const insert = pendingSectionInserts.find((item) => item.root === entry.root);
         if (entry.replacedRoot && entry.root.isConnected) {
@@ -1827,8 +1830,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const revertPendingSectionInserts = () => {
-      if (!pendingSectionInserts.length) return;
       const pending = [...pendingSectionInserts].sort((a, b) => b.index - a.index);
+      if (!pending.length) return;
       pendingSectionInserts.length = 0;
       pending.forEach((entry) => {
         entry.textStates.forEach((state) => {
@@ -1862,9 +1865,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       pending.forEach(restorePendingSectionDelete);
     };
 
-    const revertPersistedMediaInserts = async () => {
-      if (!persistedMediaInserts.length) return;
-      const pending = [...persistedMediaInserts].sort((a, b) => b.index - a.index);
+    const revertPersistedMediaInserts = async (selected = persistedMediaInserts) => {
+      const pending = [...selected].sort((a, b) => b.index - a.index);
       for (const entry of pending) {
         const response = await fetch('/api/content-section', {
           method: 'POST',
@@ -2297,6 +2299,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       target?: HTMLElement | null;
       text?: EditableTextState;
       href?: string;
+      revert?: () => void | Promise<void>;
+      clearHistory?: boolean;
+      description?: string;
     };
 
     const hasLedgerTarget = (element: HTMLElement | null | undefined): element is HTMLElement =>
@@ -2319,14 +2324,32 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ...dirtyTextStates().map((text) => ({
           label: ledgerTarget(text.document, text.path), operation: 'Text', target: text.element, text,
           href: ledgerPageHref(text.document),
+          revert: () => {
+            for (const state of textStates) {
+              if (state.document === text.document && valuesMatch(state.path.map(String), text.path.map(String))) {
+                renderValue(state, state.savedValue);
+              }
+            }
+          },
         })),
-        ...dirtySpacingStates().map(({ document, path, element }) => ({
-          label: ledgerTarget(document, path), operation: 'Spacing', target: element, href: ledgerPageHref(document),
+        ...dirtySpacingStates().map((state) => ({
+          label: ledgerTarget(state.document, state.path), operation: 'Spacing', target: state.element,
+          href: ledgerPageHref(state.document),
+          description: `${state.savedValue[currentSpacingViewport()]} → ${state.currentValue[currentSpacingViewport()]}`,
+          revert: () => {
+            state.currentValue = cloneSpacing(state.savedValue);
+            syncSpacingControl(state);
+          },
         })),
         ...dirtyIntroHeightStates().map(({ document, path, element }) => ({
           label: ledgerTarget(document, path), operation: 'Intro height', target: element, href: ledgerPageHref(document),
+          revert: () => {
+            const height = dirtyIntroHeightStates().find((state) => state.document === document);
+            if (height) syncIntroHeightDocument(document, height.savedValue);
+          },
         })),
-        ...[...pendingMedia.values()].map(({ kind, payload, root }) => {
+        ...[...pendingMedia.values()].map((change) => {
+          const { id, kind, payload, root } = change;
           const key = payload.document ?? payload.slug;
           const path = payload.path ?? (payload.token ? [payload.token] : []);
           const grid = typeof payload.grid === 'string'
@@ -2351,15 +2374,40 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             operation: ledgerOperations[kind],
             target: [root, block, token, card, grid, zone].find(hasLedgerTarget),
             href: ledgerPageHref(key ?? payload.grid ?? (kind === 'style-token' ? 'styles' : undefined)),
+            clearHistory: true,
+            revert: () => {
+              if (pendingMedia.get(id) !== change) return;
+              change.revert();
+              if (pendingMedia.get(id) === change) pendingMedia.delete(id);
+            },
           };
         }),
-        ...pendingSectionDeletes.map(({ documentKey, deletedIndex, insertBefore }) =>
-          section(documentKey, deletedIndex, 'Removed',
-            insertBefore instanceof HTMLElement && insertBefore.isConnected ? insertBefore
-              : findSectionRootByIndex(Math.max(0, deletedIndex - 1), documentKey) ?? getDropZone(documentKey))),
-        ...pendingSectionInserts.map(({ documentKey, index, root }) => section(documentKey, index, 'Added', root)),
-        ...pendingBlockConverts.map(({ documentKey, index, root }) => section(documentKey, index, 'Converted', root)),
-        ...persistedMediaInserts.map(({ documentKey, index, root }) => section(documentKey, index, 'Media added', root)),
+        ...pendingSectionDeletes.map((entry) => ({
+          ...section(entry.documentKey, entry.deletedIndex, 'Removed',
+            entry.insertBefore instanceof HTMLElement && entry.insertBefore.isConnected ? entry.insertBefore
+              : findSectionRootByIndex(Math.max(0, entry.deletedIndex - 1), entry.documentKey) ?? getDropZone(entry.documentKey)),
+          clearHistory: true,
+          revert: () => undoSectionDelete(entry),
+        })),
+        ...pendingSectionInserts.map((entry) => ({
+          ...section(entry.documentKey, entry.index, 'Added', entry.root),
+          clearHistory: true,
+          revert: async () => {
+            if (!await deleteSectionAt(entry.root, { ledgerReset: true })) throw new Error('Could not remove this block.');
+          },
+        })),
+        ...pendingBlockConverts.map((entry, index) => ({
+          ...section(entry.documentKey, entry.index, 'Converted', entry.root),
+          clearHistory: true,
+          revert: pendingBlockConverts.slice(index + 1).some((later) => later.previousRoot === entry.root
+            || later.textState === entry.textState)
+            ? undefined : () => revertPendingBlockConverts([entry]),
+        })),
+        ...persistedMediaInserts.map((entry) => ({
+          ...section(entry.documentKey, entry.index, 'Media added', entry.root),
+          clearHistory: true,
+          revert: () => revertPersistedMediaInserts([entry]),
+        })),
       ];
     };
 
@@ -2399,32 +2447,38 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const ledgerRowTargets = new WeakMap<HTMLElement, PendingLedgerRow>();
+    const ledgerReverts = new WeakMap<HTMLElement, PendingLedgerRow>();
+    const ledgerUndoIcon = actions.querySelector<HTMLTemplateElement>('[data-ledger-undo-icon]');
+    let ledgerReverting = false;
 
     const placeLedger = () => {
       const bar = actions.getBoundingClientRect();
-      const anchor = ledgerButton.getBoundingClientRect();
-      const narrow = window.innerWidth < 480;
       ledger.style.setProperty('--ledger-room', `${Math.max(0, bar.top - 16)}px`);
       ledger.style.setProperty('--ledger-bar-width', `${bar.width}px`);
-      clampToViewport(ledger, narrow ? bar.left : anchor.left, bar.top - ledger.offsetHeight - 8);
+      clampToViewport(ledger, bar.right - ledger.offsetWidth, bar.top - ledger.offsetHeight - 6);
     };
 
     const renderLedger = () => {
-      const group = (label: string, count: number) => {
-        const heading = document.createElement('h2');
-        heading.textContent = `${label} · ${count}`;
+      const group = (label?: string) => {
+        if (label) {
+          const heading = document.createElement('h2');
+          heading.textContent = label;
+          ledger.append(heading);
+        }
         const list = document.createElement('ul');
-        ledger.append(heading, list);
+        ledger.append(list);
         return list;
       };
       const active = document.activeElement;
-      const focusedIndex = active instanceof HTMLElement && ledger.contains(active)
-        ? [...ledger.querySelectorAll('[data-ledger-row]')].indexOf(active) : -1;
+      const focusedItem = active instanceof HTMLElement ? active.closest('li') : null;
+      const focusedIndex = focusedItem && ledger.contains(focusedItem)
+        ? [...ledger.querySelectorAll('li')].indexOf(focusedItem) : -1;
+      const focusedReset = active instanceof HTMLElement && active.matches('.dev-save-ledger__reset');
       clearLedgerHighlight();
       ledger.replaceChildren();
       const pending = pendingLedgerRows();
       if (pending.length) {
-        const list = group('Unsaved', pending.length);
+        const list = group(unpublishedFiles.length ? 'Unsaved' : undefined);
         for (const entry of pending) {
           const item = document.createElement('li');
           const local = hasLedgerTarget(entry.target);
@@ -2442,17 +2496,37 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             row.setAttribute('aria-label', `${entry.label} / ${entry.operation} (opens in a new tab)`);
           }
           const title = document.createElement('span');
-          title.textContent = entry.label;
+          const [key, ...path] = entry.label.split(' / ');
+          const page = sabiDocsPages.find((entry) => entry.key === key)?.label
+            ?? key.replace(/(^|-)([a-z])/g, (_, separator, letter) => `${separator ? ' ' : ''}${letter.toUpperCase()}`);
+          const blockLabel = path.shift();
+          const field = path.at(-1) ?? blockLabel;
+          const fieldLabel = field?.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (letter) => letter.toUpperCase());
+          title.textContent = entry.operation === 'Text' && field === 'paragraphs'
+            ? 'Body text' : fieldLabel ?? entry.operation;
+          if (entry.operation !== 'Text' && blockLabel?.startsWith('Block ')) title.textContent = blockLabel;
           const operation = document.createElement('span');
           operation.className = 'dev-save-ledger__operation';
-          operation.textContent = entry.operation;
+          const change = entry.description ?? (entry.operation === 'Text' ? 'Edited'
+            : entry.operation === 'Section order' ? 'Reordered' : entry.operation);
+          operation.textContent = [page, entry.operation === 'Text' && blockLabel?.startsWith('Block ') ? blockLabel : undefined, change].filter(Boolean).join(' · ');
           row.append(title, operation);
           item.append(row);
+          if (entry.revert) {
+            const reset = document.createElement('button');
+            reset.type = 'button';
+            reset.className = 'dev-save-ledger__reset';
+            reset.setAttribute('aria-label', `Reset ${title.textContent} on ${page}`);
+            reset.disabled = actionsBusy || branchUpdateBusy || ledgerReverting;
+            if (ledgerUndoIcon) reset.append(ledgerUndoIcon.content.cloneNode(true));
+            ledgerReverts.set(reset, entry);
+            item.append(reset);
+          }
           list.append(item);
         }
       }
       if (unpublishedFiles.length) {
-        const list = group('Unpublished', unpublishedFiles.length);
+        const list = group(pending.length ? 'Unpublished' : undefined);
         for (const file of unpublishedFiles) {
           const item = document.createElement('li');
           const title = document.createElement('span');
@@ -2469,8 +2543,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       placeLedger();
       if (focusedIndex >= 0) {
-        const row = ledger.querySelectorAll<HTMLElement>('[data-ledger-row]')[focusedIndex];
-        (row?.matches('button, a') ? row : ledgerButton).focus({ preventScroll: true });
+        const items = ledger.querySelectorAll('li');
+        const item = items[Math.min(focusedIndex, items.length - 1)];
+        const selector = focusedReset ? '.dev-save-ledger__reset:not(:disabled)' : 'button[data-ledger-row], a[data-ledger-row]';
+        (item?.querySelector<HTMLElement>(selector) ?? ledgerButton).focus({ preventScroll: true });
       }
     };
 
@@ -2499,7 +2575,38 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
     ledger.addEventListener('focusin', previewLedgerRow, { signal: editorSignal });
     ledger.addEventListener('focusout', clearLedgerHighlight, { signal: editorSignal });
-    ledger.addEventListener('click', (event) => {
+    ledger.addEventListener('click', async (event) => {
+      const reset = event.target instanceof Element ? event.target.closest<HTMLElement>('.dev-save-ledger__reset') : null;
+      const change = reset && ledgerReverts.get(reset);
+      if (change?.revert) {
+        if (ledgerReverting || actionsBusy || branchUpdateBusy || pageHistory.busy) return;
+        captureFieldHistory();
+        pageHistory.breakGroup();
+        ledgerReverting = true;
+        actionsBusy = true;
+        window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: true } }));
+        stickyStatus = '';
+        try {
+          await change.revert();
+          if (change.clearHistory) {
+            captureFieldHistory();
+            pageHistory.clear();
+          }
+          syncPageTopSpacingControls(false);
+          syncIntroRunControls();
+          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+        } catch (error) {
+          setStickyStatus(error instanceof Error ? error.message : 'Could not reset this change.');
+        } finally {
+          actionsBusy = false;
+          ledgerReverting = false;
+          window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: false } }));
+          captureFieldHistory();
+          updateActions();
+          void refreshPublishState();
+        }
+        return;
+      }
       const row = getLedgerRow(event.target);
       const entry = row && ledgerRowTargets.get(row);
       if (!entry || !hasLedgerTarget(entry.target)) return;
@@ -2673,6 +2780,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (status.textContent !== message) status.textContent = message;
       // Unsaved DOM/pending OR unpublished disk content (restored via /api/content-revert).
       revertButton.hidden = !(dirtyCount || unpublishedCount);
+      revertButton.textContent = dirtyCount ? 'Revert all' : 'Revert files';
       // Keep Save in the layout after a successful write — greyed, not removed —
       // so the bar keeps its shape while Publish becomes the next step.
       saveButton.hidden = false;
@@ -3106,7 +3214,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ),
     ];
 
-    let deleteSectionAt: (element: HTMLElement) => Promise<PendingSectionDelete | undefined> = async () => undefined;
+    let deleteSectionAt: (element: HTMLElement, options?: { ledgerReset?: boolean }) => Promise<PendingSectionDelete | undefined> = async () => undefined;
 
     const mountDeleteButton = (element: HTMLElement) => {
       if (element.querySelector(':scope > [data-dev-section-delete]')) return;
@@ -3810,8 +3918,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    deleteSectionAt = async (element: HTMLElement) => {
-      if (!element.isConnected || actionsBusy) return;
+    deleteSectionAt = async (element: HTMLElement, { ledgerReset = false } = {}) => {
+      if (!element.isConnected || (actionsBusy && !ledgerReset)) return;
       captureFieldHistory();
       pageHistory.breakGroup();
       let path: Array<string | number> = [];
