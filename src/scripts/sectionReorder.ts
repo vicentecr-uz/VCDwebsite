@@ -299,6 +299,17 @@ export type ScrollDriver = {
   setLastTickTime: (time: number) => void;
 };
 
+// Prototype tuning hook, remove once values are locked.
+export const edgeScrollOverrides: Partial<{
+  edgeZoneRatio: number;
+  edgeZoneMinPx: number;
+  edgeZoneMaxPx: number;
+  maxScrollSpeed: number;
+  curve: number;
+  velocitySmoothing: number;
+  activationPx: number;
+}> = {};
+
 /** Stateful edge-gradient scroll used while a block is lifted. */
 export const createScrollDriver = (
   options: {
@@ -311,18 +322,19 @@ export const createScrollDriver = (
     scrollBy?: (step: number) => void;
   } = {},
 ): ScrollDriver => {
-  const edgeZoneRatio = options.edgeZoneRatio ?? EDGE_SCROLL.EDGE_ZONE_RATIO;
-  const edgeZoneMinPx = options.edgeZoneMinPx ?? EDGE_SCROLL.EDGE_ZONE_MIN_PX;
-  const edgeZoneMaxPx = options.edgeZoneMaxPx ?? EDGE_SCROLL.EDGE_ZONE_MAX_PX;
-  const maxScrollSpeed = options.maxScrollSpeed ?? EDGE_SCROLL.MAX_SCROLL_SPEED;
-  const curve = options.curve ?? EDGE_SCROLL.CURVE;
-  const velocitySmoothing = options.velocitySmoothing ?? EDGE_SCROLL.VELOCITY_SMOOTHING;
-
   let scrollVelocity = 0;
   let scrollRemainder = 0;
   let lastTickTime = 0;
 
   const targetVelocity = (pointerY: number, bounds: { top: number; bottom: number }) => {
+    const o = edgeScrollOverrides;
+    const edgeZoneRatio = o.edgeZoneRatio ?? options.edgeZoneRatio ?? EDGE_SCROLL.EDGE_ZONE_RATIO;
+    const edgeZoneMinPx = o.edgeZoneMinPx ?? options.edgeZoneMinPx ?? EDGE_SCROLL.EDGE_ZONE_MIN_PX;
+    const edgeZoneMaxPx = o.edgeZoneMaxPx ?? options.edgeZoneMaxPx ?? EDGE_SCROLL.EDGE_ZONE_MAX_PX;
+    const maxScrollSpeed = options.maxScrollSpeed === 0
+      ? 0
+      : (o.maxScrollSpeed ?? options.maxScrollSpeed ?? EDGE_SCROLL.MAX_SCROLL_SPEED);
+    const curve = o.curve ?? options.curve ?? EDGE_SCROLL.CURVE;
     const zone = Math.min(
       edgeZoneMaxPx,
       Math.max(edgeZoneMinPx, (bounds.bottom - bounds.top) * edgeZoneRatio),
@@ -342,6 +354,7 @@ export const createScrollDriver = (
     },
     apply: (dtMs, pointerY, bounds) => {
       const target = targetVelocity(pointerY, bounds);
+      const velocitySmoothing = edgeScrollOverrides.velocitySmoothing ?? options.velocitySmoothing ?? EDGE_SCROLL.VELOCITY_SMOOTHING;
       const frameFactor = dtMs / (1000 / 60);
       const blend = 1 - (1 - velocitySmoothing) ** frameFactor;
       scrollVelocity += (target - scrollVelocity) * blend;
@@ -1066,7 +1079,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     scrollDriver.setLastTickTime(now);
 
     if (followPointer) {
-      if (!edgeScrollActive && Math.abs(state.pointerY - state.grabPointerY) >= EDGE_SCROLL.ACTIVATION_PX) {
+      if (!edgeScrollActive && Math.abs(state.pointerY - state.grabPointerY) >= (edgeScrollOverrides.activationPx ?? EDGE_SCROLL.ACTIVATION_PX)) {
         edgeScrollActive = true;
       }
       if (edgeScrollActive) scrollDriver.apply(dtMs, state.pointerY, scrollBounds());

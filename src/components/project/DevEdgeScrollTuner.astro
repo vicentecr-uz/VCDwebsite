@@ -1,0 +1,141 @@
+---
+import DevOverlay from '../DevOverlay.astro';
+import RangeField from '../ui/RangeField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
+
+const fields = [
+  { key: 'edgeZoneRatio', label: 'Zone', min: 5, max: 40, step: 1, unit: '%', value: 18 },
+  { key: 'edgeZoneMinPx', label: 'Zone min', min: 0, max: 200, step: 4, unit: 'px', value: 56 },
+  { key: 'edgeZoneMaxPx', label: 'Zone max', min: 40, max: 400, step: 4, unit: 'px', value: 160 },
+  { key: 'maxScrollSpeed', label: 'Max speed', min: 2, max: 80, step: 1, unit: 'px/frame', value: 24 },
+  { key: 'curve', label: 'Curve', min: 0.5, max: 4, step: 0.1, unit: '', value: 2 },
+  { key: 'velocitySmoothing', label: 'Smoothing', min: 0.02, max: 1, step: 0.01, unit: '', value: 0.1 },
+  { key: 'activationPx', label: 'Activation', min: 0, max: 40, step: 1, unit: 'px', value: 8 },
+];
+---
+
+<DevOverlay storageKey="edge-scroll-tuner" panelKey="edge-scroll" title="Edge scroll">
+  <div class="edge-scroll-tuner" data-edge-scroll-tuner>
+    {fields.map((f) => (
+      <RangeField
+        label={f.label}
+        id={`edge-scroll-${f.key}`}
+        unit={f.unit}
+        min={f.min}
+        max={f.max}
+        step={f.step}
+        value={f.value}
+        data-edge-scroll-field={f.key}
+        data-default={f.value}
+      />
+    ))}
+    <ToggleRow label="Show zones" checked data-edge-scroll-zones />
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" data-edge-scroll-reset />
+      <Button emphasis="filled" label="Copy values" data-edge-scroll-copy />
+    </PanelActions>
+  </div>
+</DevOverlay>
+
+<style is:global>
+  .edge-scroll-tuner { display: grid; gap: var(--dev-panel-gap); }
+  .edge-scroll-zone {
+    position: fixed;
+    inset-inline: 0;
+    z-index: 55;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--sys-color-primary) 12%, transparent);
+  }
+  .edge-scroll-zone[hidden] { display: none; }
+  .edge-scroll-zone--top { top: 0; }
+  .edge-scroll-zone--bottom { bottom: 0; }
+</style>
+
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+  import { edgeScrollOverrides } from '../../scripts/sectionReorder';
+
+  const STORAGE_KEY = 'vcd:edge-scroll-tuning';
+  type Key = keyof typeof edgeScrollOverrides;
+
+  const dispose = onPageLoad(() => {
+    const root = document.querySelector<HTMLElement>('[data-edge-scroll-tuner]');
+    if (!root) return;
+    const scope = createPageScope();
+    const inputs = [...root.querySelectorAll<HTMLInputElement>('[data-edge-scroll-field]')];
+    const zones = root.querySelector<HTMLInputElement>('[data-edge-scroll-zones]');
+
+    let saved: Record<string, number> = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') ?? {};
+    } catch {}
+
+    const read = () => Object.fromEntries(inputs.map((i) => [i.dataset.edgeScrollField!, Number(i.value)])) as Record<Key, number>;
+    const apply = () => {
+      const v = read();
+      Object.assign(edgeScrollOverrides, { ...v, edgeZoneRatio: v.edgeZoneRatio / 100 });
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(v));
+      } catch {}
+    };
+    const set = (input: HTMLInputElement, value: number) => {
+      input.value = String(value);
+      input.dispatchEvent(new Event('vcd:range-refresh'));
+    };
+
+    inputs.forEach((input) => {
+      const value = saved[input.dataset.edgeScrollField!];
+      if (typeof value === 'number') set(input, value);
+      scope.listen(input, 'input', apply);
+    });
+    apply();
+
+    scope.listen(root.querySelector('[data-edge-scroll-reset]')!, 'click', () => {
+      inputs.forEach((input) => set(input, Number(input.dataset.default)));
+      apply();
+    });
+    scope.listen(root.querySelector('[data-edge-scroll-copy]')!, 'click', () => {
+      const v = read();
+      const text = `export const EDGE_SCROLL = {
+  EDGE_ZONE_RATIO: ${(v.edgeZoneRatio / 100).toFixed(2)},
+  EDGE_ZONE_MIN_PX: ${v.edgeZoneMinPx},
+  EDGE_ZONE_MAX_PX: ${v.edgeZoneMaxPx},
+  MAX_SCROLL_SPEED: ${v.maxScrollSpeed},
+  CURVE: ${v.curve},
+  VELOCITY_SMOOTHING: ${v.velocitySmoothing},
+  ACTIVATION_PX: ${v.activationPx},
+};`;
+      navigator.clipboard?.writeText(text).catch(() => {});
+    });
+
+    // Lifted state: the reorder controller puts `is-section-lifted` on the held block, so poll for it in rAF.
+    const bands = (['top', 'bottom'] as const).map((side) => {
+      const band = document.createElement('div');
+      band.className = `edge-scroll-zone edge-scroll-zone--${side}`;
+      band.hidden = true;
+      document.body.append(band);
+      return band;
+    });
+    scope.add(() => bands.forEach((b) => b.remove()));
+
+    let frame = 0;
+    const loop = () => {
+      const lifted = Boolean(document.querySelector('.is-section-lifted:not(.is-dropping)'));
+      const show = lifted && Boolean(zones?.checked);
+      if (show) {
+        const o = edgeScrollOverrides;
+        const zone = Math.min(o.edgeZoneMaxPx!, Math.max(o.edgeZoneMinPx!, window.innerHeight * o.edgeZoneRatio!));
+        bands.forEach((b) => (b.style.height = `${zone}px`));
+      }
+      bands.forEach((b) => (b.hidden = !show));
+      frame = requestAnimationFrame(loop);
+    };
+    frame = requestAnimationFrame(loop);
+    scope.add(() => cancelAnimationFrame(frame));
+
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
