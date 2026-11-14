@@ -15,6 +15,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+  import { followEditViewport } from '../lib/editViewportFollow';
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
@@ -32,6 +33,10 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
     };
     if (canvasMode) {
+      followEditViewport(scope);
+      scope.listen(window, 'resize', (event) => {
+        if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
+      }, true);
       let preset = 'desktop';
       const post = (message: object) => window.parent.postMessage(message, location.origin);
       const reportLocation = () => post({ type: 'vcd-canvas-location', href: location.href, title: document.title });
@@ -56,7 +61,17 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         if (event.detail?.preset) requestPreset(event.detail.preset);
       }) as EventListener);
       scope.listen(window, 'message', (event) => {
-        if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== 'vcd-canvas-preset') return;
+        if (event.origin !== location.origin || event.source !== window.parent) return;
+        if (event.data?.type === 'vcd-canvas-flux') {
+          if (event.data.active === true) document.documentElement.setAttribute('data-viewport-flux', '');
+          if (event.data.active === false) {
+            document.documentElement.removeAttribute('data-viewport-flux');
+            window.dispatchEvent(new CustomEvent('vcd:viewport-flux-end'));
+            window.dispatchEvent(new Event('resize'));
+          }
+          return;
+        }
+        if (event.data?.type !== 'vcd-canvas-preset') return;
         const next = event.data.preset;
         if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile') return;
         preset = next;
@@ -70,7 +85,10 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         event.preventDefault();
         window.top!.location.href = anchor.href;
       }, true);
-      scope.add(() => document.documentElement.removeAttribute('data-edit-viewport-frame'));
+      scope.add(() => {
+        document.documentElement.removeAttribute('data-edit-viewport-frame');
+        document.documentElement.removeAttribute('data-viewport-flux');
+      });
       return () => scope.destroy();
     }
 
@@ -476,6 +494,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 <style>
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
+  :global(html[data-viewport-flux] .site-header) { transition: none; }
   :global(html[data-viewport-layout-commit] .site-header) { transition: none; }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__backdrop { position: absolute; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }

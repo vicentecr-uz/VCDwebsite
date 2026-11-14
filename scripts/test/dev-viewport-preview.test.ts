@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { followEditViewport } from '../../src/lib/editViewportFollow';
 
 const source = readFileSync(new URL('../../src/components/DevViewportPreview.astro', import.meta.url), 'utf8');
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.split('<script>')[1].split('</script>')[0]
@@ -67,9 +68,10 @@ function fixture(reduced = false, frameMode = false, idleSupported = true, canva
     add(callback: () => void) { cleanups.push(callback); },
     destroy() { scope.signal.aborted = true; cleanups.reverse().forEach(fn => fn()); },
   };
-  const dispose = new Function('window', 'document', 'HTMLElement', 'Element', 'location', 'CustomEvent', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', script)(
-    window, document, window.HTMLElement, window.Element, window.location, window.CustomEvent, window.MutationObserver,
-    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(),
+  const follow = new Function('window', 'document', `return (${followEditViewport.toString()});`)(window, document);
+  const dispose = new Function('window', 'document', 'HTMLElement', 'Element', 'location', 'CustomEvent', 'Event', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', 'followEditViewport', script)(
+    window, document, window.HTMLElement, window.Element, window.location, window.CustomEvent, window.Event, window.MutationObserver,
+    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(), follow,
   );
   const request = (preset: string) => window.dispatchEvent(new window.CustomEvent('vcd:edit-viewport-request', { detail: { preset } }));
   const message = (type: string, extra = {}) => window.dispatchEvent(new window.MessageEvent('message', { origin: window.location.origin, source: child, data: { type, ...extra } }));
@@ -428,4 +430,73 @@ test('canvas routes presets, leaves Escape to Edit, and removes frame state on c
     f.parentMessage('vcd-canvas-preset', { preset: 'mobile' });
   } finally { await f.dispose(); }
   expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(false);
+});
+
+test('canvas flux suppresses page resize reactions and releases them once without posting', async () => {
+  const f = fixture(false, false, true, true);
+  try {
+    const posts = [...f.posts];
+    const events: string[] = [];
+    f.window.addEventListener('resize', () => events.push('resize'));
+    f.window.addEventListener('vcd:viewport-flux-end', () => events.push('end'));
+    f.message('vcd-canvas-flux', { active: true });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+    f.parentMessage('vcd-canvas-flux', { active: true });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(true);
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    f.parentMessage('vcd-canvas-flux', { active: true });
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    expect(events).toEqual([]);
+    f.parentMessage('vcd-canvas-flux', { active: false });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+    expect(events).toEqual(['end', 'resize']);
+    expect(f.posts).toEqual(posts);
+    f.parentMessage('vcd-canvas-flux', { active: true });
+  } finally { await f.dispose(); }
+  expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+});
+
+test('canvas-only ResizeObserver shim defers latest entries and drops disconnected observers', async () => {
+  const layout = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+  const shim = layout.split('<script is:inline data-canvas-resize-observer>')[1].split('</script>')[0];
+  const window = new Window();
+  const observers: Array<{ emit: (entries: unknown[]) => void }> = [];
+  class Observer {
+    constructor(callback: (entries: unknown[], observer: Observer) => void) {
+      observers.push({ emit: (entries) => callback(entries, this) });
+    }
+    disconnect() {}
+  }
+  Object.defineProperty(window, 'ResizeObserver', { value: Observer, writable: true });
+  const run = () => new Function('window', 'document', shim)(window, window.document);
+  try {
+    run();
+    expect(window.ResizeObserver).toBe(Observer);
+    window.name = 'vcd-canvas';
+    run();
+    const calls: unknown[] = [];
+    const first = new window.ResizeObserver((entries, observer) => calls.push([entries, observer]));
+    const second = new window.ResizeObserver((entries, observer) => calls.push([entries, observer]));
+    observers[0].emit(['initial']);
+    expect(calls).toEqual([[['initial'], first]]);
+    calls.length = 0;
+    window.document.documentElement.setAttribute('data-viewport-flux', '');
+    observers[0].emit(['stale']);
+    observers[0].emit(['latest']);
+    observers[1].emit(['second']);
+    expect(calls).toEqual([]);
+    window.document.documentElement.removeAttribute('data-viewport-flux');
+    window.dispatchEvent(new window.CustomEvent('vcd:viewport-flux-end'));
+    expect(calls).toEqual([[['latest'], first], [['second'], second]]);
+    window.dispatchEvent(new window.CustomEvent('vcd:viewport-flux-end'));
+    expect(calls).toHaveLength(2);
+    window.document.documentElement.setAttribute('data-viewport-flux', '');
+    observers[1].emit(['disconnected']);
+    second.disconnect();
+    window.document.documentElement.removeAttribute('data-viewport-flux');
+    window.dispatchEvent(new window.CustomEvent('vcd:viewport-flux-end'));
+    observers[0].emit(['after']);
+    expect(calls.at(-1)).toEqual([['after'], first]);
+    expect(calls).toHaveLength(3);
+  } finally { await window.happyDOM.abort(); }
 });

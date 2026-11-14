@@ -122,6 +122,38 @@ const initialThemeColor = resolveToken('sys.color.srf');
   data-adaptive-page-columns={ADAPTIVE_PAGE_COLUMNS_ENABLED ? '' : undefined}
 >
   <head>
+    {showDevTools && (
+      <script is:inline data-canvas-resize-observer>
+        // Canvas-only shim avoids the measured ~300ms Edit resize cost per width step.
+        if (window.name === 'vcd-canvas') {
+          // Registered before any page script, so it also precedes capture-phase resize listeners.
+          window.addEventListener('resize', (event) => {
+            if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
+          }, true);
+          const pending = new Map();
+          window.ResizeObserver = class extends window.ResizeObserver {
+            constructor(callback) {
+              super((entries, observer) => {
+                if (document.documentElement.hasAttribute('data-viewport-flux')) {
+                  pending.set(observer, () => callback(entries, observer));
+                } else {
+                  callback(entries, observer);
+                }
+              });
+            }
+            disconnect() {
+              pending.delete(this);
+              super.disconnect();
+            }
+          };
+          window.addEventListener('vcd:viewport-flux-end', () => {
+            const callbacks = [...pending.values()];
+            pending.clear();
+            callbacks.forEach((callback) => callback());
+          });
+        }
+      </script>
+    )}
     {showDevTools && <meta name="vcd-tab-state" content={JSON.stringify(devTabState())} />}
     <script>
       if (import.meta.env.DEV) {

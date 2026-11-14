@@ -58,11 +58,12 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   type Geometry = { width: number; height: number; radius: number; device: number };
   const desktop = (): Geometry => ({ width: window.innerWidth, height: window.innerHeight, radius: 0, device: 0 });
   let current = desktop();
-  let frameWidth = 0;
-  let frameHeight = 0;
-  let framePlacement = { left: 0, top: 0, scale: 1 };
-  let layoutCommit = 0;
-  const render = (value: Geometry, barZone = 0, commitLayout = true) => {
+  let fluxActive = false;
+  const postFlux = (active: boolean) => {
+    fluxActive = active;
+    frame.contentWindow?.postMessage({ type: 'vcd-canvas-flux', active }, location.origin);
+  };
+  const render = (value: Geometry, barZone = 0) => {
     current = value;
     const width = Math.round(value.width);
     const height = Math.round(value.height);
@@ -79,25 +80,9 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     Object.assign(shadow.style, bounds, { opacity: String(value.device) });
     surface.style.setProperty('--viewport-radius', `${radius}px`);
     shadow.style.setProperty('--viewport-radius', `${radius}px`);
-    if (commitLayout && (width !== frameWidth || height !== frameHeight)) {
-      const child = frame.contentDocument?.documentElement;
-      if (child) {
-        const commit = ++layoutCommit;
-        child.setAttribute('data-viewport-layout-commit', '');
-        scope.frame(() => scope.frame(() => {
-          if (commit === layoutCommit) child.removeAttribute('data-viewport-layout-commit');
-        }));
-      }
-      frameWidth = width;
-      frameHeight = height;
-      frame.style.width = `${width}px`;
-      frame.style.height = `${height}px`;
-    }
-    if (commitLayout) framePlacement = { left, top, scale };
-    // The surface clips the old page at its original screen position until layout commits.
-    const x = framePlacement.left - left;
-    const y = framePlacement.top - top;
-    frame.style.transform = `translate(${x}px, ${y}px) scale(${framePlacement.scale})`;
+    frame.style.width = `${width}px`;
+    frame.style.height = `${height}px`;
+    frame.style.transform = `scale(${scale})`;
   };
   const geometry = (): Geometry => preset === 'desktop' ? desktop() : {
     width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
@@ -124,21 +109,27 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     const from = current;
     const target = geometry();
     const zone = barZone();
-    if (reducedMotion.matches) { finish(target); return; }
+    if (reducedMotion.matches) {
+      finish(target);
+      raf = 0;
+      if (fluxActive) postFlux(false);
+      return;
+    }
+    postFlux(true);
     const start = performance.now();
     const omega = 2 * Math.PI / (0.35 * 1.2);
-    // Keep the responsive layout stable until the surface reaches its destination.
     const tick = (now: number) => {
       if (token !== revision || scope.signal.aborted) return;
+      const target = geometry();
       const t = (now - start) / 1000;
       const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
-      if (1 - x <= 0.004) { finish(target); return; }
+      if (1 - x <= 0.004) { finish(target); raf = 0; postFlux(false); return; }
       render({
         width: from.width + (target.width - from.width) * x,
         height: from.height + (target.height - from.height) * x,
         radius: from.radius + (target.radius - from.radius) * x,
         device: from.device + (target.device - from.device) * x,
-      }, zone, false);
+      }, zone);
       raf = window.requestAnimationFrame(tick);
     };
     raf = window.requestAnimationFrame(tick);
@@ -186,9 +177,8 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   scope.listen(document, 'keydown', forwardKey);
   scope.listen(document, 'keyup', forwardKey);
   scope.listen(window, 'resize', () => {
-    window.cancelAnimationFrame(raf);
-    revision++;
-    finish(geometry());
+    if (fluxActive) render(current, barZone());
+    else finish(geometry());
   });
   scope.listen(frame, 'load', () => { postPreset(); focusFrame(); });
   select();

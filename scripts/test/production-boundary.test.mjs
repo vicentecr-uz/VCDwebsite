@@ -116,4 +116,16 @@ test('strips the canvas page before its scripts and styles are discovered in pro
   assert.equal(plugin.load(shell), '');
   assert.equal(plugin.load(`${shell}?astro&type=script`), '');
   assert.equal(plugin.load(new URL('../../src/layouts/DemoLayout.astro', import.meta.url).pathname), undefined);
+  const layout = plugin.load(new URL('../../src/layouts/Layout.astro', import.meta.url).pathname);
+  assert.ok(layout.includes('<head>'));
+  assert.ok(!layout.includes('data-canvas-resize-observer'));
+  assert.ok(!layout.includes('vcd:viewport-flux-end'));
+});
+
+test('rejects orphan canvas flux shims in production output', async () => {
+  for (const marker of ['data-canvas-resize-observer', 'data-viewport-flux', 'vcd:viewport-flux-end']) {
+    const root = await fixture({ 'index.html': `<script>${JSON.stringify(marker)}</script>` });
+    try { await assert.rejects(checkProductionOutput(root), /development inspector marker/); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  }
 });

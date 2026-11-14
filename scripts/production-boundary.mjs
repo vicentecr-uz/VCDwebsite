@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 // These are authoring entrypoints. DevOverlay and ui/* also serve public /styles demos.
 // Keep new writers here; check-production-output catches emitted authoring endpoints.
@@ -6,6 +7,7 @@ const authoringComponents = new Set([
   'DevAssetManager.astro',
   'DevAwardBlockSize.astro',
   'DevVideoEditor.astro',
+  'DevViewportPreview.astro',
   'dev/DevCarouselDragTool.astro',
   'DevGalleryPages.astro',
   'DevGalleryReorder.astro',
@@ -33,6 +35,7 @@ const authoringComponents = new Set([
   'project/archive/ProjectCaptionShadowTuner.astro',
 ].map((file) => fileURLToPath(new URL(`../src/components/${file}`, import.meta.url))));
 const canvasShellPage = fileURLToPath(new URL('../src/pages/dev/canvas-shell.astro', import.meta.url));
+const pageLayout = fileURLToPath(new URL('../src/layouts/Layout.astro', import.meta.url));
 
 export function productionBoundary() {
   return {
@@ -43,6 +46,12 @@ export function productionBoundary() {
       // Remove the component before Astro discovers its scripts, styles, or imports.
       if (authoringComponents.has(id.split('?')[0])
         || id.split('?')[0] === canvasShellPage) return '';
+      if (id === pageLayout) {
+        return readFileSync(pageLayout, 'utf8').replace(
+          /\{showDevTools && \(\s*<script is:inline data-canvas-resize-observer>[\s\S]*?<\/script>\s*\)\}/,
+          '',
+        );
+      }
     },
   };
 }
