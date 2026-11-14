@@ -18,11 +18,19 @@ export const REORDER_TIMING = {
   DROP_ANIMATION_MS: 500,
 } as const;
 
-export const SCROLL_HOLD = {
-  DEAD_ZONE_PX: 32,
-  RAMP_PX: 200,
-  MAX_SCROLL_SPEED: 66,
-  VELOCITY_SMOOTHING: 0.1,
+export const EDGE_SCROLL = {
+  /** Edge zone height as a fraction of the scroll area's visible height. */
+  EDGE_ZONE_RATIO: 0.30,
+  EDGE_ZONE_MIN_PX: 32,
+  EDGE_ZONE_MAX_PX: 380,
+  /** Px per 60fps frame at full depth. */
+  MAX_SCROLL_SPEED: 67,
+  MAX_SPEED_INSET_PX: 134,
+  /** Exponent on normalized depth into the zone. */
+  CURVE: 2.5,
+  VELOCITY_SMOOTHING: 1,
+  /** Pointer travel from the drag start before edge scroll may engage. */
+  ACTIVATION_PX: 8,
 } as const;
 
 export const prefersReducedMotion = () =>
@@ -286,40 +294,74 @@ export const smoothToward = (
 
 export type ScrollDriver = {
   reset: () => void;
-  /** Apply one frame of edge-ramped, smoothed page scroll. */
-  apply: (dtMs: number, grabPointerY: number, lastClientY: number) => void;
+  /** Apply one frame of edge-gradient, smoothed scroll. `bounds` are the visible client-Y edges. */
+  apply: (dtMs: number, pointerY: number, bounds: { top: number; bottom: number }, grabPointerY?: number) => void;
   getLastTickTime: () => number;
   setLastTickTime: (time: number) => void;
 };
 
-/** Stateful velocity-ramped scroll used while a block is lifted. */
+/** Stateful edge-gradient scroll used while a block is lifted. */
 export const createScrollDriver = (
   options: {
-    deadZonePx?: number;
-    rampPx?: number;
+    edgeZoneRatio?: number;
+    edgeZoneMinPx?: number;
+    edgeZoneMaxPx?: number;
     maxScrollSpeed?: number;
+    maxSpeedInsetPx?: number;
+    curve?: number;
     velocitySmoothing?: number;
     scrollBy?: (step: number) => void;
   } = {},
 ): ScrollDriver => {
-  const deadZonePx = options.deadZonePx ?? SCROLL_HOLD.DEAD_ZONE_PX;
-  const rampPx = options.rampPx ?? SCROLL_HOLD.RAMP_PX;
-  const maxScrollSpeed = options.maxScrollSpeed ?? SCROLL_HOLD.MAX_SCROLL_SPEED;
-  const velocitySmoothing = options.velocitySmoothing ?? SCROLL_HOLD.VELOCITY_SMOOTHING;
-
   let scrollVelocity = 0;
   let scrollRemainder = 0;
   let lastTickTime = 0;
+  let contracted: 'top' | 'bottom' | null = null;
+  let contractedDepth = 0;
+  let grabInitialized = false;
+  let activationReached = false;
+  const edgeZoneRatio = options.edgeZoneRatio ?? EDGE_SCROLL.EDGE_ZONE_RATIO;
+  const edgeZoneMinPx = options.edgeZoneMinPx ?? EDGE_SCROLL.EDGE_ZONE_MIN_PX;
+  const edgeZoneMaxPx = options.edgeZoneMaxPx ?? EDGE_SCROLL.EDGE_ZONE_MAX_PX;
+  const maxScrollSpeed = options.maxScrollSpeed ?? EDGE_SCROLL.MAX_SCROLL_SPEED;
+  const maxSpeedInsetPx = options.maxSpeedInsetPx ?? EDGE_SCROLL.MAX_SPEED_INSET_PX;
+  const curve = options.curve ?? EDGE_SCROLL.CURVE;
+  const velocitySmoothing = options.velocitySmoothing ?? EDGE_SCROLL.VELOCITY_SMOOTHING;
 
-  const targetVelocity = (grabPointerY: number, lastClientY: number) => {
-    const delta = lastClientY - grabPointerY;
-    const distance = Math.abs(delta);
-    if (distance < deadZonePx) return 0;
-
-    const beyond = distance - deadZonePx;
-    const t = Math.min(1, beyond / rampPx);
-    const eased = t * t * t;
-    return (delta < 0 ? -1 : 1) * eased * maxScrollSpeed;
+  const targetVelocity = (pointerY: number, bounds: { top: number; bottom: number }, grabPointerY?: number) => {
+    const zone = Math.min((bounds.bottom - bounds.top) / 2, Math.min(
+      edgeZoneMaxPx,
+      Math.max(edgeZoneMinPx, (bounds.bottom - bounds.top) * edgeZoneRatio),
+    ));
+    if (grabPointerY !== undefined && !grabInitialized) {
+      grabInitialized = true;
+      const t = grabPointerY - bounds.top;
+      const b = bounds.bottom - grabPointerY;
+      if (t >= 0 && t <= zone) {
+        contracted = 'top';
+        contractedDepth = t;
+        activationReached = true;
+      } else if (b >= 0 && b <= zone) {
+        contracted = 'bottom';
+        contractedDepth = b;
+        activationReached = true;
+      }
+    }
+    if (grabPointerY !== undefined && contracted === null && !activationReached
+      && Math.abs(pointerY - grabPointerY) >= EDGE_SCROLL.ACTIVATION_PX) activationReached = true;
+    if (contracted === 'top') contractedDepth = Math.min(zone, Math.max(contractedDepth, pointerY - bounds.top));
+    if (contracted === 'bottom') contractedDepth = Math.min(zone, Math.max(contractedDepth, bounds.bottom - pointerY));
+    if (contracted !== null && contractedDepth >= zone) contracted = null;
+    const topDepth = contracted === 'top' ? contractedDepth : zone;
+    const bottomDepth = contracted === 'bottom' ? contractedDepth : zone;
+    const fromTop = bounds.top + topDepth - pointerY;
+    const fromBottom = pointerY - (bounds.bottom - bottomDepth);
+    const topInset = Math.min(topDepth / 2, maxSpeedInsetPx);
+    const bottomInset = Math.min(bottomDepth / 2, maxSpeedInsetPx);
+    if (grabPointerY !== undefined && !activationReached) return 0;
+    if (fromTop > 0) return -(Math.min(1, fromTop / Math.max(1, topDepth - topInset)) ** curve) * maxScrollSpeed;
+    if (fromBottom > 0) return Math.min(1, fromBottom / Math.max(1, bottomDepth - bottomInset)) ** curve * maxScrollSpeed;
+    return 0;
   };
 
   return {
@@ -327,9 +369,13 @@ export const createScrollDriver = (
       scrollVelocity = 0;
       scrollRemainder = 0;
       lastTickTime = 0;
+      contracted = null;
+      contractedDepth = 0;
+      grabInitialized = false;
+      activationReached = false;
     },
-    apply: (dtMs, grabPointerY, lastClientY) => {
-      const target = targetVelocity(grabPointerY, lastClientY);
+    apply: (dtMs, pointerY, bounds, grabPointerY) => {
+      const target = targetVelocity(pointerY, bounds, grabPointerY);
       const frameFactor = dtMs / (1000 / 60);
       const blend = 1 - (1 - velocitySmoothing) ** frameFactor;
       scrollVelocity += (target - scrollVelocity) * blend;
@@ -443,15 +489,17 @@ export type ReorderHost = {
   /** Initialize visual-only indicator sizing before it enters layout. */
   onIndicatorCreate?: (indicator: HTMLElement) => void;
   /**
-   * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
-   * wants a longer, gentler ramp than a page of full-width sections — the same
-   * pointer travel covers far more content.
+   * Per-host edge-scroll feel (edge zone size, speed, curve). Defaults to
+   * {@link EDGE_SCROLL}; `maxScrollSpeed: 0` disables scrolling.
    */
   scrollTuning?: {
-    deadZonePx?: number;
-    rampPx?: number;
+    edgeZoneRatio?: number;
+    edgeZoneMinPx?: number;
+    edgeZoneMaxPx?: number;
     maxScrollSpeed?: number;
+    curve?: number;
     velocitySmoothing?: number;
+    maxSpeedInsetPx?: number;
   };
   /**
    * Where the lifted block would land. Defaults to the 1-D Y walk
@@ -589,6 +637,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ...host.scrollTuning,
     scrollBy: (step) => setScrollY(scrollY() + step),
   });
+  const scrollBounds = () => {
+    const viewport = scrollViewport();
+    if (viewport) {
+      const rect = viewport.getBoundingClientRect();
+      return { top: rect.top, bottom: rect.bottom };
+    }
+    return { top: 0, bottom: window.visualViewport?.height ?? window.innerHeight };
+  };
   const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
@@ -1040,9 +1096,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     scrollDriver.setLastTickTime(now);
 
     if (followPointer) {
-      scrollDriver.apply(dtMs, state.grabPointerY, state.pointerY);
+      scrollDriver.apply(dtMs, state.pointerY, scrollBounds(), state.grabPointerY);
 
-      // 1:1 with the pointer — scroll is still keyed off initial grab Y.
+      // 1:1 with the pointer; scroll only follows the edge zones.
       state.liftTop = state.pointerY - state.grabOffsetY;
       state.liftLeft = state.pointerX - state.grabOffsetX;
       renderLift();
@@ -1511,7 +1567,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state.phase = 'lifted';
       state.pointerX = pointerX;
       state.pointerY = pointerY;
-      // Scroll-hold measures from the new grab, not the original one.
+      // Edge-scroll activation measures from the new grab.
       state.grabPointerY = pointerY;
       state.grabOffsetX = pointerX - currentLeft;
       state.grabOffsetY = pointerY - currentTop;
