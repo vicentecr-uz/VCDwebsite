@@ -62,8 +62,7 @@ const fields = [
     background: linear-gradient(
       var(--edge-scroll-zone-direction),
       color-mix(in srgb, var(--sys-color-primary) 24%, transparent) 0,
-      color-mix(in srgb, var(--sys-color-primary) 24%, transparent) var(--edge-scroll-zone-inset, 0px),
-      transparent 100%
+      var(--edge-scroll-ramp-stops)
     );
   }
   .edge-scroll-zone[hidden] { display: none; }
@@ -145,10 +144,23 @@ const fields = [
       return band;
     });
     let activeZones: EdgeScrollZones | null = null;
+    let renderedCurve: number | undefined;
     const renderZones = () => {
       const show = Boolean(zones?.checked);
       bands.forEach((band) => { band.hidden = !show; });
       if (!show) return;
+
+      const curve = edgeScrollOverrides.curve!;
+      if (curve !== renderedCurve) {
+        const stops = Array.from({ length: 17 }, (_, index) => {
+          const progress = index / 16;
+          const strength = 24 * (1 - progress) ** curve;
+          const offset = `calc(${progress * 100}% + var(--edge-scroll-zone-inset, 0px) * ${1 - progress})`;
+          return `color-mix(in srgb, var(--sys-color-primary) ${strength}%, transparent) ${offset}`;
+        }).join(', ');
+        bands.forEach((band) => band.style.setProperty('--edge-scroll-ramp-stops', stops));
+        renderedCurve = curve;
+      }
 
       const height = window.visualViewport?.height ?? window.innerHeight;
       const depth = Math.min(height / 2, edgeScrollOverrides.edgeZoneMaxPx!,
