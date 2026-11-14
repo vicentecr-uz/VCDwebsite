@@ -4,13 +4,13 @@ import { createDevPanelCollapse } from './devPanelCollapse';
 export type DemoAsset = { src: string; filename: string; url: string; thumb: string };
 export type DemoAssetProject = { slug: string; title: string; images: DemoAsset[] };
 
-export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetProject[], opener: HTMLElement) {
+export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetProject[], opener: HTMLElement, { portal = true } = {}) {
   panel.tabIndex = -1;
   const sourceWindow = panel.ownerDocument.defaultView!;
   const sourceParent = panel.parentNode!;
   const sourceNext = panel.nextSibling;
   // Same-origin project demos share the page viewport; standalone previews keep their own.
-  if (sourceWindow.frameElement?.closest('.project-interactive-demo')) {
+  if (portal && sourceWindow.frameElement?.closest('.project-interactive-demo')) {
     sourceWindow.parent.document.body.append(panel);
   }
   const doc = panel.ownerDocument;
@@ -142,6 +142,7 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
       panel.classList.add('is-dev-overlay-open');
       panel.focus({ preventScroll: true });
     }),
+    close: () => close(undefined, false),
     destroy,
   };
 }

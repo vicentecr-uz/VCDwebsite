@@ -1,10 +1,23 @@
 ---
 import DemoLayout from '../../layouts/DemoLayout.astro';
 import Button from '../../components/ui/Button.astro';
+import DevOverlayFrame from '../../components/ui/DevOverlayFrame.astro';
+import AssetManagerContent from '../../components/ui/AssetManagerContent.astro';
+import ImageCropControls from '../../components/project/ImageCropControls.astro';
+import path from 'node:path';
+import { readPublishedDemoAssets } from '../../../scripts/public-demo-assets.mjs';
+
 import '../../styles/project.css';
 import '../../styles/sectionReorderChrome.css';
 import { sectionReorderHandleMarkup } from '../../lib/sectionReorderChrome';
 import { normalizeImageVariants, responsiveImageStyle } from '../../lib/responsiveImage';
+
+const catalog = import.meta.env.DEV ? await readPublishedDemoAssets({
+  distDir: path.resolve('dist'),
+  projectsDir: path.resolve('src/content/projects'),
+  mediaDir: path.resolve('media'),
+}) : [];
+const catalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
 
 const title = 'Objects in Balance';
 const blocks = [
@@ -18,10 +31,17 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
 
 <DemoLayout title="Site editor canvas" scrolling>
   <div class="playground is-dev-mode" data-editor-playground data-crop-demo data-initial-crop={JSON.stringify(crop)}>
-    <header class="toolbar" aria-label="Editor controls">
-      <Button label="Preview" data-playground-preview><span data-preview-label>Preview</span></Button>
-      <Button label="Reset" aria-label="Reset demo" data-reorder-demo-reset />
-    </header>
+    <Button label="Preview mode" class="preview-toggle" data-playground-preview aria-keyshortcuts="Alt+E">
+      <span data-preview-label>Preview mode</span> <kbd aria-hidden="true">⌥E</kbd>
+    </Button>
+    <Button label="Reset" class="reset" aria-label="Reset demo" data-reorder-demo-reset />
+    <div class="desktop-tools" data-desktop-tools hidden>
+      <Button label="Asset manager" data-playground-assets />
+    </div>
+    <DevOverlayFrame title="Asset manager" layout="landscape" defaultHidden data-demo-asset-picker role="dialog" aria-label="Asset manager">
+      <AssetManagerContent showFilters={false} />
+    </DevOverlayFrame>
+    <script is:inline type="application/json" data-published-demo-assets set:html={catalogJson}></script>
     <article class="sample">
       <h1 contenteditable="plaintext-only" role="textbox" aria-label="Project headline" spellcheck="false" data-playground-title>{title}</h1>
       <div class="hero">
@@ -32,13 +52,17 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
         </div>
         <Button label="Crop" class="crop-button" data-playground-crop aria-expanded="false"><span data-crop-label>Crop</span></Button>
       </div>
+      <details class="image-tools" data-image-tools hidden>
+        <summary>Image settings</summary>
+        <ImageCropControls aspect={crop.aspect} imageSrc="/demo-fixtures/studio.preview.webp" />
+      </details>
       <div class="blocks" data-reorder-demo-list>
         {blocks.map(({ title, copy }) => (
           <section class="sample-block" data-reorder-demo-block data-dev-section-reorderable data-title={title}>
             <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
             <Fragment set:html={sectionReorderHandleMarkup({ label: `Reorder ${title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
-            <h2>{title}</h2>
-            <p>{copy}</p>
+            <h2 data-playground-copy>{title}</h2>
+            <p data-playground-copy>{copy}</p>
           </section>
         ))}
       </div>
@@ -49,6 +73,7 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
 
 <script>
   import { createDemoBlockReorder } from '../../lib/demoBlockReorder';
+  import { createDemoAssetPicker, type DemoAssetProject } from '../../lib/demoAssetPicker';
   import { createDemoImageCrop } from '../../lib/demoImageCrop';
 
   const root = document.querySelector<HTMLElement>('[data-editor-playground]')!;
@@ -58,9 +83,54 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   const image = root.querySelector<HTMLElement>('[data-playground-image]')!;
   const bitmap = image.querySelector('img')!;
   const initialTitle = title.textContent;
+  const copy = [...root.querySelectorAll<HTMLElement>('[data-playground-copy]')];
+  const initialCopy = copy.map((element) => element.textContent);
+  const tools = root.querySelector<HTMLElement>('[data-desktop-tools]')!;
+  const imageTools = root.querySelector<HTMLDetailsElement>('[data-image-tools]')!;
+  const assetButton = root.querySelector<HTMLButtonElement>('[data-playground-assets]')!;
+  const assetPanel = root.querySelector<HTMLElement>('[data-demo-asset-picker]')!;
+  const catalog: DemoAssetProject[] = JSON.parse(root.querySelector('[data-published-demo-assets]')!.textContent || '[]');
+  const fallback = '/demo-fixtures/studio.preview.webp';
+  catalog.push({ slug: 'sample', title: 'Sample project', images: [
+    { src: fallback, filename: 'Studio', url: fallback, thumb: '/demo-fixtures/studio.thumb.webp' },
+    { src: '/demo-fixtures/studio.svg', filename: 'Studio illustration', url: '/demo-fixtures/studio.svg', thumb: '/demo-fixtures/studio.svg' },
+  ] });
+  const picker = createDemoAssetPicker(assetPanel, catalog, assetButton, { portal: false });
+  let desktop = false;
+  let assetRequest = 0;
+  function syncDesktopTools() {
+    const show = desktop && !root.hasAttribute('data-preview');
+    tools.hidden = imageTools.hidden = !show;
+    for (const element of copy) element.contentEditable = show ? 'plaintext-only' : 'false';
+    if (!show) {
+      imageTools.open = false;
+      assetRequest++;
+      picker.close();
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin || event.source !== window.parent) return;
+    if (event.data?.type === 'vcd:editor-playground-toggle-preview') { preview.click(); return; }
+    if (event.data?.type !== 'vcd:editor-playground-mode') return;
+    desktop = event.data.desktop === true;
+    syncDesktopTools();
+  });
+
+  assetButton.addEventListener('click', async () => {
+    const request = ++assetRequest;
+    const asset = await picker.open();
+    if (!asset || request !== assetRequest) return;
+    const replacement = new Image();
+    replacement.src = asset.url;
+    try { await replacement.decode(); } catch { return; }
+    if (request !== assetRequest) return;
+    crop.setSource({ src: replacement.src, width: replacement.naturalWidth, height: replacement.naturalHeight, alt: asset.filename });
+  });
   const reorder = createDemoBlockReorder(root, { scroll: true });
   const crop = createDemoImageCrop({
     host: image,
+    controls: imageTools,
     active: false,
     initialState: {
       source: { src: bitmap.src, width: Number(bitmap.getAttribute('width')), height: Number(bitmap.getAttribute('height')), alt: bitmap.alt },
@@ -87,13 +157,17 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
       title.setAttribute('role', 'textbox');
       title.setAttribute('aria-label', 'Project headline');
     }
-    preview.querySelector('[data-preview-label]')!.textContent = active ? 'Edit' : 'Preview';
+    preview.querySelector('[data-preview-label]')!.textContent = active ? 'Edit mode' : 'Preview mode';
+    syncDesktopTools();
   }
 
   cropButton.addEventListener('click', () => setCrop(cropButton.getAttribute('aria-expanded') === 'false'));
   preview.addEventListener('click', () => setPreview(!root.hasAttribute('data-preview')));
   root.querySelector('[data-reorder-demo-reset]')!.addEventListener('click', () => {
     title.textContent = initialTitle;
+    copy.forEach((element, index) => { element.textContent = initialCopy[index]; });
+    assetRequest++;
+    picker.close();
     crop.reset();
     setCrop(false);
     setPreview(false);
@@ -104,7 +178,11 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   title.addEventListener('blur', () => { if (!title.textContent?.trim()) title.textContent = initialTitle; });
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) {
+    if (!event.defaultPrevented && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyE' && !event.repeat && !event.isComposing) {
+      event.preventDefault();
+      preview.click();
+    }
+    if (event.key === 'Escape' && assetPanel.hidden && !event.defaultPrevented && !event.isComposing) {
       window.parent.postMessage('vcd:editor-playground-exit', location.origin);
     }
   });
@@ -113,19 +191,19 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
 <style>
   :global(body:has([data-editor-playground]) .demo-page) { padding: 0; }
   .playground { color: var(--sys-color-on-srf); }
-  .toolbar {
-    position: sticky;
-    top: 0;
+  .preview-toggle, .reset, .desktop-tools {
+    position: fixed;
+    left: max(8px, env(safe-area-inset-left));
     z-index: 110;
-    display: flex;
-    gap: 4px;
-    min-height: 60px;
-    align-items: center;
-    padding: 4px 64px 4px max(16px, env(safe-area-inset-left));
-    background: var(--sys-color-srf);
-    border-bottom: 1px solid var(--sys-color-srf-container);
   }
-  .sample { width: min(100%, 48rem); margin-inline: auto; padding: clamp(24px, 5vw, 64px) clamp(28px, 6vw, 64px); }
+  .preview-toggle { top: max(8px, env(safe-area-inset-top)); }
+  .reset { bottom: max(8px, env(safe-area-inset-bottom)); }
+  .desktop-tools { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px); }
+  [hidden] { display: none; }
+  kbd { opacity: 0.65; font: inherit; }
+  .image-tools { margin-block: 12px; }
+  .image-tools summary { cursor: pointer; }
+  .sample { width: min(100%, 48rem); margin-inline: auto; padding: 72px clamp(28px, 6vw, 64px) 88px; }
   h1 {
     margin: 0 0 0.48em;
     font-size: clamp(2rem, 6vw, 4rem);
@@ -134,8 +212,8 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
     line-height: 1.05;
     overflow-wrap: anywhere;
   }
-  h1[contenteditable="plaintext-only"] { cursor: text; border-radius: 3px; }
-  h1[contenteditable="plaintext-only"]:is(:hover, :focus-visible) { outline: 1px dashed currentColor; outline-offset: 6px; }
+  [contenteditable="plaintext-only"] { cursor: text; border-radius: 3px; }
+  [contenteditable="plaintext-only"]:is(:hover, :focus-visible) { outline: 1px dashed currentColor; outline-offset: 6px; }
   .hero { position: relative; }
   .project-cropped { --project-image-ratio: 3 / 1; }
   .crop-button { position: absolute; top: 6px; right: 6px; z-index: 15; }
@@ -157,7 +235,7 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
   .playground[data-preview] .crop-button { display: none; }
   .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   @media (max-width: 40em) {
-    .toolbar :global(button), .crop-button, .playground .sample-block > :global(.dev-section-drag-handle) { min-height: 44px; }
-    .playground:has(h1:focus) .toolbar { visibility: hidden; }
+    .preview-toggle, .reset, .crop-button, .playground .sample-block > :global(.dev-section-drag-handle) { min-height: 44px; }
+    .playground:has(h1:focus) :is(.preview-toggle, .reset) { visibility: hidden; }
   }
 </style>

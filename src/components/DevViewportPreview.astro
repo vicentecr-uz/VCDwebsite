@@ -14,6 +14,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 </div>
 
 <script>
+  import { viewportMorphProgress } from '../lib/viewportMorph';
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
 
   const dispose = onPageLoad(() => {
@@ -206,13 +207,11 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       };
       if (reducedMotion.matches) { render(target, barZone); finish(); return; }
       const start = performance.now();
-      const omega = 2 * Math.PI / (0.35 * 1.2);
       // Keep the responsive layout stable until the surface reaches its destination.
       const tick = (now: number) => {
         if (token !== revision || scope.signal.aborted) return;
-        const t = (now - start) / 1000;
-        const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
-        if (1 - x <= 0.004) { render(target, barZone); finish(); return; }
+        const x = viewportMorphProgress(now - start);
+        if (x === 1) { render(target, barZone); finish(); return; }
         render({
           width: from.width + (target.width - from.width) * x,
           height: from.height + (target.height - from.height) * x,
