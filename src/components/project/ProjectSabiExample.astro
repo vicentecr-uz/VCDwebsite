@@ -21,8 +21,8 @@ const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 
 const title = 'A long title that runs past the edge of the field';
-const field = (input: string, { dir, before = '', after = '' }: { dir?: string; before?: string; after?: string } = {}) =>
-  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
+const field = (input: string, { dir, before = '', after = '', stable = false }: { dir?: string; before?: string; after?: string; stable?: boolean } = {}) =>
+  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input${stable ? " stable-input" : ""}>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
 
 // Each option's markup is both the live preview and the code shown under it.
 const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
@@ -38,6 +38,10 @@ const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
     { label: 'Right to left', html: field('<input aria-label="כותרת" value="השועל החום המהיר קופץ מעל הכלב העצלן בזמן שהחתול צופה מרחוק" />', { dir: 'rtl' }) },
     { label: 'Mixed', html: field('<input aria-label="חיפוש" dir="auto" value="הזמנה מספר 48213 עבור Acme Corporation נשלחה ל-London" />', { dir: 'rtl', before: '    <span>חיפוש:</span>\n' }) },
   ],
+  'stable-input': [
+    { label: 'Growing', html: field('<input aria-label="Text" value="Sabi" />') },
+    { label: 'Stable width', html: field('<input aria-label="Text" value="Sabi" />', { stable: true }) },
+  ],
   fade: [
     { label: 'Default', html: field(`<input aria-label="Title" value="${title}" />`) },
     { label: 'Wide', html: field(`<input aria-label="Title" value="${title}" />`).replace('<sabi-input>', '<sabi-input style="--sabi-fade-width: 48px">') },
@@ -52,6 +56,7 @@ const options = SABI_EXAMPLES[example] ?? [];
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'sabiExample' : undefined}
   data-options
+  data-show-input-width={example === 'stable-input' || undefined}
 >
   <SegmentedControl class="sabi-example__options" label="Example" data-slide-selection>
     {options.map(({ label }, index) => (
@@ -107,6 +112,10 @@ const options = SABI_EXAMPLES[example] ?? [];
     border-bottom: 0;
     border-radius: calc(var(--radius-card) * var(--continuous-corner-scale, 1)) calc(var(--radius-card) * var(--continuous-corner-scale, 1)) 0 0;
     corner-shape: var(--squircle-shape);
+  }
+
+  .sabi-example[data-show-input-width] .sabi-example__preview :global(input) {
+    background: color-mix(in srgb, currentColor 15%, transparent);
   }
 
   .sabi-example__code {

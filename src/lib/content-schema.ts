@@ -62,7 +62,7 @@ const modern: Record<string, z.ZodRawShape> = {
     })),
   },
   codeBlock: { options: z.array(object.extend({ label: text.optional(), lang: text, code: text })).min(1), maxLines: number.optional() },
-  sabiExample: { example: z.enum(['compare', 'affixes', 'direction', 'fade']) },
+  sabiExample: { example: z.enum(['compare', 'affixes', 'direction', 'fade', 'stable-input']) },
 };
 const legacy: Record<string, z.ZodRawShape> = {
   ...shared,
