@@ -1,0 +1,97 @@
+---
+import textCursorIcon from 'lucide-static/icons/text-cursor.svg?raw';
+import slidersHorizontalIcon from 'lucide-static/icons/sliders-horizontal.svg?raw';
+import blocksIcon from 'lucide-static/icons/blocks.svg?raw';
+import arrowRightLeftIcon from 'lucide-static/icons/arrow-right-left.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+
+interface Props {
+  items: unknown;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const { items, documentKey, sectionPath, spacing, sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
+const textAttrs = (index: number, field: 'title' | 'description') => editable && sectionPath ? {
+  'data-dev-text-document': documentKey,
+  'data-dev-text-path': JSON.stringify([...sectionPath, 'items', index, field]),
+  'data-dev-text-kind': 'text',
+} : {};
+const icons = new Map([
+  ['text-cursor', textCursorIcon],
+  ['sliders-horizontal', slidersHorizontalIcon],
+  ['blocks', blocksIcon],
+  ['arrow-right-left', arrowRightLeftIcon],
+]);
+const cards = (Array.isArray(items) ? items : []).flatMap((item, index) => {
+  if (!item || typeof item !== 'object') return [];
+  const { title, description, icon } = item;
+  if (typeof title !== 'string' || typeof description !== 'string') return [];
+  return editable || (title.trim() && description.trim())
+    ? [{ index, title, description, icon: typeof icon === 'string' ? icons.get(icon) : undefined }]
+    : [];
+});
+---
+
+{cards.length > 0 && (
+  <ul
+    id={sectionId}
+    class:list={['project-block', 'benefit-cards', projectStackClass(spacing), sectionId && 'section-block']}
+    role="list"
+    {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  >
+    {cards.map(({ index, title, description, icon }) => (
+      <li>
+        {icon && <span class="benefit-cards__icon" aria-hidden="true" set:html={sizeIcon(icon, 20)} />}
+        <h3 {...textAttrs(index, 'title')}>{title}</h3>
+        <p {...textAttrs(index, 'description')}>{description}</p>
+      </li>
+    ))}
+  </ul>
+)}
+
+<style>
+  .benefit-cards {
+    --section-content-radius: var(--radius-card);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, max(16rem, (100% - var(--space-unit)) / 2)), 1fr));
+    gap: var(--space-unit);
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    padding: var(--space-unit);
+    border: 1px solid var(--comp-documentation-divider);
+    border-radius: calc(var(--section-content-radius) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+    overflow-wrap: anywhere;
+  }
+
+  .benefit-cards__icon {
+    display: flex;
+    margin-bottom: var(--space-unit);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  h3 {
+    margin: 0;
+    font: inherit;
+    font-weight: 600;
+  }
+
+  p {
+    margin: calc(var(--space-unit) / 2) 0 0;
+    color: color-mix(in oklab, var(--sys-color-on-srf-variant), var(--sys-color-on-srf-subtle) 45%);
+    font-size: 0.875em;
+  }
+
+  [contenteditable] {
+    min-block-size: 1lh;
+  }
+</style>

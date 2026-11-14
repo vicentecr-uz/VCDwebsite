@@ -1,0 +1,293 @@
+---
+import '../../styles/dev-chrome.css';
+import { sizeIcon } from '../../lib/icons';
+import checkIcon from 'lucide-static/icons/check.svg?raw';
+import imagesIcon from 'lucide-static/icons/images.svg?raw';
+import imageIcon from 'lucide-static/icons/image.svg?raw';
+import infoIcon from 'lucide-static/icons/info.svg?raw';
+import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
+import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import uploadIcon from 'lucide-static/icons/upload.svg?raw';
+
+interface Props {
+  fixed?: boolean;
+}
+const { fixed = false } = Astro.props;
+const toastIcons = {
+  info: sizeIcon(infoIcon, 18),
+  success: sizeIcon(checkIcon, 18),
+  publish: sizeIcon(uploadIcon, 18),
+  delete: sizeIcon(trashIcon, 18),
+  carousel: sizeIcon(imagesIcon, 18),
+  image: sizeIcon(imageIcon, 18),
+  warning: sizeIcon(triangleAlertIcon, 18),
+};
+---
+
+<div class:list={['toast-stack', fixed && 'toast-stack--fixed']} data-toast-stack>
+  <ol class="toasts__region" aria-label="Notifications" aria-live="polite" aria-relevant="additions" data-toast-region></ol>
+  <template data-toast-template>
+    <li class="toasts__toast dev-surface">
+      <span class="toasts__icon" data-toast-icon aria-hidden="true"></span>
+      <span data-toast-message></span>
+      <button class="dev-btn dev-btn--ghost toasts__action" type="button"></button>
+    </li>
+  </template>
+  <template data-toast-icons>
+    {Object.entries(toastIcons).map(([name, svg]) => <span data-icon={name} set:html={svg} />)}
+  </template>
+</div>
+
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  type Toast = {
+    message: string;
+    icon?: 'info' | 'success' | 'publish' | 'delete' | 'carousel' | 'image' | 'warning';
+    isRelevant?: () => boolean;
+    action?: { label: string; run: () => void | Promise<void> };
+  };
+
+  const bindStack = (root: HTMLElement) => {
+    const region = root.querySelector<HTMLOListElement>('[data-toast-region]')!;
+    const template = root.querySelector<HTMLTemplateElement>('[data-toast-template]')!;
+    const icons = root.querySelector<HTMLTemplateElement>('[data-toast-icons]')!.content;
+    const scope = createPageScope();
+    const actionByToast = new WeakMap<HTMLElement, NonNullable<Toast['action']>>();
+    const relevanceByToast = new WeakMap<HTMLElement, () => boolean>();
+    const timers = new Map<HTMLElement, number>();
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    let swipe: { toast: HTMLElement; id: number; start: number; distance: number } | undefined;
+    let wheel: { toast: HTMLElement; distance: number; timer: number } | undefined;
+    const toasts = () => [...region.querySelectorAll<HTMLElement>('.toasts__toast')];
+    const pause = (toast: HTMLElement) => {
+      window.clearTimeout(timers.get(toast));
+      timers.delete(toast);
+    };
+    const layout = () => toasts().reverse().forEach((toast, depth) => {
+      toast.style.setProperty('--depth', String(depth));
+      toast.toggleAttribute('data-buried', depth > 2);
+      toast.inert = depth > 2 || toast.hasAttribute('data-leaving');
+    });
+    const dismiss = (toast: HTMLElement, swipe = false) => {
+      if (toast.hasAttribute('data-leaving')) return;
+      pause(toast);
+      toast.setAttribute('data-leaving', swipe ? 'swipe' : '');
+      toast.inert = true;
+      scope.timeout(() => { toast.remove(); layout(); }, 260);
+    };
+    const arm = (toast: HTMLElement) => {
+      pause(toast);
+      if (toast.hasAttribute('data-leaving')) return;
+      timers.set(toast, scope.timeout(() => dismiss(toast), 4000));
+    };
+    const show = ({ message, icon = 'info', action, isRelevant }: Toast) => {
+      if (isRelevant && !isRelevant()) return;
+      const toast = template.content.firstElementChild?.cloneNode(true) as HTMLElement;
+      toast.querySelector('[data-toast-message]')!.textContent = message;
+      const iconNode = toast.querySelector<HTMLElement>('[data-toast-icon]')!;
+      const glyph = [...icons.children].find((entry) => entry.getAttribute('data-icon') === icon)?.firstElementChild;
+      if (glyph) iconNode.append(glyph.cloneNode(true));
+      const button = toast.querySelector('button')!;
+      if (action) {
+        button.textContent = action.label;
+        actionByToast.set(toast, action);
+      } else button.remove();
+      if (isRelevant) relevanceByToast.set(toast, isRelevant);
+      region.append(toast);
+      layout();
+      scope.frame(() => { toast.setAttribute('data-shown', ''); });
+      if (!region.matches(':hover, :focus-within')) arm(toast);
+    };
+    const dismissStale = () => toasts().forEach((toast) => {
+      const isRelevant = relevanceByToast.get(toast);
+      if (isRelevant && !isRelevant()) dismiss(toast);
+    });
+    const track = (toast: HTMLElement, distance: number) => {
+      toast.setAttribute('data-swiping', '');
+      toast.style.setProperty('--toast-swipe', reduced.matches ? '0px' : `${distance}px`);
+    };
+    const release = (toast: HTMLElement, distance: number) => {
+      toast.removeAttribute('data-swiping');
+      if (distance >= Math.min(96, toast.offsetWidth * 0.38)) {
+        dismiss(toast, true);
+      } else {
+        track(toast, 0);
+        toast.removeAttribute('data-swiping');
+        if (!region.matches(':hover, :focus-within')) arm(toast);
+      }
+    };
+    const onToast = (event: Event) => {
+      const toast = (event as CustomEvent<Toast>).detail;
+      if (toast?.message) show(toast);
+    };
+    if (root.classList.contains('toast-stack--fixed')) scope.listen(window, 'vcd:edit-toast', onToast);
+    else scope.listen(root, 'vcd:edit-toast', onToast);
+    scope.listen(window, 'vcd:dev-history-change', dismissStale);
+
+    scope.listen(region, 'click', async (event) => {
+      const button = (event.target as Element).closest<HTMLButtonElement>('button');
+      const toast = button?.closest<HTMLElement>('.toasts__toast');
+      const action = toast && actionByToast.get(toast);
+      if (!button || button.disabled || !toast || !action) return;
+      const isRelevant = relevanceByToast.get(toast);
+      if (isRelevant && !isRelevant()) {
+        dismiss(toast);
+        return;
+      }
+      button.disabled = true;
+      try {
+        await action.run();
+        dismiss(toast);
+      } catch (error) {
+        show({ message: error instanceof Error ? error.message : 'Could not complete that action.', icon: 'warning' });
+      } finally {
+        if (!toast.hasAttribute('data-leaving')) button.disabled = false;
+      }
+    });
+    scope.listen(region, 'pointerenter', () => toasts().forEach(pause));
+    scope.listen(region, 'pointerleave', () => { if (!swipe && !wheel && !region.matches(':focus-within')) toasts().forEach(arm); });
+    scope.listen(region, 'focusin', () => toasts().forEach(pause));
+    scope.listen(region, 'focusout', (event) => {
+      if (!region.contains(event.relatedTarget as Node | null) && !region.matches(':hover')) toasts().forEach(arm);
+    });
+    scope.listen(region, 'pointerdown', (event) => {
+      const target = event.target as Element;
+      const toast = target.closest<HTMLElement>('.toasts__toast');
+      if (!toast || target.closest('button') || !event.isPrimary || event.button !== 0) return;
+      toast.setPointerCapture(event.pointerId);
+      pause(toast);
+      swipe = { toast, id: event.pointerId, start: event.clientX, distance: 0 };
+    });
+    scope.listen(region, 'pointermove', (event) => {
+      if (swipe?.id !== event.pointerId) return;
+      swipe.distance = Math.max(0, event.clientX - swipe.start);
+      track(swipe.toast, swipe.distance);
+    });
+    const end = (event: PointerEvent) => {
+      if (swipe?.id !== event.pointerId) return;
+      const { toast, distance } = swipe;
+      swipe = undefined;
+      release(toast, event.type === 'pointercancel' ? 0 : distance);
+    };
+    scope.listen(region, 'pointerup', end);
+    scope.listen(region, 'pointercancel', end);
+    scope.listen(region, 'wheel', (event) => {
+      const toast = (event.target as Element).closest<HTMLElement>('.toasts__toast');
+      if (!toast || swipe || Math.abs(event.deltaX) <= Math.abs(event.deltaY) || (event.deltaX >= 0 && !wheel)) return;
+      event.preventDefault();
+      if (wheel && wheel.toast !== toast) {
+        window.clearTimeout(wheel.timer);
+        release(wheel.toast, wheel.distance);
+        wheel = undefined;
+      }
+      window.clearTimeout(wheel?.timer);
+      pause(toast);
+      const distance = Math.max(0, (wheel?.distance ?? 0) - event.deltaX);
+      track(toast, distance);
+      wheel = { toast, distance, timer: scope.timeout(() => {
+        wheel = undefined;
+        release(toast, distance);
+      }, 90) };
+    }, { passive: false });
+    return scope.destroy;
+  };
+
+  const dispose = onPageLoad(() => {
+    const cleanups = [...document.querySelectorAll<HTMLElement>('[data-toast-stack]')].map(bindStack);
+    return () => cleanups.forEach((cleanup) => cleanup());
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .toast-stack {
+    --toast-stack-max-width: 22rem;
+    width: min(100%, var(--toast-stack-max-width));
+  }
+  .toast-stack--fixed {
+    position: fixed;
+    z-index: 100;
+    inset: auto max(1em, env(safe-area-inset-right)) max(1em, env(safe-area-inset-bottom)) auto;
+    width: min(calc(100% - 2em), var(--toast-stack-max-width));
+    pointer-events: none;
+  }
+  .toast-stack--fixed .toasts__toast { pointer-events: auto; }
+  .toast-stack--fixed .toasts__region:has(.toasts__toast) { pointer-events: auto; }
+  :global(body:has(.dev-text-action-stack > .dev-text-actions:not([hidden]))) .toast-stack--fixed {
+    bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+  .toast-stack:not(.toast-stack--fixed) {
+    mask-image: linear-gradient(to left, transparent, #000 24px);
+    box-sizing: content-box;
+    padding: 110px 24px 8px 8px;
+    margin: -110px -24px -8px -8px;
+    pointer-events: none;
+  }
+  .toast-stack:not(.toast-stack--fixed) .toasts__toast { pointer-events: auto; }
+  .toasts__region {
+    position: relative;
+    width: 100%;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* A bridge above the stack, so the pointer can travel up a fanned stack without leaving it. */
+  .toasts__region:not(:empty):hover::before { content: ''; position: absolute; inset: -110px 0 0; }
+
+  .toasts__toast {
+    --depth: 0;
+    position: absolute;
+    inset: auto 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    --toast-padding: 12px;
+    gap: var(--toast-padding);
+    min-height: 44px;
+    box-sizing: border-box;
+    padding: var(--toast-padding);
+    border-radius: calc(12px * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+    font: var(--dev-text-label);
+    color: var(--sys-color-on-srf);
+    opacity: 0;
+    translate: 0 16px;
+    transform-origin: bottom center;
+    touch-action: pan-y;
+    transform: translateX(var(--toast-swipe, 0px));
+    transition: translate 400ms cubic-bezier(0.32, 0.72, 0, 1), scale 400ms cubic-bezier(0.32, 0.72, 0, 1), opacity 250ms ease, transform 250ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .toasts__icon { display: inline-flex; flex: 0 0 18px; align-items: center; justify-content: center; }
+  [data-toast-message] { min-width: 0; flex: 1 1 auto; }
+
+  .toasts__toast[data-shown] {
+    opacity: 1;
+    translate: 0 calc(var(--depth) * -8px);
+    scale: calc(1 - var(--depth) * 0.05);
+  }
+
+  .toasts__region:hover .toasts__toast[data-shown] { translate: 0 calc(var(--depth) * -50px); scale: 1; }
+  .toasts__toast[data-buried] { opacity: 0; pointer-events: none; }
+  .toasts__region .toasts__toast[data-leaving] { opacity: 0; translate: 0 calc(var(--depth) * -8px + 8px); }
+  .toasts__region .toasts__toast[data-leaving='swipe'] {
+    opacity: 1;
+    transform: translateX(max(var(--toast-swipe, 0px), calc(100% + max(1em, env(safe-area-inset-right)) + 24px)));
+  }
+  .toasts__toast[data-swiping] { transition: none; user-select: none; }
+  .toasts__action {
+    flex: none;
+    min-width: 0;
+    padding-inline: 10px;
+    font: inherit;
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toasts__toast { translate: 0 calc(var(--depth) * -8px); transition: opacity 250ms ease; }
+    .toasts__region .toasts__toast[data-leaving='swipe'] { opacity: 0; transform: none; }
+  }
+</style>

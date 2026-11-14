@@ -24,12 +24,22 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     animations = [];
   };
 
+  const panelRadius = ({ width, height }: DOMRect, minimized: boolean) => {
+    const radius = win.getComputedStyle(panel).borderRadius;
+    if (!minimized || !panel.classList.contains('dev-overlay')) return radius;
+    // CSS clamps the oversized resting radius to the bar's dimensions.
+    const pixels = Number.parseFloat(radius);
+    return Number.isFinite(pixels) ? `${Math.min(pixels, width / 2, height / 2)}px` : radius;
+  };
+
   const set = (minimized: boolean, animate = true) => {
     if (destroyed) return;
     const wasMinimized = panel.classList.contains('is-minimized');
     const interrupted = animating;
     if (animate && minimized === wasMinimized && !interrupted) return;
-    const fromHeight = panel.getBoundingClientRect().height;
+    const fromRect = panel.getBoundingClientRect();
+    const fromHeight = fromRect.height;
+    const fromRadius = panelRadius(fromRect, wasMinimized);
     const fromOpacity = wasMinimized && !interrupted ? 0 : Number(win.getComputedStyle(body).opacity);
     let morphBodyHeight = minimized ? body.getBoundingClientRect().height : 0;
     cancel();
@@ -57,7 +67,9 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
     button?.classList.toggle('dev-overlay__light--expand', minimized);
     options.afterStateChange?.();
 
-    const toHeight = panel.getBoundingClientRect().height;
+    const toRect = panel.getBoundingClientRect();
+    const toHeight = toRect.height;
+    const toRadius = panelRadius(toRect, minimized);
     if (!minimized) morphBodyHeight = body.getBoundingClientRect().height;
     if (Number.isFinite(morphBodyHeight) && morphBodyHeight >= 0) {
       panel.style.setProperty('--dev-overlay-morph-body-height', `${morphBodyHeight}px`);
@@ -89,16 +101,23 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       const bodyTop = bodyRect.top - panelRect.top;
       const paddingBottom = Number.parseFloat(win.getComputedStyle(panel).paddingBottom) || 0;
       const bodyStyles = win.getComputedStyle(body);
-      const corners = `${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
+      // The native body already clips to its shaped corners. The moving inset
+      // only limits how much of the body is revealed above the panel padding.
+      const corners = bodyStyles.getPropertyValue('corner-shape') === 'superellipse(1.33)'
+        ? ''
+        : ` round 0 0 ${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
       const inset = (height: number) => bodyHeight - (height - bodyTop - paddingBottom);
       clipKeyframes = [
-        { clipPath: `inset(0 0 ${inset(fromHeight)}px 0 round 0 0 ${corners})` },
-        { clipPath: `inset(0 0 ${inset(toHeight)}px 0 round 0 0 ${corners})` },
+        { clipPath: `inset(0 0 ${inset(fromHeight)}px 0${corners})` },
+        { clipPath: `inset(0 0 ${inset(toHeight)}px 0${corners})` },
       ];
     }
     if (!reduced) {
       // Only this bounded panel changes size; animating its box avoids scaling text and controls.
-      animations.push(panel.animate([{ height: `${fromHeight}px` }, { height: `${toHeight}px` }], timing));
+      animations.push(panel.animate([
+        { height: `${fromHeight}px`, borderRadius: fromRadius },
+        { height: `${toHeight}px`, borderRadius: toRadius },
+      ], timing));
     } else {
       // Keep the final geometry while the body fades, including the header-only collapsed size.
       animations.push(panel.animate([{ height: `${toHeight}px` }, { height: `${toHeight}px` }], { duration, fill: 'both' }));

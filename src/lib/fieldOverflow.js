@@ -1,11 +1,8 @@
-import { initTextField } from './devTextField.js';
-
 export function initFieldOverflow(field, { manageMarkup = true } = {}) {
   const value = field.querySelector('.dev-field__value');
   if (!value) return;
   const controller = new AbortController();
   const tracked = new Map();
-  const inputs = new Map();
   const wrapped = new Map();
   let readOnlyTrack;
   const sync = () => {
@@ -18,32 +15,20 @@ export function initFieldOverflow(field, { manageMarkup = true } = {}) {
   const resize = new ResizeObserver(sync);
   const discover = () => {
     for (const input of manageMarkup ? value.querySelectorAll('input') : []) {
-      if (input.hidden || input.getAttribute('aria-hidden') === 'true') continue;
-      if (!['text', 'search', 'url', 'tel'].includes(input.type) || input.closest('.dev-text-field')) continue;
-      const root = document.createElement('div');
-      root.className = 'dev-text-field dev-text-field--native';
-      const track = document.createElement('div');
-      track.className = 'dev-text-field__track';
-      const content = document.createElement('div');
-      content.className = 'dev-text-field__content';
-      const measure = document.createElement('span');
-      measure.className = 'dev-text-field__measure';
-      measure.setAttribute('aria-hidden', 'true');
+      if (input.hidden || input.hasAttribute('data-native-text-field') || input.getAttribute('aria-hidden') === 'true') continue;
+      if (!['text', 'search', 'url', 'tel', 'password'].includes(input.type) || input.closest('sabi-input')) continue;
+      const root = document.createElement('sabi-input');
+      root.className = 'dev-text-field';
       input.before(root);
-      content.append(input);
-      track.append(content);
-      root.append(track, measure);
-      wrapped.set(root, input);
+      root.append(input);
+      wrapped.set(root, { input, width: input.style.width });
     }
-    for (const [root, cleanup] of inputs) {
-      if (value.contains(root)) continue;
-      cleanup();
-      inputs.delete(root);
+    for (const [root, { input }] of wrapped) {
+      if (root.contains(input) && value.contains(root)) continue;
+      if (!root.hasChildNodes()) root.remove();
+      wrapped.delete(root);
     }
-    for (const root of value.querySelectorAll('.dev-text-field')) {
-      if (!inputs.has(root)) inputs.set(root, initTextField(root));
-    }
-    const candidates = [...value.querySelectorAll('.dev-select__trigger-label, .base-ui-select-value, input[type="email"], input[type="password"], input[type="number"], [data-field-overflow]')];
+    const candidates = [...value.querySelectorAll('.dev-select__trigger-label, .base-ui-select-value, [data-field-overflow]')];
     if (manageMarkup && !value.querySelector('input, textarea, button, select, .dev-text-field, [data-field-overflow]')) {
       if (!readOnlyTrack || !value.contains(readOnlyTrack)) {
         readOnlyTrack = document.createElement('span');
@@ -76,8 +61,11 @@ export function initFieldOverflow(field, { manageMarkup = true } = {}) {
     controller.abort();
     resize.disconnect();
     changes.disconnect();
-    for (const cleanup of inputs.values()) cleanup();
-    for (const [root, input] of wrapped) root.replaceWith(input);
+    for (const [root, { input, width }] of wrapped) {
+      if (input.parentElement !== root) continue;
+      root.replaceWith(input);
+      input.style.width = width;
+    }
     if (readOnlyTrack?.parentNode === value) readOnlyTrack.replaceWith(...readOnlyTrack.childNodes);
     for (const track of tracked.keys()) {
       track.classList.remove('dev-field-overflow');

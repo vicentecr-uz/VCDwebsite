@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { isProjectStackSpacingValue, reorderProjectStackSpacingSeams } from '../../src/lib/projectStack';
 import { isDevContentEditing, syncDevModeOnSection } from '../../src/scripts/devSectionMount';
 import { DEV_PATH_ATTRS, getDropZone, remapSectionPaths } from '../../src/scripts/devSectionPaths';
 
@@ -151,4 +152,29 @@ test('section insertion remaps queued media paths by document without aliasing',
   expect(originalPath).toEqual(['sections', 1, 'images', 2]);
   expect(other.payload.path).toEqual(['sections', 1, 'images', 0]);
   expect(nonSection.payload.path).toEqual(['gallery', 1, 'images', 0]);
+});
+
+test('a card dragged below body text previews the final card and heading margins', () => {
+  const source = readFileSync(new URL('../../src/components/DevSectionReorderEditor.astro', import.meta.url), 'utf8');
+  const start = source.indexOf('  const textKind =');
+  const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    source.slice(start, source.indexOf('  const controller =', start)),
+  );
+  const block = (kind: string, spacing: string) => ({
+    matches: (selector: string) => Boolean(kind && selector.includes(kind)),
+    dataset: { devSpacingValue: spacing },
+    classList: { contains: () => false },
+  });
+  const heading = block('> .project-section-title', 'related');
+  const card = block('', 'related');
+  const body = block('> .project-body-text', 'related');
+  const projectDropMargins = new Function('env', `with (env) { ${script}; return projectDropMargins; }`)({
+    grabSpacingSnapshot: [heading, card, body], dragItem: card,
+    activeIntroDrag: false, activeSourceIndex: 1, GAP_BEFORE_PLACEMENT_KEY: 'gap-before',
+    isProjectStackSpacingValue, reorderProjectStackSpacingSeams,
+  });
+  const margin = projectDropMargins(0, '');
+  expect(margin(card)).toBe('0px');
+  expect(margin(heading)).toContain('--text-heading-1-leading');
+  expect(projectDropMargins(2, '')(card)).toContain('--text-body-leading');
 });

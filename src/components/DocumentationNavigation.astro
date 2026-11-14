@@ -5,9 +5,10 @@ import { sizeIcon } from '../lib/icons';
 
 interface Props {
   websiteHref?: string;
+  githubHref?: string;
   pages: Array<{ href: string; label: string; group: string; current?: boolean }>;
 }
-const { websiteHref = 'https://vicentecr.uz', pages } = Astro.props;
+const { websiteHref = 'https://vicentecr.uz', githubHref = 'https://github.com/vicentecr-uz/sabi', pages } = Astro.props;
 const groups = [...new Set(pages.map((page) => page.group))];
 ---
 
@@ -28,7 +29,7 @@ const groups = [...new Set(pages.map((page) => page.group))];
   </nav>
   <nav class="documentation-external" aria-label="External links">
     <a href={websiteHref} target="_self" data-astro-reload data-page-transition aria-label="Vicente Cruz's website" set:html={sizeIcon(globeIcon, 18)} />
-    <a href="https://github.com/vicentecr-uz/sabi" aria-label="Sabi on GitHub" set:html={sizeIcon(githubIcon, 18)} />
+    <a href={githubHref} aria-label="GitHub repository" set:html={sizeIcon(githubIcon, 18)} />
   </nav>
 </div>
 
@@ -44,12 +45,13 @@ const groups = [...new Set(pages.map((page) => page.group))];
     min-height: 0;
     padding: 0.25rem 0.5rem;
     margin-inline: -0.5rem;
-    border-radius: var(--radius-control);
+    border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     font: inherit;
     white-space: normal;
   }
   .documentation-external { display: flex; gap: 0.125rem; margin-top: auto; padding-top: 1.5rem; border-top: 1px solid var(--documentation-divider); }
-  .documentation-external a { position: relative; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: var(--radius-control); color: var(--sys-color-on-srf-variant); }
+  .documentation-external a { position: relative; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); color: var(--sys-color-on-srf-variant); }
   .documentation-external a:first-child { margin-inline-start: -7px; }
   .documentation-external a:hover { color: var(--sys-color-on-srf); background: var(--comp-button-ghost-container-hover); }
   .documentation-external a:active { background: var(--comp-button-ghost-container-pressed); }

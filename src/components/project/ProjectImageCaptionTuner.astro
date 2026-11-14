@@ -85,7 +85,7 @@ import {
     type ImageCaptionStyleId,
     type ImageCaptions,
   } from '../../lib/imageCaptions';
-  import { captionCornerConflictsWithChrome } from '../../lib/devEditChrome';
+  import { captionCornerConflictsWithChrome, syncNestedCarouselChrome } from '../../lib/devEditChrome';
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
   import type { ImageViewport } from '../../lib/responsiveImage';
   import { IMAGE_VIEWPORTS } from '../../lib/responsiveImage';
@@ -485,6 +485,7 @@ import {
     };
 
     const syncAllCaptionChromeButtons = () => {
+      syncNestedCarouselChrome();
       document.querySelectorAll<HTMLElement>('[data-dev-image-target]').forEach((target) => {
         syncCaptionChromeButton(target, readCaptionsForTarget(target));
       });
@@ -1061,8 +1062,11 @@ import {
       if (captionSession && openingCaption && !sameCaption(openingCaption, captureDraft())) event.detail.dirty = true;
     }) as EventListener);
 
-    // Clicking away from the caption editor drops an empty shell → Add caption returns.
     pageScope.listen(document, 'focusin', (event) => {
+      const focused = event.target instanceof Element ? event.target : null;
+      const grid = focused?.closest<HTMLElement>('.dev-grid-edit-target');
+      if (grid) syncNestedCarouselChrome(grid);
+      // Clicking away from the caption editor drops an empty shell → Add caption returns.
       if (!editTarget) return;
       if (isCaptionEditorSurface(event.target)) return;
       // Focus moved elsewhere (page chrome, another field) — finalize empty captions.
@@ -1182,6 +1186,9 @@ import {
       // Grid reflow can move a different cell under the Edit grid corner token.
       syncAllCaptionChromeButtons();
     });
+    pageScope.listen(window, 'vcd:dev-carousel-media-appended', () => {
+      pageScope.frame(() => syncAllCaptionChromeButtons());
+    });
 
     // Grid layout edits can reorder cells without a window resize — refresh on hover.
     pageScope.listen(document,
@@ -1190,6 +1197,8 @@ import {
         if (!document.documentElement.classList.contains('is-dev-mode')) return;
         const target = (event.target as HTMLElement | null)?.closest?.('[data-dev-image-target]');
         if (!(target instanceof HTMLElement)) return;
+        const grid = target.closest<HTMLElement>('.dev-grid-edit-target');
+        if (grid) syncNestedCarouselChrome(grid);
         syncCaptionChromeButton(target, readCaptionsForTarget(target));
       },
       true,

@@ -1,0 +1,13 @@
+---
+import StylesDocumentation from '../../components/StylesDocumentation.astro';
+import { loadPageDocument } from '../../lib/projects';
+import { stylesPages } from '../../lib/stylesCatalog';
+
+export function getStaticPaths() {
+  const { examples } = loadPageDocument('styles');
+  return examples ? stylesPages(examples).filter(({ slug }) => slug)
+    .map(({ slug }) => ({ params: { page: slug } })) : [];
+}
+---
+
+<StylesDocumentation topic={Astro.params.page} />

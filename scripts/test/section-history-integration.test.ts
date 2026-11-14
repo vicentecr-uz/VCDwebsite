@@ -1,6 +1,8 @@
 import { createPageScope } from '../../src/lib/pageLifecycle';
 import { expect, test } from 'bun:test';
+import { sectionScrollDuration, sectionScrollTop } from '../../src/lib/sectionScroll';
 import { readFileSync } from 'node:fs';
+import { reorderProjectStackSpacingSeams } from '../../src/lib/projectStack';
 import { createHistory } from '../../src/lib/devHistory';
 
 const source = readFileSync(new URL('../../src/components/project/ProjectSectionNavEditor.astro', import.meta.url), 'utf8');
@@ -72,7 +74,7 @@ for (const motion of ['custom', 'native', 'reduced']) {
     }
     const env = {
       scrollRafId: 0, scrollTimeoutId: 0, isAutoScrolling: false, manualLockUntil: 0,
-      clickOffsetPx: 152, clickLockMs: 700, nav: { isConnected: true }, HTMLElement: Block,
+      sectionScrollDuration, sectionScrollTop, clickOffsetPx: 152, clickLockMs: 700, nav: { isConnected: true }, HTMLElement: Block,
       document: { documentElement: { scrollHeight: 10000 }, addEventListener: (type: string, fn: Function) => handlers.set(type, fn) },
       window: {
         scrollY: 0, innerHeight: 900,
@@ -100,9 +102,9 @@ for (const motion of ['custom', 'native', 'reduced']) {
     const reveal = handlers.get('vcd:section-history-reveal')!;
     const previous = new Block('distant', 7000);
     const restored = new Block('research', 2500);
-    reveal({ detail: { block: previous } });
+    reveal({ preventDefault() {}, detail: { block: previous } });
     const previousFrame = env.scrollRafId, previousTimer = env.scrollTimeoutId;
-    reveal({ detail: { block: restored } });
+    reveal({ preventDefault() {}, detail: { block: restored } });
     expect(frames.has(previousFrame)).toBe(false);
     expect(timers.has(previousTimer)).toBe(false);
     if (motion === 'custom') {
@@ -114,7 +116,7 @@ for (const motion of ['custom', 'native', 'reduced']) {
     expect(links.at(-1)).toBe('research');
     restored.isConnected = false;
     const count = scrolls.length;
-    reveal({ detail: { block: restored } });
+    reveal({ preventDefault() {}, detail: { block: restored } });
     expect(scrolls).toHaveLength(count);
     const previousCancel = globalThis.cancelAnimationFrame;
     globalThis.cancelAnimationFrame = env.cancelAnimationFrame;
@@ -125,3 +127,73 @@ for (const motion of ['custom', 'native', 'reduced']) {
     expect(handlers.has('vcd:section-history-reveal')).toBe(false);
   });
 }
+
+test('drag reorder undoes and redoes section order and responsive spacing in one step', async () => {
+  const editor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+  const start = editor.indexOf("    window.addEventListener('vcd:dev-section-reordered', ((event");
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    editor.slice(start, editor.indexOf("    window.addEventListener('vcd:dev-section-structure-changed'", start)),
+  );
+  const pageHistory = createHistory();
+  const before = [{}, {}, {}];
+  const after = [before[1], before[2], before[0]];
+  const spacingStates = before.map((element, index) => {
+    const currentValue = { desktop: ['none', 'section', 'related'][index], tablet: 'group', mobile: 'related' };
+    return { element, document: 'sabi', currentValue, visualSavedValue: { ...currentValue } };
+  });
+  const stateValues = () => spacingStates.map(({ currentValue, visualSavedValue }) => [currentValue, visualSavedValue]);
+  const initial = structuredClone(stateValues());
+  let order = after;
+  let listener: (event: CustomEvent) => void = () => {};
+  new Function('env', `with(env) { ${code} }`)({
+    window: { addEventListener: (_type: string, fn: typeof listener) => { listener = fn; }, dispatchEvent() {} },
+    editorSignal: new AbortController().signal,
+    pageHistory, spacingStates, spacingHistoryValues: new WeakMap(),
+    reorderProjectStackSpacingSeams,
+    captureFieldHistory() {}, cloneSpacing: structuredClone,
+    spacingEqual: (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b),
+    applySpacingClass() {}, syncSpacingControl() {}, syncPageTopSpacingControls() {},
+    syncIntroRunControls() {}, updateActions() {}, stickyStatus: 'Saved.',
+  });
+  listener(new CustomEvent('vcd:dev-section-reordered', { detail: {
+    document: 'sabi', before, after, moved: before[0], destinationSide: 'after',
+    restoreOrder: (direction: string) => { order = direction === 'before' ? before : after; },
+  } }));
+  const reordered = structuredClone(stateValues());
+  expect(reordered).not.toEqual(initial);
+  await pageHistory.undo();
+  expect(order).toBe(before);
+  expect(stateValues()).toEqual(initial);
+  expect(pageHistory.canUndo).toBe(false);
+  await pageHistory.redo();
+  expect(order).toBe(after);
+  expect(stateValues()).toEqual(reordered);
+});
+
+test('pending section order identifies the dragged block and survives a structural refresh', () => {
+  const editor = readFileSync(new URL('../../src/components/DevSectionReorderEditor.astro', import.meta.url), 'utf8');
+  const start = editor.indexOf('  const pendingReorderRoots');
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    editor.slice(start, editor.indexOf('  const controller', start)),
+  );
+  const roots = [{ id: 0 }, { id: 1 }, { id: 2 }];
+  let order = [roots[1], roots[2], roots[0]];
+  let event: CustomEvent | undefined;
+  const stage = new Function('env', `with (env) { ${code}; return syncPending; }`)({
+    documentKey: 'sabi', baselineOrder: [0, 1, 2], baselineOrders: new Map([['sabi', [0, 1, 2]]]),
+    dropZone: () => ({ classList: { add() {}, remove() {} } }),
+    captureSectionOrder: () => order.map((root) => root.id),
+    getSectionRootsInDomOrder: () => order,
+    ordersMatch: (left: number[], right: number[]) => JSON.stringify(left) === JSON.stringify(right),
+    syncDevSectionOutlineSidebar() {}, getDevSectionOutline: () => [],
+    window: { dispatchEvent: (next: CustomEvent) => { event = next; } },
+  });
+  stage(undefined, undefined, roots[0]);
+  expect(event?.detail.root).toBe(roots[0]);
+  expect(event?.detail.payload.order).toEqual([1, 2, 0]);
+  stage();
+  expect(event?.detail.root).toBe(roots[0]);
+  order = roots;
+  stage();
+  expect(event?.type).toBe('vcd:dev-pending-remove');
+});

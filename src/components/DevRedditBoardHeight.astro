@@ -1,141 +1,352 @@
 ---
-import DevOverlay from './DevOverlay.astro';
-import Field from './ui/Field.astro';
+import RangeField from './ui/RangeField.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
 import Button from './ui/Button.astro';
-import PanelActions from './ui/PanelActions.astro';
+import { sizeIcon } from '../lib/icons';
+import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
-const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
 ---
 
-<DevOverlay title="Board height" storageKey="reddit-board-height" panelKey="reddit-board-height" defaultHidden>
-  <div class="reddit-board-height" data-reddit-board-height-panel>
-    {breakpoints.map((breakpoint) => (
-      <Field label={breakpoint[0].toUpperCase() + breakpoint.slice(1)} labelFor={`reddit-board-height-${breakpoint}`}>
-        <output slot="labelAccessory" for={`reddit-board-height-${breakpoint}`} data-reddit-board-output={breakpoint}></output>
-        <input id={`reddit-board-height-${breakpoint}`} type="range" min="8" max="60" step="1" data-reddit-board-height={breakpoint} />
-      </Field>
-    ))}
-    <PanelActions>
-      <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
-      <Button emphasis="ghost" label="Reset" data-reddit-board-reset />
-      <Button emphasis="filled" label="Save" data-reddit-board-save />
-    </PanelActions>
-  </div>
-</DevOverlay>
+<div class="reddit-board-height dev-surface" id="reddit-board-height-panel" data-reddit-board-height-panel data-dev-overlay data-dev-panel-key="reddit-board-height" hidden>
+  <ViewportSelector label="Viewport" dataAttr="data-reddit-board-viewport" />
+  <RangeField class="reddit-board-height__field" label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value>
+    <Button slot="labelAccessory" emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
+  </RangeField>
+  <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
+</div>
 
 <style>
-  .reddit-board-height { display: grid; gap: var(--space-unit); }
-  .reddit-board-height input { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
-  .reddit-board-height input:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
-  .reddit-board-height :global(.dev-panel-actions) { align-items: baseline; }
-  .reddit-board-height__status { flex: 1 1 0; min-width: 0; margin: 0; font: var(--dev-text-label); }
+  .reddit-board-height { position: fixed; z-index: 61; display: grid; gap: 6px; width: min(22em, calc(100vw - 16px)); padding: var(--dev-panel-pad); border-radius: calc(var(--dev-radius-panel) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); }
+  .reddit-board-height[hidden] { display: none; }
+  .reddit-board-height :global(.reddit-board-height__field .dev-field__label-row) { min-height: 28px; }
+  .reddit-board-height :global([data-reddit-board-reset]) { margin-inline-start: auto; min-height: 28px; min-width: 28px; padding: 4px; }
+  .reddit-board-height :global([data-reddit-board-reset][hidden]) { display: none; }
+  .reddit-board-height__status { margin: 0; font: var(--dev-text-status); }
+  .reddit-board-height__status:empty { display: none; }
+  .reddit-board-height :global([data-reddit-board-viewport][data-override]) { gap: 3px; }
+  .reddit-board-height :global([data-reddit-board-viewport][data-override])::after { content: ''; flex: none; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+  :global(button.reddit-board-height-grabber) { display: none; position: absolute; z-index: 2; bottom: calc(var(--rcb-pad-y) / 2 - 12px); left: 50%; width: 48px; height: 24px; padding: 0; border: 0; translate: -50% 0; cursor: ns-resize; touch-action: none; background: transparent; }
+  :global(html.is-dev-mode button.reddit-board-height-grabber) { display: block; }
+  :global(button.reddit-board-height-grabber)::after { content: ''; position: absolute; top: 10px; left: 50%; width: 32px; height: 4px; translate: -50% 0; border-radius: 999px; background: var(--sys-color-on-srf-subtle); opacity: 0; transition: opacity 150ms ease-out; }
+  :global(.reddit-comment-board:hover .reddit-board-height-grabber)::after,
+  :global(button.reddit-board-height-grabber[aria-expanded="true"])::after,
+  :global(button.reddit-board-height-grabber:hover)::after, :global(button.reddit-board-height-grabber:focus-visible)::after, :global(button.reddit-board-height-grabber[data-dragging])::after { opacity: 1; }
 </style>
 
 <script>
-  type Breakpoint = 'desktop' | 'tablet' | 'mobile';
-  const breakpoints: Breakpoint[] = ['desktop', 'tablet', 'mobile'];
-  let cleanup: (() => void) | undefined;
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  import { boardViewports as breakpoints, resolveRedditBoardHeights, type BoardHeights, type BoardViewport as Breakpoint } from '../lib/redditBoardHeight';
+
+  const handoffKey = 'vcd:reddit-board-height-viewport';
+  type Handoff = { key: string; preset: Breakpoint; authored: BoardHeights; expires: number };
 
   const init = () => {
-    cleanup?.();
     const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
-    const overlay = panel?.closest<HTMLElement>('[data-dev-overlay]');
-    if (!panel || !overlay) return;
-    const controller = new AbortController();
-    const { signal } = controller;
-    const inputs = [...panel.querySelectorAll<HTMLInputElement>('[data-reddit-board-height]')];
-    const save = panel.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
-    const reset = panel.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
-    const status = panel.querySelector<HTMLElement>('[data-reddit-board-status]');
-    if (!save || !reset || !status || inputs.length !== 3) return;
+    const input = panel?.querySelector<HTMLInputElement>('[data-reddit-board-height-value]');
+    const reset = panel?.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
+    const status = panel?.querySelector<HTMLElement>('[data-reddit-board-status]');
+    const viewportButtons = panel ? [...panel.querySelectorAll<HTMLButtonElement>('[data-reddit-board-viewport]')] : [];
+    if (!panel || !input || !reset || !status || viewportButtons.length !== 3) return;
 
+    const scope = createPageScope();
+    const { signal } = scope;
     let root: HTMLElement | null = null;
-    let saved: Record<Breakpoint, number> = { desktop: 20, tablet: 32, mobile: 26 };
-    let values = { ...saved };
-    const preview = () => {
+    let grabber: HTMLElement | null = null;
+    const handles = new Map<HTMLElement, HTMLButtonElement>();
+    const drafts = new WeakMap<HTMLElement, BoardHeights>();
+    let values = resolveRedditBoardHeights({});
+    let authored: BoardHeights = {};
+    let selected: Breakpoint = 'desktop';
+    let dragging = false;
+    let moved = false;
+    let pointerStartY = 0;
+    let valueStart = 0;
+    let pointerY = 0;
+    let frame = 0;
+    let sliderPointerId: number | null = null;
+    let settling: Animation | undefined;
+    const saveTimers = new Map<HTMLElement, number>();
+    let writeQueue = Promise.resolve();
+
+    const actualViewport = (): Breakpoint => matchMedia('(max-width: 36em)').matches
+      ? 'mobile' : matchMedia('(max-width: 52em)').matches ? 'tablet' : 'desktop';
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const identity = (board: HTMLElement) => JSON.stringify([
+      board.dataset.redditBoardDocument, board.dataset.devContentId || board.dataset.redditBoardPath,
+    ]);
+    const resolveValues = () => { values = resolveRedditBoardHeights(authored); };
+    const persist = (board: HTMLElement) => {
+      const timer = saveTimers.get(board);
+      if (timer !== undefined) window.clearTimeout(timer);
+      saveTimers.delete(board);
+      const write = writeQueue.then(async () => {
+        const draft = drafts.get(board);
+        const value = JSON.stringify(draft);
+        if (!draft || value === (board.dataset.redditBoardAuthored || '{}')) return;
+        const document = board.dataset.redditBoardDocument;
+        const path = JSON.parse(board.dataset.redditBoardPath!);
+        const sectionId = board.dataset.devContentId;
+        try {
+          const response = await fetch('/api/content-spacing', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            keepalive: true,
+            body: JSON.stringify({ changes: [{ document, path, ...(sectionId && { target: { sectionId } }), value: draft }] }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Could not save height.');
+          board.dataset.redditBoardAuthored = value;
+          if (root === board) status.textContent = '';
+          if (!signal.aborted) window.dispatchEvent(new Event('vcd:dev-content-written'));
+        } catch (error) {
+          if (root === board) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+          throw error;
+        }
+      });
+      writeQueue = write.catch(() => { /* The board shows the error and its draft can be retried. */ });
+      return write;
+    };
+    const scheduleSave = (board: HTMLElement) => {
+      window.clearTimeout(saveTimers.get(board));
+      saveTimers.set(board, window.setTimeout(() => { void persist(board).catch(() => {}); }, 300));
+    };
+    const setHeight = (height: number | null) => {
       if (!root) return;
-      for (const breakpoint of breakpoints) {
-        root.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`);
-      }
+      authored = { ...authored, [selected]: height };
+      drafts.set(root, authored);
+      resolveValues();
+      sync();
+      scheduleSave(root);
+    };
+    const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
+    const positionPanel = () => {
+      if (sliderPointerId !== null || !grabber || panel.hidden) return;
+      const rect = grabber.getBoundingClientRect();
+      const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
+      panel.style.left = `${left}px`;
+      const boardBottom = grabber.parentElement?.getBoundingClientRect().bottom ?? rect.bottom;
+      panel.style.top = `${Math.max(boardBottom, rect.bottom) + 6}px`;
     };
     const sync = () => {
-      for (const input of inputs) {
-        const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
-        input.value = String(values[breakpoint]);
-        const output = panel.querySelector<HTMLOutputElement>(`[data-reddit-board-output="${breakpoint}"]`);
-        if (output) output.textContent = `${values[breakpoint]}em`;
-      }
+      input.value = String(Math.round(values[selected]));
+      input.dispatchEvent(new Event('vcd:range-refresh'));
+      viewportButtons.forEach((button) => {
+        const viewport = button.dataset.redditBoardViewport as Breakpoint;
+        button.classList.toggle('is-active', viewport === selected);
+        button.setAttribute('aria-pressed', String(viewport === selected));
+        const overridden = typeof authored[viewport] === 'number';
+        button.toggleAttribute('data-override', overridden);
+        if (overridden) button.setAttribute('aria-description', 'Custom height');
+        else button.removeAttribute('aria-description');
+      });
+      const local = typeof authored[selected] === 'number';
+      let from = selected;
+      while (authored[from] === null && from !== 'desktop') from = breakpoints[breakpoints.indexOf(from) - 1];
+      const inheritedFrom = from === selected ? 'default' : `${from[0].toUpperCase()}${from.slice(1)}`;
+      input.setAttribute('aria-description', local ? 'Custom height' : `Inherited from ${inheritedFrom}`);
+      reset.hidden = !local;
       preview();
+      positionPanel();
     };
     const bind = (target: HTMLElement) => {
+      if (root === target) return;
+      if (root) close();
       root = target;
-      saved = JSON.parse(target.dataset.redditBoardHeights || '{}');
-      values = { ...saved };
+      try {
+        authored = drafts.get(target) ?? JSON.parse(target.dataset.redditBoardAuthored || '{}') as BoardHeights;
+      } catch { authored = {}; }
+      resolveValues();
+      selected = actualViewport();
+      grabber = handles.get(target) ?? null;
       status.textContent = '';
       sync();
     };
-    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
-      if (event.detail?.panel !== overlay) return;
-      const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]')
-        ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
-      if (target) bind(target);
-    }) as EventListener, { signal });
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
-      if (event.detail?.panel !== overlay || !root) return;
-      values = { ...saved };
-      sync();
-      status.textContent = '';
-    }) as EventListener, { signal });
-    inputs.forEach((input) => input.addEventListener('input', () => {
+    const close = () => {
+      sliderPointerId = null;
+      grabber?.setAttribute('aria-expanded', 'false');
+      if (panel.hidden) return;
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+    };
+    const open = () => {
       if (!root) return;
-      const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
-      values[breakpoint] = input.valueAsNumber;
+      panel.hidden = false;
+      grabber?.setAttribute('aria-expanded', 'true');
+      panel.style.zIndex = '61';
       sync();
-      status.textContent = 'Unsaved';
-    }, { signal }));
-    reset.addEventListener('click', () => {
-      values = { ...saved };
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel, trigger: grabber } }));
+      positionPanel();
+    };
+    const renderDrag = () => {
+      frame = 0;
+      const em = parseFloat(getComputedStyle(root || panel).fontSize) || 16;
+      values[selected] = clamp(valueStart + (pointerY - pointerStartY) / em, 8, 60);
+      moved = moved || Math.abs(pointerY - pointerStartY) > 4;
       sync();
-      status.textContent = '';
-    }, { signal });
-    save.addEventListener('click', async () => {
-      if (!root?.dataset.redditBoardDocument || !root.dataset.redditBoardPath) return;
-      const target = root;
-      save.disabled = true;
-      inputs.forEach((input) => { input.disabled = true; });
-      status.textContent = 'Saving…';
-      try {
-        const response = await fetch('/api/content-spacing', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          signal,
-          body: JSON.stringify({ changes: [{
-            document: target.dataset.redditBoardDocument,
-            path: JSON.parse(target.dataset.redditBoardPath),
-            target: { sectionId: target.dataset.devContentId },
-            value: values,
-          }] }),
-        });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.error || 'Could not save height.');
-        saved = { ...values };
-        target.dataset.redditBoardHeights = JSON.stringify(saved);
-        status.textContent = 'Saved';
-      } catch (error) {
-        if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
-      } finally {
-        save.disabled = false;
-        inputs.forEach((input) => { input.disabled = false; });
+    };
+    const toggle = () => { if (panel.hidden) open(); else close(); };
+    const endDrag = (cancelled = false) => {
+      if (!grabber || !dragging) return;
+      if (frame) cancelAnimationFrame(frame);
+      renderDrag();
+      dragging = false;
+      delete grabber.dataset.dragging;
+      if (cancelled || !moved) {
+        resolveValues();
+        sync();
+        return;
       }
-    }, { signal });
-    if (!overlay.hidden) {
-      const target = document.querySelector<HTMLElement>('[data-reddit-board-document]');
-      if (target) bind(target);
+      const shell = grabber.parentElement;
+      const from = shell?.getBoundingClientRect().height;
+      setHeight(clamp(Math.round(values[selected]), 8, 60));
+      const to = shell?.getBoundingClientRect().height;
+      if (shell && from !== undefined && to !== undefined && Math.abs(to - from) >= 0.5
+        && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const animation = shell.animate([{ height: `${from}px` }, { height: `${to}px` }], {
+          duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
+        });
+        settling = animation;
+        const follow = () => {
+          positionPanel();
+          if (animation.playState === 'running') scope.frame(follow);
+        };
+        scope.frame(follow);
+      }
+      if (panel.hidden) open();
+    };
+    const beginSliderInteraction = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      sliderPointerId = event.pointerId;
+    };
+    const endSliderInteraction = (event?: PointerEvent) => {
+      if (event && sliderPointerId !== event.pointerId) return;
+      sliderPointerId = null;
+      positionPanel();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!grabber || event.button !== 0) return;
+      dragging = true;
+      moved = false;
+      pointerStartY = pointerY = event.clientY;
+      const shell = grabber.parentElement;
+      const em = parseFloat(getComputedStyle(root || panel).fontSize) || 16;
+      valueStart = shell && actualViewport() === selected ? shell.getBoundingClientRect().height / em : values[selected];
+      settling?.cancel();
+      grabber.dataset.dragging = '';
+      grabber.setPointerCapture(event.pointerId);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!dragging) return;
+      pointerY = event.getCoalescedEvents?.().at(-1)?.clientY ?? event.clientY;
+      if (!frame) frame = requestAnimationFrame(renderDrag);
+    };
+    const mountGrabber = (board: HTMLElement) => {
+      const shell = board.querySelector('.reddit-comment-board__shell');
+      if (!shell) return;
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'reddit-board-height-grabber';
+      handle.setAttribute('aria-label', 'Adjust Reddit board height');
+      handle.setAttribute('aria-controls', panel.id);
+      handle.setAttribute('aria-expanded', 'false');
+      shell.append(handle);
+      handles.set(board, handle);
+      scope.add(() => handle.remove());
+      handle.addEventListener('pointerdown', (event) => { bind(board); onPointerDown(event); }, { signal });
+      handle.addEventListener('pointermove', onPointerMove, { signal });
+      handle.addEventListener('pointerup', () => endDrag(), { signal });
+      handle.addEventListener('pointercancel', () => endDrag(true), { signal });
+      handle.addEventListener('click', (event) => {
+        if (event.detail && moved) return;
+        bind(board);
+        toggle();
+      }, { signal });
+      handle.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        event.preventDefault();
+        bind(board);
+        setHeight(clamp(values[selected] + (event.key === 'ArrowDown' ? 1 : -1), 8, 60));
+        if (panel.hidden) open();
+      }, { signal });
+    };
+    viewportButtons.forEach((button) => button.addEventListener('click', () => {
+      const viewport = button.dataset.redditBoardViewport as Breakpoint;
+      if (!root || !breakpoints.includes(viewport)) return;
+      selected = viewport;
+      if (viewport !== actualViewport()) {
+        if (window.parent === window) {
+          const handoff: Handoff = { key: identity(root), preset: viewport, authored, expires: Date.now() + 15_000 };
+          sessionStorage.setItem(handoffKey, JSON.stringify(handoff));
+        }
+        window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: viewport } }));
+      }
+      sync();
+    }, { signal }));
+    input.addEventListener('input', () => { if (input.validity.valid) setHeight(input.valueAsNumber); }, { signal });
+    input.addEventListener('pointerdown', beginSliderInteraction, { signal });
+    input.addEventListener('lostpointercapture', endSliderInteraction, { signal });
+    scope.listen(document, 'pointerup', endSliderInteraction as EventListener, true);
+    scope.listen(document, 'pointercancel', endSliderInteraction as EventListener, true);
+    reset.addEventListener('click', () => setHeight(null), { signal });
+    scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel) return;
+      const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]') ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
+      if (target && target !== root) bind(target);
+      if (!panel.hidden) { sync(); positionPanel(); }
+    }) as EventListener);
+    scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
+    scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
+    scope.listen(window, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); close(); } }, true);
+    const flush = () => Promise.all([...handles.keys()].filter((board) => drafts.has(board)).map(persist));
+    scope.listen(window, 'vcd:dev-viewport-prepare', (event) => {
+      (event as CustomEvent<{ waitUntil: (write: Promise<unknown>) => void }>).detail.waitUntil(flush());
+    });
+    const syncViewport = () => {
+      const viewport = actualViewport();
+      if (!root || selected === viewport) return;
+      selected = viewport;
+      sync();
+    };
+    for (const query of ['(max-width: 36em)', '(max-width: 52em)']) {
+      scope.listen(matchMedia(query), 'change', syncViewport);
     }
-    cleanup = () => controller.abort();
+    scope.listen(window, 'resize', positionPanel);
+    scope.listen(window, 'scroll', positionPanel, true);
+    const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];
+    boards.forEach(mountGrabber);
+    if (window.parent !== window && window.name === 'vcd-edit-viewport-preview') {
+      const raw = sessionStorage.getItem(handoffKey);
+      if (raw) {
+        sessionStorage.removeItem(handoffKey);
+        try {
+          const handoff = JSON.parse(raw) as Handoff;
+          const board = boards.find((candidate) => identity(candidate) === handoff.key);
+          if (board && handoff.expires > Date.now()) {
+            bind(board);
+            authored = handoff.authored;
+            selected = handoff.preset;
+            drafts.set(board, authored);
+            resolveValues();
+            const reopen = () => scope.frame(() => {
+              grabber?.scrollIntoView({ block: 'center', behavior: 'instant' });
+              open();
+            });
+            if (document.documentElement.classList.contains('is-dev-mode')) reopen();
+            else scope.listen(window, 'vcd:dev-mode-change', (event) => {
+              if ((event as CustomEvent<{ active?: boolean }>).detail?.active) reopen();
+            }, { once: true });
+          }
+        } catch { /* Ignore a stale viewport handoff. */ }
+      }
+    }
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      for (const timer of saveTimers.values()) window.clearTimeout(timer);
+      settling?.cancel();
+      scope.destroy();
+    };
   };
-  document.addEventListener('astro:page-load', init);
-  document.addEventListener('astro:before-swap', () => cleanup?.());
-  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
-  init();
+  const dispose = onPageLoad(init);
+  import.meta.hot?.dispose(dispose);
 </script>

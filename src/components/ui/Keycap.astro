@@ -1,0 +1,30 @@
+---
+import '../../styles/dev-chrome.css';
+
+interface Props {
+  class?: string;
+  [key: string]: any;
+}
+
+const { class: className, ...rest } = Astro.props;
+---
+
+<kbd class:list={['dev-keycap', className]} {...rest}><slot /></kbd>
+
+<style>
+  .dev-keycap {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding-inline: 5px;
+    box-sizing: border-box;
+    border-radius: calc(5px * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+    background: var(--sys-color-srf-container-low);
+    box-shadow: inset 0 -1px 0 var(--sys-color-outline-variant);
+    color: var(--sys-color-on-srf-variant);
+    font: 500 11px/1 var(--font-sans);
+    white-space: nowrap;
+  }
+</style>

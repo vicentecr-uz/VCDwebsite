@@ -40,7 +40,8 @@
 
   .is-dev-mode [data-dev-project-drop-zone] {
     position: relative;
-    border-radius: 0.15em;
+    border-radius: calc(0.15em * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
   }
 
   /* Above sticky sidebar (2 / 20); under the header (50). The first block
@@ -101,7 +102,8 @@
     justify-content: center;
     border: 0;
     /* Same chip scale as .dev-image-edit-trigger — --radius-control is em-based. */
-    border-radius: var(--radius-control);
+    border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     /* Icon-only at rest; fill + scale on hover; shadow only on press/drag. */
     background: transparent;
     padding: 0.45em 0.55em;
@@ -122,29 +124,30 @@
   }
 
   /*
-    Below 40em full-bleed media has no external gutter, so keep its handle
-    inside the media box. Text blocks start after the page gutter, so their
-    handle can occupy that gutter without overlapping the prose.
+    At tablet widths the media column can leave less room than a gutter chip.
+    At phone widths the text gutter can still hold the handle beside the prose.
   */
-  @media (max-width: 40em) {
+  @media (max-width: 52em) {
     .dev-section-drag-handle {
-      --dev-section-handle-mobile-transform: translate(0.55em, -50%);
-      --dev-section-handle-mobile-active-transform: translate(0.55em, -50%) scale(1.08);
-      transform: var(--dev-section-handle-mobile-transform);
+      --dev-section-handle-inset-transform: translate(0.55em, -50%);
+      --dev-section-handle-inset-active-transform: translate(0.55em, -50%) scale(1.08);
+      transform: var(--dev-section-handle-inset-transform);
     }
 
+    .dev-section-drag-bridge {
+      display: none;
+    }
+  }
+
+  @media (max-width: 40em) {
     [data-dev-section-reorderable].project-block--text > .dev-section-drag-handle {
       left: 0;
       width: var(--page-gutter, 2rem);
       height: 44px;
       padding: 0;
       box-sizing: border-box;
-      --dev-section-handle-mobile-transform: translate(-100%, -50%);
-      --dev-section-handle-mobile-active-transform: translate(-100%, -50%);
-    }
-
-    .dev-section-drag-bridge {
-      display: none;
+      --dev-section-handle-inset-transform: translate(-100%, -50%);
+      --dev-section-handle-inset-active-transform: translate(-100%, -50%);
     }
   }
 
@@ -183,14 +186,14 @@
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
-  @media (max-width: 40em) {
+  @media (max-width: 52em) {
     .is-dev-mode .dev-section-drag-handle:hover,
     .is-dev-mode .dev-section-drag-handle:focus-visible,
     .is-dev-mode .dev-section-drag-handle:active,
     html.is-section-reorder-holding
       [data-dev-section-reorderable].is-section-lifted-session
       > .dev-section-drag-handle {
-      transform: var(--dev-section-handle-mobile-active-transform);
+      transform: var(--dev-section-handle-inset-active-transform);
     }
   }
 
@@ -244,7 +247,8 @@
        --section-content-radius (code blocks, demos), with --section-content-radius-top
        when its top edge differs (a selector over a panel); otherwise
        --radius-control-smooth. */
-    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em));
+    border-radius: calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     /* Visibility is toggled with .is-visible so fade-out can wait until after settle. */
     opacity: 0;
     box-shadow: none;
@@ -302,7 +306,8 @@
     right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.375em));
     z-index: -1;
     background: var(--section-lift-background, var(--sys-color-srf));
-    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em));
+    border-radius: calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em)))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em))) + var(--section-lift-card-inset, 0.375em)) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     pointer-events: none;
   }
 
@@ -404,13 +409,6 @@
     margin-inline: 0;
   }
 
-  .is-dev-mode
-    [data-dev-project-drop-zone]
-    > .dev-section-drop-indicator[data-dev-section-insert-at-start]
-    + .is-drop-preview-below {
-    margin-top: var(--space-related) !important;
-  }
-
   .dev-section-reorder-spacer {
     box-sizing: border-box;
     padding: 0;
@@ -474,7 +472,8 @@
     box-sizing: border-box;
     border: 1px dashed transparent;
     /* Concentric with the block's corners, a slot inset inside the lift card. */
-    border-radius: calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px));
+    border-radius: calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius-top, var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px)))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) * var(--continuous-corner-scale, 1)) calc(calc(var(--section-content-radius, calc(var(--radius-control-smooth, 0.35em) - var(--section-lift-card-inset, 0.375em) + var(--section-slot-card-inset, 2px))) + var(--section-lift-card-inset, 0.375em) - var(--section-slot-card-inset, 2px)) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
     background: transparent;
     pointer-events: none;
     transition:
