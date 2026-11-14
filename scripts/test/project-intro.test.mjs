@@ -12,7 +12,7 @@ import {
   shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../src/lib/pageColumn.ts';
-import { createScrollDriver, EDGE_SCROLL, edgeScrollOverrides, resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
+import { createScrollDriver, EDGE_SCROLL, resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 import { resolveProjectOutline } from '../../src/lib/projectOutline.ts';
 import { validateProjectOutlineTargets } from '../dev-api-plugins.mjs';
 
@@ -246,12 +246,9 @@ const edgeStep = (pointerY) => {
 assert.ok(edgeStep(990) > 0);
 assert.ok(edgeStep(10) < 0);
 assert.equal(edgeStep(500), 0);
-assert.ok(edgeStep(990) > edgeStep(880));
-assert.ok(edgeStep(10) < edgeStep(120));
-const previousOverrides = { ...edgeScrollOverrides };
-try {
-  edgeScrollOverrides.maxScrollSpeed = 24;
-  edgeScrollOverrides.maxSpeedInsetPx = 60;
+assert.ok(edgeStep(990) > edgeStep(750));
+assert.ok(edgeStep(10) < edgeStep(250));
+{
   const steps = [];
   const driver = createScrollDriver({ edgeZoneRatio: 0.2, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
   driver.apply(1000 / 60, 20, { top: 0, bottom: 200 }, 20);
@@ -280,22 +277,17 @@ try {
   assert.ok(steps.reduce((sum, step) => sum + step, 0) > 0, 'outside pickup activates when it reaches the bottom zone');
   const insetDriver = createScrollDriver({ edgeZoneRatio: 0.5, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, maxScrollSpeed: 24, maxSpeedInsetPx: 0, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
   steps.length = 0;
-  edgeScrollOverrides.maxSpeedInsetPx = 0;
   insetDriver.apply(1000 / 60, 160, { top: 0, bottom: 200 });
   const noInsetSpeed = steps.reduce((sum, step) => sum + step, 0);
   steps.length = 0;
-  edgeScrollOverrides.maxSpeedInsetPx = 60;
   const cappedInsetDriver = createScrollDriver({ edgeZoneRatio: 0.5, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, maxScrollSpeed: 24, maxSpeedInsetPx: 60, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
   cappedInsetDriver.apply(1000 / 60, 160, { top: 0, bottom: 200 });
   assert.ok(Math.abs(steps.reduce((sum, step) => sum + step, 0)) > Math.abs(noInsetSpeed));
-  assert.equal(EDGE_SCROLL.MAX_SPEED_INSET_PX, 12);
+  assert.equal(EDGE_SCROLL.MAX_SPEED_INSET_PX, 134);
   const zeroSteps = [];
   const zeroDriver = createScrollDriver({ maxScrollSpeed: 0, velocitySmoothing: 1, scrollBy: (step) => zeroSteps.push(step) });
   zeroDriver.apply(1000 / 60, 990, edgeBounds);
   assert.equal(zeroSteps.length, 0, 'maxScrollSpeed: 0 disables scrolling');
-} finally {
-  for (const key of Object.keys(edgeScrollOverrides)) delete edgeScrollOverrides[key];
-  Object.assign(edgeScrollOverrides, previousOverrides);
 }
 
 const viewportSource = readFileSync(new URL('../../src/lib/safeVh.ts', import.meta.url), 'utf8');

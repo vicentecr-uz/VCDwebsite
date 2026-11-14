@@ -20,15 +20,15 @@ export const REORDER_TIMING = {
 
 export const EDGE_SCROLL = {
   /** Edge zone height as a fraction of the scroll area's visible height. */
-  EDGE_ZONE_RATIO: 0.18,
-  EDGE_ZONE_MIN_PX: 56,
-  EDGE_ZONE_MAX_PX: 160,
+  EDGE_ZONE_RATIO: 0.30,
+  EDGE_ZONE_MIN_PX: 32,
+  EDGE_ZONE_MAX_PX: 380,
   /** Px per 60fps frame at full depth. */
-  MAX_SCROLL_SPEED: 24,
-  MAX_SPEED_INSET_PX: 12,
+  MAX_SCROLL_SPEED: 67,
+  MAX_SPEED_INSET_PX: 134,
   /** Exponent on normalized depth into the zone. */
-  CURVE: 2,
-  VELOCITY_SMOOTHING: 0.1,
+  CURVE: 2.5,
+  VELOCITY_SMOOTHING: 1,
   /** Pointer travel from the drag start before edge scroll may engage. */
   ACTIVATION_PX: 8,
 } as const;
@@ -299,20 +299,6 @@ export type ScrollDriver = {
   getLastTickTime: () => number;
   setLastTickTime: (time: number) => void;
 };
-export type EdgeScrollZones = { top: number; bottom: number; topInset: number; bottomInset: number };
-
-// Prototype tuning hook, remove once values are locked.
-export const edgeScrollOverrides: Partial<{
-  edgeZoneRatio: number;
-  edgeZoneMinPx: number;
-  edgeZoneMaxPx: number;
-  maxScrollSpeed: number;
-  maxSpeedInsetPx: number;
-  curve: number;
-  velocitySmoothing: number;
-  activationPx: number;
-}> = {};
-export const edgeScrollZoneRegistration: { onZones?: (zones: EdgeScrollZones | null) => void } = {};
 
 /** Stateful edge-gradient scroll used while a block is lifted. */
 export const createScrollDriver = (
@@ -324,7 +310,6 @@ export const createScrollDriver = (
     maxSpeedInsetPx?: number;
     curve?: number;
     velocitySmoothing?: number;
-    onZones?: (zones: EdgeScrollZones | null) => void;
     scrollBy?: (step: number) => void;
   } = {},
 ): ScrollDriver => {
@@ -335,16 +320,15 @@ export const createScrollDriver = (
   let contractedDepth = 0;
   let grabInitialized = false;
   let activationReached = false;
+  const edgeZoneRatio = options.edgeZoneRatio ?? EDGE_SCROLL.EDGE_ZONE_RATIO;
+  const edgeZoneMinPx = options.edgeZoneMinPx ?? EDGE_SCROLL.EDGE_ZONE_MIN_PX;
+  const edgeZoneMaxPx = options.edgeZoneMaxPx ?? EDGE_SCROLL.EDGE_ZONE_MAX_PX;
+  const maxScrollSpeed = options.maxScrollSpeed ?? EDGE_SCROLL.MAX_SCROLL_SPEED;
+  const maxSpeedInsetPx = options.maxSpeedInsetPx ?? EDGE_SCROLL.MAX_SPEED_INSET_PX;
+  const curve = options.curve ?? EDGE_SCROLL.CURVE;
+  const velocitySmoothing = options.velocitySmoothing ?? EDGE_SCROLL.VELOCITY_SMOOTHING;
 
   const targetVelocity = (pointerY: number, bounds: { top: number; bottom: number }, grabPointerY?: number) => {
-    const o = edgeScrollOverrides;
-    const edgeZoneRatio = o.edgeZoneRatio ?? options.edgeZoneRatio ?? EDGE_SCROLL.EDGE_ZONE_RATIO;
-    const edgeZoneMinPx = o.edgeZoneMinPx ?? options.edgeZoneMinPx ?? EDGE_SCROLL.EDGE_ZONE_MIN_PX;
-    const edgeZoneMaxPx = o.edgeZoneMaxPx ?? options.edgeZoneMaxPx ?? EDGE_SCROLL.EDGE_ZONE_MAX_PX;
-    const maxScrollSpeed = options.maxScrollSpeed === 0
-      ? 0
-      : (o.maxScrollSpeed ?? options.maxScrollSpeed ?? EDGE_SCROLL.MAX_SCROLL_SPEED);
-    const curve = o.curve ?? options.curve ?? EDGE_SCROLL.CURVE;
     const zone = Math.min((bounds.bottom - bounds.top) / 2, Math.min(
       edgeZoneMaxPx,
       Math.max(edgeZoneMinPx, (bounds.bottom - bounds.top) * edgeZoneRatio),
@@ -355,37 +339,25 @@ export const createScrollDriver = (
       const b = bounds.bottom - grabPointerY;
       if (t >= 0 && t <= zone) {
         contracted = 'top';
-        contractedDepth = Math.max(0, t);
+        contractedDepth = t;
         activationReached = true;
       } else if (b >= 0 && b <= zone) {
         contracted = 'bottom';
-        contractedDepth = Math.max(0, b);
+        contractedDepth = b;
         activationReached = true;
-      } else {
-        activationReached = Math.abs(pointerY - grabPointerY) >= (o.activationPx ?? EDGE_SCROLL.ACTIVATION_PX);
       }
     }
     if (grabPointerY !== undefined && contracted === null && !activationReached
-      && Math.abs(pointerY - grabPointerY) >= (o.activationPx ?? EDGE_SCROLL.ACTIVATION_PX)) activationReached = true;
+      && Math.abs(pointerY - grabPointerY) >= EDGE_SCROLL.ACTIVATION_PX) activationReached = true;
     if (contracted === 'top') contractedDepth = Math.min(zone, Math.max(contractedDepth, pointerY - bounds.top));
     if (contracted === 'bottom') contractedDepth = Math.min(zone, Math.max(contractedDepth, bounds.bottom - pointerY));
-    let topDepth = contracted === 'top' ? contractedDepth : zone;
-    let bottomDepth = contracted === 'bottom' ? contractedDepth : zone;
-    if (contracted === 'top' && topDepth >= zone) {
-      contracted = null;
-      topDepth = zone;
-    }
-    if (contracted === 'bottom' && bottomDepth >= zone) {
-      contracted = null;
-      bottomDepth = zone;
-    }
+    if (contracted !== null && contractedDepth >= zone) contracted = null;
+    const topDepth = contracted === 'top' ? contractedDepth : zone;
+    const bottomDepth = contracted === 'bottom' ? contractedDepth : zone;
     const fromTop = bounds.top + topDepth - pointerY;
     const fromBottom = pointerY - (bounds.bottom - bottomDepth);
-    const insetSetting = o.maxSpeedInsetPx ?? options.maxSpeedInsetPx ?? EDGE_SCROLL.MAX_SPEED_INSET_PX;
-    const topInset = Math.min(topDepth / 2, insetSetting);
-    const bottomInset = Math.min(bottomDepth / 2, insetSetting);
-    const zones = { top: topDepth, bottom: bottomDepth, topInset, bottomInset };
-    options.onZones?.(zones);
+    const topInset = Math.min(topDepth / 2, maxSpeedInsetPx);
+    const bottomInset = Math.min(bottomDepth / 2, maxSpeedInsetPx);
     if (grabPointerY !== undefined && !activationReached) return 0;
     if (fromTop > 0) return -(Math.min(1, fromTop / Math.max(1, topDepth - topInset)) ** curve) * maxScrollSpeed;
     if (fromBottom > 0) return Math.min(1, fromBottom / Math.max(1, bottomDepth - bottomInset)) ** curve * maxScrollSpeed;
@@ -401,11 +373,9 @@ export const createScrollDriver = (
       contractedDepth = 0;
       grabInitialized = false;
       activationReached = false;
-      options.onZones?.(null);
     },
     apply: (dtMs, pointerY, bounds, grabPointerY) => {
       const target = targetVelocity(pointerY, bounds, grabPointerY);
-      const velocitySmoothing = edgeScrollOverrides.velocitySmoothing ?? options.velocitySmoothing ?? EDGE_SCROLL.VELOCITY_SMOOTHING;
       const frameFactor = dtMs / (1000 / 60);
       const blend = 1 - (1 - velocitySmoothing) ** frameFactor;
       scrollVelocity += (target - scrollVelocity) * blend;
@@ -529,6 +499,7 @@ export type ReorderHost = {
     maxScrollSpeed?: number;
     curve?: number;
     velocitySmoothing?: number;
+    maxSpeedInsetPx?: number;
   };
   /**
    * Where the lifted block would land. Defaults to the 1-D Y walk
@@ -664,14 +635,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   };
   const scrollDriver = createScrollDriver({
     ...host.scrollTuning,
-    ...(host.classes.lifted === 'is-section-lifted'
-      ? { onZones: (zones: EdgeScrollZones | null) => edgeScrollZoneRegistration.onZones?.(zones) }
-      : {}),
     scrollBy: (step) => setScrollY(scrollY() + step),
   });
-  const resetScroll = () => {
-    scrollDriver.reset();
-  };
   const scrollBounds = () => {
     const viewport = scrollViewport();
     if (viewport) {
@@ -1387,7 +1352,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       liftFrame = 0;
     }
     cancelDropPositionGlide();
-    resetScroll();
+    scrollDriver.reset();
     clearActiveFlip();
     clearGhosts();
     releaseNeighbor();
@@ -1524,7 +1489,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         });
       }
 
-      resetScroll();
+      scrollDriver.reset();
       travelDirection = 0;
       const initialCenter = liftCenter();
       lastTravelX = initialCenter.x + window.scrollX;
@@ -1612,7 +1577,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state.targetKey = state.placedKey;
       setLiftTransformOrigin(item, handle);
 
-      resetScroll();
+      scrollDriver.reset();
       travelDirection = 0;
       const resumedCenter = liftCenter();
       lastTravelX = resumedCenter.x + window.scrollX;
@@ -1670,7 +1635,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       const run = dropRun;
       state.phase = 'dropping';
       stopTick();
-      resetScroll();
+      scrollDriver.reset();
       clearGhosts();
       clearActiveFlip();
       dropIndicator?.classList.remove('is-repositioning');
