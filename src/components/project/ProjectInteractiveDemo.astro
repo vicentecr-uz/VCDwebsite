@@ -84,7 +84,9 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       const ready = () => {
         const document = frame.contentDocument;
         if (!document || document.URL === 'about:blank' || document.readyState !== 'complete') return;
-        const islands = document.querySelectorAll('astro-island[ssr]');
+        // The playground canvas is ready at load. Its desktop settings hydrate on
+        // visibility, so waiting for them here would keep the iframe hidden forever.
+        const islands = expand ? [] : document.querySelectorAll('astro-island[ssr]');
         if (islands.length) {
           islands.forEach((island) => island.addEventListener('astro:hydrate', ready, { once: true, signal }));
           return;
