@@ -208,6 +208,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import { PLAYGROUND_PUBLISH_UNAVAILABLE, showPlaygroundNotice } from '../lib/playgroundFeedback.mjs';
   import {
     spacingButtonsHtml, pinGapToolbar as pinGapToolbarTop, unpinGapToolbar,
     GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
@@ -334,8 +335,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   };
 
   const initDevTextEditor = () => {
-
-
+    const playground = document.documentElement.hasAttribute('data-editor-playground');
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
     const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
@@ -2788,7 +2788,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // so the bar keeps its shape while Publish becomes the next step.
       saveButton.hidden = false;
       commitStylesButton.hidden = publishReadOnly || !styleEngineDirtyCount;
-      publishButton.hidden = publishReadOnly || !publishKnown;
+      publishButton.hidden = !publishKnown || (publishReadOnly && !playground);
       if (!actionsBusy && !branchUpdateBusy) {
         saveButton.disabled = !dirtyCount;
         revertButton.disabled = false;
@@ -2806,7 +2806,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncBranchUpdateBar();
     };
 
-    const SCROLL_RESTORE_KEY = document.documentElement.hasAttribute('data-editor-playground')
+    const SCROLL_RESTORE_KEY = playground
       ? 'vcd:editor-playground:scroll-y' : 'vcd-dev-scroll-y';
     const restoreScrollAfterReload = () => {
       const raw = sessionStorage.getItem(SCROLL_RESTORE_KEY);
@@ -6788,6 +6788,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!(event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyS')) return;
       event.preventDefault();
       if (event.shiftKey) {
+        if (playground) {
+          if (!event.repeat && !event.isComposing) showPlaygroundNotice(PLAYGROUND_PUBLISH_UNAVAILABLE);
+          return;
+        }
         if (publishButton.hidden || publishButton.disabled || actionsBusy) return;
         publishButton.click();
         return;
@@ -6900,7 +6904,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const branch = state.branch || 'detached HEAD';
         const target = state.publishBranch ?? 'main';
         const onTarget = state.onPublishBranch !== false;
-        publishButton.hidden = publishReadOnly;
         if (!actionsBusy && !branchUpdateBusy) publishButton.disabled = false;
         branchLabel.hidden = false;
         branchLabel.textContent = branch;
@@ -6929,7 +6932,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             + `If this edit uses those changes, ${target} cannot render it yet.`;
           warnLabel.title = warning;
           publishButton.title = `${warning} Publish will ask you to confirm.`;
-        } else {
+        } else if (!playground) {
           publishButton.title = onTarget
             ? `Save, commit, and push to ${target}`
             : `Save, commit, and push to ${target} — ${branch} stays as it is`;
@@ -6953,6 +6956,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     publishButton.addEventListener('click', () => {
+      if (playground) {
+        showPlaygroundNotice(PLAYGROUND_PUBLISH_UNAVAILABLE);
+        return;
+      }
       if (publishReadOnly) return;
       if (branchUpdateBusy) return;
       void (async () => {

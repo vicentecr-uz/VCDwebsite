@@ -5,6 +5,7 @@ import { DEFAULT_IMAGE_VARIANTS, PLACEHOLDER_IMAGE_VARIANTS } from './projectIma
 import { validateSiteAnnotations } from './siteAnnotations.ts';
 import { isAcceptedImageFile, isAcceptedVideoFile } from './imageUpload.mjs';
 import { validateAwardBlockSize } from './awardBlockSize.mjs';
+import { PLAYGROUND_ACTION_UNAVAILABLE, PLAYGROUND_PUBLISH_UNAVAILABLE } from './playgroundFeedback.mjs';
 
 const defaultImage = () => structuredClone(DEFAULT_IMAGE_VARIANTS);
 const id = (prefix) => `${prefix}-${crypto.randomUUID()}`;
@@ -238,7 +239,9 @@ export function createPlaygroundAuthoring({
       await save(slug, data);
       return send(200, { ok: true });
     }
-    return send(403, { error: 'This operation requires the owner checkout.' });
+    return send(403, {
+      error: endpoint === 'publish' ? PLAYGROUND_PUBLISH_UNAVAILABLE : PLAYGROUND_ACTION_UNAVAILABLE,
+    });
   }
 
   async function reset() {

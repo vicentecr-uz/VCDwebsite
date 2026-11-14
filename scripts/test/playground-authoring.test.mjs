@@ -172,8 +172,13 @@ test('playground restores its own draft and rejects owner writes', async () => {
     changes: [{ ...changes[0], document: 'new-classic-utility-knife' }],
   });
   assert.equal(ownerWrite.status, 400);
-  for (const endpoint of ['publish', 'commit-engine', 'dev-branch-update']) {
-    assert.equal((await session.request('POST', endpoint, { document })).status, 403);
+  const publish = await session.request('POST', 'publish', { document });
+  assert.equal(publish.status, 403);
+  assert.match(publish.payload.error, /Use Save to keep edits in this browser/);
+  for (const endpoint of ['commit-engine', 'dev-branch-update', 'project-settings', 'gallery-membership']) {
+    const denied = await session.request('POST', endpoint, { document });
+    assert.equal(denied.status, 403);
+    assert.match(denied.payload.error, /unavailable in the playground/);
   }
   assert.equal((await session.request('GET', 'publish')).payload.readOnly, true);
 

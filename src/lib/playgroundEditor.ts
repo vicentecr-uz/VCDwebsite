@@ -6,12 +6,13 @@ import { refreshParagraphWrapping, serializeInlineHtml } from './devTextDom';
 import { isVideoSrc } from './imageUpload.mjs';
 import { normalizeHref } from './normalizeHref.mjs';
 import { openPlaygroundDraft, type PlaygroundUpload } from './playgroundDraft';
+import { showPlaygroundNotice } from './playgroundFeedback.mjs';
 import { playgroundMedia } from './playgroundMedia';
 import { normalizeIntroHeight } from './projectIntro';
 import { deriveNavFromOutline } from './projectOutline';
 import { projectStackClass, resolveStackSpacingForIndex, spacingDevAttrs } from './projectStack';
 import { renderSiteAnnotationLayer } from './siteAnnotationSvg';
-import { bindImagePreviewUpgrade } from './imagePreviewUpgrade';
+import { bindImagePreviewUpgrade, openImagePreviewUpgrade } from './imagePreviewUpgrade';
 import { bindSafeVh } from './safeVh';
 
 const viewportFrame = 'vcd-edit-viewport-preview';
@@ -301,6 +302,9 @@ export async function mountPlayground() {
         let response: Response | undefined;
         await authoring.handle(request.method, endpoint, body, (status: number, value: unknown) => {
           if (endpoint === 'award-block-size' && status === 200) applyAwardSizes();
+          if (status === 403 && value && typeof value === 'object' && 'error' in value) {
+            showPlaygroundNotice(String(value.error));
+          }
           response = Response.json(value, { status });
         });
         return response ?? Response.json({ error: 'The edit was not saved.' }, { status: 500 });
@@ -331,6 +335,8 @@ export async function mountPlayground() {
   document.dispatchEvent(new Event('vcd:playground-ready'));
   bindSafeVh();
   bindImagePreviewUpgrade();
+  // The playground has no page reveal to open the image upgrade gate.
+  openImagePreviewUpgrade();
   if (draft) {
     initMountedSectionCovers(document.querySelector<HTMLElement>('[data-dev-project-drop-zone]')!);
     syncDevSectionOutlineSidebar();

@@ -7,7 +7,17 @@ import '../styles/site-annotation-editor.css';
   import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
 
   import { devPanels, frontmostOpenPanel } from '../lib/devPanelStack';
+  import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import { showPlaygroundNotice } from '../lib/playgroundFeedback.mjs';
+
+  const ownerActions = [
+    { panel: 'project-settings', message: 'Page settings are unavailable in the playground.' },
+    { panel: 'gallery-pages', shortcut: 'KeyP', message: 'Gallery settings are unavailable in the playground.' },
+    { panel: 'new-project', shortcut: 'KeyN', message: 'Creating projects is unavailable in the playground.' },
+    { shortcut: 'KeyI', message: 'Issue reporting is unavailable in the playground.' },
+    { shortcut: 'KeyT', message: 'Site theme settings are unavailable in the playground.' },
+  ];
 
   const disposePage = onPageLoad(() => {
   const pageScope = createPageScope();
@@ -128,22 +138,35 @@ import '../styles/site-annotation-editor.css';
         removeLauncher();
         return;
       }
-      const panels = devPanels();
-      if (!panels.length) return;
+      const items = devPanels().map((panel) => ({
+        title: panel.querySelector('.dev-overlay__title')?.textContent?.trim() || panel.dataset.devPanelKey || '',
+        open: () => openLauncherPanel(panel),
+      }));
+      if (playground) {
+        for (const { panel, message } of ownerActions) {
+          if (!panel) continue;
+          items.push({
+            title: resolveDevPanelTitle(panel),
+            open: () => {
+              removeLauncher();
+              showPlaygroundNotice(message);
+            },
+          });
+        }
+      }
+      if (!items.length) return;
 
       const menu = document.createElement('div');
       menu.className = 'dev-launcher';
       menu.setAttribute('role', 'menu');
 
-      panels.forEach((panel, index) => {
-        const key = panel.dataset.devPanelKey || '';
-        const title = panel.querySelector('.dev-overlay__title')?.textContent?.trim() || key;
+      items.forEach(({ title, open }, index) => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-surface';
         item.setAttribute('role', 'menuitem');
         item.textContent = title;
-        pageScope.listen(item, 'click', () => openLauncherPanel(panel));
+        pageScope.listen(item, 'click', open);
         if (index === 0) item.tabIndex = 0;
         menu.appendChild(item);
       });
@@ -450,6 +473,17 @@ import '../styles/site-annotation-editor.css';
           removeLauncher();
         }
         return;
+      }
+
+      if (playground && devMode && !restrictedMobileEditor()
+        && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+        && !isTypingTarget(event.target as HTMLElement | null)) {
+        const action = ownerActions.find(({ shortcut }) => shortcut === event.code);
+        if (action) {
+          event.preventDefault();
+          if (!event.repeat && !event.isComposing) showPlaygroundNotice(action.message);
+          return;
+        }
       }
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyE') {
