@@ -1,0 +1,221 @@
+---
+import ViewportSelector from '../../components/ui/ViewportSelector.astro';
+import '../../styles/global.css';
+import '../../styles/dev-chrome.css';
+
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+---
+
+<!doctype html>
+<html lang="en" data-theme="light" data-canvas-shell>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="preload" href="/fonts/hanken-grotesk/normal-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/hanken-grotesk/hanken.css" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Page</title>
+  </head>
+  <body>
+    <div class="dev-viewport-preview__backdrop" data-canvas-backdrop></div>
+    <div class="dev-viewport-preview__shadow" data-canvas-shadow></div>
+    <div class="dev-viewport-preview__surface" data-canvas-surface>
+      <iframe name="vcd-canvas" title="Page" data-canvas-frame></iframe>
+    </div>
+    <div class="dev-viewport-preview__controls dev-surface" data-canvas-controls>
+      <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
+    </div>
+  </body>
+</html>
+
+<script>
+  import { createPageScope } from '../../lib/pageLifecycle';
+
+  const scope = createPageScope();
+  const frame = document.querySelector<HTMLIFrameElement>('[data-canvas-frame]')!;
+  const surface = document.querySelector<HTMLElement>('[data-canvas-surface]')!;
+  const shadow = document.querySelector<HTMLElement>('[data-canvas-shadow]')!;
+  const backdrop = document.querySelector<HTMLElement>('[data-canvas-backdrop]')!;
+  const controls = document.querySelector<HTMLElement>('[data-canvas-controls]')!;
+  const presets = { tablet: [820, 1180], mobile: [390, 844] } as const;
+  type Preset = 'desktop' | keyof typeof presets;
+  const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
+  let preset: Preset = 'desktop';
+  let editActive = false;
+  let raf = 0;
+  let revision = 0;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const focusFrame = () => frame.contentWindow?.focus();
+  const postPreset = () => frame.contentWindow?.postMessage({ type: 'vcd-canvas-preset', preset }, location.origin);
+  const select = () => {
+    controls.querySelectorAll<HTMLElement>('[data-viewport-preset]').forEach((button) => {
+      const selected = button.dataset.viewportPreset === preset;
+      button.classList.toggle('is-active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  };
+  type Geometry = { width: number; height: number; radius: number; device: number };
+  const desktop = (): Geometry => ({ width: window.innerWidth, height: window.innerHeight, radius: 0, device: 0 });
+  let current = desktop();
+  let frameWidth = 0;
+  let frameHeight = 0;
+  let framePlacement = { left: 0, top: 0, scale: 1 };
+  let layoutCommit = 0;
+  const render = (value: Geometry, barZone = 0, commitLayout = true) => {
+    current = value;
+    const width = Math.round(value.width);
+    const height = Math.round(value.height);
+    const hostWidth = Math.max(1, window.innerWidth - 24 * value.device);
+    const hostHeight = Math.max(1, window.innerHeight - (24 + barZone) * value.device);
+    const scale = Math.min(1, hostWidth / width, hostHeight / height);
+    const left = (window.innerWidth - width * scale) / 2;
+    const top = 12 * value.device + (hostHeight - height * scale) / 2;
+    const radius = value.radius * scale;
+    const bounds = {
+      transform: `translate(${left}px, ${top}px)`, width: `${width * scale}px`, height: `${height * scale}px`,
+    };
+    Object.assign(surface.style, bounds);
+    Object.assign(shadow.style, bounds, { opacity: String(value.device) });
+    surface.style.setProperty('--viewport-radius', `${radius}px`);
+    shadow.style.setProperty('--viewport-radius', `${radius}px`);
+    if (commitLayout && (width !== frameWidth || height !== frameHeight)) {
+      const child = frame.contentDocument?.documentElement;
+      if (child) {
+        const commit = ++layoutCommit;
+        child.setAttribute('data-viewport-layout-commit', '');
+        scope.frame(() => scope.frame(() => {
+          if (commit === layoutCommit) child.removeAttribute('data-viewport-layout-commit');
+        }));
+      }
+      frameWidth = width;
+      frameHeight = height;
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+    }
+    if (commitLayout) framePlacement = { left, top, scale };
+    // The surface clips the old page at its original screen position until layout commits.
+    const x = framePlacement.left - left;
+    const y = framePlacement.top - top;
+    frame.style.transform = `translate(${x}px, ${y}px) scale(${framePlacement.scale})`;
+  };
+  const geometry = (): Geometry => preset === 'desktop' ? desktop() : {
+    width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
+  };
+  const barZone = () => window.innerHeight - controls.getBoundingClientRect().top;
+  const finish = (target: Geometry) => {
+    render(target, barZone());
+    if (preset === 'desktop') {
+      controls.style.visibility = 'hidden';
+      backdrop.style.visibility = 'hidden';
+    }
+  };
+  const transition = (next: Preset) => {
+    if (next !== 'desktop' && !editActive) return;
+    if (next === preset) return;
+    preset = next;
+    select();
+    postPreset();
+    window.cancelAnimationFrame(raf);
+    const token = ++revision;
+    backdrop.style.visibility = 'visible';
+    if (preset !== 'desktop') controls.style.visibility = 'visible';
+    controls.style.opacity = preset === 'desktop' ? '0' : '1';
+    const from = current;
+    const target = geometry();
+    const zone = barZone();
+    if (reducedMotion.matches) { finish(target); return; }
+    const start = performance.now();
+    const omega = 2 * Math.PI / (0.35 * 1.2);
+    // Keep the responsive layout stable until the surface reaches its destination.
+    const tick = (now: number) => {
+      if (token !== revision || scope.signal.aborted) return;
+      const t = (now - start) / 1000;
+      const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
+      if (1 - x <= 0.004) { finish(target); return; }
+      render({
+        width: from.width + (target.width - from.width) * x,
+        height: from.height + (target.height - from.height) * x,
+        radius: from.radius + (target.radius - from.radius) * x,
+        device: from.device + (target.device - from.device) * x,
+      }, zone, false);
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+  };
+  scope.listen(window, 'message', (event) => {
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'vcd-canvas-location') {
+      const href = event.data.href;
+      if (typeof href !== 'string' || new URL(href, location.href).origin !== location.origin) return;
+      history.replaceState(history.state, '', href);
+      document.title = event.data.title;
+      postPreset();
+    }
+    if (event.data?.type === 'vcd-canvas-dev-mode') {
+      editActive = event.data.active === true;
+      if (!editActive && preset !== 'desktop') transition('desktop');
+    }
+    if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) transition(event.data.preset);
+  });
+  scope.listen(controls, 'click', (event) => {
+    const next = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset : undefined;
+    if (isPreset(next)) transition(next);
+    focusFrame();
+  });
+  scope.listen(backdrop, 'click', () => { transition('desktop'); focusFrame(); });
+  const forwardKey = (event: KeyboardEvent) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (target?.isContentEditable || target?.closest('input, textarea, select')) return;
+    if (event.type === 'keydown') {
+      const next = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+        ? event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined
+        : undefined;
+      if (next) { event.preventDefault(); transition(next); return; }
+      if (event.key === 'Escape' && preset !== 'desktop') { event.preventDefault(); transition('desktop'); return; }
+    }
+    const child = frame.contentWindow as (Window & typeof globalThis) | null;
+    if (!child || !frame.contentDocument) return;
+    const forwarded = new child.KeyboardEvent(event.type, {
+      key: event.key, code: event.code, altKey: event.altKey, ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey, shiftKey: event.shiftKey, repeat: event.repeat, bubbles: true, cancelable: true,
+    });
+    frame.contentDocument.dispatchEvent(forwarded);
+    if (forwarded.defaultPrevented) event.preventDefault();
+  };
+  scope.listen(document, 'keydown', forwardKey);
+  scope.listen(document, 'keyup', forwardKey);
+  scope.listen(window, 'resize', () => {
+    window.cancelAnimationFrame(raf);
+    revision++;
+    finish(geometry());
+  });
+  scope.listen(frame, 'load', () => { postPreset(); focusFrame(); });
+  select();
+  finish(desktop());
+  frame.src = location.href;
+  focusFrame();
+  scope.add(() => window.cancelAnimationFrame(raf));
+  import.meta.hot?.dispose(() => scope.destroy());
+</script>
+
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__backdrop { position: fixed; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }
+  .dev-viewport-preview__shadow, .dev-viewport-preview__surface {
+    border-radius: calc(var(--viewport-radius, 0px) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+  }
+  .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
+  .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
+  .dev-viewport-preview__controls { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
+  .dev-viewport-preview__controls :global(.dev-segmented) {
+    width: auto;
+    padding: 0;
+    gap: 4px;
+    background: transparent;
+    --dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg);
+  }
+  .dev-viewport-preview__controls :global(.dev-segmented[tabindex='-1']:focus) { outline: none; }
+</style>

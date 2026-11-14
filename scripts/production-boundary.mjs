@@ -32,6 +32,7 @@ const authoringComponents = new Set([
   'project/ProjectSectionNavEditor.astro',
   'project/archive/ProjectCaptionShadowTuner.astro',
 ].map((file) => fileURLToPath(new URL(`../src/components/${file}`, import.meta.url))));
+const canvasShellPage = fileURLToPath(new URL('../src/pages/dev/canvas-shell.astro', import.meta.url));
 
 export function productionBoundary() {
   return {
@@ -40,7 +41,8 @@ export function productionBoundary() {
     enforce: 'pre',
     load(id) {
       // Remove the component before Astro discovers its scripts, styles, or imports.
-      if (authoringComponents.has(id.split('?')[0])) return '';
+      if (authoringComponents.has(id.split('?')[0])
+        || id.split('?')[0] === canvasShellPage) return '';
     },
   };
 }

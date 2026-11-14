@@ -57,6 +57,7 @@ import { publishDevWriter } from './scripts/dev-publish.mjs';
 import { issueDevWriter } from './scripts/dev-issue.mjs';
 import { commitEngineDevWriter } from './scripts/dev-commit-engine.mjs';
 import { mediaCollectorIntegration } from './scripts/collect-shipped-assets.mjs';
+import { devCanvasShell } from './scripts/dev-canvas-shell.mjs';
 import { productionBoundary } from './scripts/production-boundary.mjs';
 import {
   TOKENS_RELATIVE_PATH,
@@ -2893,6 +2894,7 @@ export default defineConfig({
       tailwindcss(),
       productionBoundary(),
       devAuthoringState(),
+      devCanvasShell(),
       devAuthoringRequestQueue(),
       branchUpdateDevWriter(),
       stubLapseWhenUnavailable(),
