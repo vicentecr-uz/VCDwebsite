@@ -10,6 +10,8 @@ import { readPublishedDemoAssets } from '../../../scripts/public-demo-assets.mjs
 import '../../styles/project.css';
 import '../../styles/sectionReorderChrome.css';
 import { sectionReorderHandleMarkup } from '../../lib/sectionReorderChrome';
+import { loadProjectBySlug } from '../../lib/projects';
+import { projectImageTier } from '../../lib/images';
 import { normalizeImageVariants, responsiveImageStyle } from '../../lib/responsiveImage';
 
 const catalog = import.meta.env.DEV ? await readPublishedDemoAssets({
@@ -19,12 +21,27 @@ const catalog = import.meta.env.DEV ? await readPublishedDemoAssets({
 }) : [];
 const catalogJson = JSON.stringify(catalog).replace(/</g, '\\u003c');
 
-const title = 'Objects in Balance';
-const blocks = [
-  { title: 'The study', copy: 'A cylinder and a cube share a narrow ledge. The composition changes as the light moves.' },
-  { title: 'Material notes', copy: 'Soft colour and hard edges keep the shapes distinct.' },
-];
-const dimensions = { width: 1200, height: 800 };
+const project = loadProjectBySlug('new-classic-utility-knife');
+const published = project?.status === 'published' ? project : undefined;
+const title = published?.title ?? 'New Classic Utility Knife';
+const sections = published?.sections ?? [];
+const blocks: { title: string; paragraphs: string[] }[] = [];
+let heading = 'Overview';
+for (const section of sections) {
+  if (section.type === 'sectionTitle') heading = String(section.title);
+  if (section.type === 'bodyText' && Array.isArray(section.paragraphs)) {
+    blocks.push({ title: heading, paragraphs: section.paragraphs.filter((value): value is string => typeof value === 'string') });
+  }
+}
+if (!blocks.length) blocks.push(
+  { title: 'Overview', paragraphs: ['A utility knife designed for simpler blade handling.'] },
+  { title: 'The brief', paragraphs: ['Improve blade handling while keeping the tool durable and familiar.'] },
+);
+const lead = sections[0]?.items;
+const photo = Array.isArray(lead) ? lead[0] : undefined;
+const hasPhoto = typeof photo?.src === 'string' && photo.src && photo.srcWidth > 0 && photo.srcHeight > 0;
+const imageSrc = hasPhoto ? projectImageTier(photo.src, 'preview') : '/demo-fixtures/studio.preview.webp';
+const dimensions = hasPhoto ? { width: photo.srcWidth, height: photo.srcHeight } : { width: 1200, height: 800 };
 const crop = { aspect: '3:1', cx: 0.5, cy: 0.5, w: 0.84 };
 const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }, crop.aspect, dimensions), dimensions);
 ---
@@ -47,22 +64,22 @@ const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }
       <div class="hero">
         <div class="project-cropped" data-playground-image style={imageStyle}>
           <div class="project-crop-clip">
-            <img src="/demo-fixtures/studio.preview.webp" width={dimensions.width} height={dimensions.height} alt="A cylinder and a cube on a split ground" />
+            <img src={imageSrc} width={dimensions.width} height={dimensions.height} alt={hasPhoto ? title : ""} />
           </div>
         </div>
         <Button label="Crop" class="crop-button" data-playground-crop aria-expanded="false"><span data-crop-label>Crop</span></Button>
       </div>
       <details class="image-tools" data-image-tools hidden>
         <summary>Image settings</summary>
-        <ImageCropControls aspect={crop.aspect} imageSrc="/demo-fixtures/studio.preview.webp" />
+        <ImageCropControls aspect={crop.aspect} imageSrc={imageSrc} />
       </details>
       <div class="blocks" data-reorder-demo-list>
-        {blocks.map(({ title, copy }) => (
+        {blocks.map(({ title, paragraphs }) => (
           <section class="sample-block" data-reorder-demo-block data-dev-section-reorderable data-title={title}>
             <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
             <Fragment set:html={sectionReorderHandleMarkup({ label: `Reorder ${title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
             <h2 data-playground-copy>{title}</h2>
-            <p data-playground-copy>{copy}</p>
+            {paragraphs.map((paragraph) => <p data-playground-copy>{paragraph}</p>)}
           </section>
         ))}
       </div>
