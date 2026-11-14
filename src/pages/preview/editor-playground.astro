@@ -58,7 +58,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     </DevOverlayFrame>
     <script is:inline type="application/json" data-published-demo-assets set:html={catalogJson}></script>
     <article class="sample">
-      <h1 contenteditable="plaintext-only" role="textbox" aria-label="Project headline" spellcheck="false" data-playground-title>{title}</h1>
+      <h1 class="project-body-text" contenteditable="plaintext-only" role="textbox" aria-label="Project headline" spellcheck="false" data-playground-title>{title}</h1>
       <div class="hero dev-image-edit-target">
         <div class="project-cropped" data-playground-image style={imageStyle}>
           <div class="project-crop-clip">
@@ -67,7 +67,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
         </div>
         <button type="button" class="dev-image-edit-trigger crop-button" data-playground-crop aria-expanded="false" aria-controls="playground-image-panel">Crop</button>
       </div>
-      <DevOverlayFrame title="Image" id="playground-image-panel" defaultHidden showMinimize={false} data-image-tools role="dialog" aria-label="Edit image">
+      <DevOverlayFrame title="Image" id="playground-image-panel" defaultHidden data-image-tools role="dialog" aria-label="Edit image">
         <div class="tapico-crop-tuner">
           <ViewportSelector dataAttr="data-playground-viewport" slideSelection={false} />
           <ImageCropControls aspect={variants.desktop.aspect} imageSrc={imageSrc}>
@@ -106,6 +106,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
 <script>
   import { createDemoBlockReorder } from '../../lib/demoBlockReorder';
   import { createDemoAssetPicker, type DemoAssetProject } from '../../lib/demoAssetPicker';
+  import { createDevPanelCollapse } from '../../lib/devPanelCollapse';
   import { bindImageReplaceControls } from '../../lib/imageReplaceControls';
   import type { ImageViewport } from '../../lib/responsiveImage';
   import { createDemoImageCrop } from '../../lib/demoImageCrop';
@@ -121,6 +122,14 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   const initialCopy = copy.map((element) => [...element.childNodes].map((node) => node.cloneNode(true)));
   const tools = root.querySelector<HTMLElement>('[data-desktop-tools]')!;
   const imageTools = root.querySelector<HTMLElement>('[data-image-tools]')!;
+  const imagePanelCollapse = createDevPanelCollapse(imageTools);
+  imageTools.querySelector('[data-minimize-toggle]')!.addEventListener('click', () => {
+    imagePanelCollapse.set(!imageTools.classList.contains('is-minimized'));
+  });
+  imageTools.querySelector('[data-hide-toggle]')!.addEventListener('click', () => {
+    closeImageEditor(false);
+    cropButton.focus();
+  });
   const assetButton = root.querySelector<HTMLButtonElement>('[data-playground-assets]')!;
   const assetPanel = root.querySelector<HTMLElement>('[data-demo-asset-picker]')!;
   const catalog: DemoAssetProject[] = JSON.parse(root.querySelector('[data-published-demo-assets]')!.textContent || '[]');
@@ -280,6 +289,7 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
     imageBeforeEdit = readImage();
     imageStatus.textContent = '';
     imageTools.hidden = false;
+    imagePanelCollapse.set(false, false);
     imageTools.classList.add('is-dev-overlay-open');
     setCrop(true);
     setViewport('desktop');
@@ -332,15 +342,15 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   .playground :global([data-image-tools]) { z-index: 70; }
   .playground :global([data-image-tools] [data-overlay-body]) { overflow-y: auto; }
   .playground :global([data-demo-asset-picker]) { z-index: 80; }
-  .sample { width: min(100%, 48rem); margin-inline: auto; padding: 72px clamp(28px, 6vw, 64px) 88px; }
-  h1 {
-    margin: 0 0 0.48em;
-    font-size: clamp(2rem, 6vw, 4rem);
-    font-weight: 650;
-    letter-spacing: -0.055em;
-    line-height: 1.05;
-    overflow-wrap: anywhere;
+  .sample {
+    --page-media-max-width: var(--page-text-max-width);
+    --page-max-width: var(--page-text-max-width);
+    --text-body-measure: 100%;
+    width: min(calc(100% - 2 * var(--space-unit)), var(--page-text-max-width));
+    margin-inline: auto;
+    padding-block: 72px 88px;
   }
+  h1 { margin: 0 0 var(--space-unit); overflow-wrap: anywhere; }
   [contenteditable="plaintext-only"] { cursor: text; border-radius: 3px; }
   [contenteditable="plaintext-only"]:is(:hover, :focus-visible) { outline: 1px dashed currentColor; outline-offset: 6px; }
   .hero { position: relative; }
@@ -349,19 +359,19 @@ const imageStyle = responsiveImageStyle(variants, dimensions);
   .blocks { display: flex; flex-direction: column; margin-top: 12px; overflow-anchor: none; }
   .sample-block {
     position: relative;
-    border-bottom: 1px solid var(--sys-color-srf-container);
-    padding: 14px 0 16px 24px;
+    padding-block: 14px 16px;
   }
   .playground .sample-block > :global(.dev-section-drag-handle) {
     opacity: 1;
     pointer-events: auto;
-    left: -12px;
-    transform: translateY(-50%);
+    left: 0;
+    transform: translate(-100%, -50%);
   }
   .playground[data-preview] .sample-block > :global(.dev-section-drag-handle),
   .playground[data-preview] .crop-button { display: none; }
   .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   @media (max-width: 40em) {
+    .sample { width: min(calc(100% - 4rem), var(--page-text-max-width)); }
     .preview-toggle, .reset, .crop-button, .playground .sample-block > :global(.dev-section-drag-handle) { min-height: 44px; }
     .playground:has(h1:focus) :is(.preview-toggle, .reset) { visibility: hidden; }
   }
