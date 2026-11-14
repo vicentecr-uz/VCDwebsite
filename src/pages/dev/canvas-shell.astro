@@ -64,6 +64,38 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     fluxActive = active;
     frame.contentWindow?.postMessage({ type: 'vcd-canvas-flux', active }, location.origin);
   };
+  // Keep what is under the middle of the viewport where it is while the page reflows around it:
+  // the image or text there, and the same point within it.
+  let anchor: { element: Element; within: number; ratio: number } | undefined;
+  const pickAnchor = () => {
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument;
+    if (!win || !doc || win.scrollY <= 0) return undefined;
+    const middle = win.innerHeight / 2;
+    let element: Element | undefined;
+    let nearest = Infinity;
+    // Prefer the finest piece of content; a block can be several screens tall.
+    for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
+      for (const candidate of doc.querySelectorAll(selector)) {
+        const rect = candidate.getBoundingClientRect();
+        if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight) continue;
+        const distance = rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0;
+        if (distance < nearest) { nearest = distance; element = candidate; }
+      }
+      if (element) break;
+    }
+    if (!element) return undefined;
+    const rect = element.getBoundingClientRect();
+    const point = Math.min(rect.bottom, Math.max(rect.top, middle));
+    return { element, within: (point - rect.top) / rect.height, ratio: point / win.innerHeight };
+  };
+  const holdAnchor = () => {
+    const win = frame.contentWindow;
+    if (!anchor || !win || !anchor.element.isConnected) return;
+    const rect = anchor.element.getBoundingClientRect();
+    const delta = rect.top + rect.height * anchor.within - anchor.ratio * win.innerHeight;
+    if (Math.abs(delta) >= 0.5) win.scrollBy({ top: delta, behavior: 'instant' });
+  };
   const render = (value: Geometry, barZone = 0) => {
     current = value;
     const width = Math.round(value.width);
@@ -84,6 +116,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     frame.style.width = `${width}px`;
     frame.style.height = `${height}px`;
     frame.style.transform = `scale(${scale})`;
+    holdAnchor();
   };
   const geometry = (): Geometry => preset === 'desktop' ? desktop() : {
     width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
@@ -116,6 +149,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       if (fluxActive) postFlux(false);
       return;
     }
+    if (!fluxActive) anchor = pickAnchor();
     postFlux(true);
     const start = performance.now();
     const omega = 2 * Math.PI / (0.35 * 1.2);
@@ -124,7 +158,18 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       const target = geometry();
       const t = (now - start) / 1000;
       const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
-      if (1 - x <= 0.004) { finish(target); raf = 0; postFlux(false); return; }
+      if (1 - x <= 0.004) {
+        finish(target);
+        raf = 0;
+        postFlux(false);
+        // The page's deferred resize work lands over the next frames; hold the anchor through it.
+        window.requestAnimationFrame(() => {
+          if (token !== revision) return;
+          holdAnchor();
+          window.requestAnimationFrame(() => { if (token === revision) { holdAnchor(); anchor = undefined; } });
+        });
+        return;
+      }
       render({
         width: from.width + (target.width - from.width) * x,
         height: from.height + (target.height - from.height) * x,

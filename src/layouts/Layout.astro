@@ -128,7 +128,10 @@ const initialThemeColor = resolveToken('sys.color.srf');
         if (window.name === 'vcd-canvas') {
           // Registered before any page script, so it also precedes capture-phase resize listeners.
           window.addEventListener('resize', (event) => {
-            if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
+            if (!document.documentElement.hasAttribute('data-viewport-flux')) return;
+            event.stopImmediatePropagation();
+            // Layout the page cannot do without (the fixed header's width) opts in to this instead.
+            window.dispatchEvent(new CustomEvent('vcd:viewport-flux-frame'));
           }, true);
           const pending = new Map();
           window.ResizeObserver = class extends window.ResizeObserver {

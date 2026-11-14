@@ -743,7 +743,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     captureGeo();
     syncHeaderWidth(logicalHeaderRect().bottom, true);
 
-    window.addEventListener('resize', () => {
+    const syncViewportWidth = () => {
       const nextViewportWidth = document.documentElement.clientWidth;
       if (nextViewportWidth === viewportWidth) return;
       viewportWidth = nextViewportWidth;
@@ -769,7 +769,10 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         header.style.left = '0';
         header.style.width = '100%';
       }
-    });
+    };
+    window.addEventListener('resize', syncViewportWidth);
+    // The Edit canvas holds back resize while a viewport preview morphs; the fixed header still has to follow.
+    window.addEventListener('vcd:viewport-flux-frame', syncViewportWidth);
   }
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
