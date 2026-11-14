@@ -510,6 +510,11 @@ import '../styles/site-annotation-editor.css';
       if (!devMode) return;
 
       event.preventDefault();
+      // In the canvas, a device preview is the layer outside Edit's panels: Esc returns to Desktop first.
+      if (html.hasAttribute('data-edit-viewport-frame') && window.name === 'vcd-canvas') {
+        window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: 'desktop' } }));
+        return;
+      }
       setDevMode(false);
     });
 

@@ -401,7 +401,7 @@ test('canvas reports location and Edit state with no warm preview or save reload
   } finally { await f.dispose(); }
 });
 
-test('canvas routes presets, respects consumed Escape, and removes frame state on cleanup', async () => {
+test('canvas routes presets, leaves Escape to Edit, and removes frame state on cleanup', async () => {
   const f = fixture(false, false, true, true);
   try {
     const key = new f.window.KeyboardEvent('keydown', { code: 'Digit3', altKey: true, cancelable: true, bubbles: true });
@@ -417,12 +417,11 @@ test('canvas routes presets, respects consumed Escape, and removes frame state o
     f.parentMessage('vcd-canvas-preset', { preset: 'tablet' });
     expect(changes).toEqual(['tablet']);
     expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(true);
+    // Escape is DevModeController's: it asks for Desktop through this event once inner layers are closed.
     const count = f.posts.length;
-    const consumed = new f.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
-    consumed.preventDefault();
-    f.document.dispatchEvent(consumed);
-    expect(f.posts.length).toBe(count);
     f.document.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    expect(f.posts.length).toBe(count);
+    f.window.dispatchEvent(new f.window.CustomEvent('vcd:edit-viewport-request', { detail: { preset: 'desktop' } }));
     expect(f.posts.at(-1)).toEqual({ type: 'vcd-canvas-request-preset', preset: 'desktop' });
     f.parentMessage('vcd-canvas-preset', { preset: 'desktop' });
     expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(false);

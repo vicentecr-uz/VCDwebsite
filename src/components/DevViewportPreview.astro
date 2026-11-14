@@ -52,11 +52,6 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         event.preventDefault();
         requestPreset(requested);
       }, true);
-      scope.listen(document, 'keydown', (event) => {
-        if (event.key !== 'Escape' || event.defaultPrevented || preset === 'desktop' || isTypingTarget(event.target)) return;
-        event.preventDefault();
-        requestPreset('desktop');
-      });
       scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
         if (event.detail?.preset) requestPreset(event.detail.preset);
       }) as EventListener);
