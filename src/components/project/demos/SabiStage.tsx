@@ -1,3 +1,4 @@
+import 'sabi-input';
 import { useCallback, useId, useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { Stage } from '../../../lib/stageshow/stage';
 import type { Act } from '../../../lib/stageshow/act';

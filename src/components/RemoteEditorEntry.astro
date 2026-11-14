@@ -9,7 +9,9 @@ const entering = isDev && Astro.url.searchParams.has('edit');
   <form method="post" action="/api/remote-editor/login" class="remote-entry__form">
     <input name="username" type="hidden" value="anto" autocomplete="username" />
     <div class="dev-field__value remote-entry__field">
-      <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Password" placeholder="Password" aria-describedby="remote-editor-error" required />
+      <sabi-input class="dev-text-field">
+        <input id="remote-editor-password" class="dev-field__input" name="password" type="password" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Password" placeholder="Password" aria-describedby="remote-editor-error" required />
+      </sabi-input>
     </div>
     <p id="remote-editor-error" class="remote-entry__error" aria-live="polite" hidden></p>
     <button type="submit" data-remote-submit hidden>Enter</button>
@@ -237,7 +239,8 @@ const entering = isDev && Astro.url.searchParams.has('edit');
   .remote-entry.is-visible::backdrop { opacity: 1; }
   .remote-entry.is-closing, .remote-entry.is-closing::backdrop { transition-duration: 160ms; }
   .remote-entry__form { display: grid; gap: 8px; }
-  .remote-entry__field { min-height: 48px; }
+  .remote-entry__field { min-height: 48px; padding: 0; }
+  .remote-entry__field > sabi-input { padding-block: 0; }
   .remote-entry__field:focus-within { outline: 2px solid var(--ref-palette-grey-500); outline-offset: 2px; }
   .remote-entry__field input { height: 48px; font-size: 16px; }
   .remote-entry__error { margin: 0; font-size: 14px; line-height: 1.4; }
