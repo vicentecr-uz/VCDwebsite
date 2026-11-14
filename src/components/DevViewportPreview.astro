@@ -15,6 +15,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+  import { hoistCanvasChrome } from '../lib/canvasChrome';
   import { followEditViewport } from '../lib/editViewportFollow';
 
   const dispose = onPageLoad(() => {
@@ -33,6 +34,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
     };
     if (canvasMode) {
+      if (document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=1')) hoistCanvasChrome(scope);
       followEditViewport(scope);
       scope.listen(window, 'resize', (event) => {
         if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();

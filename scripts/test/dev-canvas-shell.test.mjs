@@ -25,14 +25,15 @@ test('dev middleware toggles the cookie and rewrites only eligible requests', ()
   const plugin = devCanvasShell();
   assert.equal(plugin.apply, 'serve');
   plugin.configureServer({ middlewares: { use: (handler) => { middleware = handler; } } });
-  for (const enabled of [true, false]) {
+  for (const chrome of [false, true]) for (const enabled of [true, false]) {
     const headers = {};
     let ended = false;
     const res = { setHeader: (key, value) => { headers[key] = value; }, end: () => { ended = true; } };
-    middleware({ ...request, url: `/dev/canvas/${enabled ? 'on' : 'off'}` }, res, () => assert.fail('redirect must end'));
+    middleware({ ...request, url: `/dev/canvas/${chrome ? 'chrome-' : ''}${enabled ? 'on' : 'off'}` }, res, () => assert.fail('redirect must end'));
     assert.equal(res.statusCode, 302);
     assert.equal(headers.Location, '/');
-    assert.equal(headers['Set-Cookie'], enabled ? 'vcd-canvas=1; Path=/; SameSite=Lax' : 'vcd-canvas=; Path=/; SameSite=Lax; Max-Age=0');
+    const cookie = chrome ? 'vcd-canvas-chrome' : 'vcd-canvas';
+    assert.equal(headers['Set-Cookie'], enabled ? `${cookie}=1; Path=/; SameSite=Lax` : `${cookie}=; Path=/; SameSite=Lax; Max-Age=0`);
     assert.equal(ended, true);
   }
   const req = { ...request };

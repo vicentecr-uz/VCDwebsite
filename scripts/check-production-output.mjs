@@ -6,6 +6,9 @@ import { extname, relative, resolve } from 'node:path';
 const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css', '.map']);
 const INSPECTOR_MARKERS = [
   'vcd-canvas',
+  'data-canvas-chrome',
+  'data-canvas-mirrored',
+  'hoistCanvasChrome',
   'data-canvas-resize-observer',
   'data-viewport-flux',
   'vcd:viewport-flux-end',
