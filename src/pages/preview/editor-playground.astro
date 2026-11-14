@@ -1,0 +1,163 @@
+---
+import DemoLayout from '../../layouts/DemoLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import '../../styles/project.css';
+import '../../styles/sectionReorderChrome.css';
+import { sectionReorderHandleMarkup } from '../../lib/sectionReorderChrome';
+import { normalizeImageVariants, responsiveImageStyle } from '../../lib/responsiveImage';
+
+const title = 'Objects in Balance';
+const blocks = [
+  { title: 'The study', copy: 'A cylinder and a cube share a narrow ledge. The composition changes as the light moves.' },
+  { title: 'Material notes', copy: 'Soft colour and hard edges keep the shapes distinct.' },
+];
+const dimensions = { width: 1200, height: 800 };
+const crop = { aspect: '3:1', cx: 0.5, cy: 0.5, w: 0.84 };
+const imageStyle = responsiveImageStyle(normalizeImageVariants({ desktop: crop }, crop.aspect, dimensions), dimensions);
+---
+
+<DemoLayout title="Site editor canvas" scrolling>
+  <div class="playground is-dev-mode" data-editor-playground data-crop-demo data-initial-crop={JSON.stringify(crop)}>
+    <header class="toolbar" aria-label="Editor controls">
+      <Button label="Preview" data-playground-preview><span data-preview-label>Preview</span></Button>
+      <Button label="Reset" aria-label="Reset demo" data-reorder-demo-reset />
+    </header>
+    <article class="sample">
+      <h1 contenteditable="plaintext-only" role="textbox" aria-label="Project headline" spellcheck="false" data-playground-title>{title}</h1>
+      <div class="hero">
+        <div class="project-cropped" data-playground-image style={imageStyle}>
+          <div class="project-crop-clip">
+            <img src="/demo-fixtures/studio.preview.webp" width={dimensions.width} height={dimensions.height} alt="A cylinder and a cube on a split ground" />
+          </div>
+        </div>
+        <Button label="Crop" class="crop-button" data-playground-crop aria-expanded="false"><span data-crop-label>Crop</span></Button>
+      </div>
+      <div class="blocks" data-reorder-demo-list>
+        {blocks.map(({ title, copy }) => (
+          <section class="sample-block" data-reorder-demo-block data-dev-section-reorderable data-title={title}>
+            <div class="dev-section-lift-backdrop" aria-hidden="true"></div>
+            <Fragment set:html={sectionReorderHandleMarkup({ label: `Reorder ${title}`, title: 'Drag to reorder', tabIndex: 0, demo: true, pressed: false })} />
+            <h2>{title}</h2>
+            <p>{copy}</p>
+          </section>
+        ))}
+      </div>
+      <p class="reorder-demo__status" aria-live="polite" aria-atomic="true"></p>
+    </article>
+  </div>
+</DemoLayout>
+
+<script>
+  import { createDemoBlockReorder } from '../../lib/demoBlockReorder';
+  import { createDemoImageCrop } from '../../lib/demoImageCrop';
+
+  const root = document.querySelector<HTMLElement>('[data-editor-playground]')!;
+  const title = root.querySelector<HTMLElement>('[data-playground-title]')!;
+  const preview = root.querySelector<HTMLButtonElement>('[data-playground-preview]')!;
+  const cropButton = root.querySelector<HTMLButtonElement>('[data-playground-crop]')!;
+  const image = root.querySelector<HTMLElement>('[data-playground-image]')!;
+  const bitmap = image.querySelector('img')!;
+  const initialTitle = title.textContent;
+  const reorder = createDemoBlockReorder(root, { scroll: true });
+  const crop = createDemoImageCrop({
+    host: image,
+    active: false,
+    initialState: {
+      source: { src: bitmap.src, width: Number(bitmap.getAttribute('width')), height: Number(bitmap.getAttribute('height')), alt: bitmap.alt },
+      crop: JSON.parse(root.dataset.initialCrop!),
+      locked: true,
+    },
+  });
+
+  function setCrop(active: boolean) {
+    crop.setActive(active);
+    cropButton.setAttribute('aria-expanded', String(active));
+    cropButton.querySelector('[data-crop-label]')!.textContent = active ? 'Done' : 'Crop';
+  }
+
+  function setPreview(active: boolean) {
+    root.toggleAttribute('data-preview', active);
+    title.contentEditable = active ? 'false' : 'plaintext-only';
+    if (active) {
+      title.removeAttribute('role');
+      title.removeAttribute('aria-label');
+      reorder.cancel();
+      setCrop(false);
+    } else {
+      title.setAttribute('role', 'textbox');
+      title.setAttribute('aria-label', 'Project headline');
+    }
+    preview.querySelector('[data-preview-label]')!.textContent = active ? 'Edit' : 'Preview';
+  }
+
+  cropButton.addEventListener('click', () => setCrop(cropButton.getAttribute('aria-expanded') === 'false'));
+  preview.addEventListener('click', () => setPreview(!root.hasAttribute('data-preview')));
+  root.querySelector('[data-reorder-demo-reset]')!.addEventListener('click', () => {
+    title.textContent = initialTitle;
+    crop.reset();
+    setCrop(false);
+    setPreview(false);
+  });
+  title.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); title.blur(); }
+  });
+  title.addEventListener('blur', () => { if (!title.textContent?.trim()) title.textContent = initialTitle; });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !event.defaultPrevented && !event.isComposing) {
+      window.parent.postMessage('vcd:editor-playground-exit', location.origin);
+    }
+  });
+</script>
+
+<style>
+  :global(body:has([data-editor-playground]) .demo-page) { padding: 0; }
+  .playground { color: var(--sys-color-on-srf); }
+  .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 110;
+    display: flex;
+    gap: 4px;
+    min-height: 60px;
+    align-items: center;
+    padding: 4px 64px 4px max(16px, env(safe-area-inset-left));
+    background: var(--sys-color-srf);
+    border-bottom: 1px solid var(--sys-color-srf-container);
+  }
+  .sample { width: min(100%, 48rem); margin-inline: auto; padding: clamp(24px, 5vw, 64px) clamp(28px, 6vw, 64px); }
+  h1 {
+    margin: 0 0 0.48em;
+    font-size: clamp(2rem, 6vw, 4rem);
+    font-weight: 650;
+    letter-spacing: -0.055em;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+  h1[contenteditable="plaintext-only"] { cursor: text; border-radius: 3px; }
+  h1[contenteditable="plaintext-only"]:is(:hover, :focus-visible) { outline: 1px dashed currentColor; outline-offset: 6px; }
+  .hero { position: relative; }
+  .project-cropped { --project-image-ratio: 3 / 1; }
+  .crop-button { position: absolute; top: 6px; right: 6px; z-index: 15; }
+  .blocks { display: flex; flex-direction: column; margin-top: 12px; overflow-anchor: none; }
+  .sample-block {
+    position: relative;
+    border-bottom: 1px solid var(--sys-color-srf-container);
+    padding: 14px 0 16px 24px;
+  }
+  h2 { font-size: 1.125rem; font-weight: 650; letter-spacing: -0.025em; }
+  p { margin-top: 3px; font-size: 1rem; line-height: 1.45; }
+  .playground .sample-block > :global(.dev-section-drag-handle) {
+    opacity: 1;
+    pointer-events: auto;
+    left: -12px;
+    transform: translateY(-50%);
+  }
+  .playground[data-preview] .sample-block > :global(.dev-section-drag-handle),
+  .playground[data-preview] .crop-button { display: none; }
+  .reorder-demo__status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  @media (max-width: 40em) {
+    .toolbar :global(button), .crop-button, .playground .sample-block > :global(.dev-section-drag-handle) { min-height: 44px; }
+    .playground:has(h1:focus) .toolbar { visibility: hidden; }
+  }
+</style>

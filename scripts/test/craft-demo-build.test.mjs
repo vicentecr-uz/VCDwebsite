@@ -39,6 +39,23 @@ for (const demo of CRAFT_DEMOS) {
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
   const isSabi = demo.id.startsWith('sabi-');
+  if (demo.id === 'editor-playground') {
+    const host = allNodes(parseHtml(await readFile(path.join(dist, 'editor-playground/index.html'), 'utf8')));
+    assert.ok(host.some((node) => attr(node, 'data-interactive-demo') === demo.id && attr(node, 'data-demo-frame') === 'default'));
+    assert.ok(host.some((node) => node.tagName === 'iframe' && attr(node, 'src') === '/preview/editor-playground'));
+    assert.ok(host.some((node) => node.tagName === 'button' && attr(node, 'data-playground-expand') !== undefined && !text(node).trim()));
+    const policy = nodes.find((node) => attr(node, 'http-equiv') === 'Content-Security-Policy');
+    assert.match(attr(policy, 'content'), /connect-src 'none'/);
+    assert.match(attr(policy, 'content'), /form-action 'none'/);
+    assert.deepEqual(nodes.filter((node) => attr(node, 'contenteditable') !== undefined).map((node) => attr(node, 'contenteditable')), ['plaintext-only']);
+    for (const script of nodes.filter((node) => node.tagName === 'script' && attr(node, 'type') === 'module')) {
+      const src = attr(script, 'src');
+      const source = src ? `import ${JSON.stringify(src)};` : text(script);
+      assert.doesNotMatch(withoutRendererEvents(source), /\/api\/|localStorage|sessionStorage|vcd:dev-/);
+      await scriptGraph(source);
+    }
+    continue;
+  }
   const isProgressiveImage = demo.id === 'progressive-image';
   const isCanvas = demo.id.startsWith('sabi-') || ['progressive-image', 'image-framing', 'gap-spacing', 'block-reorder'].includes(demo.id);
   if (isCanvas) {
