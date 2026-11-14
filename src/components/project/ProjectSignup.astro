@@ -51,6 +51,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         hideLabel
         pattern={String.raw`[^@\s]+@[^@\s]+\.[^@\s]+`}
         required
+        type="email"
         autocomplete="email"
         inputmode="email"
         autocapitalize="none"
@@ -161,7 +162,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       const fieldRect = textField.getBoundingClientRect();
       next.style.font = style.font;
       next.style.letterSpacing = style.letterSpacing;
-      next.style.left = `${inputRect.left - fieldRect.left}px`;
+      next.style.left = `${inputRect.left - fieldRect.left + parseFloat(style.paddingLeft) - input.scrollLeft}px`;
       next.style.top = `${inputRect.top - fieldRect.top}px`;
       next.style.height = `${inputRect.height}px`;
       next.textContent = text;
@@ -384,13 +385,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         ));
       }
     };
-    const emailChecker = document.createElement('input');
-    emailChecker.type = 'email';
     const updateShortcut = () => {
       if (!input || !shortcut) return;
       input.setCustomValidity('');
-      emailChecker.value = input.value;
-      if (emailChecker.validity.typeMismatch) {
+      if (input.validity.typeMismatch) {
         input.setCustomValidity('Enter a valid email address.');
       }
       if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
@@ -709,8 +707,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__shortcut {
-    padding-inline-start: 0.4em;
-    opacity: 1;
+    position: absolute;
+    inset-inline-end: 12px;
+    flex: none;
     color: var(--sys-color-on-srf-subtle);
     font-size: 0.8125rem;
     line-height: 1;
@@ -784,7 +783,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     overflow: hidden;
     min-width: 0;
     width: 100%;
-    padding: 0;
+    padding: 0 32px 0 0;
     border-radius: calc(0.5rem * var(--continuous-corner-scale, 1));
     corner-shape: var(--squircle-shape);
     background: transparent;
@@ -797,16 +796,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     box-shadow: none;
   }
 
-  :global(.project-signup__field .dev-text-field) {
-    --sabi-edge-gutter: 12px;
-    padding-block: 0;
-  }
-
   :global(.project-signup__field .dev-field__input) {
     appearance: none;
+    width: 100%;
     height: 2.625rem;
     margin: 0;
-    padding: 0;
+    padding: 0 8px 0 12px;
     outline: 0;
     -webkit-tap-highlight-color: transparent;
     color: var(--sys-color-on-srf);
