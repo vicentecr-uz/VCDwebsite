@@ -39,6 +39,35 @@ for (const demo of CRAFT_DEMOS) {
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
   const isSabi = demo.id.startsWith('sabi-');
+  if (demo.id === 'editor-playground') {
+    const host = allNodes(parseHtml(await readFile(path.join(dist, 'editor-playground/index.html'), 'utf8')));
+    assert.ok(host.some((node) => attr(node, 'data-interactive-demo') === demo.id && attr(node, 'data-demo-frame') === 'default'));
+    const frame = host.find((node) => node.tagName === 'iframe' && attr(node, 'src') === '/preview/editor-playground');
+    assert.deepEqual(attr(frame, 'sandbox')?.split(/\s+/).sort(), ['allow-forms', 'allow-modals', 'allow-same-origin', 'allow-scripts']);
+    assert.ok(host.some((node) => node.tagName === 'button' && attr(node, 'data-playground-expand') !== undefined && !text(node).trim()));
+    const policy = nodes.find((node) => attr(node, 'http-equiv') === 'Content-Security-Policy');
+    assert.match(attr(policy, 'content'), /connect-src 'none'/);
+    assert.match(attr(policy, 'content'), /form-action 'none'/);
+    assert.match(attr(policy, 'content'), /worker-src 'none'/);
+    for (const marker of ['data-compact-editor', 'data-dev-text-actions', 'data-dev-viewport-preview', 'data-dev-image-drop', 'data-published-demo-assets']) {
+      assert.ok(nodes.some((node) => attr(node, marker) !== undefined), marker);
+    }
+    for (const key of ['image', 'grid', 'carousel', 'caption', 'section-nav', 'asset-manager', 'image-descriptions']) {
+      assert.ok(nodes.some((node) => attr(node, 'data-dev-panel-key') === key), `shared editor panel: ${key}`);
+    }
+    const seed = JSON.parse(text(nodes.find((node) => attr(node, 'data-playground-document') !== undefined)));
+    assert.equal(seed.slug, 'editor-playground');
+    assert.equal(seed.title, 'New Classic Utility Knife');
+    const source = path.join(root, 'src/content/projects/new-classic-utility-knife.json');
+    if (existsSync(source)) {
+      const project = JSON.parse(await readFile(source, 'utf8'));
+      if (project.status === 'published') {
+        assert.deepEqual(seed.sections.map(({ id }) => id), project.sections.map(({ id }) => id));
+        assert.ok(nodes.filter((node) => attr(node, 'data-dev-edit-trigger') === 'image').length > 1, 'project images retain their edit controls');
+      }
+    }
+    continue;
+  }
   const isProgressiveImage = demo.id === 'progressive-image';
   const isCanvas = demo.id.startsWith('sabi-') || ['progressive-image', 'image-framing', 'gap-spacing', 'block-reorder'].includes(demo.id);
   if (isCanvas) {

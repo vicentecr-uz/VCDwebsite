@@ -17,6 +17,7 @@ export const CRAFT_DEMOS = [
   { id: 'adaptive-ink', title: 'Adaptive ink', height: 42 },
   { id: 'image-framing', title: 'Image framing', height: 48, narrowHeight: 68, frame: 'none' },
   { id: 'gap-spacing', title: 'Draggable block system', height: 42 },
+  { id: 'editor-playground', title: 'Site editor playground', height: 38, narrowHeight: 32 },
   { id: 'block-reorder', title: 'Block reorder', height: 46 },
   { id: 'proximity', title: 'Proximity reveal', height: 36 },
   // Inline and content-sized: height is unused, data comes from the block's `sample`.

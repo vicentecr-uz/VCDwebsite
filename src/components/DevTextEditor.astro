@@ -23,6 +23,9 @@ import { getProjectSlugsForBuild } from '../lib/projects';
 import Menu from './ui/Menu.astro';
 import Button from './ui/Button.astro';
 
+interface Props { documentKey?: string }
+const { documentKey } = Astro.props;
+
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
 const formatItalicSvg = sizeIcon(italicIcon, 16);
@@ -35,7 +38,7 @@ const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 ---
 
-<template data-divider-template><ProjectDivider documentKey="divider-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-divider-template><ProjectDivider documentKey={documentKey ?? "divider-template"} sectionPath={['sections', 0]} spacing="group" /></template>
 <template data-project-details-trigger-template><Button label="" emphasis="ghost" class="project-details__actions" data-project-details-actions data-dev-mode-only aria-label="Row actions" aria-haspopup="menu" aria-expanded="false"><span slot="icon" aria-hidden="true" set:html={sizeIcon(ellipsisIcon, 16)} /></Button></template>
 <template data-project-details-menu-template>
   <Menu class="dev-menu project-details-row-menu" role="menu" aria-label="Row actions" popover="manual">
@@ -45,10 +48,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   </Menu>
 </template>
 
-<template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-award-template><ProjectAward documentKey={documentKey ?? "award-template"} sectionPath={['sections', 0]} spacing="group" /></template>
 
 <div class="dev-text-action-stack">
-  <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(getProjectSlugsForBuild())} hidden>
+  <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(documentKey ? [documentKey] : getProjectSlugsForBuild())} hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
       <button type="button" data-dev-save-ledger aria-expanded="false" aria-controls="dev-save-ledger" hidden>
         <span data-dev-save-ledger-label></span>
@@ -2803,7 +2806,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncBranchUpdateBar();
     };
 
-    const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
+    const SCROLL_RESTORE_KEY = document.documentElement.hasAttribute('data-editor-playground')
+      ? 'vcd:editor-playground:scroll-y' : 'vcd-dev-scroll-y';
     const restoreScrollAfterReload = () => {
       const raw = sessionStorage.getItem(SCROLL_RESTORE_KEY);
       if (raw == null) return;
@@ -7078,6 +7082,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     });
 
     window.addEventListener('beforeunload', (event) => {
+      if (document.documentElement.hasAttribute('data-playground-resetting')) return;
       const draft = { dirty: false };
       window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
       const hasContentEdits = actionsBusy || pageHistory.busy || draft.dirty

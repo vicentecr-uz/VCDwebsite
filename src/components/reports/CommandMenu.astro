@@ -45,6 +45,7 @@ const commands = contextual ? [
 </div>
 
 <script>
+  import { usesCompactEditor } from '../../lib/compactEditor';
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
   import { clampToViewport } from '../../lib/floatingLayer';
   import { canConvertCarouselToImage, canConvertImageToCarousel } from '../../scripts/devEditTarget';
@@ -134,7 +135,7 @@ const commands = contextual ? [
       const open = (event: MouseEvent) => {
         const html = document.documentElement;
         if (!html.classList.contains('is-dev-mode') || html.classList.contains('is-section-nav-editing')) return;
-        if (html.classList.contains('is-remote-editor') && matchMedia('(max-width: 40em)').matches) return;
+        if (usesCompactEditor(html)) return;
         const target = event.target instanceof Element ? event.target : null;
         if (!target || target.closest('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], video, media-controller')) return;
         const image = target.closest<HTMLElement>('[data-dev-image-target]');

@@ -1,13 +1,19 @@
+import { playgroundMedia } from './playgroundMedia';
 import { isVideoSrc } from './imageUpload.mjs';
+
+const imagesPath = '/images/';
 
 /** Public /images path with encoded filename segments. Source lives in `media/`. */
 export function projectImage(filename: string): string {
-  if (filename === 'placeholder.svg' || filename === '/images/placeholder.svg') return '/demo-fixtures/placeholder.svg';
+  const token = filename.startsWith(imagesPath) ? filename.slice(imagesPath.length) : filename;
+  const local = playgroundMedia.get(token);
+  if (local) return local;
+  if (token === 'placeholder.svg') return '/demo-fixtures/placeholder.svg';
   if (filename.startsWith('/')) {
     return filename;
   }
 
-  return `/images/${filename.split('/').map(encodeURIComponent).join('/')}`;
+  return imagesPath + filename.split('/').map(encodeURIComponent).join('/');
 }
 
 /** Generated first-frame poster for a media-backed video, when available. */
@@ -17,6 +23,7 @@ export function projectVideoPoster(filename: string): string | undefined {
   const suffixIndex = value.search(/[?#]/);
   const clean = suffixIndex === -1 ? value : value.slice(0, suffixIndex);
   const suffix = suffixIndex === -1 ? '' : value.slice(suffixIndex);
+  if (playgroundMedia.has(clean)) return undefined;
   if (!isVideoSrc(clean)) return undefined;
   if (clean.startsWith('/')) {
     if (!clean.startsWith('/images/')) return undefined;
@@ -43,6 +50,8 @@ function shouldUseOriginalTier(filename: string): boolean {
 
 /** Display-sized derivative URL; JSON `src` stays the original filename. */
 export function projectImageTier(filename: string, tier: ImageDisplayTier): string {
+  const local = playgroundMedia.get(filename);
+  if (local) return local;
   if (filename.startsWith('/')) {
     return filename;
   }

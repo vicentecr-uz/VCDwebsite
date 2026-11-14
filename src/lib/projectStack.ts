@@ -1,3 +1,4 @@
+import { isEditableDocument } from './playgroundDocument.mjs';
 import {
   PROJECT_STACK_SPACING_VALUES,
   canonicalizeProjectStackSpacing,
@@ -182,7 +183,7 @@ export function spacingDevAttrs(
   spacing: ProjectStackSpacing,
   options?: { writePath?: Array<string | number>; contentId?: string },
 ): Record<string, string> | undefined {
-  if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
+  if (!isEditableDocument(documentKey) || !documentKey || !sectionPath?.length) return undefined;
   const resolved = resolveProjectStackSpacing(spacing);
   return {
     'data-dev-spacing-document': documentKey,

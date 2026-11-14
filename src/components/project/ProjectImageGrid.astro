@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   imageGridColumnsStyle,
@@ -131,7 +132,7 @@ if (!layouts.mobile && items.some((item) => item.hideOnMobile)) {
 }
 
 const resolvedLayouts = resolveGridItemLayout(itemIds, layouts);
-const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
+const showDevEditing = isEditableDocument(documentKey) && !!documentKey && Array.isArray(basePath);
 /** Single-row grids still need the editor — e.g. 3-wide desktop → 1-wide mobile. */
 const showGridEditor = showDevEditing;
 const stackClass = projectStackClass(spacing);
@@ -150,7 +151,7 @@ const editorItems = items.map((item, index) => ({
   id={sectionId}
   data-image-content-id={contentId}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
   class:list={[
     'project-image-grid',
     matchHeight && 'project-image-grid--match-height',
@@ -359,7 +360,7 @@ const editorItems = items.map((item, index) => ({
       </figure>
     );
   })}
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </div>
 
 <script>

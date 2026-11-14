@@ -1,3 +1,5 @@
+import { validateProjectOutline, validateProjectOutlineTargets, markAutomaticImageAltIntent, PLACEHOLDER_IMAGE_VARIANTS, isPlaceholderImageSrc } from '../src/lib/contentAuthoringMedia.mjs';
+export { validateProjectOutline, validateProjectOutlineTargets, markAutomaticImageAltIntent, PLACEHOLDER_IMAGE_VARIANTS, isPlaceholderImageSrc, buildPlaceholderItem, buildPlaceholderImageSection, buildPlaceholderImageGridSection, buildPlaceholderImageCarouselSection } from '../src/lib/contentAuthoringMedia.mjs';
 // @ts-check
 import { createReadStream, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
@@ -245,10 +247,6 @@ const DEFAULT_IMAGE_VARIANTS = {
   desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
 };
 
-export const PLACEHOLDER_IMAGE_VARIANTS = {
-  desktop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
-};
-
 const STATIC_EDITABLE_DOCUMENTS = new Map([
   ['the-rams', 'src/content/projects/the-rams.json'],
   ['parentpal', 'src/content/projects/parentpal.json'],
@@ -280,49 +278,6 @@ export function resolveEditableDocument(documentKey) {
     // pages dir may not exist yet during first scaffold
   }
   return map.get(documentKey);
-}
-
-function isValidOutlineEntry(entry) {
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-  if (
-    typeof entry.id !== 'string' || entry.id.length === 0 || entry.id.length > 80
-    || typeof entry.label !== 'string' || entry.label.length === 0 || entry.label.length > 120
-    || (entry.anchor !== undefined && (typeof entry.anchor !== 'string' || entry.anchor.length === 0 || entry.anchor.length > 80))
-  ) return false;
-  if (entry.kind === 'group') return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
-  if (entry.kind === 'section') {
-    return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
-  }
-  return entry.kind === 'subsection' && entry.defaultOpen === undefined;
-}
-
-export function validateProjectOutline(outline) {
-  if (!Array.isArray(outline) || outline.length > 120 || !outline.every(isValidOutlineEntry)) return false;
-  const identities = new Set();
-  for (const entry of outline) {
-    const normalizedKind = entry.kind === 'group'
-      || (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen'))
-      ? 'group'
-      : 'section';
-    const identity = `${normalizedKind}:${entry.id}`;
-    if (identities.has(identity)) return false;
-    identities.add(identity);
-  }
-  return true;
-}
-
-export function validateProjectOutlineTargets(outline, sections) {
-  if (!Array.isArray(outline) || !Array.isArray(sections)) return false;
-  const targets = new Set(
-    sections
-      .filter((section) => section && typeof section === 'object' && !Array.isArray(section))
-      .map((section) => String(section.sectionId || section.id || '').trim())
-      .filter(Boolean),
-  );
-  return outline.every((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
-    return targets.has(String(entry.anchor || entry.id || '').trim());
-  });
 }
 
 export function sanitizeUploadFilename(filename) {
@@ -418,58 +373,6 @@ export async function buildImageSectionFromSrcs(srcs) {
     ...(await readImageDimsFromSrc(src) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   });
-}
-
-export const buildPlaceholderItem = (id) => ({
-  id,
-  src: 'placeholder.svg',
-  alt: 'Placeholder',
-  variants: structuredClone(PLACEHOLDER_IMAGE_VARIANTS),
-});
-
-export function buildPlaceholderImageSection() {
-  const id = `placeholder-${Date.now().toString(36)}`;
-  return { type: 'image', id, spacing: 'group', ...buildPlaceholderItem(id) };
-}
-
-export function buildPlaceholderImageGridSection() {
-  const id = `placeholder-grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const items = [
-    buildPlaceholderItem(`grid-item-1-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
-    buildPlaceholderItem(`grid-item-2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
-  ];
-  const visible = items.map((item) => item.id);
-  return {
-    type: 'imageGrid', id, columns: 2, defaultAspectRatio: '4:3', spacing: 'group', items,
-    layouts: { desktop: { visible: [...visible] }, mobile: { visible: [...visible] } },
-  };
-}
-
-export function buildPlaceholderImageCarouselSection() {
-  const id = `placeholder-carousel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const items = [
-    buildPlaceholderItem(`carousel-item-1-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
-    buildPlaceholderItem(`carousel-item-2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
-  ];
-  return {
-    type: 'imageCarousel', id, orientation: 'horizontal', heightMode: 'dynamic', dotsPlacement: 'outside',
-    defaultAspectRatio: 'original', spacing: 'group', items, visible: items.map((item) => item.id),
-  };
-}
-
-export function isPlaceholderImageSrc(src) {
-  const value = String(src || '');
-  return value === 'placeholder.svg' || value.endsWith('/placeholder.svg');
-}
-
-export function markAutomaticImageAltIntent(section) {
-  const visit = (node) => {
-    if (!node || typeof node !== 'object') return;
-    if (typeof node.src === 'string' && /\.(?:jpe?g|png|webp|avif|gif|bmp|tiff?)$/i.test(node.src.split(/[?#]/, 1)[0]) && !String(node.alt || '').trim() && (!node.altIntent || node.altIntent === 'auto')) node.altIntent = 'auto';
-    for (const value of Object.values(node)) if (value && typeof value === 'object') visit(value);
-  };
-  visit(section);
-  return section;
 }
 
 /** Replace a placeholder image section's src/dims with an uploaded draft file.

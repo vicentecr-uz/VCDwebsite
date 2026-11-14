@@ -1,0 +1,117 @@
+---
+import path from 'node:path';
+import DemoLayout from '../../layouts/DemoLayout.astro';
+import Button from '../../components/ui/Button.astro';
+import SectionSidebarNav from '../../components/SectionSidebarNav.astro';
+import ProjectEditor from '../../components/ProjectEditor.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import ProjectSectionNavEditor from '../../components/project/ProjectSectionNavEditor.astro';
+import ProjectImageGridTuner from '../../components/project/ProjectImageGridTuner.astro';
+import ProjectImageCarouselTuner from '../../components/project/ProjectImageCarouselTuner.astro';
+import ProjectImageCaptionTuner from '../../components/project/ProjectImageCaptionTuner.astro';
+import ImageLightbox from '../../components/ImageLightbox.astro';
+import CaptionMediaInk from '../../components/CaptionMediaInk.astro';
+import DevImageDrop from '../../components/DevImageDrop.astro';
+import DevPageColumn from '../../components/DevPageColumn.astro';
+import { loadProjectBySlug } from '../../lib/projects';
+import { deriveNavFromOutline, resolveProjectOutline } from '../../lib/projectOutline';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import { PLAYGROUND_DOCUMENT } from '../../lib/playgroundDocument.mjs';
+import { readPublishedDemoAssets } from '../../../scripts/public-demo-assets.mjs';
+import '../../styles/project.css';
+
+const source = loadProjectBySlug('new-classic-utility-knife');
+const project = source?.status === 'published' ? source : {
+  title: 'New Classic Utility Knife',
+  sections: [
+    { type: 'bodyText', id: 'body-1', paragraphs: ['A utility knife designed for simpler blade handling.'] },
+    { type: 'image', id: 'image-1', src: 'placeholder.svg', alt: 'Placeholder' },
+  ],
+  trailingSpacing: 'none',
+};
+const { title, sections } = project;
+const introHeight = 'introHeight' in project ? Number(project.introHeight) || undefined : undefined;
+const outline = resolveProjectOutline(project);
+const trailingSpacing = (project.trailingSpacing ?? 'none') as ProjectStackSpacing;
+const documentKey = PLAYGROUND_DOCUMENT;
+const catalog = import.meta.env.DEV ? await readPublishedDemoAssets({
+  distDir: path.resolve('dist'),
+  projectsDir: path.resolve('src/content/projects'),
+  mediaDir: path.resolve('media'),
+}) : [];
+const json = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
+const seed = json({ title, sections, trailingSpacing, outline, introHeight, slug: documentKey });
+const catalogJson = json(catalog);
+const insertableTextBlocks = [
+  { type: 'bodyText', paragraphs: [''] },
+  { type: 'sectionTitle', title: '' },
+  { type: 'quote', paragraphs: [''] },
+  { type: 'projectDetails', rows: [{ label: '', value: '' }] },
+  { type: 'divider' },
+  { type: 'award' },
+];
+---
+
+<DemoLayout title={title} scrolling playground>
+  <div data-playground-controls>
+    <Button label="Preview mode" class="preview-toggle" data-playground-preview>
+      <span data-playground-preview-label>Preview mode</span> <kbd aria-hidden="true">⌥E</kbd>
+    </Button>
+    <Button label="Reset" class="reset" aria-label="Reset demo" data-playground-reset />
+  </div>
+  <p class="playground-status" data-playground-status role="status" hidden></p>
+  <div id="site-wrapper">
+    <article data-page-shell data-writeup-page data-adaptive-sidebar data-section-nav-root data-section-nav-document={documentKey}
+      data-section-nav={JSON.stringify(deriveNavFromOutline(outline))} data-section-outline={JSON.stringify(outline)}>
+      <div id="main-content" class="project-page__main" data-section-nav-main>
+        <h1 class="project-body-text playground-title" data-dev-text-document={documentKey}
+          data-dev-text-path='["title"]' data-dev-text-kind="text">{title}</h1>
+        <div data-dev-project-drop-zone data-page-document={documentKey}>
+          <ProjectSections documentKey={documentKey} sections={sections} introHeight={introHeight} />
+          <div class={projectStackClass(trailingSpacing)}
+            {...(spacingDevAttrs(documentKey, ['sections', sections.length], trailingSpacing, { writePath: ['trailingSpacing'] }) ?? {})} />
+        </div>
+      </div>
+      <div class="playground-sidebar"><SectionSidebarNav sectionLinks={deriveNavFromOutline(outline)} enableEasingDevPanel={false} /></div>
+    </article>
+  </div>
+  <script is:inline type="application/json" data-playground-document set:html={seed}></script>
+  <script is:inline type="application/json" data-published-demo-assets set:html={catalogJson}></script>
+  <template data-playground-block-templates>
+    <ProjectSections documentKey={documentKey} sections={insertableTextBlocks} />
+  </template>
+  <ImageLightbox />
+  <ProjectEditor documentKey={documentKey} />
+  <ProjectImageGridTuner />
+  <ProjectImageCarouselTuner />
+  <ProjectImageCaptionTuner />
+  <ProjectSectionNavEditor />
+  <CaptionMediaInk />
+  <DevImageDrop documentKey={documentKey} />
+  <DevPageColumn />
+</DemoLayout>
+
+<script>
+  import { mountPlayground } from '../../lib/playgroundEditor';
+  void mountPlayground();
+</script>
+
+<style>
+  :global(html[data-editor-playground] .demo-page) { padding: 0; }
+  :global(html[data-editor-playground] #site-wrapper) {
+    --page-media-max-width: var(--page-text-max-width);
+    --page-max-width: var(--page-text-max-width);
+    --text-body-measure: 100%;
+    padding-block: 72px 88px;
+  }
+  .playground-title { margin: 0 0 var(--space-unit); }
+  :global(html:not(.show-section-nav-editor)) .playground-sidebar { display: none; }
+  .preview-toggle, .reset { position: fixed; left: max(8px, env(safe-area-inset-left)); z-index: 110; }
+  .preview-toggle { top: max(8px, env(safe-area-inset-top)); }
+  .reset { bottom: max(8px, env(safe-area-inset-bottom)); }
+  .playground-status { position: fixed; left: var(--space-unit); bottom: 54px; z-index: 110; font: var(--dev-text-status); }
+  :global(html[data-edit-viewport-frame] [data-playground-controls]),
+  :global(html[data-viewport-previewing] [data-playground-controls]),
+  :global(html.is-dev-mobile-text-focus [data-playground-controls]) { visibility: hidden; }
+  kbd { opacity: 0.65; font: inherit; }
+</style>

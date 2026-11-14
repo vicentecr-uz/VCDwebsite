@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { normalizeHref } from '../../lib/normalizeHref.mjs';
 import { projectImage } from '../../lib/images';
@@ -25,7 +26,7 @@ const {
   src = '/awards/if-design-2026.png', alt = 'iF Design Award 2026', href = '',
   documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId, annotations,
 } = Astro.props;
-const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
+const editable = isEditableDocument(documentKey) && Boolean(documentKey && sectionPath.length);
 const safeHref = normalizeHref(href) || undefined;
 ---
 
@@ -35,7 +36,7 @@ const safeHref = normalizeHref(href) || undefined;
   style={`--award-block-height-mobile-saved:${awardBlockSize.mobile}px;--award-block-height-tablet-saved:${awardBlockSize.tablet}px;--award-block-height-desktop-saved:${awardBlockSize.desktop}px`}
   {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
   data-dev-section-deletable={editable ? 'award' : undefined}
   data-project-award
 >
@@ -60,15 +61,16 @@ const safeHref = normalizeHref(href) || undefined;
       </Button>
     </form>}
   </div>
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </section>
 
 <style is:global>
   .project-award { display: grid; place-items: center; width: 100%; }
-  .project-award__control { position: relative; display: grid; place-items: center; width: 100%; min-height: var(--award-block-height-live, var(--award-block-height-desktop-saved)); }
+  .project-award { --award-block-height: var(--award-block-height-live, var(--award-block-height-desktop-browser, var(--award-block-height-desktop-saved))); }
+  .project-award__control { position: relative; display: grid; place-items: center; width: 100%; min-height: var(--award-block-height); }
   .project-award__hit { position: relative; display: block; max-width: 100%; }
   .project-award__hit[href]::after { content: ''; position: absolute; inset: -8px; }
-  .project-award__hit img { display: block; height: var(--award-block-height-live, var(--award-block-height-desktop-saved)); width: auto; max-width: 100%; object-fit: contain; opacity: 1; transition: opacity .2s ease; }
+  .project-award__hit img { display: block; height: var(--award-block-height); width: auto; max-width: 100%; object-fit: contain; opacity: 1; transition: opacity .2s ease; }
   .project-award__hit:hover img, .project-award__hit:focus-visible img { opacity: .6; }
   .project-award .project-award__edit, .project-award__editor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   .project-award .project-award__edit { right: auto; opacity: 1; pointer-events: auto; white-space: nowrap; }
@@ -80,9 +82,10 @@ const safeHref = normalizeHref(href) || undefined;
   html:not(.is-dev-mode) .project-award__editor, html:not(.is-dev-mode) .project-award__edit,
   html.show-section-nav-editor .project-award__editor, html.show-section-nav-editor .project-award__edit { display: none; }
   @media (max-width: 991px) {
-    .project-award__control, .project-award__hit img { min-height: var(--award-block-height-live, var(--award-block-height-tablet-saved)); height: var(--award-block-height-live, var(--award-block-height-tablet-saved)); }
+    .project-award { --award-block-height: var(--award-block-height-live, var(--award-block-height-tablet-browser, var(--award-block-height-tablet-saved))); }
+    .project-award__control, .project-award__hit img { min-height: var(--award-block-height); height: var(--award-block-height); }
   }
   @media (max-width: 767px) {
-    .project-award__control, .project-award__hit img { min-height: var(--award-block-height-live, var(--award-block-height-mobile-saved)); height: var(--award-block-height-live, var(--award-block-height-mobile-saved)); }
+    .project-award { --award-block-height: var(--award-block-height-live, var(--award-block-height-mobile-browser, var(--award-block-height-mobile-saved))); }
   }
 </style>

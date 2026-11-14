@@ -4,11 +4,12 @@ import { validateSiteAnnotations, type SiteAnnotation } from '../../lib/siteAnno
 import '../../styles/site-annotations.css';
 
 interface Props {
+  authoring?: boolean;
   sectionId: string;
   annotations?: unknown;
 }
 
-const { sectionId, annotations } = Astro.props;
+const { sectionId, annotations, authoring = import.meta.env.DEV } = Astro.props;
 const source = annotations ?? [];
 const valid = validateSiteAnnotations(source, new Set([sectionId]))
   ? source as SiteAnnotation[]
@@ -37,7 +38,7 @@ const items = valid.flatMap((annotation) => {
     }];
   });
 }).map((item) => ({ ...item, src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(item.src)}` }));
-const positionData = import.meta.env.DEV ? valid : valid.map(({ strokes, ...annotation }) => annotation);
+const positionData = authoring ? valid : valid.map(({ strokes, ...annotation }) => annotation);
 ---
 
 <div class="site-annotations" data-site-annotations={JSON.stringify(positionData)} aria-hidden="true">

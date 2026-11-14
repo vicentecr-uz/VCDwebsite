@@ -29,6 +29,8 @@ import awardBlockSize from '../lib/awardBlockSize.json';
 </style>
 
 <script>
+  import { onPageLoad } from '../lib/pageLifecycle';
+
   type Viewport = 'desktop' | 'tablet' | 'mobile';
   const VIEWPORTS: Viewport[] = ['desktop', 'tablet', 'mobile'];
   let cleanup: (() => void) | undefined;
@@ -161,8 +163,9 @@ import awardBlockSize from '../lib/awardBlockSize.json';
       clearPreview();
     };
   };
-  document.addEventListener('astro:page-load', init);
-  document.addEventListener('astro:before-swap', () => cleanup?.());
-  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
-  init();
+  const dispose = onPageLoad(() => {
+    init();
+    return () => cleanup?.();
+  });
+  import.meta.hot?.dispose(dispose);
 </script>

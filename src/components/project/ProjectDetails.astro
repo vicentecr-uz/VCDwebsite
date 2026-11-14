@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import Button from '../ui/Button.astro';
 import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
@@ -26,7 +27,7 @@ const {
   contentId,
   annotations,
 } = Astro.props;
-const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
+const editable = isEditableDocument(documentKey) && Boolean(documentKey && sectionPath.length);
 const path = (field: string | number) => JSON.stringify([...sectionPath, field]);
 const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...sectionPath, 'rows', index, field]);
 ---
@@ -36,7 +37,7 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
   class:list={['project-block', 'project-block--text', 'project-details', projectStackClass(spacing), sectionId && 'section-block']}
   {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
   data-dev-section-deletable={editable ? "projectDetails" : undefined}
   data-dev-project-details={editable ? "" : undefined}
 >
@@ -68,5 +69,5 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
     ))}
   </dl>
   {editable && <button type="button" class="project-details__add" data-project-details-add data-dev-mode-only>Add row</button>}
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </section>

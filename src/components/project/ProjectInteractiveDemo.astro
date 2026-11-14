@@ -7,6 +7,10 @@ import '../../styles/loading-spinner.css';
 import '../../styles/demoIndicators.css';
 import '../../styles/demoFinger.css';
 import '../../lib/stageshow/cursor.css';
+import maximizeIcon from 'lucide-static/icons/maximize.svg?raw';
+import minimizeIcon from 'lucide-static/icons/minimize.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+import Button from '../ui/Button.astro';
 import loadingSpinner from '../ui/LoadingSpinner.svg?raw';
 import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import CropFrameDemo from './demos/CropFrameDemo.astro';
@@ -32,6 +36,7 @@ const urlSample = sample && typeof sample === 'object' ? sample as Record<string
 const sampleText = (key: string) => typeof urlSample[key] === 'string' ? urlSample[key] : undefined;
 const frame = demo && 'frame' in demo ? demo.frame : 'default';
 const embedded = demo && !['progressive-image', 'image-framing', 'bar-chart', 'url-field'].includes(demo.id);
+const expandable = demo?.id === 'editor-playground';
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   ? { documentKey, path: [...sectionPath, 'sample'], sectionId: contentId }
@@ -41,7 +46,13 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 {demo && (
   <div class:list={['project-block', 'project-interactive-demo', frame === 'default' && 'demo-frame', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-interactive-demo={demo.id} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is currently optimized for desktop</p>}
-    <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined}>
+    <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined} popover={expandable ? 'manual' : undefined}>
+      {expandable && <Button class="playground-expand" label="" raised aria-label="Expand demo" aria-expanded="false" data-playground-expand>
+        <Fragment slot="icon">
+          <span data-expand-icon set:html={sizeIcon(maximizeIcon, 18)} />
+          <span data-minimize-icon set:html={sizeIcon(minimizeIcon, 18)} />
+        </Fragment>
+      </Button>}
       {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
       {demo.id === 'url-field' ? (
         <div class="project-interactive-demo__url-field"><SabiUrlField value={sampleText('url')} prefix={sampleText('prefix')} suffix={sampleText('suffix')} /></div>
@@ -49,7 +60,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
         src={'route' in demo ? demo.route : `/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
-        sandbox={`allow-scripts allow-same-origin${demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
+        sandbox={`allow-scripts allow-same-origin${expandable ? ' allow-modals allow-forms' : demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
         referrerpolicy="no-referrer"
       />}
     </project-demo-content>
@@ -58,6 +69,8 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 )}
 
 <script>
+  import { bindPlaygroundExpansion } from '../../lib/playgroundExpansion';
+
   class ProjectDemoContent extends HTMLElement {
     private pending?: AbortController;
 
@@ -66,10 +79,14 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
       if (!frame) return;
       this.pending = new AbortController();
       const { signal } = this.pending;
+      const expand = this.querySelector<HTMLButtonElement>('[data-playground-expand]');
+      if (expand) bindPlaygroundExpansion(this, expand, frame, signal);
       const ready = () => {
         const document = frame.contentDocument;
         if (!document || document.URL === 'about:blank' || document.readyState !== 'complete') return;
-        const islands = document.querySelectorAll('astro-island[ssr]');
+        // The playground canvas is ready at load. Its desktop settings hydrate on
+        // visibility, so waiting for them here would keep the iframe hidden forever.
+        const islands = expand ? [] : document.querySelectorAll('astro-island[ssr]');
         if (islands.length) {
           islands.forEach((island) => island.addEventListener('astro:hydrate', ready, { once: true, signal }));
           return;
@@ -108,6 +125,53 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     position: relative;
     border-radius: inherit;
     corner-shape: inherit;
+  }
+
+  [data-interactive-demo='editor-playground'] {
+    min-height: var(--demo-height);
+  }
+
+  .project-interactive-demo__content[popover] {
+    display: block;
+    position: relative;
+    inset: auto;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: clip;
+    color: inherit;
+    background: var(--comp-demo-frame-container);
+  }
+
+  .project-interactive-demo__content:popover-open {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    border-radius: 0;
+  }
+
+  .project-interactive-demo__content:popover-open::backdrop { background: transparent; }
+  .project-interactive-demo__content[popover]:popover-open iframe { height: 100%; border-radius: 0; }
+
+  .playground-expand {
+    position: absolute;
+    right: max(8px, env(safe-area-inset-right));
+    top: max(8px, env(safe-area-inset-top));
+    z-index: 4;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  [data-minimize-icon], .playground-expand[aria-expanded='true'] [data-expand-icon] { display: none; }
+  .playground-expand[aria-expanded='true'] [data-minimize-icon] { display: grid; }
+
+  @media (max-width: 40em) {
+    [data-interactive-demo='editor-playground'] { min-height: var(--demo-narrow-height); }
   }
 
   .project-interactive-demo__url-field {
