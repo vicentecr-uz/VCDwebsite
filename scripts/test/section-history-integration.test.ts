@@ -2,6 +2,7 @@ import { createPageScope } from '../../src/lib/pageLifecycle';
 import { expect, test } from 'bun:test';
 import { sectionScrollDuration, sectionScrollTop } from '../../src/lib/sectionScroll';
 import { readFileSync } from 'node:fs';
+import { reorderProjectStackSpacingSeams } from '../../src/lib/projectStack';
 import { createHistory } from '../../src/lib/devHistory';
 
 const source = readFileSync(new URL('../../src/components/project/ProjectSectionNavEditor.astro', import.meta.url), 'utf8');
@@ -126,3 +127,45 @@ for (const motion of ['custom', 'native', 'reduced']) {
     expect(handlers.has('vcd:section-history-reveal')).toBe(false);
   });
 }
+
+test('drag reorder undoes and redoes section order and responsive spacing in one step', async () => {
+  const editor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+  const start = editor.indexOf("    window.addEventListener('vcd:dev-section-reordered', ((event");
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+    editor.slice(start, editor.indexOf("    window.addEventListener('vcd:dev-section-structure-changed'", start)),
+  );
+  const pageHistory = createHistory();
+  const before = [{}, {}, {}];
+  const after = [before[1], before[2], before[0]];
+  const spacingStates = before.map((element, index) => {
+    const currentValue = { desktop: ['none', 'section', 'related'][index], tablet: 'group', mobile: 'related' };
+    return { element, document: 'sabi', currentValue, visualSavedValue: { ...currentValue } };
+  });
+  const stateValues = () => spacingStates.map(({ currentValue, visualSavedValue }) => [currentValue, visualSavedValue]);
+  const initial = structuredClone(stateValues());
+  let order = after;
+  let listener: (event: CustomEvent) => void = () => {};
+  new Function('env', `with(env) { ${code} }`)({
+    window: { addEventListener: (_type: string, fn: typeof listener) => { listener = fn; }, dispatchEvent() {} },
+    editorSignal: new AbortController().signal,
+    pageHistory, spacingStates, spacingHistoryValues: new WeakMap(),
+    reorderProjectStackSpacingSeams,
+    captureFieldHistory() {}, cloneSpacing: structuredClone,
+    spacingEqual: (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b),
+    applySpacingClass() {}, syncSpacingControl() {}, syncPageTopSpacingControls() {},
+    syncIntroRunControls() {}, updateActions() {}, stickyStatus: 'Saved.',
+  });
+  listener(new CustomEvent('vcd:dev-section-reordered', { detail: {
+    document: 'sabi', before, after, moved: before[0], destinationSide: 'after',
+    restoreOrder: (direction: string) => { order = direction === 'before' ? before : after; },
+  } }));
+  const reordered = structuredClone(stateValues());
+  expect(reordered).not.toEqual(initial);
+  await pageHistory.undo();
+  expect(order).toBe(before);
+  expect(stateValues()).toEqual(initial);
+  expect(pageHistory.canUndo).toBe(false);
+  await pageHistory.redo();
+  expect(order).toBe(after);
+  expect(stateValues()).toEqual(reordered);
+});

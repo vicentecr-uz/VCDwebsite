@@ -158,22 +158,19 @@ import '../styles/sectionReorderChrome.css';
     );
   };
 
-  const syncPending = () => {
-    const zone = dropZone();
-    if (!zone || !documentKey) return;
+  const syncPending = (key = documentKey, zone = dropZone()) => {
+    if (!zone || !key) return;
 
-    if (!baselineOrder) {
-      baselineOrder = baselineOrders.get(documentKey) ?? captureSectionOrder(zone);
-      baselineOrders.set(documentKey, baselineOrder);
-    }
-    const baseline = baselineOrder;
+    const baseline = baselineOrders.get(key) ?? captureSectionOrder(zone);
+    baselineOrders.set(key, baseline);
+    if (key === documentKey) baselineOrder = baseline;
     const current = captureSectionOrder(zone);
-    const pendingId = `section-order:${documentKey}`;
+    const pendingId = `section-order:${key}`;
 
     // Always rebuild sidebar from page order and fixed group boundaries,
     // including when order returns to baseline (otherwise the sidebar sticks
     // on the intermediate wrong state after a round-trip drag).
-    if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
+    if (key !== 'home-intro') syncDevSectionOutlineSidebar();
 
     if (ordersMatch(baseline, current)) {
       zone.classList.remove('is-section-order-dirty');
@@ -187,14 +184,14 @@ import '../styles/sectionReorderChrome.css';
         id: pendingId,
         kind: 'section-order',
         payload: {
-          document: documentKey,
+          document: key,
           order: current,
           outline: getDevSectionOutline().map((entry) => ({ ...entry })),
         },
         revert: () => {
           restoreDomOrder(structuredClone(baseline), zone);
           zone.classList.remove('is-section-order-dirty');
-          if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
+          if (key !== 'home-intro') syncDevSectionOutlineSidebar();
         },
       },
     }));
@@ -595,9 +592,20 @@ import '../styles/sectionReorderChrome.css';
       && activePlacementKey !== ''
       && activePlacementKey !== SOURCE_PLACEMENT_KEY;
     if (orderChanged || seamChanged) {
+      const key = root.dataset.devSpacingDocument || documentKey;
+      const zone = dropZone();
+      const beforeNodes = grabNodeSnapshot;
+      const afterNodes = [...(zone?.childNodes ?? [])];
+      const restoreOrder = (direction: 'before' | 'after') => {
+        if (!zone?.isConnected || !root.isConnected) throw new Error('Restore this section before reordering it.');
+        const nodes = direction === 'before' ? beforeNodes : afterNodes;
+        if (nodes) restoreNodeOrder(nodes, zone);
+        syncPending(key, zone);
+      };
       window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
         detail: {
-          document: root.dataset.devSpacingDocument || documentKey,
+          document: key,
+          restoreOrder,
           moved: root,
           before,
           after,
@@ -615,6 +623,13 @@ import '../styles/sectionReorderChrome.css';
         owner.classList.add('is-dev-gap-preview-suppressed');
       }
     }
+  };
+
+  const commitDrop = (root: HTMLElement, preserveIndicator = false) => {
+    commitReorderSpacing(root, preserveIndicator);
+    grabOrderSnapshot = null;
+    grabNodeSnapshot = null;
+    syncPending();
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -737,8 +752,7 @@ import '../styles/sectionReorderChrome.css';
     if (lift === 'blocked') return;
     const resumed = lift === 'resumed';
     if (!resumed && previous && previous !== root) {
-      commitReorderSpacing(previous);
-      syncPending();
+      commitDrop(previous);
       releaseSessionRoot(previous);
     }
 
@@ -838,7 +852,7 @@ import '../styles/sectionReorderChrome.css';
         if (sourceGapIndicatorFollowsSlot && sourceGapIndicator && !sourceGapIndicator.isConnected) {
           root.append(sourceGapIndicator);
         }
-        commitReorderSpacing(root, true);
+        if (grabSpacingSnapshot) commitDrop(root, true);
         // Card stays visible through the settle; fade it only after it lands.
         await fadeOutLiftBackdrop();
       }
@@ -848,7 +862,6 @@ import '../styles/sectionReorderChrome.css';
         grabNodeSnapshot = null;
         grabSpacingSnapshot = null;
       }
-      syncPending();
     } finally {
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
@@ -1195,9 +1208,17 @@ import '../styles/sectionReorderChrome.css';
     dropZone()?.classList.remove('is-section-order-dirty');
     if (reorderActive) {
       baselineOrder = captureSectionOrder(dropZone());
+      if (documentKey) baselineOrders.set(documentKey, baselineOrder);
       syncDevSectionOutlineSidebar();
     }
   });
+
+  // Land a released drag before the document's history shortcut consumes Undo.
+  pageScope.listen(window, 'keydown', (event) => {
+    if (!dragItem || event.isComposing || event.altKey || event.shiftKey
+      || !(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+    if (controller.settleNow()) commitDrop(dragItem);
+  }, true);
 
   pageScope.listen(document, 'keydown', (event) => {
     if (!reorderActive || event.key !== 'Escape') return;

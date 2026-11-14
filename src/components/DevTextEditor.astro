@@ -3687,6 +3687,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       before?: HTMLElement[];
       after?: HTMLElement[];
       destinationSide?: 'before' | 'after';
+      restoreOrder?: (direction: 'before' | 'after') => void;
     }>) => {
       const {
         document: reorderedDocument,
@@ -3694,6 +3695,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         before,
         after,
         destinationSide,
+        restoreOrder,
       } = event.detail ?? {};
       if (!reorderedDocument || !moved || !before || !after || before.length !== after.length) return;
       const sourceIndex = before.indexOf(moved);
@@ -3701,40 +3703,66 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (sourceIndex < 0 || insertIndex < 0) return;
       if (sourceIndex === insertIndex && destinationSide === undefined) return;
 
+      captureFieldHistory();
+      pageHistory.breakGroup();
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
-      const reorderedStates = before.map((root) => statesByElement.get(root));
-      if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
-      const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
-      const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
-        reorderProjectStackSpacingSeams(
-          reorderedStates.map((state) => state!.currentValue[viewport]),
-          sourceIndex,
-          insertIndex,
-          destinationSide,
-          reorderedStates.map((state) => state!.currentValue[viewport] !== state!.visualSavedValue[viewport]),
-        )
-      ));
-      reorderedStates.forEach((state, index) => {
-        if (!state) return;
-        const currentValue = cloneSpacing(state.currentValue);
-        const nextVisualSavedValue = cloneSpacing(state.visualSavedValue);
-        (['desktop', 'tablet', 'mobile'] as const).forEach((viewport, viewportIndex) => {
-          const reorder = reorderedMaps[viewportIndex];
-          const origin = reorder.origins[index];
-          currentValue[viewport] = reorder.values[index];
-          nextVisualSavedValue[viewport] = origin === null
-            ? reorder.values[index]
-            : visualSavedValues[origin][viewport];
-        });
-        state.currentValue = currentValue;
-        state.visualSavedValue = nextVisualSavedValue;
-        applySpacingClass(state.element, currentValue);
+      const reorderedStates = before.map((root) => statesByElement.get(root))
+        .filter((state): state is EditableSpacingState => state?.document === reorderedDocument);
+      const snapshot = () => reorderedStates.map((state) => ({
+        state, current: cloneSpacing(state.currentValue), visual: cloneSpacing(state.visualSavedValue),
+      }));
+      const previous = snapshot();
+      const apply = ({ state, current, visual }: (typeof previous)[number]) => {
+        state.currentValue = cloneSpacing(current);
+        state.visualSavedValue = cloneSpacing(visual);
+        spacingHistoryValues.set(state, cloneSpacing(current));
         syncSpacingControl(state);
-      });
-      syncPageTopSpacingControls();
-      syncIntroRunControls();
-      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-      updateActions();
+      };
+      const syncReorderLayout = () => {
+        syncPageTopSpacingControls();
+        syncIntroRunControls();
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+        updateActions();
+      };
+      if (reorderedStates.length === before.length) {
+        const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
+          reorderProjectStackSpacingSeams(
+            previous.map(({ current }) => current[viewport]),
+            sourceIndex,
+            insertIndex,
+            destinationSide,
+            previous.map(({ current, visual }) => current[viewport] !== visual[viewport]),
+          )
+        ));
+        previous.forEach(({ state, current, visual }, index) => {
+          const next = cloneSpacing(current);
+          const nextVisual = cloneSpacing(visual);
+          (['desktop', 'tablet', 'mobile'] as const).forEach((viewport, viewportIndex) => {
+            const reorder = reorderedMaps[viewportIndex];
+            const origin = reorder.origins[index];
+            next[viewport] = reorder.values[index];
+            nextVisual[viewport] = origin === null ? next[viewport] : previous[origin].visual[viewport];
+          });
+          apply({ state, current: next, visual: nextVisual });
+        });
+      }
+      const next = snapshot();
+      const spacingChanged = previous.some(({ current, visual }, index) =>
+        !spacingEqual(current, next[index].current) || !spacingEqual(visual, next[index].visual));
+      if (restoreOrder && (sourceIndex !== insertIndex || spacingChanged)) {
+        const restore = (direction: 'before' | 'after', values: typeof previous) => {
+          restoreOrder(direction);
+          values.forEach(apply);
+          stickyStatus = '';
+          syncReorderLayout();
+        };
+        pageHistory.push({
+          label: 'Reorder section',
+          undo: () => restore('before', previous),
+          redo: () => restore('after', next),
+        });
+      }
+      syncReorderLayout();
     }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       pageScope.frame(syncIntroRunControls);
