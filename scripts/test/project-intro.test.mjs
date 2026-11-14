@@ -236,13 +236,18 @@ assert.deepEqual(
 
 console.log('project-intro: ok');
 
-const veilScrollSteps = [];
-const veilScroll = createScrollDriver({ scrollBy: (step) => veilScrollSteps.push(step) });
-veilScroll.apply(1000 / 60, 100, 400);
-assert.ok(veilScrollSteps[0] > 0);
-veilScroll.reset();
-veilScroll.apply(1000 / 60, 400, 100);
-assert.ok(veilScrollSteps[1] < 0);
+const edgeBounds = { top: 0, bottom: 1000 };
+const edgeStep = (pointerY) => {
+  const steps = [];
+  const driver = createScrollDriver({ scrollBy: (step) => steps.push(step) });
+  for (let i = 0; i < 30; i += 1) driver.apply(1000 / 60, pointerY, edgeBounds);
+  return steps.reduce((sum, step) => sum + step, 0);
+};
+assert.ok(edgeStep(990) > 0);
+assert.ok(edgeStep(10) < 0);
+assert.equal(edgeStep(500), 0);
+assert.ok(edgeStep(990) > edgeStep(880));
+assert.ok(edgeStep(10) < edgeStep(120));
 
 const viewportSource = readFileSync(new URL('../../src/lib/safeVh.ts', import.meta.url), 'utf8');
 const geometryStart = viewportSource.indexOf('    const pageViewport =');
