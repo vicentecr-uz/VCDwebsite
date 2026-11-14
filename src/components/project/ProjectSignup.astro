@@ -51,7 +51,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         hideLabel
         pattern={String.raw`[^@\s]+@[^@\s]+\.[^@\s]+`}
         required
-        type="email"
+        native
         autocomplete="email"
         inputmode="email"
         autocapitalize="none"
@@ -385,13 +385,28 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         ));
       }
     };
+    const shortcutMeasure = document.createElement('canvas').getContext('2d');
+    const positionShortcut = () => {
+      if (!input || !shortcut || shortcut.hidden || !shortcutMeasure) return;
+      const style = getComputedStyle(input);
+      shortcutMeasure.font = style.font;
+      const textEnd = parseFloat(style.paddingLeft)
+        + shortcutMeasure.measureText(input.value).width - input.scrollLeft;
+      const left = textEnd + 6;
+      shortcut.style.left = `${left}px`;
+      // Leave room for extension buttons at the trailing edge of the native input.
+      shortcut.classList.toggle('is-clipped', left < 12 || left + shortcut.offsetWidth > input.clientWidth - 60);
+    };
+    const emailChecker = document.createElement('input');
+    emailChecker.type = 'email';
     const updateShortcut = () => {
       if (!input || !shortcut) return;
       input.setCustomValidity('');
-      if (input.validity.typeMismatch) {
+      emailChecker.value = input.value;
+      if (emailChecker.validity.typeMismatch) {
         input.setCustomValidity('Enter a valid email address.');
       }
-      if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
+      if (input.validity.valid && !validTlds.has(emailChecker.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
       shortcut.classList.toggle('is-valid', input.validity.valid);
@@ -401,12 +416,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
       shortcut.classList.remove('is-inert');
       shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
+      positionShortcut();
     };
     scope.listen(input, 'input', () => {
       updateShortcut();
       dismissStatus();
       input.removeAttribute('aria-invalid');
     });
+    scope.listen(input, 'scroll', positionShortcut);
+    scope.listen(window, 'resize', positionShortcut);
     scope.listen(input, 'change', updateShortcut);
     scope.listen(input, 'focus', updateShortcut);
     updateShortcut();
@@ -708,8 +726,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   .project-signup__shortcut {
     position: absolute;
-    inset-inline-end: 12px;
-    flex: none;
+    top: 50%;
+    transform: translateY(-50%);
     color: var(--sys-color-on-srf-subtle);
     font-size: 0.8125rem;
     line-height: 1;
@@ -743,7 +761,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     to { opacity: 1; }
   }
 
-  .project-signup__shortcut.is-inert {
+  .project-signup__shortcut.is-inert,
+  .project-signup__shortcut.is-clipped {
     visibility: hidden;
     animation: none;
   }
@@ -783,7 +802,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     overflow: hidden;
     min-width: 0;
     width: 100%;
-    padding: 0 32px 0 0;
+    padding: 0;
     border-radius: calc(0.5rem * var(--continuous-corner-scale, 1));
     corner-shape: var(--squircle-shape);
     background: transparent;

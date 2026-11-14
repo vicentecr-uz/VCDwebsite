@@ -32,7 +32,11 @@ test('shared fields wrap supported inputs, fade read-only values and select labe
       value.append(input);
       return input;
     });
+    const optOut = window.document.createElement('input');
+    optOut.setAttribute('data-native-text-field', '');
+    value.append(optOut);
     const cleanup = initFieldOverflow(field)!;
+    expect(optOut.parentElement).toBe(value);
     for (const input of controls) {
       if (supported.includes(input.type)) {
         expect(input.parentElement?.localName).toBe('sabi-input');

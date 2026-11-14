@@ -15,7 +15,7 @@ export function initFieldOverflow(field, { manageMarkup = true } = {}) {
   const resize = new ResizeObserver(sync);
   const discover = () => {
     for (const input of manageMarkup ? value.querySelectorAll('input') : []) {
-      if (input.hidden || input.getAttribute('aria-hidden') === 'true') continue;
+      if (input.hidden || input.hasAttribute('data-native-text-field') || input.getAttribute('aria-hidden') === 'true') continue;
       if (!['text', 'search', 'url', 'tel', 'password'].includes(input.type) || input.closest('sabi-input')) continue;
       const root = document.createElement('sabi-input');
       root.className = 'dev-text-field';
