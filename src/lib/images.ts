@@ -1,16 +1,19 @@
 import { playgroundMedia } from './playgroundMedia';
 import { isVideoSrc } from './imageUpload.mjs';
 
+const imagesPath = '/images/';
+
 /** Public /images path with encoded filename segments. Source lives in `media/`. */
 export function projectImage(filename: string): string {
-  const local = playgroundMedia.get(filename);
+  const token = filename.startsWith(imagesPath) ? filename.slice(imagesPath.length) : filename;
+  const local = playgroundMedia.get(token);
   if (local) return local;
-  if (filename === 'placeholder.svg' || filename === '/images/placeholder.svg') return '/demo-fixtures/placeholder.svg';
+  if (token === 'placeholder.svg') return '/demo-fixtures/placeholder.svg';
   if (filename.startsWith('/')) {
     return filename;
   }
 
-  return `/images/${filename.split('/').map(encodeURIComponent).join('/')}`;
+  return imagesPath + filename.split('/').map(encodeURIComponent).join('/');
 }
 
 /** Generated first-frame poster for a media-backed video, when available. */
