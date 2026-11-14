@@ -124,7 +124,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
   <head>
     {showDevTools && (
       <script is:inline data-canvas-resize-observer>
-        // Canvas-only shim avoids the measured ~300ms Edit resize cost per width step.
+        // Canvas only: while a viewport preview morphs, hold back the page's resize listeners (about 120ms
+        // of editor work per step) and deliver one resize at the end. ResizeObservers still run, so
+        // content that sizes itself in script (carousels) keeps up.
         if (window.name === 'vcd-canvas') {
           // Registered before any page script, so it also precedes capture-phase resize listeners.
           window.addEventListener('resize', (event) => {
@@ -133,27 +135,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             // Layout the page cannot do without (the fixed header's width) opts in to this instead.
             window.dispatchEvent(new CustomEvent('vcd:viewport-flux-frame'));
           }, true);
-          const pending = new Map();
-          window.ResizeObserver = class extends window.ResizeObserver {
-            constructor(callback) {
-              super((entries, observer) => {
-                if (document.documentElement.hasAttribute('data-viewport-flux')) {
-                  pending.set(observer, () => callback(entries, observer));
-                } else {
-                  callback(entries, observer);
-                }
-              });
-            }
-            disconnect() {
-              pending.delete(this);
-              super.disconnect();
-            }
-          };
-          window.addEventListener('vcd:viewport-flux-end', () => {
-            const callbacks = [...pending.values()];
-            pending.clear();
-            callbacks.forEach((callback) => callback());
-          });
         }
       </script>
     )}

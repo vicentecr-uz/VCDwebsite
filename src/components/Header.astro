@@ -344,6 +344,9 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     let headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
     let viewportWidth = document.documentElement.clientWidth;
     let ticking = false;
+    // Set while the Edit canvas morphs a viewport preview: it scrolls the page to hold content steady,
+    // which is not the reader scrolling and must not dock, ride or hide the header.
+    let viewportFluxUntil = 0;
     let updateFrame: number | null = null;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
     let mobileHeader = false;
@@ -589,6 +592,13 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
+      if (performance.now() < viewportFluxUntil) {
+        trend = null;
+        anchorY = lastY = y;
+        ticking = false;
+        return;
+      }
+
       if (isSectionReorderDragging()) {
         // At the page top the in-flow header stays visible; deep, hide it so
         // auto-scroll during the drag doesn't leave a stale bar on screen.
@@ -772,7 +782,10 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     };
     window.addEventListener('resize', syncViewportWidth);
     // The Edit canvas holds back resize while a viewport preview morphs; the fixed header still has to follow.
-    window.addEventListener('vcd:viewport-flux-frame', syncViewportWidth);
+    window.addEventListener('vcd:viewport-flux-frame', () => {
+      viewportFluxUntil = performance.now() + 150;
+      syncViewportWidth();
+    });
   }
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */

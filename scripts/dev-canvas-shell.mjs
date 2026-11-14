@@ -12,6 +12,15 @@ export function shouldServeCanvasShell({ method, url, headers }) {
     && !extname(pathname);
 }
 
+/** After a flag toggle, go back to the page the link was clicked on (same host only). */
+export function canvasFlagReturnPath(headers) {
+  try {
+    const referer = new URL(String(headers.referer ?? ''));
+    if (referer.host === headers.host && !referer.pathname.startsWith('/dev/canvas/')) return `${referer.pathname}${referer.search}${referer.hash}`;
+  } catch { /* no usable referer */ }
+  return '/';
+}
+
 export function devCanvasShell() {
   return {
     name: 'vcd-dev-canvas-shell',
@@ -25,7 +34,7 @@ export function devCanvasShell() {
             ? `${cookie}=1; Path=/; SameSite=Lax`
             : `${cookie}=; Path=/; SameSite=Lax; Max-Age=0`);
           res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('Location', '/');
+          res.setHeader('Location', canvasFlagReturnPath(req.headers));
           res.statusCode = 302;
           res.end();
           return;

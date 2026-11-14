@@ -121,3 +121,11 @@ test('canvas reduced-motion jumps and idle resize renders send no flux messages'
     assert.equal(f.posts.filter((post) => post.type === 'vcd-canvas-flux').length, 0);
   } finally { await f.dispose(); }
 });
+
+test('flag toggles return to the page they were clicked on', async () => {
+  const { canvasFlagReturnPath } = await import('../dev-canvas-shell.mjs');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360', referer: 'http://localhost:4360/tapico?x=1#top' }), '/tapico?x=1#top');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360', referer: 'http://elsewhere.test/tapico' }), '/');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360', referer: 'http://localhost:4360/dev/canvas/on' }), '/');
+  assert.equal(canvasFlagReturnPath({ host: 'localhost:4360' }), '/');
+});
