@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import 'sabi-input/styles.css';
 import { devTabState } from '../../scripts/dev-tab-state.mjs';
 import designTokens from '../../tokens/design-tokens.json';
 import { ClientRouter } from 'astro:transitions';
@@ -14,6 +15,8 @@ import loadingSpinnerStyles from '../styles/loading-spinner.css?raw';
 import spinnerMarkup from '../components/ui/LoadingSpinner.svg?raw';
 import DevModeController from '../components/DevModeController.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
+import ToastStack from '../components/ui/ToastStack.astro';
+import CommandMenu from '../components/reports/CommandMenu.astro';
 import DevComponentNotes from '../components/DevComponentNotes.astro';
 import DevVideoEditor from '../components/DevVideoEditor.astro';
 import DevProjectGridEditor from '../components/DevProjectGridEditor.astro';
@@ -24,6 +27,7 @@ import DevNewProject from '../components/DevNewProject.astro';
 import ProjectImageCropTuner from '../components/project/ProjectImageCropTuner.astro';
 import DevGalleryPages from '../components/DevGalleryPages.astro';
 import DevShortcutsHelp from '../components/DevShortcutsHelp.astro';
+import DevViewportPreview from '../components/DevViewportPreview.astro';
 import DevAssetManager from '../components/DevAssetManager.astro';
 import DevImageDescriptions from '../components/DevImageDescriptions.astro';
 import DevPageColumn from '../components/DevPageColumn.astro';
@@ -127,7 +131,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
     </script>
     <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
     <script>
+      import { define } from 'sabi-input/core';
       import { bindSafeVh } from '../lib/safeVh';
+      define();
       const initializeLayout = () => bindSafeVh();
       if (!import.meta.env.DEV) {
         initializeLayout();
@@ -449,6 +455,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
     </script>
 
     {showDevTools && <DevTextEditor />}
+    {showDevTools && <ToastStack fixed />}
+    {showDevTools && <CommandMenu contextual />}
     {showDevTools && <DevComponentNotes />}
     {showDevTools && <script is:inline type="module" src="/src/lib/siteAnnotationEditor.ts"></script>}
     {showDevTools && <DevVideoEditor />}
@@ -464,6 +472,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
     {showDevTools && <ProjectImageCropTuner />}
     {showDevTools && <DevGalleryPages />}
     {showDevTools && <DevShortcutsHelp />}
+    {showDevTools && <DevViewportPreview />}
     {showDevTools && <DevAssetManager />}
     {showDevTools && <DevImageDescriptions />}
     {showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}

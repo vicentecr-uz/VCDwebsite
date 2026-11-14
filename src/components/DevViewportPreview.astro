@@ -1,0 +1,456 @@
+---
+import ViewportSelector from './ui/ViewportSelector.astro';
+---
+
+<div class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview" hidden>
+  <div class="dev-viewport-preview__backdrop"></div>
+  <div class="dev-viewport-preview__shadow" data-viewport-shadow></div>
+  <div class="dev-viewport-preview__surface" data-viewport-surface>
+    <iframe title="Viewport preview" name="vcd-edit-viewport-preview" data-viewport-frame></iframe>
+  </div>
+  <div class="dev-viewport-preview__controls dev-surface" data-viewport-controls>
+    <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
+  </div>
+</div>
+
+<script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    const root = document.querySelector<HTMLElement>('[data-dev-viewport-preview]');
+    const surface = root?.querySelector<HTMLElement>('[data-viewport-surface]');
+    const shadow = root?.querySelector<HTMLElement>('[data-viewport-shadow]');
+    const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
+    const controls = root?.querySelector<HTMLElement>('[data-viewport-controls]');
+    if (!root || !surface || !shadow || !frame || !controls) return scope.destroy;
+    const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
+
+    const presets = {
+      tablet: [820, 1180],
+      mobile: [390, 844],
+    } as const;
+    type Device = keyof typeof presets;
+    type Preset = Device | 'desktop';
+    let open = false;
+    let frameSaveBusy = false;
+    let preparing = false;
+    let revision = 0;
+    let requested: Preset = 'desktop';
+    let saved = false;
+    let ready = false;
+    let loading = false;
+    let opening = false;
+    let raf = 0;
+    let warmJob: number | undefined;
+    let resolveScroll: (() => void) | undefined;
+    let scrollRequest = 0;
+    let frameReady: Promise<void> = Promise.resolve();
+    let resolveFrameReady: (() => void) | undefined;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    let previousFocus: HTMLElement | null = null;
+    let previousOverflow = '';
+    let isolatedSiblings: Array<{ element: HTMLElement; inert: boolean }> = [];
+    let isolationObserver: MutationObserver | null = null;
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
+    };
+    const isolatePage = () => {
+      if (!open) return;
+      [...document.body.children]
+        .filter((element): element is HTMLElement => element instanceof HTMLElement && element !== root)
+        .forEach((element) => {
+          const existing = isolatedSiblings.find((entry) => entry.element === element);
+          if (existing) {
+            if (!element.inert) element.inert = true;
+            return;
+          }
+          isolatedSiblings.push({ element, inert: element.inert });
+          element.inert = true;
+        });
+    };
+    const select = (preset: Preset) => {
+      root.dataset.viewportStagePreset = preset;
+      root.querySelectorAll<HTMLElement>('[data-viewport-preset]').forEach((button) => {
+        const selected = button.dataset.viewportPreset === preset;
+        button.classList.toggle('is-active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+    };
+    type Geometry = { width: number; height: number; radius: number; device: number };
+    const desktop = (): Geometry => ({ width: window.innerWidth, height: window.innerHeight, radius: 0, device: 0 });
+    let current = desktop();
+    let frameWidth = 0;
+    let frameHeight = 0;
+    let framePlacement = { left: 0, top: 0, scale: 1 };
+    let layoutCommit = 0;
+    const render = (value: Geometry, barZone = 0, commitLayout = true) => {
+      current = value;
+      const width = Math.round(value.width);
+      const height = Math.round(value.height);
+      const hostWidth = Math.max(1, window.innerWidth - 24 * value.device);
+      const hostHeight = Math.max(1, window.innerHeight - (24 + barZone) * value.device);
+      const scale = Math.min(1, hostWidth / width, hostHeight / height);
+      const left = (window.innerWidth - width * scale) / 2;
+      const top = 12 * value.device + (hostHeight - height * scale) / 2;
+      const radius = value.radius * scale;
+      const bounds = {
+        transform: `translate(${left}px, ${top}px)`, width: `${width * scale}px`, height: `${height * scale}px`,
+      };
+      Object.assign(surface.style, bounds);
+      Object.assign(shadow.style, bounds, { opacity: String(value.device) });
+      surface.style.setProperty('--viewport-radius', `${radius}px`);
+      shadow.style.setProperty('--viewport-radius', `${radius}px`);
+      if (commitLayout && (width !== frameWidth || height !== frameHeight)) {
+        const child = open ? frame.contentDocument?.documentElement : null;
+        if (child) {
+          const commit = ++layoutCommit;
+          child.setAttribute('data-viewport-layout-commit', '');
+          scope.frame(() => scope.frame(() => {
+            if (commit === layoutCommit) child.removeAttribute('data-viewport-layout-commit');
+          }));
+        }
+        frameWidth = width;
+        frameHeight = height;
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+      }
+      if (commitLayout) framePlacement = { left, top, scale };
+      // The surface clips the old page at its original screen position until layout commits.
+      const x = framePlacement.left - left;
+      const y = framePlacement.top - top;
+      frame.style.transform = `translate(${x}px, ${y}px) scale(${framePlacement.scale})`;
+    };
+    const cancelMorph = () => {
+      window.cancelAnimationFrame(raf);
+      return ++revision;
+    };
+    const postVisibility = (visible: boolean) => frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-visible', visible }, window.location.origin);
+    const conceal = () => {
+      root.style.visibility = 'hidden';
+      root.inert = true;
+      frame.inert = true;
+      controls.style.opacity = '0';
+      controls.style.visibility = 'hidden';
+      postVisibility(false);
+    };
+    const dropWarmFrame = () => {
+      if (warmJob !== undefined) {
+        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(warmJob);
+        window.clearTimeout(warmJob);
+        warmJob = undefined;
+      }
+      ready = false;
+      loading = false;
+      resolveFrameReady?.();
+      resolveFrameReady = undefined;
+      frame.src = 'about:blank';
+    };
+    const loadWarmFrame = () => {
+      if (frameMode || open || loading || scope.signal.aborted || !document.documentElement.classList.contains('is-dev-mode')) return;
+      ready = false;
+      loading = true;
+      root.hidden = false;
+      conceal();
+      render(desktop());
+      frameReady = new Promise<void>((resolve) => { resolveFrameReady = resolve; });
+      frame.src = window.location.href;
+    };
+    const scheduleWarmFrame = (eager = false) => {
+      if (frameMode || open) return;
+      dropWarmFrame();
+      if (eager) { loadWarmFrame(); return; }
+      const warm = () => { warmJob = undefined; loadWarmFrame(); };
+      warmJob = typeof window.requestIdleCallback === 'function' ? window.requestIdleCallback(warm) : window.setTimeout(warm, 200);
+    };
+    const capped = (promise: Promise<void>, ms: number) => Promise.race([promise, new Promise<void>((resolve) => scope.timeout(resolve, ms))]);
+    const finishClose = () => {
+      cancelMorph();
+      open = false;
+      conceal();
+      root.removeAttribute('data-open');
+      document.documentElement.removeAttribute('data-viewport-previewing');
+      resolveFrameReady?.();
+      resolveFrameReady = undefined;
+      isolationObserver?.disconnect();
+      isolationObserver = null;
+      document.documentElement.style.overflow = previousOverflow;
+      isolatedSiblings.forEach(({ element, inert }) => { element.inert = inert; });
+      isolatedSiblings = [];
+      select('desktop');
+      if (!document.documentElement.classList.contains('is-dev-mode')) dropWarmFrame();
+      else if (frame.contentDocument?.URL !== window.location.href) scheduleWarmFrame();
+      previousFocus?.focus({ preventScroll: true });
+      previousFocus = null;
+    };
+    const transition = (preset: Preset) => {
+      requested = preset;
+      const token = cancelMorph();
+      select(preset);
+      if (preset !== 'desktop') controls.style.visibility = 'visible';
+      controls.style.opacity = preset === 'desktop' ? '0' : '1';
+      const from = current;
+      const barZone = window.innerHeight - controls.getBoundingClientRect().top;
+      const target: Geometry = preset === 'desktop' ? desktop() : {
+        width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
+      };
+      const finish = () => {
+        if (preset !== 'desktop' || token !== revision) return;
+        const scrollY = frame.contentWindow?.scrollY ?? window.scrollY;
+        window.scrollTo({ top: scrollY, behavior: 'instant' });
+        if (saved) {
+          sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY }));
+          window.location.reload();
+        } else finishClose();
+      };
+      if (reducedMotion.matches) { render(target, barZone); finish(); return; }
+      const start = performance.now();
+      const omega = 2 * Math.PI / (0.35 * 1.2);
+      // Keep the responsive layout stable until the surface reaches its destination.
+      const tick = (now: number) => {
+        if (token !== revision || scope.signal.aborted) return;
+        const t = (now - start) / 1000;
+        const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
+        if (1 - x <= 0.004) { render(target, barZone); finish(); return; }
+        render({
+          width: from.width + (target.width - from.width) * x,
+          height: from.height + (target.height - from.height) * x,
+          radius: from.radius + (target.radius - from.radius) * x,
+          device: from.device + (target.device - from.device) * x,
+        }, barZone, false);
+        raf = window.requestAnimationFrame(tick);
+      };
+      raf = window.requestAnimationFrame(tick);
+    };
+    const afterPendingWrites = (target: Window & typeof globalThis, run: () => void) => {
+      const pending: Promise<unknown>[] = [];
+      target.dispatchEvent(new target.CustomEvent('vcd:dev-viewport-prepare', {
+        detail: { waitUntil: (write: Promise<unknown>) => pending.push(write) },
+      }));
+      if (!pending.length) { run(); return; }
+      preparing = true;
+      void Promise.allSettled(pending).then((results) => {
+        preparing = false;
+        if (!scope.signal.aborted && results.every((result) => result.status === 'fulfilled')) run();
+      });
+    };
+    const close = () => {
+      if (!open || preparing || requested === 'desktop') return;
+      const childWindow = frame.contentDocument?.defaultView as (Window & typeof globalThis) | null;
+      if (!childWindow) { void transition('desktop'); return; }
+      const beforeReload = new childWindow.CustomEvent('vcd:before-reload', { cancelable: true });
+      if (childWindow.dispatchEvent(beforeReload)) afterPendingWrites(childWindow, () => { void transition('desktop'); });
+    };
+    const show = (preset: Preset) => {
+      if (frameMode || preparing || !document.documentElement.classList.contains('is-dev-mode')) return false;
+      if (preset === 'desktop') {
+        if (opening) { opening = false; resolveScroll?.(); resolveScroll = undefined; cancelMorph(); }
+        close(); return true;
+      }
+      if (open) { if (preset !== requested) transition(preset); return true; }
+      requested = preset;
+      if (opening) return true;
+      const dirtyCheck = { dirty: false };
+      window.dispatchEvent(new CustomEvent('vcd:dev-viewport-preview-dirty-check', { detail: dirtyCheck }));
+      if (dirtyCheck.dirty) return false;
+      if (!window.dispatchEvent(new CustomEvent('vcd:before-reload', { cancelable: true }))) return false;
+      afterPendingWrites(window, () => {
+        opening = true;
+        const token = cancelMorph();
+        void (async () => {
+          while (token === revision && !scope.signal.aborted) {
+            loadWarmFrame();
+            const pendingFrame = frameReady;
+            await pendingFrame;
+            if (token !== revision || scope.signal.aborted) return;
+            if (!ready || pendingFrame !== frameReady) continue;
+            const id = ++scrollRequest;
+            const synced = new Promise<void>((resolve) => { resolveScroll = resolve; });
+            frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-scroll', scrollY: window.scrollY, id }, window.location.origin);
+            await capped(synced, 150);
+            if (token !== revision || scope.signal.aborted) return;
+            resolveScroll = undefined;
+            if (ready && pendingFrame === frameReady) break;
+          }
+          opening = false;
+          previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          open = true;
+          saved = false;
+          render(desktop());
+          root.style.visibility = 'visible';
+          root.inert = false;
+          frame.inert = false;
+          postVisibility(true);
+          root.setAttribute('data-open', '');
+          document.documentElement.setAttribute('data-viewport-previewing', '');
+          previousOverflow = document.documentElement.style.overflow;
+          document.documentElement.style.overflow = 'hidden';
+          isolatePage();
+          isolationObserver = new MutationObserver(isolatePage);
+          isolationObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
+          transition(requested);
+          controls.querySelector<HTMLElement>('[role="group"]')?.focus({ preventScroll: true });
+        })();
+      });
+      return true;
+    };
+    const requestEditMode = () => {
+      if (!loading) return;
+      frame.contentWindow?.postMessage({ type: 'vcd-viewport-preview-edit' }, window.location.origin);
+    };
+
+    scope.listen(frame, 'load', requestEditMode);
+    scope.listen(window, 'resize', () => { if (open) transition(requested); else render(desktop()); });
+    scope.listen(root, 'click', (event) => {
+      const target = event.target as HTMLElement;
+      const preset = target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset;
+      if (preset === 'desktop' || (preset && preset in presets)) show(preset as Preset);
+    });
+    scope.listen(window, 'message', (event) => {
+      if (event.origin !== window.location.origin || event.source !== frame.contentWindow) return;
+      if (event.data?.type === 'vcd-viewport-preview-ready') requestEditMode();
+      if (event.data?.type === 'vcd-viewport-preview-restored' && event.data.id === scrollRequest) resolveScroll?.();
+      if (event.data?.type === 'vcd-viewport-preview-edited' && loading) {
+        ready = true;
+        if (open) postVisibility(true);
+        resolveFrameReady?.();
+        resolveFrameReady = undefined;
+      }
+      if (event.data?.type === 'vcd-viewport-preview-saved' && open) saved = true;
+      if (event.data?.type === 'vcd-viewport-preview-preset' && (event.data.preset === 'desktop' || event.data.preset in presets)) {
+        show(event.data.preset as Preset);
+      }
+      if (event.data?.type === 'vcd-viewport-preview-close') close();
+    });
+    scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+      const preset = event.detail?.preset;
+      if (preset === 'desktop' || (preset && preset in presets)) show(preset as Preset);
+    }) as EventListener);
+    let frameVisible = false;
+    const pausedVideos = new Set<HTMLVideoElement>();
+    const pauseHiddenVideos = () => {
+      if (frameVisible) return;
+      document.querySelectorAll('video').forEach((video) => {
+        if (!video.paused) { pausedVideos.add(video); video.pause(); }
+      });
+    };
+    scope.listen(window, 'message', (event) => {
+      if (!frameMode || event.origin !== window.location.origin || event.source !== window.parent) return;
+      if (event.data?.type === 'vcd-viewport-preview-edit') {
+        window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+        const reportEdited = () => scope.frame(() => scope.frame(() => {
+          window.parent.postMessage({ type: 'vcd-viewport-preview-edited' }, window.location.origin);
+        }));
+        const veil = document.getElementById('transition-overlay');
+        if (veil && !veil.hidden && document.documentElement.dataset.devTransition !== 'visible') {
+          scope.listen(window, 'vcd:initial-reveal-complete', reportEdited, { once: true });
+        } else reportEdited();
+      }
+      if (event.data?.type === 'vcd-viewport-preview-scroll') {
+        window.scrollTo({ top: Number(event.data.scrollY) || 0, behavior: 'instant' });
+        window.parent.postMessage({ type: 'vcd-viewport-preview-restored', id: event.data.id }, window.location.origin);
+      }
+      if (event.data?.type === 'vcd-viewport-preview-visible') {
+        frameVisible = Boolean(event.data.visible);
+        if (frameVisible) {
+          pausedVideos.forEach((video) => { if (video.isConnected) void video.play().catch(() => {}); });
+          pausedVideos.clear();
+        } else pauseHiddenVideos();
+      }
+    });
+    scope.listen(document, 'keydown', (event) => {
+      if (isTypingTarget(event.target)) return;
+      if (frameMode) {
+        if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const preset = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
+        if (!preset) return;
+        event.preventDefault();
+        window.parent.postMessage({ type: 'vcd-viewport-preview-preset', preset }, window.location.origin);
+        return;
+      }
+      if (event.key === 'Escape' && (open || opening)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        show('desktop');
+        return;
+      }
+      if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (event.code === 'Digit1' && show('desktop')) event.preventDefault();
+      if (event.code === 'Digit2' && show('tablet')) event.preventDefault();
+      if (event.code === 'Digit3' && show('mobile')) event.preventDefault();
+    }, true);
+    if (frameMode) {
+      pauseHiddenVideos();
+      scope.listen(document, 'play', pauseHiddenVideos, true);
+      const reportSaved = () => window.parent.postMessage({ type: 'vcd-viewport-preview-saved' }, window.location.origin);
+      scope.listen(window, 'vcd:dev-pending-committed', reportSaved);
+      scope.listen(window, 'vcd:dev-content-written', reportSaved);
+      document.documentElement.setAttribute('data-edit-viewport-frame', '');
+      scope.add(() => document.documentElement.removeAttribute('data-edit-viewport-frame'));
+      scope.listen(document, 'keydown', (event) => {
+        if (event.key !== 'Escape' || event.defaultPrevented) return;
+        window.parent.postMessage({ type: 'vcd-viewport-preview-close' }, window.location.origin);
+      });
+      scope.listen(window, 'vcd:dev-save-state', ((event: CustomEvent<{ saving?: boolean }>) => {
+        frameSaveBusy = Boolean(event.detail?.saving);
+      }) as EventListener);
+      scope.listen(window, 'vcd:before-reload', (event) => {
+        if (frameSaveBusy) event.preventDefault();
+      }, true);
+      scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+        const preset = event.detail?.preset;
+        if (preset === 'desktop' || preset === 'tablet' || preset === 'mobile') {
+          window.parent.postMessage({ type: 'vcd-viewport-preview-preset', preset }, window.location.origin);
+        }
+      }) as EventListener);
+      window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
+      return () => scope.destroy();
+    }
+    const restore = sessionStorage.getItem('vcd-viewport-preview-restore');
+    if (restore) {
+      sessionStorage.removeItem('vcd-viewport-preview-restore');
+      try {
+        const { scrollY } = JSON.parse(restore) as { scrollY?: number };
+        window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+        requestAnimationFrame(() => window.scrollTo(0, Number(scrollY) || 0));
+      } catch { /* Ignore a stale restore marker. */ }
+    }
+    scope.listen(window, 'vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active) scheduleWarmFrame(true);
+      else { opening = false; cancelMorph(); if (open) finishClose(); dropWarmFrame(); conceal(); }
+    }) as EventListener);
+    scope.listen(window, 'vcd:dev-pending-committed', () => scheduleWarmFrame());
+    scope.listen(window, 'vcd:dev-content-written', () => scheduleWarmFrame());
+    select('desktop');
+    scheduleWarmFrame();
+    return () => { cancelMorph(); if (open) finishClose(); dropWarmFrame(); scope.destroy(); };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
+  :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
+  :global(html[data-viewport-layout-commit] .site-header) { transition: none; }
+  :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
+  .dev-viewport-preview__backdrop { position: absolute; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }
+  .dev-viewport-preview__shadow, .dev-viewport-preview__surface {
+    border-radius: calc(var(--viewport-radius, 0px) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+  }
+  .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
+  .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
+  .dev-viewport-preview__controls { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
+  .dev-viewport-preview__controls :global(.dev-segmented) {
+    width: auto;
+    padding: 0;
+    gap: 4px;
+    background: transparent;
+    --dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg);
+  }
+  .dev-viewport-preview__controls :global(.dev-segmented[tabindex='-1']:focus) { outline: none; }
+  :global(.dev-text-action-stack), :global(.dev-launcher) { transition: opacity 120ms ease, visibility 120ms; }
+  :global(html[data-viewport-previewing] .dev-text-action-stack), :global(html[data-viewport-previewing] .dev-launcher) { opacity: 0; visibility: hidden; }
+</style>

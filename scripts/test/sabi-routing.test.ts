@@ -5,7 +5,7 @@ import routes from '../../public/_routes.json';
 const paths = [
   '/', '/introduction', '/installation', '/web-components', '/react-nextjs',
   '/vue-nuxt', '/vue-nuxt/', '/svelte-sveltekit', '/svelte-sveltekit/', '/astro', '/astro/',
-  '/api', '/email-and-number-fields', '/styling',
+  '/api', '/prefix-and-suffix', '/prefix-and-suffix/', '/email-and-number-fields', '/styling',
 ];
 for (const path of paths) {
   test(`Sabi host serves ${path} from portfolio assets`, async () => {

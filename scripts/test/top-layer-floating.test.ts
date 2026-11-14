@@ -15,6 +15,7 @@ const FLOATING_ROLES = 'menu|listbox|tooltip';
 // Floating-role elements that never sit inside a page block. Each entry must
 // still match, so a removed or migrated layer also leaves this list.
 const EXEMPT: Array<{ file: string; marker: string; reason: string }> = [
+  { file: 'src/components/reports/CommandMenu.astro', marker: 'command__list', reason: 'inline inside the command surface, which is a native popover in Edit and an embedded demonstration otherwise' },
   { file: 'src/components/DevTextEditor.astro', marker: 'dev-gap-toolbar__menu', reason: 'inline row inside the gap toolbar pill, not a popup' },
   { file: 'src/components/DevImageDrop.astro', marker: 'dev-image-drop-choice', reason: 'page-level sibling of the drop zone, or mounted inline in the gap toolbar' },
   { file: 'src/components/DevModeController.astro', marker: "menu.className = 'dev-launcher'", reason: 'created on demand and appended to <body>' },
@@ -83,7 +84,7 @@ test('floating layers render in the top layer via the popover attribute', () => 
 // padding, gap, radius and separators; a hand-styled surface is how they drift.
 test('top-layer menus and listboxes use .dev-menu', () => {
   const offenders = floatingLayers()
-    .filter((layer) => layer.topLayer && /role=["'](?:menu|listbox)["']/.test(layer.text) && !/\bdev-menu\b/.test(layer.text))
+    .filter((layer) => layer.topLayer && /role=["'](?:menu|listbox)["']/.test(layer.text) && !/\bdev-menu\b/.test(layer.text) && !/^<Menu\b/.test(layer.text))
     .map((layer) => `${layer.file}:${layer.line} — menu/listbox without the .dev-menu class (src/components/ui/Menu.astro)`);
   expect(offenders).toEqual([]);
 });

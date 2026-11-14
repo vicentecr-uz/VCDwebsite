@@ -4,7 +4,16 @@ import searchIcon from 'lucide-static/icons/search.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 import '../../styles/reportPrototypes.css';
 
-const commands = [
+interface Props {
+  contextual?: boolean;
+}
+const { contextual = false } = Astro.props;
+const listId = contextual ? 'image-command-list' : 'command-list';
+const commands = contextual ? [
+  ['Image', 'Edit image', '', 'image'],
+  ['Image', 'Caption', '', 'caption'],
+  ['Image', 'Make carousel', '', 'carousel'],
+] : [
   ['Insert', 'Image', ''], ['Insert', 'Text section', ''], ['Insert', 'Section header', ''], ['Insert', 'Carousel', ''], ['Insert', 'Interactive demo', ''],
   ['Page', 'Page settings', ''], ['Page', 'Save', '⌘ S'], ['Page', 'Save & Publish', '⌘ ⇧ S'], ['Page', 'Preview on Mobile', '⌥ 3'],
   ['Go to', 'Pages', ''], ['Go to', 'Asset manager', '⌥ A'], ['Go to', 'Styles', ''],
@@ -12,16 +21,18 @@ const commands = [
 ];
 ---
 
-<div class="command dev-surface" data-command>
+<div class="command dev-surface" data-command data-contextual={contextual ? '' : undefined} popover={contextual ? 'manual' : undefined}>
   <label class="command__search">
     <span class="command__icon" aria-hidden="true" set:html={sizeIcon(searchIcon, 16)} />
-    <input type="text" role="combobox" aria-expanded="true" aria-controls="command-list" aria-autocomplete="list" aria-label="Command" placeholder="Command" autocomplete="off" spellcheck="false" data-input />
+    <sabi-input>
+      <input type="text" role="combobox" aria-expanded={String(!contextual)} aria-controls={listId} aria-autocomplete="list" aria-label="Command" placeholder="Command" autocomplete="off" spellcheck="false" data-input />
+    </sabi-input>
     <kbd class="command__key">esc</kbd>
   </label>
   <Hairline />
-  <ul class="command__list" id="command-list" role="listbox" aria-label="Commands" data-list>
-    {commands.map(([group, label, keys], index) => (
-      <li class="command__item dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="option" id={`command-${index}`} data-group={group} data-label={label}>
+  <ul class="command__list" id={listId} role="listbox" aria-label="Commands" data-list>
+    {commands.map(([group, label, keys, action], index) => (
+      <li class="command__item dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" role="option" id={`${listId}-${index}`} data-group={group} data-label={label} data-command-action={action}>
         <span class="command__label">{label}</span>
         {keys && <span class="command__keys">{keys.split(' ').map((key) => <kbd class="command__key">{key}</kbd>)}</span>}
       </li>
@@ -33,57 +44,154 @@ const commands = [
 </div>
 
 <script>
-  const root = document.querySelector<HTMLElement>('[data-command]')!;
-  const input = root.querySelector<HTMLInputElement>('[data-input]')!;
-  const list = root.querySelector<HTMLElement>('[data-list]')!;
-  const status = root.querySelector<HTMLElement>('[data-status]')!;
-  const empty = root.querySelector<HTMLElement>('[data-empty]')!;
-  const items = [...list.querySelectorAll<HTMLElement>('[role="option"]')];
-  let active = 0;
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+  import { clampToViewport } from '../../lib/floatingLayer';
+  import { canConvertCarouselToImage, canConvertImageToCarousel } from '../../scripts/devEditTarget';
 
-  const visible = () => items.filter((item) => !item.hidden);
-  const highlight = (index: number, scroll = true) => {
-    const shown = visible();
-    active = shown.length ? (index + shown.length) % shown.length : 0;
-    items.forEach((item) => item.setAttribute('aria-selected', String(item === shown[active])));
-    if (shown[active]) {
-      input.setAttribute('aria-activedescendant', shown[active].id);
-      if (scroll) shown[active].scrollIntoView({ block: 'nearest' });
+  const dispose = onPageLoad(() => {
+    const root = document.querySelector<HTMLElement>('[data-command]');
+    if (!root) return;
+    const scope = createPageScope();
+    const contextual = root.hasAttribute('data-contextual');
+    const actions = new Map<string, () => void>();
+    let previousFocus: HTMLElement | null = null;
+    const close = (restoreFocus = false) => {
+      if (!contextual || !root.matches(':popover-open')) return;
+      root.hidePopover();
+      input.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) previousFocus?.focus({ preventScroll: true });
+    };
+    const input = root.querySelector<HTMLInputElement>('[data-input]')!;
+    const list = root.querySelector<HTMLElement>('[data-list]')!;
+    const status = root.querySelector<HTMLElement>('[data-status]')!;
+    const empty = root.querySelector<HTMLElement>('[data-empty]')!;
+    const items = [...list.querySelectorAll<HTMLElement>('[role="option"]')];
+    let active = 0;
+
+    const visible = () => items.filter((item) => !item.hidden);
+    const highlight = (index: number, scroll = true) => {
+      const shown = visible();
+      active = shown.length ? (index + shown.length) % shown.length : 0;
+      items.forEach((item) => item.setAttribute('aria-selected', String(item === shown[active])));
+      if (shown[active]) {
+        input.setAttribute('aria-activedescendant', shown[active].id);
+        if (scroll) shown[active].scrollIntoView({ block: 'nearest' });
+      } else input.removeAttribute('aria-activedescendant');
+    };
+    const filter = () => {
+      const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+      let group = '';
+      for (const item of items) {
+        const text = `${item.dataset.group} ${item.dataset.label}`.toLowerCase();
+        item.hidden = (contextual && !actions.has(item.dataset.commandAction!)) || !words.every((word) => text.includes(word));
+        // A group heading is the first visible row of each group.
+        item.toggleAttribute('data-heading', !item.hidden && item.dataset.group !== group);
+        if (!item.hidden) group = item.dataset.group!;
+      }
+      empty.hidden = visible().length > 0;
+      highlight(0, false);
+    };
+    const run = (item?: HTMLElement) => {
+      if (!item) return;
+      if (contextual) {
+        const action = actions.get(item.dataset.commandAction!);
+        close(true);
+        action?.();
+        return;
+      }
+      status.textContent = `${item.dataset.group} · ${item.dataset.label}`;
+      input.value = '';
+      filter();
+    };
+
+    scope.listen(input, 'input', filter);
+    scope.listen(input, 'keydown', (event) => {
+      if (event.key === 'ArrowDown') { event.preventDefault(); highlight(active + 1); }
+      if (event.key === 'ArrowUp') { event.preventDefault(); highlight(active - 1); }
+      if (event.key === 'Enter') { event.preventDefault(); run(visible()[active]); }
+      if (event.key === 'Escape') {
+        if (contextual) {
+          event.preventDefault();
+          event.stopPropagation();
+          close(true);
+        } else {
+          input.value = '';
+          filter();
+          status.textContent = '↑ ↓ ↵';
+        }
+      }
+    });
+    scope.listen(list, 'pointermove', (event) => {
+      const item = (event.target as Element).closest<HTMLElement>('[role="option"]');
+      if (item && item.getAttribute('aria-selected') !== 'true') highlight(visible().indexOf(item), false);
+    });
+    scope.listen(list, 'click', (event) => {
+      run((event.target as Element).closest<HTMLElement>('[role="option"]') ?? undefined);
+      if (!contextual) input.focus();
+    });
+    if (contextual) {
+      const open = (event: MouseEvent) => {
+        const html = document.documentElement;
+        if (!html.classList.contains('is-dev-mode') || html.classList.contains('is-section-nav-editing')) return;
+        if (html.classList.contains('is-remote-editor') && matchMedia('(max-width: 40em)').matches) return;
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target || target.closest('input, textarea, select, [contenteditable="true"], [contenteditable="plaintext-only"], video, media-controller')) return;
+        const image = target.closest<HTMLElement>('[data-dev-image-target]');
+        if (!image) return;
+        actions.clear();
+        for (const item of items) {
+          const key = item.dataset.commandAction!;
+          if (key === 'carousel') {
+            const carousel = image.closest<HTMLElement>('[data-dev-carousel-target]');
+            if (carousel && canConvertCarouselToImage(carousel)) {
+              item.querySelector('.command__label')!.textContent = 'Make single image';
+              item.dataset.label = 'Make single image';
+              actions.set(key, () => window.dispatchEvent(
+                new CustomEvent('vcd:dev-convert-carousel-to-image', { detail: carousel }),
+              ));
+            } else if (canConvertImageToCarousel(image)) {
+              item.querySelector('.command__label')!.textContent = 'Make carousel';
+              item.dataset.label = 'Make carousel';
+              actions.set(key, () => window.dispatchEvent(
+                new CustomEvent('vcd:dev-convert-image-to-carousel', { detail: image }),
+              ));
+            }
+            continue;
+          }
+          const trigger = image.querySelector<HTMLButtonElement>(`[data-dev-edit-trigger="${key}"]`);
+          if (!trigger || trigger.disabled) continue;
+          const label = trigger.textContent?.trim() || item.dataset.label!;
+          item.querySelector('.command__label')!.textContent = label;
+          item.dataset.label = label;
+          actions.set(key, () => { if (trigger.isConnected) trigger.click(); });
+        }
+        if (!actions.size) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        input.value = '';
+        root.showPopover();
+        input.setAttribute('aria-expanded', 'true');
+        filter();
+        const rect = image.getBoundingClientRect();
+        clampToViewport(root, event.clientX || rect.left, event.clientY || rect.top);
+        input.focus({ preventScroll: true });
+      };
+      scope.listen(document, 'contextmenu', open, true);
+      scope.listen(document, 'click', (event) => { if (event.altKey && !event.shiftKey) open(event); }, true);
+      scope.listen(document, 'pointerdown', (event) => {
+        if (!root.contains(event.target as Node)) close();
+      });
+      scope.listen(root, 'focusout', (event) => {
+        if (event.relatedTarget && !root.contains(event.relatedTarget as Node)) close();
+      });
+      scope.listen(window, 'vcd:dev-mode-change', close.bind(null, false));
+      scope.listen(window, 'resize', () => close());
     }
-  };
-  const filter = () => {
-    const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-    let group = '';
-    for (const item of items) {
-      const text = `${item.dataset.group} ${item.dataset.label}`.toLowerCase();
-      item.hidden = !words.every((word) => text.includes(word));
-      // A group heading is the first visible row of each group.
-      item.toggleAttribute('data-heading', !item.hidden && item.dataset.group !== group);
-      if (!item.hidden) group = item.dataset.group!;
-    }
-    empty.hidden = visible().length > 0;
-    highlight(0);
-  };
-  const run = (item?: HTMLElement) => {
-    if (!item) return;
-    status.textContent = `${item.dataset.group} · ${item.dataset.label}`;
-    input.value = '';
     filter();
-  };
-
-  input.addEventListener('input', filter);
-  input.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowDown') { event.preventDefault(); highlight(active + 1); }
-    if (event.key === 'ArrowUp') { event.preventDefault(); highlight(active - 1); }
-    if (event.key === 'Enter') run(visible()[active]);
-    if (event.key === 'Escape') { input.value = ''; filter(); status.textContent = '↑ ↓ ↵'; }
+    return () => { close(); scope.destroy(); };
   });
-  list.addEventListener('pointermove', (event) => {
-    const item = (event.target as Element).closest<HTMLElement>('[role="option"]');
-    if (item && item.getAttribute('aria-selected') !== 'true') highlight(visible().indexOf(item), false);
-  });
-  list.addEventListener('click', (event) => { run((event.target as Element).closest<HTMLElement>('[role="option"]') ?? undefined); input.focus(); });
-  filter();
+  import.meta.hot?.dispose(dispose);
 </script>
 
 <style>
@@ -97,6 +205,19 @@ const commands = [
     color: var(--sys-color-on-srf);
   }
 
+  .command[data-contextual] {
+    position: fixed;
+    inset: auto;
+    width: min(calc(100vw - 16px), 24rem);
+    max-height: calc(100dvh - 16px);
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .command[data-contextual]:not(:popover-open) { display: none; }
+  .command[data-contextual] .command__list { height: auto; max-height: min(17rem, 55dvh); }
+
   .command__search {
     display: flex;
     align-items: center;
@@ -106,8 +227,15 @@ const commands = [
 
   .command__icon { display: inline-flex; color: var(--sys-color-on-srf-subtle); }
 
-  .command__search input {
+  .command__search sabi-input {
+    --sabi-edge-gutter: 0px;
+    display: flex;
     flex: 1;
+    min-width: 0;
+  }
+
+  .command__search input {
+    width: 100%;
     min-width: 0;
     padding: 0;
     border: 0;
@@ -140,10 +268,15 @@ const commands = [
     padding-inline: 10px;
     font: var(--dev-text-menu-item);
     cursor: default;
+    transition: none;
   }
 
   .command__item[hidden] { display: none; }
   .command__item[aria-selected='true'] { background: var(--comp-button-ghost-container-hover); }
+  .command .command__item:is(:active, [data-pressed='true'], [data-demo-pressed='true']) {
+    transform: none;
+    background: var(--comp-button-ghost-container-pressed);
+  }
 
   .command__item[data-heading] { margin-top: 26px; }
   .command__item[data-heading]:first-child { margin-top: 22px; }

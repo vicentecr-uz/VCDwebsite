@@ -1,0 +1,134 @@
+---
+import Field from './Field.astro';
+
+interface Props {
+  label: string;
+  id: string;
+  unit?: string;
+  [key: string]: any;
+}
+
+const { label, id, unit = '', class: className, ...rest } = Astro.props;
+const labelId = `${id}-label`;
+---
+
+<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', className]}>
+  <Fragment slot="labelAccessory"><slot name="labelAccessory" /></Fragment>
+  <div class="dev-range-field" data-dev-range-field>
+    <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
+    <input
+      {...rest}
+      id={id}
+      class="dev-range-field__input"
+      type="range"
+      aria-labelledby={labelId}
+      data-range-unit={unit}
+    />
+  </div>
+</Field>
+
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  const format = (input: HTMLInputElement) => {
+    const min = Number(input.min);
+    const max = Number(input.max || 100);
+    const value = Number(input.value);
+    const progress = max > min ? (value - min) / (max - min) : 0;
+    const unit = input.dataset.rangeUnit || '';
+    const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
+    const valueText = `${input.value}${unit}`;
+    input.parentElement?.style.setProperty('--range-progress', String(progress));
+    input.setAttribute('aria-valuetext', valueText);
+    if (output) output.textContent = valueText;
+  };
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    document.querySelectorAll<HTMLInputElement>('[data-dev-range-field] input[type="range"]').forEach((input) => {
+      scope.listen(input, 'input', () => format(input));
+      scope.listen(input, 'change', () => format(input));
+      scope.listen(input, 'vcd:range-refresh', () => format(input));
+      format(input);
+    });
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  :global(.dev-field--range > .dev-field__value),
+  :global(.dev-field.dev-field--range:hover:not(.dev-field--quiet) > .dev-field__value),
+  :global(.dev-field.dev-field--range > .dev-field__value:has(:focus-visible)) {
+    padding: 0;
+    background: var(--comp-field-container);
+    --on-surface-faint: var(--sys-color-on-srf-container-faint);
+  }
+
+  .dev-range-field {
+    --range-thumb-width: 4px;
+    --range-track-inset: 8px;
+    --range-fill-color: var(--sys-color-srf-container-high);
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: var(--dev-control-height);
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
+  .dev-range-field::before,
+  .dev-range-field::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .dev-range-field::before {
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0) + var(--range-thumb-width) / 2 + 4px);
+    background: var(--range-fill-color);
+  }
+
+  .dev-range-field::after {
+    top: 50%;
+    left: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
+    width: var(--range-thumb-width);
+    height: 20px;
+    translate: -50% -50%;
+    border-radius: 999px;
+    background: var(--sys-color-on-srf-subtle);
+  }
+
+  .dev-range-field__output {
+    position: absolute;
+    inset-inline-start: 18px;
+    z-index: 1;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .dev-range-field__input {
+    width: 100%;
+    height: var(--dev-control-height);
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    appearance: none;
+    border: 0;
+    border-radius: inherit;
+    outline: 0;
+    background: transparent;
+    cursor: ew-resize;
+  }
+
+  .dev-range-field__input::-webkit-slider-runnable-track { background: transparent; }
+  .dev-range-field__input::-moz-range-track { background: transparent; }
+  .dev-range-field__input::-webkit-slider-thumb { width: 16px; height: 1px; appearance: none; opacity: 0; }
+  .dev-range-field__input::-moz-range-thumb { width: 16px; height: 1px; border: 0; opacity: 0; }
+  .dev-range-field:has(.dev-range-field__input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+  .dev-range-field:has(.dev-range-field__input:disabled) { opacity: var(--dev-opacity-disabled); }
+  .dev-range-field__input:disabled { cursor: default; }
+</style>

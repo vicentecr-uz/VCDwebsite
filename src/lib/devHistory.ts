@@ -56,6 +56,14 @@ export function createHistory() {
       changed();
     },
     undo: () => move(past, future, 'undo'),
+    async undoIfCurrent(undo: HistoryCommand['undo']) {
+      if (busy || past.at(-1)?.undo !== undo) return false;
+      await move(past, future, 'undo');
+      return true;
+    },
+    isCurrentUndo(undo: HistoryCommand['undo']) {
+      return past.at(-1)?.undo === undo;
+    },
     redo: () => move(future, past, 'redo'),
     breakGroup() { grouping = false; },
     clear() {
@@ -131,7 +139,9 @@ export function installHistoryShortcuts(signal: AbortSignal) {
   const route = (event: Event, redo: boolean) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     const keyboardTarget = event.target instanceof Element ? event.target : null;
-    const target = lastInteractionTarget ?? keyboardTarget;
+    const previous = lastInteractionTarget?.isConnected ? lastInteractionTarget : null;
+    const closedLayer = previous?.closest('[hidden], [inert], [popover]:not(:popover-open)');
+    const target = previous && !closedLayer ? previous : keyboardTarget;
     const scope = activeScopes().find((entry) => entry === selectedScope) ?? scopeFor(target);
     const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
     // Unregistered text controls keep native undo; authored page text belongs to the page stack.

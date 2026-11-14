@@ -1,3 +1,5 @@
+import { isVideoSrc } from '../lib/imageUpload.mjs';
+import { isPlaceholderSrc } from '../lib/projectImageFrame';
 type FieldChange = { document?: unknown; path?: unknown; target?: unknown };
 
 export function sectionEditTarget(element?: HTMLElement | null): { sectionId: string } | undefined {
@@ -63,4 +65,26 @@ export function withDevEditTarget<T extends FieldChange>(change: T, element?: HT
     }
   }
   return { ...change, target };
+}
+
+export function canConvertImageToCarousel(target: HTMLElement) {
+  const { devDocument, devImagePath, devImageSrc } = target.dataset;
+  return Boolean(devDocument && devImagePath && devImageSrc && !isVideoSrc(devImageSrc) && (
+    target.matches('figure.project-image-grid__item')
+    || target.matches('[data-dev-section-deletable="image"] > figure.project-media')
+  ));
+}
+
+export function canConvertCarouselToImage(target: HTMLElement) {
+  if (!target.matches('[data-dev-carousel-target]')) return false;
+  try {
+    const items = JSON.parse(target.dataset.devCarouselItems || '[]');
+    return Array.isArray(items) && items.length === 1
+      && typeof items[0]?.src === 'string'
+      && Boolean(items[0].src)
+      && !isVideoSrc(items[0].src)
+      && !isPlaceholderSrc(items[0].src);
+  } catch {
+    return false;
+  }
 }

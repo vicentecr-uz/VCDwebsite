@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { sectionScrollDuration, sectionScrollTop } from '../../src/lib/sectionScroll';
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('../../src/components/SectionSidebarNav.astro', import.meta.url), 'utf8');
@@ -28,11 +29,11 @@ function harness() {
     listen: (_target: unknown, type: string, listener: Function) => listeners.set(type, listener),
   };
   const scrollToBlock = new Function(
-    'window', 'document', 'performance', 'cancelAnimationFrame', 'scope', 'scrollEasing', 'setActiveLink', 'updateActiveFromScroll', 'clickOffsetPx', 'clickLockMs',
+    'window', 'document', 'performance', 'cancelAnimationFrame', 'scope', 'scrollEasing', 'setActiveLink', 'updateActiveFromScroll', 'clickOffsetPx', 'clickLockMs', 'sectionScrollDuration', 'sectionScrollTop',
     `let scrollRafId = 0, scrollTimeoutId = 0, isAutoScrolling = false, manualLockUntil = 0; ${body}; return scrollToBlock;`,
   )(
     win, { documentElement: { scrollHeight: 10000 } }, { now: () => 0 }, (id: number) => frames.delete(id), scope,
-    { getUseNative: () => false, getEaser: () => (t: number) => t }, () => {}, () => { activeSyncs += 1; }, 152, 700,
+    { getUseNative: () => false, getEaser: () => (t: number) => t }, () => {}, () => { activeSyncs += 1; }, 152, 700, sectionScrollDuration, sectionScrollTop,
   );
   const target = { id: 'research', getBoundingClientRect: () => ({ top: 3000, height: 200 }) };
   let time = 0;

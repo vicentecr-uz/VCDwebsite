@@ -2,6 +2,8 @@
 import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'astro/config';
 import { normalizeHref } from './src/lib/normalizeHref.mjs';
@@ -1783,6 +1785,14 @@ const writeContentJson = async (file, data) => {
  */
 export function contentSectionDevWriter() {
   const restoreStore = createSectionRestoreStore();
+  // Undo tokens last for this dev server and retain at most the 128 most recent conversions.
+  const carouselUndoStore = new Map();
+  const rememberCarouselUndo = (entry) => {
+    const token = randomUUID();
+    carouselUndoStore.set(token, entry);
+    while (carouselUndoStore.size > 128) carouselUndoStore.delete(carouselUndoStore.keys().next().value);
+    return token;
+  };
   return {
     name: 'content-section-dev-writer',
     apply: 'serve',
@@ -1824,8 +1834,12 @@ export function contentSectionDevWriter() {
                 ? 'appendMediaItems'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
-              : body.action === 'convertGridItemToCarousel'
-                ? 'convertGridItemToCarousel'
+              : body.action === 'convertImageToCarousel'
+                ? 'convertImageToCarousel'
+              : body.action === 'undoImageToCarousel'
+                ? 'undoImageToCarousel'
+              : body.action === 'convertCarouselToImage'
+                ? 'convertCarouselToImage'
               : body.action === 'updateProjectDetailsRows'
                 ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
@@ -1925,6 +1939,32 @@ export function contentSectionDevWriter() {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not remove that image.',
               });
+            }
+            return;
+          }
+
+          if (action === 'undoImageToCarousel') {
+            const token = typeof body.undoToken === 'string' ? body.undoToken : '';
+            const undo = carouselUndoStore.get(token);
+            if (!undo || undo.document !== documentKey) {
+              send(400, { error: 'That carousel conversion can no longer be undone.' });
+              return;
+            }
+            try {
+              const resolvedPath = resolveContentTarget(data, undo.path, undo.target);
+              const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+              const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+              const current = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid'
+                ? section.items?.[itemIndex]
+                : resolvedPath.length === 2 ? data.sections[sectionIndex] : undefined;
+              if (!isDeepStrictEqual(current, undo.carousel)) throw new Error('That image changed after conversion.');
+              if (resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid') section.items[itemIndex] = structuredClone(undo.original);
+              else data.sections[sectionIndex] = structuredClone(undo.original);
+              await writeContentJson(file, data);
+              carouselUndoStore.delete(token);
+              send(200, { ok: true, action, index: sectionIndex, section: data.sections[sectionIndex] });
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'Could not undo that carousel conversion.' });
             }
             return;
           }
@@ -2034,7 +2074,7 @@ export function contentSectionDevWriter() {
             return;
           }
 
-          if (action === 'convertGridItemToCarousel') {
+          if (action === 'convertImageToCarousel') {
             const fieldPath = Array.isArray(body.path) ? body.path : [];
             let resolvedPath;
             try {
@@ -2043,44 +2083,113 @@ export function contentSectionDevWriter() {
               send(400, { error: error instanceof Error ? error.message : 'That image path is invalid.' });
               return;
             }
-            if (resolvedPath.length !== 4 || resolvedPath[0] !== 'sections' || resolvedPath[2] !== 'items') {
+            const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+            const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+            const nested = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid';
+            const image = nested ? section.items?.[itemIndex] : resolvedPath.length === 2 && section?.type === 'image' ? section : undefined;
+            if (!image || typeof image.src !== 'string' || !image.src || isVideoSrc(image.src) || image.type === 'imageCarousel') {
               send(400, { error: 'That image cannot become a carousel.' });
               return;
             }
-            const grid = data.sections?.[resolvedPath[1]];
-            const item = grid?.type === 'imageGrid' ? grid.items?.[resolvedPath[3]] : null;
-            if (!item || typeof item !== 'object' || Array.isArray(item)) {
-              send(400, { error: 'That image is no longer in this grid.' });
-              return;
-            }
-            if (item.type === 'imageCarousel') {
-              send(400, { error: 'That image is already a carousel.' });
-              return;
-            }
-            const itemId = String(item.id || '');
-            if (!itemId) {
+            const imageId = String(image.id || '');
+            if (nested && !imageId) {
               send(400, { error: 'That grid image has no stable ID.' });
               return;
             }
-            grid.items[resolvedPath[3]] = {
+            const slideId = imageId ? `${imageId}-slide` : 'slide-1';
+            const {
+              id, sectionId, spacing, annotations, intro, constrained, maxVh, maxHeightVh,
+              ...slide
+            } = image;
+            const carousel = {
+              ...(!nested && { sectionId, spacing, annotations, intro, constrained, maxHeightVh: maxHeightVh ?? maxVh }),
               type: 'imageCarousel',
-              id: itemId,
+              id,
               orientation: 'horizontal',
               heightMode: 'dynamic',
               dotsPlacement: 'outside',
-              defaultAspectRatio: grid.defaultAspectRatio || 'original',
-              ...(item.mobileInset === true ? { mobileInset: true } : {}),
-              ...(item.hideOnMobile === true ? { hideOnMobile: true } : {}),
-              items: [{ ...item, id: `${itemId}-slide` }],
-              visible: [`${itemId}-slide`],
+              defaultAspectRatio: nested ? section.defaultAspectRatio || 'original' : 'original',
+              ...(image.mobileInset === true ? { mobileInset: true } : {}),
+              ...(image.hideOnMobile === true ? { hideOnMobile: true } : {}),
+              items: [{ ...(nested ? image : slide), id: slideId, ...(nested ? {} : { type: undefined }) }],
+              visible: [slideId],
             };
+            if (nested) section.items[itemIndex] = carousel;
+            else data.sections[sectionIndex] = carousel;
             await writeContentJson(file, data);
+            const undoToken = rememberCarouselUndo({
+              document: documentKey,
+              path: resolvedPath,
+              target: body.target,
+              original: structuredClone(image),
+              carousel: JSON.parse(JSON.stringify(carousel)),
+            });
             send(200, {
               ok: true,
-              action: 'convertGridItemToCarousel',
+              action: 'convertImageToCarousel',
               path: fieldPath,
               index: resolvedPath[1],
               section: data.sections[resolvedPath[1]],
+              undoToken,
+            });
+            return;
+          }
+
+          if (action === 'convertCarouselToImage') {
+            const fieldPath = Array.isArray(body.path) ? body.path : [];
+            let resolvedPath;
+            try {
+              resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That carousel path is invalid.' });
+              return;
+            }
+            const [list, sectionIndex, itemsKey, itemIndex] = resolvedPath;
+            const section = list === 'sections' ? data.sections[sectionIndex] : undefined;
+            const nested = resolvedPath.length === 4 && itemsKey === 'items' && section?.type === 'imageGrid';
+            const carousel = nested ? section.items?.[itemIndex] : resolvedPath.length === 2 && section?.type === 'imageCarousel' ? section : undefined;
+            const slides = carousel && Array.isArray(carousel.items) ? carousel.items : [];
+            const slide = slides.length === 1 ? slides[0] : undefined;
+            if (!carousel || carousel.type !== 'imageCarousel' || !slide || typeof slide.src !== 'string'
+              || !slide.src || isVideoSrc(slide.src) || isPlaceholderSrc(slide.src)) {
+              send(400, { error: 'Only a single non-placeholder image carousel can become a single image.' });
+              return;
+            }
+            const { type: _slideType, id: _slideId, ...slideImage } = slide;
+            const image = {
+              ...slideImage,
+              type: 'image',
+              id: String(carousel.id || slide.id || ''),
+              ...(!nested && {
+                sectionId: carousel.sectionId,
+                spacing: carousel.spacing,
+                annotations: carousel.annotations,
+                intro: carousel.intro,
+                constrained: carousel.constrained,
+                maxVh: carousel.maxHeightVh ?? carousel.maxVh,
+              }),
+            };
+            if (!image.id) {
+              send(400, { error: 'That carousel has no stable ID.' });
+              return;
+            }
+            if (nested) section.items[itemIndex] = image;
+            else data.sections[sectionIndex] = image;
+            await writeContentJson(file, data);
+            const undoToken = rememberCarouselUndo({
+              document: documentKey,
+              path: resolvedPath,
+              target: body.target,
+              original: structuredClone(carousel),
+              carousel: JSON.parse(JSON.stringify(image)),
+            });
+            send(200, {
+              ok: true,
+              action: 'convertCarouselToImage',
+              path: fieldPath,
+              index: resolvedPath[1],
+              section: data.sections[resolvedPath[1]],
+              undoToken,
             });
             return;
           }
@@ -2440,8 +2549,8 @@ function contentSpacingDevWriter() {
               && target.path.length === 3
               && target.path[0] === 'sections'
               && value && typeof value === 'object' && !Array.isArray(value)
-              && Object.keys(value).sort().join(',') === 'desktop,mobile,tablet'
-              && Object.values(value).every((height) => Number.isInteger(height) && height >= 8 && height <= 60);
+              && Object.keys(value).every((key) => ['desktop', 'tablet', 'mobile'].includes(key))
+              && Object.values(value).every((height) => height === null || (Number.isInteger(height) && height >= 8 && height <= 60));
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||

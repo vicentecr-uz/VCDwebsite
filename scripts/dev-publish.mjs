@@ -5,7 +5,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { promisify } from 'node:util';
+import { isDeepStrictEqual, promisify } from 'node:util';
 import { requestVpsAgent } from './vps-agent.mjs';
 import { contentGitArgs, hasContentRepository, isReviewPreview } from './content-repository.mjs';
 
@@ -281,21 +281,23 @@ export async function renderingChanges() {
  * stops counting the moment it lands on main, even though it stays dirty against
  * the feature branch until that branch merges.
  *
- * Returns `{ files, behind }` — see splitAheadBehind() for why the difference
+ * Returns `{ files, behind, base }` — see splitAheadBehind() for why the difference
  * between the two matters.
  */
 async function unpublishedContent() {
-  const base = await publishBaseRef(true);
-  if (!base) {
+  const ref = await publishBaseRef(true);
+  if (!ref) {
     return {
       files: porcelainPaths(await contentGitRaw('status', '--porcelain', '--', ...CONTENT_PATHS)),
       behind: [],
+      base: null,
     };
   }
+  const base = await contentGit('rev-parse', ref);
   const changed = new Set(nullPaths(await contentGitRaw('diff', '--name-only', '-z', base, '--', ...CONTENT_PATHS)));
   const excludes = separateContentRepository() ? [] : ['--exclude-standard'];
   for (const file of nullPaths(await contentGitRaw('ls-files', '--others', ...excludes, '-z', '--', ...CONTENT_PATHS))) changed.add(file);
-  return splitAheadBehind([...changed].sort(), base);
+  return { ...await splitAheadBehind([...changed].sort(), base), base };
 }
 
 /**
@@ -333,8 +335,65 @@ async function splitAheadBehind(files, target) {
   return { files: ahead, behind };
 }
 
+async function unpublishedDetails(base, file) {
+  if (!base || !file.startsWith('src/content/') || !file.endsWith('.json')) return [];
+  try {
+    const [published, saved] = await Promise.all([
+      contentGitRaw('show', `${base}:${file}`).then(JSON.parse),
+      readFile(path.join(process.cwd(), file), 'utf8').then(JSON.parse),
+    ]);
+    const changedKeys = (before, after) => [...new Set([...Object.keys(before), ...Object.keys(after)])]
+      .filter((key) => !isDeepStrictEqual(before[key], after[key]));
+    const details = changedKeys(published, saved).filter((key) => key !== 'sections');
+    const before = published.sections ?? [];
+    const after = saved.sections ?? [];
+    if (isDeepStrictEqual(before, after)) return details;
+    const sectionKey = (section) => section.id || section.sectionId;
+    const oldKeys = before.map(sectionKey);
+    const newKeys = after.map(sectionKey);
+    // Legacy blocks can lack stable IDs. Only pair by index when the layout is stable.
+    const stableKeys = (keys) => keys.every(Boolean) && new Set(keys).size === keys.length;
+    if (!stableKeys(oldKeys) || !stableKeys(newKeys)) {
+      const moved = before.some((section, index) => !isDeepStrictEqual(section, after[index])
+        && after.some((other, position) => position !== index && isDeepStrictEqual(section, other)));
+      if (moved || before.length !== after.length || before.some((section, index) =>
+        section.type !== after[index].type || oldKeys[index] !== newKeys[index])) {
+        return [...details, 'Section layout'];
+      }
+      after.forEach((section, index) => {
+        for (const field of changedKeys(before[index], section)) {
+          details.push(`Block ${index + 1} · ${field}`);
+        }
+      });
+      return details;
+    }
+    const sectionLabel = (section, key, index) => (
+      typeof section.title === 'string' && section.title
+        ? section.title
+        : /-[a-z0-9]{7,}$/.test(key) ? `Block ${index + 1}` : key
+    );
+    const oldSections = new Map(oldKeys.map((key, index) => [key, before[index]]));
+    const newSections = new Map(newKeys.map((key, index) => [key, after[index]]));
+    for (const [index, key] of newKeys.entries()) {
+      const section = after[index];
+      const previous = oldSections.get(key);
+      const label = sectionLabel(section, key, index);
+      if (!previous) details.push(`${label} · Added`);
+      else for (const field of changedKeys(previous, section)) details.push(`${label} · ${field}`);
+    }
+    oldKeys.forEach((key, index) => {
+      if (!newSections.has(key)) details.push(`${sectionLabel(before[index], key, index)} · Removed`);
+    });
+    if (!isDeepStrictEqual(oldKeys.filter((key) => newSections.has(key)),
+      newKeys.filter((key) => oldSections.has(key)))) details.push('Section order');
+    return details;
+  } catch {
+    return [];
+  }
+}
+
 /** Branch, what is unpublished inside the content surface, and whether it is safe to publish. */
-export async function publishStatus() {
+export async function publishStatus({ includeDetails = false } = {}) {
   const branch = await git('branch', '--show-current');
   const reviewPreview = isReviewPreview(process.cwd());
   if (reviewPreview) {
@@ -352,13 +411,17 @@ export async function publishStatus() {
     };
   }
   const contentBranch = separateContentRepository() ? await contentGit('branch', '--show-current') : branch;
-  const { files, behind } = await unpublishedContent();
+  const { files, behind, base } = await unpublishedContent();
   const renderingFiles = await renderingChanges();
 
   return {
     branch,
     files,
     behind,
+    ...(includeDetails ? {
+      details: Object.fromEntries(await Promise.all(files.map(async (file) =>
+        [file, await unpublishedDetails(base, file)]))),
+    } : {}),
     // The engine can stay on a feature branch; the separate content repo stays
     // on main. Rendering changes still require the existing explicit override.
     canPublish: !reviewPreview && renderingFiles.length === 0
@@ -862,7 +925,7 @@ export function publishDevWriter() {
       server.middlewares.use('/api/publish', async (req, res, next) => {
         if (req.method === 'GET') {
           try {
-            sendJson(res, 200, await publishStatus());
+            sendJson(res, 200, await publishStatus({ includeDetails: true }));
           } catch (error) {
             sendJson(res, 500, {
               error: error instanceof Error ? error.message : 'Could not read git status.',
