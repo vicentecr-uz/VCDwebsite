@@ -5,6 +5,7 @@ import '../styles/site-annotation-editor.css';
 <script>
   import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
 
+  import { devPanels, frontmostOpenPanel } from '../lib/devPanelStack';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
 
   const disposePage = onPageLoad(() => {
@@ -76,9 +77,6 @@ import '../styles/site-annotation-editor.css';
       [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
     const modeOnlyControls = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-mode-only]')];
-    const devPanels = () =>
-      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
-        .filter((panel) => !panel.hasAttribute('data-embedded'));
     const imageTargets = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
@@ -392,22 +390,10 @@ import '../styles/site-annotation-editor.css';
       }
     }, true);
 
-    // isContentEditable, not [contenteditable="true"]: editable hosts are set to
-    // 'plaintext-only' where the browser supports it (card titles, captions), and
-    // the attribute selector misses those — which let Esc in a card title fall
-    // through to "leave Dev Mode" instead of leaving the field.
-    const frontmostOpenPanel = () => {
-      const openPanels = devPanels().filter((panel) => !panel.hidden);
-      if (!openPanels.length) return null;
-      return openPanels.reduce((front, panel) => {
-        const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
-        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
-        return panelZ >= frontZ ? panel : front;
-      });
-    };
-
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea')));
+    const isPlainField = (target: EventTarget | null): target is HTMLInputElement | HTMLTextAreaElement =>
+      target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
     // Native <select> is not typing; Esc must still dismiss the frontmost panel (crop Aspect ratio).
 
     // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
@@ -484,15 +470,17 @@ import '../styles/site-annotation-editor.css';
       // Page body-text caret: DevTextEditor handles Esc (deselect like click-away)
       // in capture. Other typing targets (tuner fields, etc.) must not fall through
       // to panel-close / leave-Dev-Mode.
-      if (isTypingTarget(event.target as HTMLElement | null)) return;
-
-      if (isSectionEditor()) {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      if (isPlainField(event.target)) {
+        const inEditChrome = Boolean(target?.closest('[data-dev-panel-key], .dev-overlay')) || devMode || isSectionEditor();
+        if (!inEditChrome) return;
         event.preventDefault();
-        setSectionEditor(false);
+        event.target.blur();
         return;
       }
 
-      if (!devMode) return;
       if (html.classList.contains('is-dev-mode-exiting')) return;
 
       // Layer Esc: dismiss the frontmost open tuner (highest computed z-index;
@@ -502,12 +490,24 @@ import '../styles/site-annotation-editor.css';
       const frontmost = frontmostOpenPanel();
       if (frontmost) {
         event.preventDefault();
-        frontmost.hidden = true;
-        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
-          detail: { panel: frontmost },
-        }));
+        if (frontmost.dataset.devPanelKey === 'section-nav') {
+          setSectionEditor(false);
+        } else {
+          frontmost.hidden = true;
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+            detail: { panel: frontmost },
+          }));
+        }
         return;
       }
+
+      if (isSectionEditor()) {
+        event.preventDefault();
+        setSectionEditor(false);
+        return;
+      }
+
+      if (!devMode) return;
 
       event.preventDefault();
       setDevMode(false);

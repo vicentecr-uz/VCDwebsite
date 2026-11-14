@@ -1,0 +1,645 @@
+---
+import DocumentationLayout from '../layouts/DocumentationLayout.astro';
+import ProjectImage from './project/ProjectImage.astro';
+import ProjectImageGrid from './project/ProjectImageGrid.astro';
+import ProjectAward from './project/ProjectAward.astro';
+import ProjectDetails from './project/ProjectDetails.astro';
+import ProjectDivider from './project/ProjectDivider.astro';
+import ProjectBodyText from './project/ProjectBodyText.astro';
+import ProjectSectionTitle from './project/ProjectSectionTitle.astro';
+import ProjectPressQuoteTicker from './project/ProjectPressQuoteTicker.astro';
+import ProjectRedditCommentCarousel from './project/ProjectRedditCommentCarousel.astro';
+import ProjectVideo from './project/ProjectVideo.astro';
+import ProjectGrid from './ProjectGrid.astro';
+import Button from './ui/Button.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
+import DevOverlay from './DevOverlay.astro';
+import DevPanelTitle from './ui/DevPanelTitle.astro';
+import Field from './ui/Field.astro';
+import TextField from './ui/TextField.astro';
+import TextArea from './ui/TextArea.astro';
+import EditorSelectField from './ui/EditorSelectField.astro';
+import ToggleRow from './ui/ToggleRow.astro';
+import PanelActions from './ui/PanelActions.astro';
+import Badge from './ui/Badge.astro';
+import Hairline from './ui/Hairline.astro';
+import Menu from './ui/Menu.astro';
+import { loadPageDocument } from '../lib/projects';
+import '../styles/project.css';
+import '../styles/demoFrame.css';
+import { stylesComponents, stylesPages } from '../lib/stylesCatalog';
+
+const { topic = '' } = Astro.props;
+
+const stylesNav = loadPageDocument('styles');
+
+const examples = stylesNav.examples;
+if (!examples) return Astro.redirect('/404');
+
+/** Shared preview assets from the page's examples contract. */
+const previewHero = examples.hero;
+const previewDetail = examples.detail;
+
+const previewPressQuotes = examples.pressQuotes;
+const previewRedditComments = examples.redditComments;
+
+const typographyScale = [
+  { role: 'body', label: 'Text', spec: '400 · 1.0625rem/1.6 · 0 · 60ch · 1u · on-srf (1rem/1.6 phone)', sample: 'Used for narrative sections. Measure capped at 60ch.', note: 'Long-form description text (.project-body-text)' },
+  { role: 'heading-1', label: 'Heading 1', spec: '700 · 1.25rem/1.25 · -0.02em', sample: 'Process and outputs', note: 'Project section headings, level 2 (.project-section-title)' },
+  { role: 'heading-2', label: 'Heading 2', spec: '700 · body size/leading · 0', sample: 'Material selection', note: 'Project section headings, level 3 (h3.project-section-title)' },
+  { role: 'grid-title', label: 'Grid title', spec: '400 · 1.25rem/1.2 · -0.03em', sample: '2024', note: 'Home/Play card year/meta label (.project-grid__subtitle) — the title itself stays bold' },
+  { role: 'caption', label: 'Caption', spec: '600 · 1.2em/1.1 · -0.05ch', sample: 'Foam model before final chamfer direction', note: 'On-image overlay — ink sampled from media (.project-caption)' },
+  { role: 'nav', label: 'Nav', spec: '500 (size/tracking are component-owned, see Header.astro)', sample: 'Work', note: 'Header menu links (.header-menu__link)' },
+  { role: 'wordmark', label: 'Wordmark', spec: '700 (size/tracking are component-owned, see Header.astro)', sample: 'Vicente Cruz', note: 'Header wordmark' },
+  { role: 'footer', label: 'Footer', spec: '700 · 1.1rem/1 · -0.03em', sample: '© Vicente Cruz', note: 'Footer text (.footer-text)' },
+  { role: 'input-status', label: 'Input status', spec: '400 · 0.875rem/1.4 · 0', sample: 'Enter a valid email address.', note: 'Signup error and informational status messages (--text-input-status-*)' },
+  { role: 'press-quote', label: 'Press quote', spec: 'italic 400 · 1.05em/1.35 · -0.01em', sample: '"An elegant, tactile solution."', note: 'Press quote ticker (.press-quote-ticker__quote)' },
+  { role: 'about-heading', label: 'About heading', spec: '900 · 2rem/1 · -0.5px', sample: 'Contact', note: 'Superseded — About now uses Heading 2 / Body (#279)' },
+  { role: 'about-body', label: 'About body', spec: '500 · 1.2rem/1.25 · -0.4px', sample: examples.aboutBody, note: 'Superseded — About now uses Heading 2 / Body (#279)' },
+];
+
+const spacingScale = [
+  { token: '--space-unit', value: '≈15.4px', length: 'var(--space-unit)', use: 'Line gap, chrome padding, grid gaps' },
+  { token: '--space-related', value: '1u', length: 'var(--space-related)', use: 'Blocks that continue each other' },
+  { token: '--space-group', value: '4rem', length: 'var(--space-group)', use: 'Same chapter, new beat' },
+  { token: '--space-section', value: '8rem', length: 'var(--space-section)', use: 'Imagery to narrative text' },
+  { token: '--space-major', value: '12rem', length: 'var(--space-major)', use: 'Chapter break' },
+];
+
+const layoutRules = [
+  { name: 'Project stack rhythm', value: 'margin-top: var(--project-stack-margin)', why: 'One gap between sections, set on the following block: related, group, section or major. Blocks never pad their own top and bottom.' },
+  { name: 'Fluid site gutter', value: '--page-gutter: max(var(--space-unit), calc((100% - var(--page-max-width)) / 2))', why: 'Content stays off the edge at every width. Below 40em the gutter is a fixed 2rem.' },
+  { name: 'Core unit', value: '--space-unit: calc(var(--text-body-size) * (var(--text-body-leading) - 0.697))', why: 'The ink gap between two body lines, about 15.4px. A line is 1u; a paragraph break or title gap is 2u.' },
+  { name: 'Column caps', value: '--page-text-max-width: 37.5em; --page-media-max-width: 50em', why: 'Text and media cap separately. The outer column is the wider of the two.' },
+  { name: 'Page transition', value: 'opacity 0.25s', why: 'Pages fade in once fonts and visible image previews are ready, and fade out on navigation. Nothing moves.' },
+];
+
+const componentCatalog = stylesComponents(examples);
+const links = stylesPages(examples);
+const index = links.findIndex((page) => page.slug === topic);
+const current = links[index];
+const component = componentCatalog.find((component) => component.id === topic);
+const overview = topic === '';
+const blockIndex = topic === 'page-blocks' || topic === 'dev-components';
+const indexPages = links.filter((page) => topic === 'dev-components'
+  ? page.group === 'Dev components' && page.slug !== 'dev-components'
+  : page.slug.startsWith('component-') && page.group !== 'Dev components');
+const title = overview ? 'Design System' : current.label;
+const pages = links.map((link) => ({ ...link, current: link.slug === topic }));
+const legacyLinks = Object.fromEntries(links.filter(({ slug }) => slug)
+  .map(({ id, href }) => [id, href]));
+
+---
+
+<DocumentationLayout
+  title={title}
+  product="VCD"
+  homeHref="/"
+  pages={pages}
+  contents={[]}
+  githubHref="https://github.com/vicentecr-uz/VCDwebsite"
+  hideContents
+  previous={links[index - 1]}
+  next={links[index + 1]}
+>
+  <div class="styles-main">
+    {overview && (
+      <section id="styles-intro" class="section-block">
+        <ProjectBodyText
+          paragraphs={stylesNav.introParagraphs ?? []}
+          documentKey="styles"
+          pathPrefix={['introParagraphs']}
+          spacing="none"
+        />
+        <ul class="styles-index">
+          {links.filter((page) => ['Foundations', 'Page blocks', 'Dev components'].includes(page.group) && !page.slug.startsWith('component-')).map((page) => (
+            <li><a class="project-inline-link" href={page.href}>{page.label}</a></li>
+          ))}
+        </ul>
+        <script is:inline define:vars={{ legacyLinks }}>
+          const anchor = location.hash.slice(1);
+          if (Object.hasOwn(legacyLinks, anchor)) location.replace(legacyLinks[anchor] + location.hash);
+        </script>
+      </section>
+    )}
+
+        {topic === 'typography' && (
+        <section id="styles-typography" class="section-block">
+          <div class="plate-list">
+            {typographyScale.map((item) => (
+              <figure>
+                <div class="demo-frame plate-frame">
+                  <p class:list={['type-preview', `type-preview--${item.role}`]}>{item.sample}</p>
+                </div>
+                <figcaption>
+                  <div class="caption-row"><span class="medium">{item.label}</span><span class="mono variant">{item.spec}</span></div>
+                  <p class="variant small">{item.note}</p>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+        )}
+
+        {topic === 'spacing' && (
+        <section id="styles-spacing" class="section-block">
+          <div role="table" aria-label="Spacing" class="ledger ledger--spacing">
+            <div role="row" class="ledger-head"><span role="columnheader">Token</span><span role="columnheader">Value</span><span role="columnheader" aria-label="Measure" /><span role="columnheader">Use</span></div>
+            {spacingScale.map((item) => (
+              <div role="row" class="ledger-row">
+                <span role="cell" class="mono">{item.token}</span>
+                <span role="cell" class="variant">{item.value}</span>
+                <div role="cell"><div class="space-bar" style={{ width: item.length }} /></div>
+                <span role="cell" class="variant small">{item.use}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+        )}
+
+        {topic === 'layout-rules' && (
+        <section id="styles-layout-rules" class="section-block">
+          <div class="editorial-list">
+            {layoutRules.map((rule) => (
+              <div class="editorial-rule">
+                <h3>{rule.name}</h3>
+                <p>{rule.why}</p>
+                <p class="mono variant rule-value">{rule.value}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+        )}
+
+
+        {blockIndex && (
+          <section id={current.id} class="section-block">
+            <ProjectBodyText
+              paragraphs={topic === 'page-blocks'
+                ? ['The site’s reusable blocks for case studies, galleries, and editorial pages.']
+                : ['The surfaces and controls shared by the site editor.']}
+              spacing="none"
+            />
+            <ul class="styles-index">
+              {indexPages.map((page) => <li><a class="project-inline-link" href={page.href}>{page.label}</a></li>)}
+            </ul>
+          </section>
+        )}
+
+        {component && (
+                  <article id={component.id} class="component-documentation section-block">
+                    <ProjectBodyText paragraphs={[component.purpose]} spacing="none" />
+
+                    <div class:list={['component-preview', 'demo-frame', { 'component-preview--video': component.preview === 'video' }]}>
+                      {component.preview === 'header' && (
+                        <a href="/" class="project-inline-link">View the site header</a>
+                      )}
+                      {component.preview === 'footer' && (
+                        <a href="/" class="project-inline-link">View the site footer</a>
+                      )}
+                      {component.preview === 'documentation-layout' && (
+                        <a href="/sabi/introduction" class="project-inline-link">View the documentation template</a>
+                      )}
+                      {component.preview === 'documentation-contents' && (
+                        <a href="/sabi/introduction" class="project-inline-link">View the On this page rail</a>
+                      )}
+                      {component.preview === 'sidebar-nav' && (
+                        <a href={examples.referenceProject.href} class="project-inline-link">View case-study navigation</a>
+                      )}
+                      {component.preview === 'project-grid' && (
+                        <ProjectGrid
+                          variant="home"
+                          items={examples.projectCards}
+                        />
+                      )}
+                      {component.preview === 'project-layout' && (
+                        <p class="preview-note">
+                          Wraps project pages — see any case study (e.g.{' '}
+                          <a href={examples.referenceProject.href} class="project-inline-link">{examples.referenceProject.title}</a>).
+                        </p>
+                      )}
+                      {component.preview === 'image-lead' && (
+                        <ProjectImage src={previewHero} alt="ProjectImage lead preview" kind="lead" />
+                      )}
+                      {component.preview === 'project-award' && (
+                        <ProjectAward href={examples.awardHref} spacing="none" />
+                      )}
+                      {component.preview === 'divider' && (
+                        <ProjectDivider spacing="none" />
+                      )}
+                      {component.preview === 'project-details' && (
+                        <ProjectDetails title="Project details & credits" rows={examples.projectDetails} />
+                      )}
+                      {component.preview === 'body-text' && (
+                        <ProjectBodyText
+                          paragraphs={[
+                            'Default body text. <span class="text-subtle">Subtle context.</span> Inline <code>monospace text</code>. <strong>Bold text.</strong> <span class="text-emphasis">Existing medium-weight emphasis.</span>',
+                          ]}
+                        />
+                      )}
+                      {component.preview === 'section-title' && (
+                        <ProjectSectionTitle title="Research" />
+                      )}
+                      {component.preview === 'image-grid' && (
+                        <ProjectImageGrid
+                          columns={2}
+                          defaultAspectRatio="4:3"
+                          items={[
+                            { src: previewHero, alt: 'Three-quarter view' },
+                            { src: previewDetail, alt: 'Screen close-up' },
+                          ]}
+                        />
+                      )}
+                      {component.preview === 'press-quote-ticker' && (
+                        <ProjectPressQuoteTicker items={previewPressQuotes} />
+                      )}
+                      {component.preview === 'reddit-comment-carousel' && (
+                        <ProjectRedditCommentCarousel items={previewRedditComments} />
+                      )}
+                      {component.preview === 'video' && (
+                        <ProjectVideo
+                          src={examples.video.src}
+                          alt={examples.video.alt}
+                          spacing="none"
+                        />
+                      )}
+                      {component.preview === 'ui-button' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.75em;">
+                          <Button emphasis="ghost" label="Ghost" />
+                          <Button emphasis="soft" label="Soft" />
+                          <Button emphasis="filled" label="Filled" />
+                          <Button emphasis="page" label="Page" />
+                          <Button emphasis="danger" label="Danger" />
+                          <Button emphasis="filled" label="Raised filled" raised />
+                          <Button emphasis="soft" label="Raised soft" raised />
+                        </div>
+                      )}
+                      {component.preview === 'ui-menu' && (
+                        <div style="padding: 1em;">
+                          <Menu style="width: 12em;">
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Public" selected />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Image" />
+                            <Hairline />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Draft" />
+                          </Menu>
+                          <Menu size="page" style="width: 12em; margin-top: 1em;">
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Claude Code" />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Codex" />
+                            <Hairline />
+                            <Button emphasis="ghost" align="start" width="fill" class="dev-menu__item" label="Copy prompt" />
+                          </Menu>
+                          <Menu as="ul" backplate={false} style="width: 12em; margin-top: 1em;" aria-label="Bare navigation example">
+                            <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href="#component-ui-menu">Menu</a></li>
+                            <li><a class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item" href="#component-ui-button">Button</a></li>
+                          </Menu>
+                        </div>
+                      )}
+                      {component.preview === 'ui-segmented-control' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 1.5em;">
+                          <SegmentedControl data-slide-selection label="Viewport">
+                            <Button emphasis="ghost" width="fill" label="Desktop" selected />
+                            <Button emphasis="ghost" width="fill" label="Tablet" />
+                            <Button emphasis="ghost" width="fill" label="Mobile" />
+                          </SegmentedControl>
+                          <div style="display: flex; flex-direction: column; gap: 0.4em;">
+                            <span style="font-size: 0.85em; color: var(--sys-color-on-srf-variant);">Axis</span>
+                            <SegmentedControl data-slide-selection label="Axis">
+                              <Button emphasis="ghost" width="fill" label="X" selected />
+                              <Button emphasis="ghost" width="fill" label="Y" />
+                            </SegmentedControl>
+                          </div>
+                        </div>
+                      )}
+                      {component.preview === 'ui-viewport-selector' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <ViewportSelector dataAttr="data-viewport" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-dev-panel' && (
+                        <div class="component-preview__overlays" style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
+                          <DevOverlay title="Panel title" layout="portrait" embedded storageKey="styles-preview-portrait" panelKey="styles-preview-portrait">
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
+                          <DevOverlay title="Panel title" layout="landscape" embedded storageKey="styles-preview-landscape" panelKey="styles-preview-landscape">
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
+                        </div>
+                      )}
+                      {component.preview === 'ui-dev-panel-title' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.75em;">
+                          <DevPanelTitle panelKey="image" />
+                          <DevPanelTitle panelKey="caption" />
+                          <DevPanelTitle panelKey="grid" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <Field label="Label">Value</Field>
+                        </div>
+                      )}
+                      {component.preview === 'ui-text-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <TextField label="Normal" placeholder="Placeholder" />
+                          <TextField label="Prefixed" prefix="example.com/" placeholder="project-name" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-text-area' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <TextArea
+                            label="Notes"
+                            value={'First line of notes.\nSecond line with a bit more detail.\nThird line.'}
+                          />
+                        </div>
+                      )}
+                      {component.preview === 'ui-select-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <EditorSelectField
+                            label="Label"
+                            options={[
+                              { value: 'a', label: 'Option A' },
+                              { value: 'b', label: 'Option B' },
+                              { value: 'c', label: 'Option C' },
+                            ]}
+                          />
+                        </div>
+                      )}
+                      {component.preview === 'ui-toggle-row' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.5em;">
+                          <ToggleRow label="Unchecked" />
+                          <ToggleRow label="Checked" checked />
+                        </div>
+                      )}
+                      {component.preview === 'ui-panel-actions' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em;">
+                          <PanelActions>
+                            <Button emphasis="ghost" label="Cancel" />
+                            <Button emphasis="ghost" label="Revert changes" />
+                            <Button emphasis="filled" label="Save changes" />
+                          </PanelActions>
+                        </div>
+                      )}
+                      {component.preview === 'ui-badge' && (
+                        <>
+                          <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.5em;">
+                            <Badge label="On page" />
+                            <Badge label="Library" />
+                            <Badge label="Draft" />
+                          </div>
+                        </>
+                      )}
+                      {component.preview === 'ui-hairline' && (
+                        <div style="background: var(--sys-color-srf); border-radius: calc(var(--radius-control) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 1em; display: flex; flex-direction: column; gap: 0.75em; max-width: 20em;">
+                          <p class="preview-note">Line above</p>
+                          <Hairline />
+                          <p class="preview-note">Line below</p>
+                          <div style="display: flex; align-items: stretch; gap: 0.75em; min-height: 2em;">
+                            <p class="preview-note" style="margin: 0;">Left</p>
+                            <Hairline orientation="vertical" />
+                            <p class="preview-note" style="margin: 0;">Right</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <h3 class="subheading">Reference</h3>
+                      <div role="table" aria-label={`${component.name} reference`} class="ledger ledger--reference">
+                        {[
+                          { label: 'Source', value: component.source },
+                          { label: 'Props', value: component.props },
+                          { label: 'Classes', value: component.classRef },
+                          { label: 'Used on', value: component.usedOn.join(', ') },
+                        ].map((item) => (
+                          <div role="row" class="ledger-row">
+                            <span role="rowheader" class="subtle">{item.label}</span>
+                            <span role="cell" class="mono">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </article>
+        )}
+
+
+  </div>
+</DocumentationLayout>
+
+<style>
+
+  .styles-index {
+    display: grid;
+    gap: 0.5em;
+    margin: var(--space-unit) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .styles-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5em;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .section-block[id] {
+    scroll-margin-top: 9.5em;
+  }
+
+  .section-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+  }
+
+  .styles-main :is(div, section, article, figure, figcaption, p, span) { min-width: 0; }
+  .styles-main :is(p, h3, figure) { margin: 0; }
+  .styles-main h3 { font-size: inherit; line-height: inherit; font-weight: 500; }
+  .mono { font-family: var(--font-mono); font-size: 0.92em; overflow-wrap: anywhere; }
+  .variant { color: var(--sys-color-on-srf-variant); }
+  .subtle { color: var(--sys-color-on-srf-subtle); }
+  .medium { font-weight: 500; }
+  .small { font-size: 0.875rem; }
+  .editorial-list { display: grid; gap: calc(3 * var(--space-unit)); }
+  .editorial-rule .rule-value { margin-top: calc(0.5 * var(--space-unit)); }
+  .ledger { --columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ledger-head, .ledger-row { display: grid; grid-template-columns: var(--columns); column-gap: calc(2 * var(--space-unit)); align-items: baseline; }
+  .ledger-head { font-size: 12px; line-height: 1.4; color: var(--sys-color-on-srf-subtle); padding-bottom: calc(0.5 * var(--space-unit)); border-bottom: 1px solid var(--sys-color-outline); }
+  .ledger-row { padding-block: calc(0.75 * var(--space-unit)); border-bottom: 1px solid var(--sys-color-outline-subtle); }
+  .ledger--spacing { --columns: 10rem 5rem minmax(0, 1fr) minmax(0, 1fr); }
+  @media (width >= 40em) {
+    .ledger--reference {
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
+      column-gap: calc(2 * var(--space-unit));
+    }
+
+    .ledger--reference .ledger-row {
+      grid-column: 1 / -1;
+      grid-template-columns: subgrid;
+    }
+  }
+  .space-bar { height: 4px; max-width: 100%; background: var(--sys-color-on-srf); border-radius: calc(999px * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); }
+  .plate-list { display: grid; gap: calc(4 * var(--space-unit)); }
+  .plate-frame { padding: var(--demo-frame-inset); min-height: 8rem; display: grid; place-items: center start; }
+  figcaption { margin-top: var(--space-unit); }
+  .caption-row { display: flex; justify-content: space-between; flex-wrap: wrap; column-gap: var(--space-unit); align-items: baseline; }
+  .component-documentation { gap: calc(2 * var(--space-unit)); }
+  .styles-main .subheading { margin-bottom: var(--space-unit); }
+  @media (width < 40em) {
+    .ledger-row { grid-template-columns: minmax(0, 1fr); gap: calc(0.25 * var(--space-unit)); }
+    .ledger-head { display: none; }
+  }
+
+  .type-preview {
+    margin: 0;
+  }
+
+  .type-preview--body {
+    font-weight: var(--text-body-weight);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
+  }
+
+  .type-preview--heading-1 {
+    font-weight: var(--text-heading-1-weight);
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+    letter-spacing: var(--text-heading-1-tracking);
+  }
+
+  .type-preview--heading-2 {
+    font-weight: var(--text-heading-2-weight);
+    font-size: var(--text-heading-2-size);
+    line-height: var(--text-heading-2-leading);
+    letter-spacing: var(--text-heading-2-tracking);
+  }
+
+  .type-preview--grid-title {
+    font-weight: var(--text-grid-title-weight);
+    font-size: var(--text-grid-title-size);
+    line-height: var(--text-grid-title-leading);
+    letter-spacing: var(--text-grid-title-tracking);
+  }
+
+  .type-preview--about-heading {
+    font-weight: var(--text-about-heading-weight);
+    font-size: var(--text-about-heading-size);
+    line-height: var(--text-about-heading-leading);
+    letter-spacing: var(--text-about-heading-tracking);
+  }
+
+  .type-preview--about-body {
+    font-weight: var(--text-about-body-weight);
+    font-size: var(--text-about-body-size);
+    line-height: var(--text-about-body-leading);
+    letter-spacing: var(--text-about-body-tracking);
+  }
+
+  .type-preview--caption {
+    font-weight: var(--text-caption-weight);
+    font-size: var(--text-caption-size);
+    line-height: var(--text-caption-leading);
+    letter-spacing: var(--text-caption-tracking);
+  }
+
+  .type-preview--nav {
+    font-weight: var(--text-nav-weight);
+  }
+
+  .type-preview--input-status {
+    font-weight: var(--text-input-status-weight);
+    font-size: var(--text-input-status-size);
+    line-height: var(--text-input-status-leading);
+    letter-spacing: var(--text-input-status-tracking);
+  }
+
+  .type-preview--footer {
+    font-weight: var(--text-footer-weight);
+    font-size: var(--text-footer-size);
+    line-height: var(--text-footer-leading);
+    letter-spacing: var(--text-footer-tracking);
+  }
+
+  .type-preview--press-quote {
+    font-style: var(--text-press-quote-style);
+    font-weight: var(--text-press-quote-weight);
+    font-size: var(--text-press-quote-size);
+    line-height: var(--text-press-quote-leading);
+    letter-spacing: var(--text-press-quote-tracking);
+  }
+
+  .type-preview--wordmark {
+    font-weight: var(--text-wordmark-weight);
+  }
+
+  .component-preview {
+    padding: var(--demo-frame-inset);
+    overflow: hidden;
+  }
+
+  /* Embedded DevOverlays and Menus hug in-flow; overflow:hidden on the well
+     clips their shadow (and a 597px landscape specimen). The whole selector is
+     :global: Astro emits a :global() nested inside :has() verbatim, which the
+     browser rejects, dropping the rule. */
+  :global(.component-preview:has(.dev-overlay--embedded)),
+  :global(.component-preview:has(.dev-menu)) {
+    overflow: visible;
+  }
+
+  .component-preview__overlays :global(.dev-overlay--embedded) {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .component-preview :global(.project-block) {
+    padding-top: 1em;
+    padding-bottom: 1em;
+  }
+
+  .component-preview--video :global(.project-block) {
+    padding-bottom: 0;
+  }
+
+  .component-preview :global(.project-image__img) {
+    min-height: 14em;
+  }
+
+  .preview-note {
+    margin: 0;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--sys-color-on-srf) 80%, transparent);
+  }
+</style>
+
+<script>
+  import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const scope = createPageScope();
+    document.querySelectorAll('.component-preview .dev-segmented').forEach((group) => {
+      scope.listen(group, 'click', (event) => {
+      const btn = (event.target as HTMLElement | null)?.closest('.dev-btn');
+      if (!(btn instanceof HTMLElement) || !group.contains(btn)) return;
+      group.querySelectorAll('.dev-btn').forEach((sibling) => {
+        sibling.classList.remove('is-selected', 'is-active');
+        sibling.removeAttribute('aria-pressed');
+      });
+      btn.classList.add('is-selected', 'is-active');
+      btn.setAttribute('aria-pressed', 'true');
+      });
+    });
+    return scope.destroy;
+  });
+</script>

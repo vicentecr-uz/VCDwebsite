@@ -97,6 +97,7 @@ import TextField from './ui/TextField.astro';
 <div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
 
 <script>
+  import { frontmostOpenPanel } from '../lib/devPanelStack';
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
   import { getLastPointerPosition } from '../lib/lastPointer';
 
@@ -726,6 +727,8 @@ import TextField from './ui/TextField.astro';
       }
 
       if (panel.hidden) return;
+      const frontmost = frontmostOpenPanel();
+      if (frontmost !== panel) return;
 
       if (veilMode === 'cancel') {
         event.preventDefault();
@@ -737,7 +740,11 @@ import TextField from './ui/TextField.astro';
         return;
       }
 
-      if (veilMode === 'logging') return;
+      if (veilMode === 'logging') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
 
       if (veilMode === 'done') {
         event.preventDefault();
@@ -746,6 +753,8 @@ import TextField from './ui/TextField.astro';
         closePanel();
         return;
       }
+
+      if (document.activeElement === titleInput || document.activeElement === bodyInput) return;
 
       // Form open: Esc acts like Cancel.
       event.preventDefault();

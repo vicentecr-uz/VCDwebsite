@@ -22,13 +22,15 @@ interface Props {
   contents: Array<{ id: string; label: string }>;
   previous?: AdjacentPage;
   next?: AdjacentPage;
+  githubHref?: string;
+  hideContents?: boolean;
 }
-const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next } = Astro.props;
+const { title, description, canonicalUrl, documentKey, product = 'Sabi', homeHref = '/sabi', pages, contents, previous, next, githubHref, hideContents = false } = Astro.props;
 const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
 ---
 
 <Layout persistentNavigation title={`${title} · ${product}`} description={description} canonicalUrl={canonicalUrl}>
-  <div class="documentation-page" data-page-shell data-documentation-page>
+  <div class="documentation-page" data-page-shell data-documentation-page data-hide-contents={hideContents ? '' : undefined}>
     <header class="documentation-mobile-header">
       <p class="documentation-brand"><a class="text-link" href={homeHref}>{product}</a>{' '}<span>by <a class="text-link" href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
       <Button label="" emphasis="ghost" aria-label="Open documentation navigation" aria-haspopup="dialog" aria-expanded="false" aria-controls="documentation-drawer" data-documentation-open>
@@ -37,10 +39,10 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
     </header>
     <aside class="documentation-sidebar">
       <p class="documentation-brand"><a class="text-link" href={homeHref}>{product}</a>{' '}<span>by <a class="text-link" href={websiteHref} target="_self" data-astro-reload data-page-transition>Vicente Cruz</a></span></p>
-      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
+      <DocumentationNavigation websiteHref={websiteHref} githubHref={githubHref} pages={pages} />
     </aside>
     <dialog id="documentation-drawer" class="documentation-drawer" aria-label="Documentation navigation">
-      <DocumentationNavigation websiteHref={websiteHref} pages={pages} />
+      <DocumentationNavigation websiteHref={websiteHref} githubHref={githubHref} pages={pages} />
     </dialog>
     <main id="main-content" class="documentation-main">
       <header class="documentation-heading"><h1 data-dev-text-document={import.meta.env.DEV ? documentKey : undefined} data-dev-text-path={documentKey ? JSON.stringify(['title']) : undefined} data-dev-text-kind={documentKey ? 'text' : undefined}>{title}</h1></header>
@@ -52,7 +54,7 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
         </nav>
       )}
     </main>
-    <aside class="documentation-page-contents"><DocumentationContents contents={contents} /></aside>
+    {!hideContents && <aside class="documentation-page-contents"><DocumentationContents contents={contents} /></aside>}
   </div>
 </Layout>
 
@@ -218,6 +220,8 @@ const websiteHref = import.meta.env.DEV ? '/' : 'https://vicentecr.uz';
   @media (min-width: 80em) {
     .documentation-page { grid-template-columns: 240px minmax(2rem, 1fr) minmax(0, 42rem) 3rem 12rem minmax(2rem, 1fr); }
     .documentation-main { grid-column: 3; width: 100%; }
+    .documentation-page[data-hide-contents] { grid-template-columns: 240px minmax(0, 1fr); }
+    .documentation-page[data-hide-contents] .documentation-main { grid-column: 2; width: calc(100% - 2rem); }
     .documentation-page-contents { display: block; grid-column: 5; position: sticky; top: 5rem; align-self: start; margin-top: 5rem; padding: 0 0 2rem; max-height: calc(var(--vh-safe, 1svh) * 100 - 7rem); overflow-y: auto; }
   }
 </style>

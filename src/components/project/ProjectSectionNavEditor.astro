@@ -515,12 +515,6 @@ import SelectField from '../ui/EditorSelectField.astro';
       const block = target.closest<HTMLElement>('[data-section-nav-block]');
       if (block && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault(); event.stopImmediatePropagation(); selectBlock(block);
-        return;
-      }
-      if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
-      if (target.closest('[data-editor-select-popup]')) return;
-      if (event.key === 'Escape' && !panel.hidden) {
-        event.preventDefault(); event.stopImmediatePropagation(); closePanel();
       }
     }, { capture: true, signal });
     window.addEventListener('vcd:dev-history-change', () => {
