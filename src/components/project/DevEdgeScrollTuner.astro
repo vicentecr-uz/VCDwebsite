@@ -10,6 +10,7 @@ const fields = [
   { key: 'edgeZoneMinPx', label: 'Zone min', min: 0, max: 200, step: 4, unit: 'px', value: 56 },
   { key: 'edgeZoneMaxPx', label: 'Zone max', min: 40, max: 400, step: 4, unit: 'px', value: 160 },
   { key: 'maxScrollSpeed', label: 'Max speed', min: 2, max: 80, step: 1, unit: 'px/frame', value: 24 },
+  { key: 'maxSpeedInsetPx', label: 'Max speed inset', min: 0, max: 60, step: 1, unit: 'px', value: 12 },
   { key: 'curve', label: 'Curve', min: 0.5, max: 4, step: 0.1, unit: '', value: 2 },
   { key: 'velocitySmoothing', label: 'Smoothing', min: 0.02, max: 1, step: 0.01, unit: '', value: 0.1 },
   { key: 'activationPx', label: 'Activation', min: 0, max: 40, step: 1, unit: 'px', value: 8 },
@@ -60,8 +61,9 @@ const fields = [
     pointer-events: none;
     background: linear-gradient(
       var(--edge-scroll-zone-direction),
-      color-mix(in srgb, var(--sys-color-primary) 24%, transparent),
-      transparent
+      color-mix(in srgb, var(--sys-color-primary) 24%, transparent) 0,
+      color-mix(in srgb, var(--sys-color-primary) 24%, transparent) var(--edge-scroll-zone-inset, 0px),
+      transparent 100%
     );
   }
   .edge-scroll-zone[hidden] { display: none; }
@@ -71,7 +73,7 @@ const fields = [
 
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
-  import { edgeScrollOverrides } from '../../scripts/sectionReorder';
+  import { edgeScrollOverrides, edgeScrollZoneRegistration } from '../../scripts/sectionReorder';
 
   const STORAGE_KEY = 'vcd:edge-scroll-tuning';
   type Key = keyof typeof edgeScrollOverrides;
@@ -119,6 +121,7 @@ const fields = [
   EDGE_ZONE_MIN_PX: ${v.edgeZoneMinPx},
   EDGE_ZONE_MAX_PX: ${v.edgeZoneMaxPx},
   MAX_SCROLL_SPEED: ${v.maxScrollSpeed},
+  MAX_SPEED_INSET_PX: ${v.maxSpeedInsetPx},
   CURVE: ${v.curve},
   VELOCITY_SMOOTHING: ${v.velocitySmoothing},
   ACTIVATION_PX: ${v.activationPx},
@@ -134,17 +137,17 @@ const fields = [
       document.body.append(band);
       return band;
     });
+    edgeScrollZoneRegistration.onZones = (z) => bands.forEach((b, i) => {
+      b.style.height = `${z ? (i ? z.bottom : z.top) : 0}px`;
+      b.style.setProperty('--edge-scroll-zone-inset', `${z ? (i ? z.bottomInset : z.topInset) : 0}px`);
+    });
+    scope.add(() => { delete edgeScrollZoneRegistration.onZones; });
     scope.add(() => bands.forEach((b) => b.remove()));
 
     let frame = 0;
     const loop = () => {
       const lifted = Boolean(document.querySelector('.is-section-lifted:not(.is-dropping)'));
       const show = lifted && Boolean(zones?.checked);
-      if (show) {
-        const o = edgeScrollOverrides;
-        const zone = Math.min(o.edgeZoneMaxPx!, Math.max(o.edgeZoneMinPx!, window.innerHeight * o.edgeZoneRatio!));
-        bands.forEach((b) => (b.style.height = `${zone}px`));
-      }
       bands.forEach((b) => (b.hidden = !show));
       frame = requestAnimationFrame(loop);
     };

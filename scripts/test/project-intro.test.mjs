@@ -12,7 +12,7 @@ import {
   shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../src/lib/pageColumn.ts';
-import { createScrollDriver, resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
+import { createScrollDriver, EDGE_SCROLL, edgeScrollOverrides, resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 import { resolveProjectOutline } from '../../src/lib/projectOutline.ts';
 import { validateProjectOutlineTargets } from '../dev-api-plugins.mjs';
 
@@ -248,6 +248,55 @@ assert.ok(edgeStep(10) < 0);
 assert.equal(edgeStep(500), 0);
 assert.ok(edgeStep(990) > edgeStep(880));
 assert.ok(edgeStep(10) < edgeStep(120));
+const previousOverrides = { ...edgeScrollOverrides };
+try {
+  edgeScrollOverrides.maxScrollSpeed = 24;
+  edgeScrollOverrides.maxSpeedInsetPx = 60;
+  const steps = [];
+  const driver = createScrollDriver({ edgeZoneRatio: 0.2, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
+  driver.apply(1000 / 60, 20, { top: 0, bottom: 200 }, 20);
+  assert.equal(steps.length, 0, 'top pickup starts at zero speed');
+  driver.apply(1000 / 60, 10, { top: 0, bottom: 200 }, 20);
+  assert.ok(steps.reduce((sum, step) => sum + step, 0) < 0, 'moving toward top edge scrolls');
+  const beforeRetreat = steps.reduce((sum, step) => sum + step, 0);
+  driver.apply(1000 / 60, 60, { top: 0, bottom: 200 }, 20);
+  const afterRetreat = steps.reduce((sum, step) => sum + step, 0);
+  assert.equal(afterRetreat, beforeRetreat, 'retreat toward middle restores zone without scrolling');
+  driver.apply(1000 / 60, 10, { top: 0, bottom: 200 }, 20);
+  assert.ok(steps.reduce((sum, step) => sum + step, 0) < afterRetreat, 'returning to edge scrolls after retreat');
+  driver.reset();
+  steps.length = 0;
+  driver.apply(1000 / 60, 180, { top: 0, bottom: 200 }, 180);
+  assert.equal(steps.length, 0, 'bottom pickup starts at zero speed');
+  driver.apply(1000 / 60, 190, { top: 0, bottom: 200 }, 180);
+  assert.ok(steps.reduce((sum, step) => sum + step, 0) > 0, 'moving toward bottom edge scrolls');
+  driver.reset();
+  steps.length = 0;
+  driver.apply(1000 / 60, 100, { top: 0, bottom: 200 }, 100);
+  assert.equal(steps.length, 0, 'outside pickup waits for activation');
+  driver.apply(1000 / 60, 104, { top: 0, bottom: 200 }, 100);
+  assert.equal(steps.length, 0, 'activation travel alone does not scroll');
+  driver.apply(1000 / 60, 190, { top: 0, bottom: 200 }, 100);
+  assert.ok(steps.reduce((sum, step) => sum + step, 0) > 0, 'outside pickup activates when it reaches the bottom zone');
+  const insetDriver = createScrollDriver({ edgeZoneRatio: 0.5, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, maxScrollSpeed: 24, maxSpeedInsetPx: 0, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
+  steps.length = 0;
+  edgeScrollOverrides.maxSpeedInsetPx = 0;
+  insetDriver.apply(1000 / 60, 160, { top: 0, bottom: 200 });
+  const noInsetSpeed = steps.reduce((sum, step) => sum + step, 0);
+  steps.length = 0;
+  edgeScrollOverrides.maxSpeedInsetPx = 60;
+  const cappedInsetDriver = createScrollDriver({ edgeZoneRatio: 0.5, edgeZoneMinPx: 0, edgeZoneMaxPx: 100, maxScrollSpeed: 24, maxSpeedInsetPx: 60, velocitySmoothing: 1, scrollBy: (step) => steps.push(step) });
+  cappedInsetDriver.apply(1000 / 60, 160, { top: 0, bottom: 200 });
+  assert.ok(Math.abs(steps.reduce((sum, step) => sum + step, 0)) > Math.abs(noInsetSpeed));
+  assert.equal(EDGE_SCROLL.MAX_SPEED_INSET_PX, 12);
+  const zeroSteps = [];
+  const zeroDriver = createScrollDriver({ maxScrollSpeed: 0, velocitySmoothing: 1, scrollBy: (step) => zeroSteps.push(step) });
+  zeroDriver.apply(1000 / 60, 990, edgeBounds);
+  assert.equal(zeroSteps.length, 0, 'maxScrollSpeed: 0 disables scrolling');
+} finally {
+  for (const key of Object.keys(edgeScrollOverrides)) delete edgeScrollOverrides[key];
+  Object.assign(edgeScrollOverrides, previousOverrides);
+}
 
 const viewportSource = readFileSync(new URL('../../src/lib/safeVh.ts', import.meta.url), 'utf8');
 const geometryStart = viewportSource.indexOf('    const pageViewport =');
