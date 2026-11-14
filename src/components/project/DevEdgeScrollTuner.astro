@@ -10,7 +10,7 @@ const fields = [
   { key: 'edgeZoneMinPx', label: 'Zone min', min: 0, max: 200, step: 4, unit: 'px', value: 56 },
   { key: 'edgeZoneMaxPx', label: 'Zone max', min: 40, max: 400, step: 4, unit: 'px', value: 160 },
   { key: 'maxScrollSpeed', label: 'Max speed', min: 2, max: 80, step: 1, unit: 'px/frame', value: 24 },
-  { key: 'maxSpeedInsetPx', label: 'Max speed inset', min: 0, max: 60, step: 1, unit: 'px', value: 12 },
+  { key: 'maxSpeedInsetPx', label: 'Max speed inset', min: 0, max: 200, step: 1, unit: 'px', value: 12 },
   { key: 'curve', label: 'Curve', min: 0.5, max: 4, step: 0.1, unit: '', value: 2 },
   { key: 'velocitySmoothing', label: 'Smoothing', min: 0.02, max: 1, step: 0.01, unit: '', value: 0.1 },
   { key: 'activationPx', label: 'Activation', min: 0, max: 40, step: 1, unit: 'px', value: 8 },
@@ -67,8 +67,16 @@ const fields = [
     );
   }
   .edge-scroll-zone[hidden] { display: none; }
+  .edge-scroll-zone::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    border-top: 1px dashed color-mix(in srgb, var(--sys-color-primary) 38%, transparent);
+  }
   .edge-scroll-zone--top { top: 0; --edge-scroll-zone-direction: to bottom; }
   .edge-scroll-zone--bottom { bottom: 0; --edge-scroll-zone-direction: to top; }
+  .edge-scroll-zone--top::after { top: var(--edge-scroll-zone-inset, 0px); }
+  .edge-scroll-zone--bottom::after { bottom: var(--edge-scroll-zone-inset, 0px); }
 </style>
 
 <script>
