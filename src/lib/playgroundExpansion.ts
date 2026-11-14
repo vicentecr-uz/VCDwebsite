@@ -25,21 +25,16 @@ export function bindPlaygroundExpansion(
   const stopMotion = () => {
     cancelAnimationFrame(raf);
     raf = 0;
-    surface.style.removeProperty('clip-path');
-    button.style.removeProperty('transform');
-    for (const property of ['position', 'width', 'height', 'top', 'left']) frame.style.removeProperty(property);
+    for (const property of ['top', 'left', 'width', 'height', 'border-radius']) {
+      surface.style.removeProperty(property);
+    }
   };
-  let visibleBounds: DOMRect;
-  let visibleRadius = 0;
   const setExpanded = (next: boolean) => {
     if (next === expanded) return;
-    const frameFrom = frame.getBoundingClientRect();
-    const viewportFrom = surface.getBoundingClientRect();
-    const slotFrom = slot.getBoundingClientRect();
-    const from = raf ? visibleBounds : viewportFrom;
-    const fromRadius = raf ? visibleRadius : expanded ? 0 : parseFloat(getComputedStyle(slot).borderTopLeftRadius) || 0;
-    const fromButton = button.getBoundingClientRect();
-    stopMotion();
+    const from = surface.getBoundingClientRect();
+    const fromRadius = parseFloat(getComputedStyle(surface).borderTopLeftRadius) || 0;
+    cancelAnimationFrame(raf);
+    raf = 0;
     expanded = next;
     button.setAttribute('aria-expanded', String(next));
     button.setAttribute('aria-label', next ? 'Exit fullscreen' : 'Expand demo');
@@ -74,30 +69,21 @@ export function bindPlaygroundExpansion(
       return;
     }
 
-    const viewport = surface.getBoundingClientRect();
-    const to = next ? viewport : slotFrom;
-    const toButton = button.getBoundingClientRect();
-    const buttonX = to.right - (viewport.right - toButton.left);
-    const buttonY = to.top + toButton.top - viewport.top;
+    stopMotion();
+    const to = (next ? surface : slot).getBoundingClientRect();
     const targetRadius = next ? 0 : parseFloat(getComputedStyle(slot).borderTopLeftRadius) || 0;
-    // Keep the existing responsive layout and its screen position until the spring settles.
-    Object.assign(frame.style, {
-      position: 'absolute', width: `${frameFrom.width}px`, height: `${frameFrom.height}px`,
-      left: `${frameFrom.left - viewport.left}px`, top: `${frameFrom.top - viewport.top}px`,
-    });
     const start = performance.now();
     const lerp = (a: number, b: number, x: number) => a + (b - a) * x;
     const tick = (now: number) => {
       const x = viewportMorphProgress(now - start);
       if (x === 1) { finish(); return; }
-      visibleBounds = new DOMRect(
-        lerp(from.left, to.left, x), lerp(from.top, to.top, x),
-        lerp(from.width, to.width, x), lerp(from.height, to.height, x),
-      );
-      visibleRadius = lerp(fromRadius, targetRadius, x);
-      const rect = visibleBounds;
-      surface.style.clipPath = `inset(${rect.top - viewport.top}px ${viewport.right - rect.right}px ${viewport.bottom - rect.bottom}px ${rect.left - viewport.left}px round ${visibleRadius}px)`;
-      button.style.transform = `translate(${lerp(fromButton.left, buttonX, x) - toButton.left}px, ${lerp(fromButton.top, buttonY, x) - toButton.top}px)`;
+      Object.assign(surface.style, {
+        top: `${lerp(from.top, to.top, x)}px`,
+        left: `${lerp(from.left, to.left, x)}px`,
+        width: `${lerp(from.width, to.width, x)}px`,
+        height: `${lerp(from.height, to.height, x)}px`,
+        borderRadius: `${lerp(fromRadius, targetRadius, x)}px`,
+      });
       raf = requestAnimationFrame(tick);
     };
     tick(start);
