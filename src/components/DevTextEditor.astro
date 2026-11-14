@@ -5995,9 +5995,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     document.addEventListener('pointercancel', releaseFormatDismissPointer, { capture: true, signal: editorSignal });
 
     /**
-     * Esc while editing body text — same outcome as click-away:
-     * 1) format / link bar dismisses first
-     * 2) then the caret leaves the block (chrome unsuppresses)
+     * Esc while editing body text — same outcome as click-away: one press
+     * dismisses the format / link bar and the caret leaves the block.
      * Capture + stop so DevModeController does not exit Dev Mode on the same key.
      */
     const deselectDevTextCaret = () => {
@@ -6034,6 +6033,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           event.preventDefault();
           event.stopPropagation();
           hideFormatBar();
+          if (isDevTextCaretActive()) deselectDevTextCaret();
           return;
         }
 
