@@ -170,3 +170,101 @@
 .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:is(:hover, :active, [data-demo-hover='true'], [data-demo-pressed='true']):not(:disabled) {
   background: var(--comp-button-soft-container-hover);
 }
+
+.dev-text-actions [data-dev-save-ledger][hidden] {
+  display: none;
+}
+
+.dev-text-actions [data-dev-text-status]:empty {
+  position: absolute;
+  padding: 0;
+}
+
+.dev-text-actions [data-dev-save-ledger] {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+[data-dev-save-ledger][aria-expanded='true'] > :last-child {
+  rotate: 180deg;
+}
+
+.dev-save-ledger {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  border: 0;
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 16px));
+  max-height: min(calc(var(--vh-safe, 1vh) * 60), var(--ledger-room, 100%));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px;
+  border-radius: calc(12px * var(--continuous-corner-scale, 1));
+  corner-shape: var(--squircle-shape);
+  color: var(--sys-color-on-srf);
+  font: 400 13px/1.4 var(--font-sans);
+}
+
+.dev-save-ledger:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.dev-save-ledger h2 {
+  margin: 0;
+  padding: 4px 6px;
+  font: 600 12px/1.4 var(--font-sans);
+}
+
+.dev-save-ledger ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dev-save-ledger ul + h2 {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sys-color-outline-variant);
+}
+
+.dev-save-ledger li {
+  padding: 4px 6px;
+  overflow-wrap: anywhere;
+}
+
+.dev-save-ledger li:has(.dev-save-ledger__operation) {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.dev-save-ledger__operation,
+.dev-save-ledger__detail {
+  color: var(--sys-color-on-srf-variant);
+}
+
+.dev-save-ledger__operation {
+  flex-shrink: 0;
+}
+
+.dev-save-ledger__detail {
+  display: block;
+  padding-inline-start: 12px;
+}
+
+.dev-save-ledger__file {
+  display: block;
+}
+
+@media (max-width: 479px) {
+  .dev-save-ledger {
+    width: min(var(--ledger-bar-width, 100vw), calc(100vw - 16px));
+  }
+
+  .dev-save-ledger li:has(.dev-save-ledger__operation) {
+    flex-direction: column;
+  }
+}

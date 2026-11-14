@@ -47,6 +47,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-action-stack">
   <SaveBar data-dev-text-actions hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
+      <button type="button" data-dev-save-ledger aria-expanded="false" aria-controls="dev-save-ledger" hidden>
+        <span data-dev-save-ledger-label></span>
+        <span aria-hidden="true">▾</span>
+      </button>
+      <div id="dev-save-ledger" class="dev-save-ledger dev-surface" popover="manual" role="region" aria-label="Changes" tabindex="0"></div>
       <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
       <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
       <button type="button" data-dev-text-revert>Revert changes</button>
@@ -145,7 +150,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
-  import { placeBeside } from '../lib/floatingLayer';
+  import { clampToViewport, placeBeside } from '../lib/floatingLayer';
   import { applyInlineMark } from '../lib/devInlineMarks';
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
@@ -326,6 +331,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
     const commitStylesButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-commit-styles]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
+    const ledgerButton = actions?.querySelector<HTMLButtonElement>('[data-dev-save-ledger]');
+    const ledgerLabel = ledgerButton?.querySelector<HTMLElement>('[data-dev-save-ledger-label]');
+    const ledger = actions?.querySelector<HTMLElement>('#dev-save-ledger');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const warnLabel = actions?.querySelector<HTMLElement>('[data-dev-text-warn]');
@@ -355,6 +363,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
+    if (!ledgerButton || !ledgerLabel || !ledger) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
     if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !fontStyleSelect || !fontStyleField || !wrapStyleSelect || !emphasisStyleField || !formatInline) return;
 
@@ -2188,7 +2197,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
 
     /** Content files changed on disk but not yet committed to the publish branch. */
-    let unpublishedCount = 0;
+    let unpublishedFiles: string[] = [];
+    let unpublishedDetails: Record<string, string[]> = {};
+    let publishStatusRequest = 0;
 
     /**
      * Colour-token CSS ahead of main (e.g. global.css after a Save). Separate
@@ -2256,6 +2267,121 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     let historyReady = false;
     let historyCaptureQueued = false;
     let suppressHistory = false;
+    const ledgerOperations: Record<PendingMediaChange['kind'], string> = {
+      crop: 'Crop', grid: 'Grid layout', carousel: 'Carousel', caption: 'Caption',
+      'listing-order': 'Listing order', 'section-order': 'Section order',
+      'placeholder-fill': 'Media added', 'style-token': 'Colour token',
+      'section-nav': 'Section navigation', 'media-remove': 'Media removed',
+      'project-settings': 'Project settings', 'gallery-membership': 'Gallery membership',
+      'project-details-rows': 'Project details', annotation: 'Annotation',
+      'layout-field': 'Layout',
+    };
+
+    const ledgerTarget = (key: unknown, path: unknown = []) => {
+      const target = typeof key === 'string' && key ? key : 'Page';
+      if (!Array.isArray(path)) return target;
+      const parts = path.map(String);
+      if (parts[0] === 'sections' && typeof path[1] === 'number') {
+        parts.splice(0, 2, `Block ${path[1] + 1}`);
+      }
+      return [target, ...parts].join(' / ');
+    };
+
+    const pendingLedgerRows = () => [
+      ...dirtyTextStates().map(({ document, path }) => [ledgerTarget(document, path), 'Text']),
+      ...dirtySpacingStates().map(({ document, path }) => [ledgerTarget(document, path), 'Spacing']),
+      ...dirtyIntroHeightStates().map(({ document, path }) => [ledgerTarget(document, path), 'Intro height']),
+      ...[...pendingMedia.values()].map(({ kind, payload }) => [
+        ledgerTarget(payload.document ?? payload.slug ?? payload.grid ?? (kind === 'style-token' ? 'Styles' : undefined),
+          payload.path ?? (payload.token ? [payload.token] : [])),
+        ledgerOperations[kind],
+      ]),
+      ...pendingSectionDeletes.map(({ documentKey, deletedIndex }) =>
+        [ledgerTarget(documentKey, ['sections', deletedIndex]), 'Removed']),
+      ...pendingSectionInserts.map(({ documentKey, index }) =>
+        [ledgerTarget(documentKey, ['sections', index]), 'Added']),
+      ...pendingBlockConverts.map(({ documentKey, index }) =>
+        [ledgerTarget(documentKey, ['sections', index]), 'Converted']),
+      ...persistedMediaInserts.map(({ documentKey, index }) =>
+        [ledgerTarget(documentKey, ['sections', index]), 'Media added']),
+    ];
+
+    const placeLedger = () => {
+      const bar = actions.getBoundingClientRect();
+      const anchor = ledgerButton.getBoundingClientRect();
+      const narrow = window.innerWidth < 480;
+      ledger.style.setProperty('--ledger-room', `${Math.max(0, bar.top - 16)}px`);
+      ledger.style.setProperty('--ledger-bar-width', `${bar.width}px`);
+      clampToViewport(ledger, narrow ? bar.left : anchor.left, bar.top - ledger.offsetHeight - 8);
+    };
+
+    const renderLedger = () => {
+      const group = (label: string, rows: string[][], files = false) => {
+        if (!rows.length) return;
+        const heading = document.createElement('h2');
+        heading.textContent = `${label} · ${rows.length}`;
+        const list = document.createElement('ul');
+        for (const [target, operation] of rows) {
+          const row = document.createElement('li');
+          const title = document.createElement('span');
+          title.textContent = target;
+          row.append(title);
+          if (files) {
+            title.className = 'dev-save-ledger__file';
+            title.title = target;
+            for (const detail of unpublishedDetails[target] ?? []) {
+              const field = document.createElement('span');
+              field.className = 'dev-save-ledger__detail';
+              field.textContent = detail;
+              row.append(field);
+            }
+          } else {
+            const kind = document.createElement('span');
+            kind.className = 'dev-save-ledger__operation';
+            kind.textContent = operation;
+            row.append(kind);
+          }
+          list.append(row);
+        }
+        ledger.append(heading, list);
+      };
+      ledger.replaceChildren();
+      group('Unsaved', pendingLedgerRows());
+      group('Unpublished', unpublishedFiles.map((file) => [file]), true);
+      placeLedger();
+    };
+
+    const closeLedger = (restoreFocus = false) => {
+      if (!ledger.matches(':popover-open')) return;
+      ledger.hidePopover();
+      ledgerButton.setAttribute('aria-expanded', 'false');
+      if (restoreFocus) ledgerButton.focus({ preventScroll: true });
+    };
+
+    ledgerButton.addEventListener('click', () => {
+      if (ledger.matches(':popover-open')) {
+        closeLedger();
+        return;
+      }
+      ledger.showPopover();
+      ledgerButton.setAttribute('aria-expanded', 'true');
+      renderLedger();
+    }, { signal: editorSignal });
+    actions.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !ledger.matches(':popover-open')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeLedger(true);
+    }, { signal: editorSignal });
+    document.addEventListener('pointerdown', (event) => {
+      const path = event.composedPath();
+      if (!path.includes(ledger) && !path.includes(actions)) closeLedger();
+    }, { signal: editorSignal });
+    window.addEventListener('resize', () => {
+      if (ledger.matches(':popover-open')) placeLedger();
+    }, { signal: editorSignal });
+    editorSignal.addEventListener('abort', () => closeLedger(), { once: true });
+
     const captureFieldHistory = () => {
       historyCaptureQueued = false;
       if (editorSignal.aborted) return;
@@ -2342,14 +2468,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         historyCaptureQueued = true;
         queueMicrotask(captureFieldHistory);
       }
-      const dirtyText = dirtyTextStates();
-      const dirtySpacing = dirtySpacingStates();
-      const dirtyIntroHeights = dirtyIntroHeightStates();
-      // Include persistedMediaInserts: already on disk, but still reversible until Save.
-      const dirtyCount = dirtyText.length + dirtySpacing.length + dirtyIntroHeights.length + pendingMedia.size
-        + pendingSectionDeletes.length + pendingSectionInserts.length
-        + pendingBlockConverts.length
-        + persistedMediaInserts.length;
+      const dirtyCount = unsavedChangeCount();
+      const unpublishedCount = unpublishedFiles.length;
 
       textStates.forEach((state) => {
         if (state.kind === 'paragraphs') {
@@ -2367,19 +2487,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // carried to main by a branch switch is only ever the second kind — if
       // the bar needed unsaved DOM state, Publish would be unreachable for it.
       // Style-token Saves also leave CSS ahead of main for Publish styles.
-      actions.hidden = (!dirtyCount && !unpublishedCount && !styleEngineDirtyCount)
+      actions.hidden = (!dirtyCount && !unpublishedCount && !styleEngineDirtyCount && stickyStatus !== 'Saved.')
         || !document.documentElement.classList.contains('is-dev-mode');
-      if (stickyStatus) {
-        status.textContent = stickyStatus;
-      } else if (dirtyCount) {
-        status.textContent = `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`;
-      } else if (unpublishedCount) {
-        status.textContent = `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'change' : 'changes'}`;
-      } else if (styleEngineDirtyCount) {
-        status.textContent = `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to publish`;
-      } else {
-        status.textContent = '';
-      }
+      ledgerButton.hidden = !dirtyCount && !unpublishedCount;
+      const countLabel = dirtyCount
+        ? `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`
+        : `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'file' : 'files'}`;
+      if (ledgerLabel.textContent !== countLabel) ledgerLabel.textContent = countLabel;
+      if (actions.hidden || ledgerButton.hidden) closeLedger();
+      else if (ledger.matches(':popover-open')) renderLedger();
+      const message = stickyStatus || (!dirtyCount && !unpublishedCount && styleEngineDirtyCount
+        ? `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to publish`
+        : '');
+      if (status.textContent !== message) status.textContent = message;
       // Unsaved DOM/pending OR unpublished disk content (restored via /api/content-revert).
       revertButton.hidden = !(dirtyCount || unpublishedCount);
       // Keep Save in the layout after a successful write — greyed, not removed —
@@ -4142,6 +4262,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { documentKey, index, section } = event.detail ?? {};
       if (!documentKey || typeof index !== 'number' || !section) return;
       mountMediaSectionInPlace(section, documentKey, index);
+      void refreshPublishState();
     }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-carousel-media-appended', ((event: CustomEvent<{
@@ -5739,7 +5860,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (branchUpdateBusy) return;
       void (async () => {
         const hadDirty = hasPendingEdits();
-        const hadUnpublished = unpublishedCount > 0;
+        const hadUnpublished = unpublishedFiles.length > 0;
 
         // Unsaved edits are the nearer, smaller undo, so they take the whole
         // click: reverting them AND resetting the disk version would throw away
@@ -5764,11 +5885,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           suppressHistory = false;
           pageHistory.clear();
           updateActions();
+          void refreshPublishState();
           return;
         }
 
         if (hadUnpublished) {
-          const n = unpublishedCount;
+          const n = unpublishedFiles.length;
           const message = n === 1
             ? 'Discard 1 unpublished content file? This cannot be undone. The page will reload.'
             : `Discard ${n} unpublished content files? This cannot be undone. The page will reload.`;
@@ -6320,12 +6442,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const index = persistedMediaInserts.indexOf(entry);
           if (index >= 0) persistedMediaInserts.splice(index, 1);
         }
-        // Optimistic: keep the bar up until refreshPublishState confirms counts.
-        // Without this, dirtyCount is 0 and unpublishedCount is still stale, so
-        // the bar flickers hidden between Save and the /api/publish GET.
-        if (manifest.documents.length) {
-          unpublishedCount = Math.max(unpublishedCount, manifest.documents.length);
-        }
         if (styleTokenChanges.length) {
           styleEngineDirtyCount = Math.max(styleEngineDirtyCount, 1);
         }
@@ -6349,10 +6465,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       void (async () => {
         // A successful Save turns unsaved edits into unpublished ones, so the
         // bar has to stay up — refresh the count rather than letting it hide.
-        if (await performSave()) {
-          void refreshPublishState();
-          void refreshStyleEngineState();
-        }
+        const manifest = await performSave();
+        void refreshPublishState();
+        if (manifest) void refreshStyleEngineState();
       })();
     }, { signal: editorSignal });
 
@@ -6448,8 +6563,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      * so the bar warns and Publish asks for confirmation first.
      */
     const refreshPublishState = async () => {
+      const request = ++publishStatusRequest;
       try {
-        const response = await fetch('/api/publish');
+        const response = await fetch('/api/publish', { cache: 'no-store' });
         if (!response.ok) throw new Error('unavailable');
         const state = await response.json() as {
           branch?: string;
@@ -6459,12 +6575,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           renderingFiles?: string[];
           publishBranch?: string;
           files?: string[];
+          details?: Record<string, string[]>;
           behind?: string[];
           readOnly?: boolean;
         };
+        if (request !== publishStatusRequest || editorSignal.aborted) return;
         publishKnown = true;
         publishReadOnly = Boolean(state.readOnly);
-        unpublishedCount = Array.isArray(state.files) ? state.files.length : 0;
+        unpublishedFiles = Array.isArray(state.files) ? state.files : [];
+        unpublishedDetails = state.details ?? {};
         const behind = Array.isArray(state.behind) ? state.behind : [];
         renderingFiles = Array.isArray(state.renderingFiles) ? state.renderingFiles : [];
         const branch = state.branch || 'detached HEAD';
@@ -6505,11 +6624,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             : `Save, commit, and push to ${target} — ${branch} stays as it is`;
         }
       } catch {
+        if (request !== publishStatusRequest || editorSignal.aborted) return;
         // First failure (or never-a-git-repo): hide publish chrome. Once we've
         // successfully loaded publish state, keep the last counts so a blip
         // doesn't empty the bar the same way.
         if (!publishKnown) {
-          unpublishedCount = 0;
           renderingFiles = [];
           publishButton.hidden = true;
           branchLabel.hidden = true;
@@ -6531,8 +6650,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // A null manifest means either nothing was dirty — the normal case for
         // content already on disk — or the save failed. Only the second should
         // stop us; performSave has already put its error in the status.
-        if (hadUnsavedEdits && !manifest) return;
-        if (!manifest && !unpublishedCount) return;
+        if (hadUnsavedEdits && !manifest) {
+          void refreshPublishState();
+          return;
+        }
+        if (!manifest && unpublishedFiles.length === 0) return;
 
         saveButton.disabled = true;
         publishButton.disabled = true;
