@@ -21,6 +21,7 @@ import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
 import SaveBar from './ui/SaveBar.astro';
 import { getProjectSlugsForBuild } from '../lib/projects';
 import Menu from './ui/Menu.astro';
+import ProjectSidenotes from './project/ProjectSidenotes.astro';
 import Button from './ui/Button.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
@@ -46,6 +47,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 </template>
 
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-sidenotes-template><ProjectSidenotes documentKey="sidenotes-template" sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', continuation: '', note: '' }]} /></template>
 
 <div class="dev-text-action-stack">
   <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(getProjectSlugsForBuild())} hidden>
@@ -252,7 +254,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'divider' | 'bodyText' | 'quote' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'divider' | 'bodyText' | 'quote' | 'sidenotes' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
@@ -837,6 +839,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="award">Award</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="quote">Quote</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sidenotes">Sidenotes</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="divider">Divider</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
@@ -2887,6 +2890,30 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return { root: section, textElement: proxy, textKind: 'text' as const, textPath: [...sectionPath, 'href'] };
       }
 
+      if (type === 'sidenotes') {
+        const template = document.querySelector<HTMLTemplateElement>('[data-sidenotes-template]');
+        if (!template?.content.firstElementChild) throw new Error('Sidenotes template is unavailable.');
+        const section = template.content.firstElementChild.cloneNode(true) as HTMLElement;
+        section.className = `project-block sidenotes ${spacingClass}`;
+        section.dataset.devSpacingDocument = documentKey;
+        section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+        section.dataset.devSpacingValue = spacing;
+        section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
+        section.dataset.devSectionDeletable = 'sidenotes';
+        const fields = [...section.querySelectorAll<HTMLElement>('[data-dev-text-path]')];
+        const paragraph = fields[0];
+        if (!paragraph || fields.length !== 3) throw new Error('Sidenotes template fields are unavailable.');
+        const noteId = `sidenote-note-${crypto.randomUUID()}`;
+        section.querySelector('[data-sidenote-note]')?.setAttribute('id', noteId);
+        section.querySelector('[data-sidenote-toggle]')?.setAttribute('aria-controls', noteId);
+        section.querySelector('.sidenotes__marker--reference')?.setAttribute('aria-describedby', noteId);
+        fields.forEach((field, index) => {
+          field.dataset.devTextDocument = documentKey;
+          field.dataset.devTextPath = JSON.stringify([...sectionPath, 'items', 0, ['paragraph', 'continuation', 'note'][index]]);
+        });
+        return { root: section, textElement: paragraph, textKind: 'text' as const, textPath: [...sectionPath, 'items', 0, 'paragraph'] };
+      }
+
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
@@ -3280,7 +3307,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : type === 'quote' ? 'quote' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : type === 'quote' ? 'quote' : type === 'sidenotes' ? 'sidenotes' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -3325,7 +3352,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         kind: built.textKind,
         savedValue: built.textKind === 'paragraphs' ? [''] : type === 'award' ? '' : 'Section title',
       } : null;
-      if (type === 'projectDetails') {
+      if (type === 'projectDetails' || type === 'sidenotes') {
         registerTextStates(built.root);
       } else if (textState) {
         textStates.push(textState);
@@ -3358,7 +3385,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacing: newSpacing,
         sectionId,
         root: built.root,
-        textStates: type === 'projectDetails' ? textStates.filter((state) => built.root.contains(state.element)) : textState ? [textState] : [],
+        textStates: type === 'projectDetails' || type === 'sidenotes' ? textStates.filter((state) => built.root.contains(state.element)) : textState ? [textState] : [],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
       });
@@ -3374,7 +3401,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             type,
             id: sectionId,
             sectionId,
-            ...(type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
+            ...(type === 'sidenotes'
+              ? { items: [{ paragraph: '', continuation: '', note: '' }] }
+              : type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
           },
           ...(type === 'sectionTitle' ? { outlineEntries: [] } : {}),
         },
@@ -3580,7 +3609,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'quote' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'quote' && type !== 'sidenotes' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);

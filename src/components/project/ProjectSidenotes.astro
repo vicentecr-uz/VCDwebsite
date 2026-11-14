@@ -1,0 +1,174 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
+
+interface Props {
+  items: Array<{ paragraph: string; continuation?: string; note: string }>;
+  documentKey?: string;
+  sectionPath: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+  annotations?: unknown;
+}
+
+const {
+  items,
+  documentKey,
+  sectionPath,
+  spacing = 'group',
+  sectionId,
+  contentId,
+  annotations,
+} = Astro.props;
+const editable = import.meta.env.DEV && documentKey;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'sidenotes', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-dev-section-deletable={editable ? 'sidenotes' : undefined}
+>
+  {items.map((item, index) => {
+    const itemPath = [...sectionPath, 'items', index];
+    const paragraphPath = [...itemPath, 'paragraph'];
+    const notePath = [...itemPath, 'note'];
+    const noteId = `${documentKey ?? 'page'}-${sectionPath.join('-')}-note-${index + 1}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+    return (
+      <div class="sidenotes__row">
+        <div class="sidenotes__body">
+          <p class="sidenotes__paragraph">
+            <span
+              data-dev-text-document={editable ? documentKey : undefined}
+              aria-label={editable ? 'Text before note reference' : undefined}
+              data-dev-text-path={editable ? JSON.stringify(paragraphPath) : undefined}
+              data-dev-text-kind={editable ? 'text' : undefined}
+            >{item.paragraph}</span><button
+              class="sidenotes__marker sidenotes__marker--reference"
+              type="button"
+              aria-label={`Note ${index + 1}`}
+              aria-describedby={noteId}
+            >{index + 1}</button><button
+              class="sidenotes__marker sidenotes__marker--toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls={noteId}
+              aria-label={`Note ${index + 1}`}
+              data-sidenote-toggle={index + 1}
+            >{index + 1}</button>{item.continuation !== undefined && (item.continuation || editable) && <>
+              {item.continuation && !/^[.,;:!?)]/.test(item.continuation) ? ' ' : ''}<span
+                aria-label={editable ? 'Text after note reference' : undefined}
+                data-dev-text-document={editable ? documentKey : undefined}
+                data-dev-text-path={editable ? JSON.stringify([...itemPath, 'continuation']) : undefined}
+                data-dev-text-kind={editable ? 'text' : undefined}
+              >{item.continuation}</span>
+            </>}
+          </p>
+        </div>
+        <aside class="sidenotes__note" id={noteId} data-sidenote-note>
+          <div class="sidenotes__note-inner"><span class="sidenotes__number" aria-hidden="true">{index + 1}</span>
+          <p
+            data-dev-text-document={editable ? documentKey : undefined}
+            aria-label={editable ? 'Note text' : undefined}
+            data-dev-text-path={editable ? JSON.stringify(notePath) : undefined}
+            data-dev-text-kind={editable ? 'text' : undefined}
+          >{item.note}</p></div>
+        </aside>
+      </div>
+    );
+  })}
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+</section>
+
+<script>
+  import { onPageLoad, createPageScope } from '../../lib/pageLifecycle';
+
+  const dispose = onPageLoad(() => {
+    const scope = createPageScope();
+    scope.listen(document, 'click', (event) => {
+      const toggle = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-sidenote-toggle]');
+      if (!toggle || !toggle.closest('.sidenotes')) return;
+      const note = toggle.closest('.sidenotes__row')?.querySelector<HTMLElement>('[data-sidenote-note]');
+      if (!note) return;
+      const open = !note.classList.contains('is-open');
+      note.classList.toggle('is-open', open);
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+    return () => scope.destroy();
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .sidenotes { display: grid; gap: calc(var(--space-unit) * 2); }
+  .sidenotes__paragraph, .sidenotes__note p { margin: 0; }
+  .sidenotes__paragraph > [contenteditable]:empty { display: inline-block; min-inline-size: 1ch; }
+  .sidenotes__marker {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--sys-color-on-srf-subtle);
+    font: 500 0.62em/1 var(--font-sans);
+    vertical-align: super;
+    cursor: pointer;
+    transition: color 150ms ease;
+  }
+  .sidenotes__marker::before { content: ''; position: absolute; inset: -8px -6px; }
+  .sidenotes__marker:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+  .sidenotes__marker--reference { display: none; }
+  .sidenotes__note {
+    display: grid;
+    grid-template-rows: 0fr;
+    color: var(--sys-color-on-srf-subtle);
+    font-size: 0.875rem;
+    line-height: 1.45;
+    opacity: 0;
+    visibility: hidden;
+    transition: grid-template-rows 300ms cubic-bezier(0.32, 0.72, 0, 1), margin-top 300ms cubic-bezier(0.32, 0.72, 0, 1),
+      opacity 200ms ease, color 150ms ease, visibility 0s linear 300ms;
+  }
+  .sidenotes__note-inner { display: flex; gap: 0.5em; min-height: 0; overflow: hidden; }
+  .sidenotes__note-inner p { flex: 1; min-inline-size: 0; }
+  .sidenotes__note-inner p[contenteditable]:empty { min-block-size: 1lh; }
+  .sidenotes__number { font-variant-numeric: tabular-nums; }
+  .sidenotes__note.is-open {
+    grid-template-rows: 1fr;
+    margin-top: var(--space-unit);
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+  .sidenotes__row:has(.sidenotes__marker:is(:hover, :focus-visible), .sidenotes__note:hover) .sidenotes__marker {
+    color: var(--sys-color-on-srf);
+  }
+  .sidenotes__row:has(.sidenotes__marker:is(:hover, :focus-visible), .sidenotes__note:hover) .sidenotes__note {
+    color: var(--sys-color-on-srf-variant);
+  }
+  @media (min-width: 69.5em) {
+    :global(.sidenotes:not(.documentation-page *, .writeup-page:has(.writeup-contents) *)) .sidenotes__row {
+      display: grid;
+      grid-template-columns: min(100%, var(--page-text-max-width)) 13rem;
+      align-items: start;
+      gap: 2rem;
+    }
+    :global(.sidenotes:not(.documentation-page *, .writeup-page:has(.writeup-contents) *)) .sidenotes__marker--reference { display: inline-block; }
+    :global(.sidenotes:not(.documentation-page *, .writeup-page:has(.writeup-contents) *)) .sidenotes__marker--toggle { display: none; }
+    :global(.sidenotes:not(.documentation-page *, .writeup-page:has(.writeup-contents) *)) .sidenotes__note {
+      grid-template-rows: 1fr;
+      margin-top: 0.25em;
+      visibility: visible;
+      opacity: 1;
+      transition: color 150ms ease;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidenotes__note { transition: opacity 150ms ease, color 150ms ease; }
+  }
+</style>

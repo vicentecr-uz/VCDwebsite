@@ -1,6 +1,7 @@
 ---
 import ProjectGrid from '../ProjectGrid.astro';
 import ProjectBodyText from './ProjectBodyText.astro';
+import ProjectSidenotes from './ProjectSidenotes.astro';
 import ProjectImage from './ProjectImage.astro';
 import ProjectImageCarousel from './ProjectImageCarousel.astro';
 import ProjectImageGrid from './ProjectImageGrid.astro';
@@ -157,6 +158,10 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         annotations={section.annotations}
       />
     );
+  }
+
+  if (type === 'sidenotes') {
+    return <ProjectSidenotes items={section.items as Array<{ paragraph: string; continuation?: string; note: string }>} documentKey={documentKey} sectionPath={path} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} annotations={section.annotations} />;
   }
 
   if (type === 'productHero') {
