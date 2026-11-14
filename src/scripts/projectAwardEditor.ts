@@ -66,7 +66,6 @@ export function bindProjectAwardEditors(signal: AbortSignal) {
       edit.hidden = true;
       edit.setAttribute('aria-expanded', 'true');
       root.querySelector<HTMLFormElement>('[data-award-editor]')!.hidden = false;
-      input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
       input.focus({ preventScroll: true });
       input.select();
     } else if (target?.closest('[data-award-remove]')) {

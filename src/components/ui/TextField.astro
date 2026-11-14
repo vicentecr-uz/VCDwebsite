@@ -12,19 +12,23 @@ interface Props {
   [key: string]: any;
 }
 
-const { label, value, placeholder, disabled = false, hideLabel = false, prefix, class: className, id, ...rest } = Astro.props;
+const { label, value, placeholder, disabled = false, hideLabel = false, prefix, type = 'text', class: className, id, ...rest } = Astro.props;
 const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.random().toString(36).slice(2, 8)}`;
+const enhanced = ['text', 'search', 'url', 'tel', 'password'].includes(type);
+const inputProps = {
+  id: inputId, type, value, placeholder, disabled,
+  class: 'dev-field__input', 'aria-label': hideLabel ? label : undefined, ...rest,
+};
 ---
 
 <Field label={label} labelFor={inputId} class={[className, hideLabel ? 'dev-field--no-label' : null]}>
-  <div class:list={['dev-text-field', prefix ? 'dev-text-field--prefix' : 'dev-text-field--native']} data-dev-text-field>
-    <div class="dev-text-field__track" data-dev-text-field-track>
-      <div class="dev-text-field__content">
-        {prefix && <span class="dev-text-field__prefix" aria-hidden="true">{prefix}</span>}
-        <input id={inputId} type="text" value={value} placeholder={placeholder} disabled={disabled} class="dev-field__input" aria-label={hideLabel ? label : undefined} {...rest} />
-        <slot name="trail" />
-      </div>
-    </div>
-    <span class="dev-text-field__measure" aria-hidden="true"></span>
-  </div>
+  {enhanced ? (
+    <sabi-input class="dev-text-field" data-dev-text-field>
+      {prefix && <span class="dev-text-field__prefix" aria-hidden="true">{prefix}</span>}
+      <input {...inputProps} />
+      <slot name="trail" />
+    </sabi-input>
+  ) : (
+    <input {...inputProps} />
+  )}
 </Field>

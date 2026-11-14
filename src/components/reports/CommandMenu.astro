@@ -24,7 +24,9 @@ const commands = contextual ? [
 <div class="command dev-surface" data-command data-contextual={contextual ? '' : undefined} popover={contextual ? 'manual' : undefined}>
   <label class="command__search">
     <span class="command__icon" aria-hidden="true" set:html={sizeIcon(searchIcon, 16)} />
-    <input type="text" role="combobox" aria-expanded={String(!contextual)} aria-controls={listId} aria-autocomplete="list" aria-label="Command" placeholder="Command" autocomplete="off" spellcheck="false" data-input />
+    <sabi-input>
+      <input type="text" role="combobox" aria-expanded={String(!contextual)} aria-controls={listId} aria-autocomplete="list" aria-label="Command" placeholder="Command" autocomplete="off" spellcheck="false" data-input />
+    </sabi-input>
     <kbd class="command__key">esc</kbd>
   </label>
   <Hairline />
@@ -225,8 +227,15 @@ const commands = contextual ? [
 
   .command__icon { display: inline-flex; color: var(--sys-color-on-srf-subtle); }
 
-  .command__search input {
+  .command__search sabi-input {
+    --sabi-edge-gutter: 0px;
+    display: flex;
     flex: 1;
+    min-width: 0;
+  }
+
+  .command__search input {
+    width: 100%;
     min-width: 0;
     padding: 0;
     border: 0;

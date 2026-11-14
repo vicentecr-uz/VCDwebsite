@@ -4762,9 +4762,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const FORMAT_HIGHLIGHT = 'vcd-format-sel';
     const FORMAT_BAR_GAP = 20;
-    const syncLinkTextField = () => {
-      linkInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
-    };
 
     const getFormatRangeRects = (range: Range): DOMRect[] => {
       let rects = [...range.getClientRects()];
@@ -4856,7 +4853,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         formatDismissTimer = 0;
         linkInput.value = '';
         linkInput.setCustomValidity('');
-        syncLinkTextField();
         formatBar.dataset.linkOpen = 'false';
         linkPanel.setAttribute('aria-hidden', 'true');
         formatBar.hidden = true;
@@ -4877,7 +4873,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const anchors = savedFormatRange ? anchorsInRange(savedFormatRange) : [];
         const anchor = anchors.length === 1 ? anchors[0] : null;
         linkInput.value = anchor?.getAttribute('href') || '';
-        syncLinkTextField();
         // Paint stand-in before focus collapses the native selection (Edge).
         syncFormatSelectionOverlay();
         const generation = formatDismissGeneration;
@@ -4895,7 +4890,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
       } else {
         linkInput.value = '';
-        syncLinkTextField();
         syncFormatSelectionOverlay();
       }
     };
