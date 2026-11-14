@@ -21,8 +21,8 @@ const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 
 const title = 'A long title that runs past the edge of the field';
-const field = (input: string, { dir, before = '', after = '', grow = false }: { dir?: string; before?: string; after?: string; grow?: boolean } = {}) =>
-  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input${grow ? " grow-input" : ""}>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
+const field = (input: string, { dir, before = '', after = '' }: { dir?: string; before?: string; after?: string } = {}) =>
+  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
 
 // Each option's markup is both the live preview and the code shown under it.
 const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
@@ -31,7 +31,7 @@ const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
     { label: 'Native', html: `<label class="sabi-page-field">\n  <input aria-label="Title" value="${title}" />\n</label>` },
   ],
   affixes: [
-    { label: 'Prefix', html: field('<input aria-label="URL" value="example.com/a/long/path/that/runs/past/the/edge" />', { before: '    <span>https://</span>\n', grow: true }) },
+    { label: 'Prefix', html: field('<input aria-label="URL" value="example.com/a/long/path/that/runs/past/the/edge" />', { before: '    <span>https://</span>\n' }) },
     { label: 'Suffix', html: field('<input aria-label="File name" value="a-post-with-a-surprisingly-long-title" />', { after: '    <span>.md</span>\n' }) },
   ],
   direction: [
@@ -39,8 +39,8 @@ const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
     { label: 'Mixed', html: field('<input aria-label="חיפוש" dir="auto" value="הזמנה מספר 48213 עבור Acme Corporation נשלחה ל-London" />', { dir: 'rtl', before: '    <span>חיפוש:</span>\n' }) },
   ],
   'stable-input': [
-    { label: 'Stable width', html: field('<input aria-label="Text" value="Sabi" />') },
-    { label: 'Growing', html: field('<input aria-label="Text" value="Sabi" />', { grow: true }) },
+    { label: 'Plain', html: field('<input aria-label="URL" value="example.com" />') },
+    { label: 'With prefix', html: field('<input aria-label="URL" value="example.com" />', { before: '    <span>https://</span>\n' }) },
   ],
   fade: [
     { label: 'Default', html: field(`<input aria-label="Title" value="${title}" />`) },
