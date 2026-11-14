@@ -71,18 +71,21 @@ const saveLauncherPosition = () => {
 };
 
 const safeArea = (side: 'left' | 'right' | 'top' | 'bottom') => {
-  const value = Number.parseFloat(getComputedStyle(document.documentElement)
+  const doc = drawLauncher?.ownerDocument ?? document;
+  const win = doc.defaultView ?? window;
+  const value = Number.parseFloat(win.getComputedStyle(doc.documentElement)
     .getPropertyValue(`--draw-launcher-safe-${side}`));
   return Number.isFinite(value) ? value : 0;
 };
 
 const launcherViewport = () => {
-  const viewport = window.visualViewport;
+  const win = drawLauncher?.ownerDocument.defaultView ?? window;
+  const viewport = win.visualViewport;
   return {
     left: viewport?.offsetLeft ?? 0,
     top: viewport?.offsetTop ?? 0,
-    width: viewport?.width ?? window.innerWidth,
-    height: viewport?.height ?? window.innerHeight,
+    width: viewport?.width ?? win.innerWidth,
+    height: viewport?.height ?? win.innerHeight,
   };
 };
 
@@ -972,6 +975,28 @@ const launcherViewportChanged = () => {
   }
   positionLauncher();
 };
+let launcherWindow: Window = window;
+const bindLauncherViewport = () => {
+  if (launcherWindow !== window) {
+    launcherWindow.removeEventListener('resize', launcherViewportChanged);
+    launcherWindow.visualViewport?.removeEventListener('resize', launcherViewportChanged);
+    launcherWindow.visualViewport?.removeEventListener('scroll', launcherViewportChanged);
+  }
+  launcherWindow = drawLauncher?.ownerDocument.defaultView ?? window;
+  if (launcherWindow !== window) {
+    launcherWindow.addEventListener('resize', launcherViewportChanged);
+    launcherWindow.visualViewport?.addEventListener('resize', launcherViewportChanged);
+    launcherWindow.visualViewport?.addEventListener('scroll', launcherViewportChanged);
+  }
+  launcherViewportChanged();
+};
+window.addEventListener('vcd:canvas-chrome-moved', bindLauncherViewport, { signal: lifecycle.signal });
+lifecycle.signal.addEventListener('abort', () => {
+  if (launcherWindow === window) return;
+  launcherWindow.removeEventListener('resize', launcherViewportChanged);
+  launcherWindow.visualViewport?.removeEventListener('resize', launcherViewportChanged);
+  launcherWindow.visualViewport?.removeEventListener('scroll', launcherViewportChanged);
+}, { once: true });
 window.addEventListener('resize', launcherViewportChanged, { signal: lifecycle.signal });
 window.visualViewport?.addEventListener('resize', launcherViewportChanged, { signal: lifecycle.signal });
 window.visualViewport?.addEventListener('scroll', launcherViewportChanged, { signal: lifecycle.signal });

@@ -123,7 +123,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     const positionPanel = () => {
       if (sliderPointerId !== null || !grabber || panel.hidden) return;
       const rect = grabber.getBoundingClientRect();
-      const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
+      const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, (panel.ownerDocument.defaultView ?? window).innerWidth - panel.offsetWidth - 8);
       panel.style.left = `${left}px`;
       const boardBottom = grabber.parentElement?.getBoundingClientRect().bottom ?? rect.bottom;
       panel.style.top = `${Math.max(boardBottom, rect.bottom) + 6}px`;
@@ -311,6 +311,16 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     for (const query of ['(max-width: 36em)', '(max-width: 52em)']) {
       scope.listen(matchMedia(query), 'change', syncViewport);
     }
+    let panelWindow: Window = window;
+    const onPanelMoved = () => {
+      if (panelWindow !== window) panelWindow.removeEventListener('resize', positionPanel);
+      panelWindow = panel.ownerDocument.defaultView ?? window;
+      if (panelWindow !== window) panelWindow.addEventListener('resize', positionPanel);
+      positionPanel();
+    };
+    scope.listen(window, 'vcd:canvas-chrome-moved', onPanelMoved);
+    scope.add(() => { if (panelWindow !== window) panelWindow.removeEventListener('resize', positionPanel); });
+    if (panel.ownerDocument.defaultView !== window) onPanelMoved();
     scope.listen(window, 'resize', positionPanel);
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];

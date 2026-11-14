@@ -19,6 +19,7 @@ const authoringComponents = new Set([
   'DevPageColumn.astro',
   'DevPageWidthToggle.astro',
   'DevProjectGridEditor.astro',
+  'DevRedditBoardHeight.astro',
   'DevSectionReorderEditor.astro',
   'DevShortcutsHelp.astro',
   'DevTextEditor.astro',

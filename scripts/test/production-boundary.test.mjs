@@ -123,7 +123,7 @@ test('strips the canvas page before its scripts and styles are discovered in pro
 });
 
 test('rejects orphan canvas flux shims in production output', async () => {
-  for (const marker of ['data-canvas-resize-observer', 'data-viewport-flux', 'vcd:viewport-flux-end', 'data-canvas-chrome', 'data-canvas-mirrored', 'hoistCanvasChrome']) {
+  for (const marker of ['vcd:canvas-chrome-moved', 'data-canvas-resize-observer', 'data-viewport-flux', 'vcd:viewport-flux-end', 'data-canvas-chrome', 'data-canvas-mirrored', 'hoistCanvasChrome']) {
     const root = await fixture({ 'index.html': `<script>${JSON.stringify(marker)}</script>` });
     try { await assert.rejects(checkProductionOutput(root), /development inspector marker/); }
     finally { await rm(root, { recursive: true, force: true }); }

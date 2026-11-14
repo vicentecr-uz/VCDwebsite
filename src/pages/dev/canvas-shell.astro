@@ -116,6 +116,8 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     frame.style.width = `${width}px`;
     frame.style.height = `${height}px`;
     frame.style.transform = `scale(${scale})`;
+    // The page's own resize event arrives a frame late; the fixed header must size with this frame.
+    if (fluxActive) frame.contentWindow?.dispatchEvent?.(new Event('vcd:viewport-flux-frame'));
     holdAnchor();
   };
   const geometry = (): Geometry => preset === 'desktop' ? desktop() : {
@@ -203,6 +205,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   scope.listen(backdrop, 'click', () => { transition('desktop'); focusFrame(); });
   const forwardKey = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
+    if (event.composedPath().some((node) => node instanceof Element && node.hasAttribute('data-canvas-chrome'))) return;
     if (target?.isContentEditable || target?.closest('input, textarea, select')) return;
     if (event.type === 'keydown') {
       const next = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
@@ -245,9 +248,9 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
   .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
   .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
-  [data-canvas-chrome] { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+  [data-canvas-chrome] { display: contents; pointer-events: none; }
   [data-canvas-chrome] :global(> *) { pointer-events: auto; }
-  .dev-viewport-preview__controls { z-index: 2; position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
+  .dev-viewport-preview__controls { z-index: 2147483647; position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
   .dev-viewport-preview__controls :global(.dev-segmented) {
     width: auto;
     padding: 0;

@@ -2613,7 +2613,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       closeLedger(true);
       const targets = highlightLedgerRow(entry);
       const headerBottom = Math.max(0, siteHeader?.getBoundingClientRect().bottom ?? 0);
-      const visibleBottom = Math.min(window.innerHeight, actions.getBoundingClientRect().top);
+      const visibleBottom = Math.min((actions.ownerDocument.defaultView ?? window).innerHeight, actions.getBoundingClientRect().top);
       const visible = targets.some((target) => {
         const bounds = target.getBoundingClientRect();
         return bounds.bottom > headerBottom && bounds.top < visibleBottom;
@@ -2649,9 +2649,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const path = event.composedPath();
       if (!path.includes(ledger) && !path.includes(actions)) closeLedger();
     }, { signal: editorSignal });
-    window.addEventListener('resize', () => {
+    const onLedgerResize = () => {
       if (ledger.matches(':popover-open')) placeLedger();
-    }, { signal: editorSignal });
+    };
+    let ledgerWindow: Window = window;
+    const onLedgerMoved = () => {
+      if (ledgerWindow !== window) ledgerWindow.removeEventListener('resize', onLedgerResize);
+      ledgerWindow = actions.ownerDocument.defaultView ?? window;
+      if (ledgerWindow !== window) ledgerWindow.addEventListener('resize', onLedgerResize);
+      onLedgerResize();
+    };
+    window.addEventListener('resize', onLedgerResize, { signal: editorSignal });
+    window.addEventListener('vcd:canvas-chrome-moved', onLedgerMoved, { signal: editorSignal });
+    onLedgerMoved();
+    editorSignal.addEventListener('abort', () => {
+      if (ledgerWindow !== window) ledgerWindow.removeEventListener('resize', onLedgerResize);
+    }, { once: true });
     editorSignal.addEventListener('abort', () => {
       closeLedger();
       clearLedgerHighlight();
