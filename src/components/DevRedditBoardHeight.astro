@@ -9,7 +9,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
 <div class="reddit-board-height dev-surface" id="reddit-board-height-panel" data-reddit-board-height-panel data-dev-overlay data-dev-panel-key="reddit-board-height" hidden>
   <ViewportSelector label="Viewport" dataAttr="data-reddit-board-viewport" />
-  <RangeField class="reddit-board-height__field" label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value>
+  <RangeField class="reddit-board-height__field" label="Height" id="reddit-board-height-value" min="8" max="60" step="1" unit="em" data-reddit-board-height-value data-dev-history-text>
     <Button slot="labelAccessory" emphasis="ghost" label="" aria-label="Reset height to inherited" data-reddit-board-reset><span slot="icon" set:html={sizeIcon(undoIcon, 14)} /></Button>
   </RangeField>
   <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
@@ -35,6 +35,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
 <script>
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import { pageHistory } from '../lib/devHistory';
 
   import { boardViewports as breakpoints, resolveRedditBoardHeights, type BoardHeights, type BoardViewport as Breakpoint } from '../lib/redditBoardHeight';
 
@@ -65,6 +66,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     let pointerY = 0;
     let frame = 0;
     let sliderPointerId: number | null = null;
+    let gesture: { board: HTMLElement; before: BoardHeights } | null = null;
     let settling: Animation | undefined;
     const saveTimers = new Map<HTMLElement, number>();
     let writeQueue = Promise.resolve();
@@ -111,13 +113,52 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       window.clearTimeout(saveTimers.get(board));
       saveTimers.set(board, window.setTimeout(() => { void persist(board).catch(() => {}); }, 300));
     };
-    const setHeight = (height: number | null) => {
+    const restoreHeight = (board: HTMLElement, key: string, snapshot: BoardHeights) => {
+      const target = board.isConnected ? board : [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')]
+        .find((candidate) => identity(candidate) === key);
+      if (!target) return;
+      const restored = { ...snapshot };
+      drafts.set(target, restored);
+      if (target === root) {
+        authored = restored;
+        resolveValues();
+        sync();
+      } else {
+        const resolved = resolveRedditBoardHeights(restored);
+        breakpoints.forEach((viewport) => target.style.setProperty(`--rcb-height-${viewport}`, `${resolved[viewport]}em`));
+      }
+      scheduleSave(target);
+    };
+    const recordHeight = (board: HTMLElement, before: BoardHeights, after: BoardHeights, mergeKey?: string) => {
+      if (pageHistory.replaying || breakpoints.every((viewport) => before[viewport] === after[viewport])) return;
+      const key = identity(board);
+      pageHistory.push({
+        label: 'Board height',
+        mergeKey,
+        undo: () => restoreHeight(board, key, before),
+        redo: () => restoreHeight(board, key, after),
+      });
+    };
+    const beginGesture = () => {
       if (!root) return;
+      pageHistory.breakGroup();
+      gesture = { board: root, before: { ...authored } };
+    };
+    const endGesture = (cancelled = false) => {
+      const current = gesture;
+      gesture = null;
+      if (!current || cancelled) return;
+      recordHeight(current.board, current.before, { ...(drafts.get(current.board) ?? current.before) });
+    };
+    const setHeight = (height: number | null, merge = true) => {
+      if (!root) return;
+      const before = { ...authored };
       authored = { ...authored, [selected]: height };
       drafts.set(root, authored);
       resolveValues();
       sync();
       scheduleSave(root);
+      if (!gesture) recordHeight(root, before, { ...authored }, merge ? `board-height:${identity(root)}:${selected}` : undefined);
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
     const positionPanel = () => {
@@ -163,6 +204,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       sync();
     };
     const close = () => {
+      endGesture();
       sliderPointerId = null;
       grabber?.setAttribute('aria-expanded', 'false');
       if (panel.hidden) return;
@@ -193,6 +235,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       dragging = false;
       delete grabber.dataset.dragging;
       if (cancelled || !moved) {
+        endGesture(true);
         resolveValues();
         sync();
         return;
@@ -200,6 +243,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       const shell = grabber.parentElement;
       const from = shell?.getBoundingClientRect().height;
       setHeight(clamp(Math.round(values[selected]), 8, 60));
+      endGesture();
       const to = shell?.getBoundingClientRect().height;
       if (shell && from !== undefined && to !== undefined && Math.abs(to - from) >= 0.5
         && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -217,15 +261,19 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     };
     const beginSliderInteraction = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      beginGesture();
       sliderPointerId = event.pointerId;
     };
     const endSliderInteraction = (event?: PointerEvent) => {
       if (event && sliderPointerId !== event.pointerId) return;
+      if (sliderPointerId === null) return;
+      endGesture();
       sliderPointerId = null;
       positionPanel();
     };
     const onPointerDown = (event: PointerEvent) => {
       if (!grabber || event.button !== 0) return;
+      beginGesture();
       dragging = true;
       moved = false;
       pointerStartY = pointerY = event.clientY;
@@ -288,7 +336,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     input.addEventListener('lostpointercapture', endSliderInteraction, { signal });
     scope.listen(document, 'pointerup', endSliderInteraction as EventListener, true);
     scope.listen(document, 'pointercancel', endSliderInteraction as EventListener, true);
-    reset.addEventListener('click', () => setHeight(null), { signal });
+    reset.addEventListener('click', () => { pageHistory.breakGroup(); setHeight(null, false); }, { signal });
     scope.listen(window, 'vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
       if (event.detail?.panel !== panel) return;
       const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]') ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
