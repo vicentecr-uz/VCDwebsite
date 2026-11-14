@@ -54,3 +54,43 @@ export const siteAnnotationSvg = (annotation: SiteAnnotation, part?: SiteAnnotat
     ? svg.replace('<svg ', '<svg preserveAspectRatio="none" ')
     : svg;
 };
+
+export function renderSiteAnnotationLayer(section: HTMLElement, annotations: SiteAnnotation[]) {
+  let layer = section.querySelector<HTMLElement>('[data-site-annotations]');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.className = 'site-annotations';
+    layer.setAttribute('data-site-annotations', '[]');
+    layer.setAttribute('aria-hidden', 'true');
+    section.append(layer);
+  }
+  layer.dataset.siteAnnotations = JSON.stringify(annotations);
+  layer.replaceChildren(...annotations.flatMap((annotation) => {
+    const images: HTMLImageElement[] = [];
+    const addImage = (partIndex?: number, sliceIndex?: number, strokeIndex?: number) => {
+      const image = document.createElement('img');
+      image.dataset.siteAnnotation = annotation.id;
+      if (partIndex !== undefined) {
+        image.dataset.siteAnnotationPart = String(partIndex);
+        image.dataset.siteAnnotationSlice = String(sliceIndex);
+      }
+      if (strokeIndex !== undefined) image.dataset.siteAnnotationStroke = String(strokeIndex);
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation,
+        partIndex !== undefined ? { partIndex, sliceIndex: sliceIndex! }
+          : strokeIndex !== undefined ? { strokeIndex } : undefined))}`;
+      image.alt = '';
+      image.draggable = false;
+      images.push(image);
+    };
+    if (annotation.textParts?.length) {
+      annotation.strokes.forEach((stroke, strokeIndex) => {
+        if (stroke.erase) return;
+        const parts = annotation.textParts!.map((part, partIndex) => ({ part, partIndex }))
+          .filter(({ part }) => part.strokeId === stroke.id);
+        if (parts.length) parts.forEach(({ part, partIndex }) => part.slices.forEach((_, sliceIndex) => addImage(partIndex, sliceIndex)));
+        else addImage(undefined, undefined, strokeIndex);
+      });
+    } else if (siteAnnotationHasFreeInk(annotation)) addImage();
+    return images;
+  }));
+}

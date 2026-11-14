@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   responsiveImageStyle,
@@ -150,7 +151,7 @@ const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
 const resolvedConstrained = resolveImageGridConstrained(constrainedProp);
 const constrainedStyle = imageGridConstrainedStyle(resolvedConstrained);
 const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
-const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
+const editable = isEditableDocument(documentKey) && !!documentKey && Array.isArray(path) && path.length > 0;
 const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
 const maxVh = resolveMaxVh({ maxVh: maxVhProp, max80 });
@@ -200,7 +201,7 @@ const editAttrs = editable
     id={sectionId}
     data-image-content-id={contentId}
     data-site-annotation-section-id={contentId}
-    data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+    data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
     class:list={[
       'project-image',
       layout !== 'default' && `project-image--${layout}`,
@@ -326,14 +327,14 @@ const editAttrs = editable
         {isVideo ? 'Edit video' : 'Edit image'}
       </button>
     )}
-    {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+    {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
   </div>
 ) : (
   <div
     id={sectionId}
     data-image-content-id={contentId}
     data-site-annotation-section-id={contentId}
-    data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+    data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
     class:list={[
       'project-block',
       (centered || hasWidthConstraint || maxVh) && 'project-block--centered',
@@ -486,7 +487,7 @@ const editAttrs = editable
         </button>
       )}
     </figure>
-    {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+    {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
   </div>
 )}
 

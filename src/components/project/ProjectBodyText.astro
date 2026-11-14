@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import {
   projectStackClass,
   spacingDevAttrs,
@@ -36,7 +37,7 @@ const {
   balance = false,
   annotations,
 } = Astro.props;
-const editable = import.meta.env.DEV && documentKey && pathPrefix;
+const editable = isEditableDocument(documentKey) && documentKey && pathPrefix;
 const sectionPath =
   pathPrefix?.at(-1) === 'paragraphs' ? pathPrefix.slice(0, -1) : undefined;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
@@ -63,7 +64,7 @@ const paragraphWrapClass = (paragraph: string) => [
   data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
   style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
 >
   <div
     class="project-body-text"
@@ -77,5 +78,5 @@ const paragraphWrapClass = (paragraph: string) => [
       <p class:list={paragraphWrapClass(paragraph)} set:html={paragraph} />
     ))}
   </div>
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </section>

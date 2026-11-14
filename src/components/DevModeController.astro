@@ -3,6 +3,7 @@ import '../styles/site-annotation-editor.css';
 ---
 
 <script>
+  import { usesCompactEditor } from '../lib/compactEditor';
   import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
 
   import { devPanels, frontmostOpenPanel } from '../lib/devPanelStack';
@@ -17,11 +18,13 @@ import '../styles/site-annotation-editor.css';
     const html = document.documentElement;
     const remoteEditor = window.location.hostname === 'edit.vicentecr.uz';
     html.classList.toggle('is-remote-editor', remoteEditor);
-    const restrictedMobileEditor = () => remoteEditor && window.matchMedia('(max-width: 40em)').matches;
+    const restrictedMobileEditor = () => usesCompactEditor(html);
+    const playground = html.hasAttribute('data-editor-playground');
     const leaseKey = '__vcdDevAuthoringLease';
     const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean } })[leaseKey]
       ??= { id: `dev-${crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`, timer: null, active: false });
     const sendAuthoring = (active: boolean, beacon = false) => {
+      if (playground) return;
       const body = JSON.stringify({ id: lease.id, active });
       if (!active && beacon) {
         navigator.sendBeacon('/api/dev-session-state', new Blob([body], { type: 'application/json' }));
@@ -43,6 +46,7 @@ import '../styles/site-annotation-editor.css';
     };
     const reportAuthoring = (active: boolean, beacon = false) => {
       lease.active = active;
+      if (playground) return;
       sendAuthoring(active, beacon);
       if (active) startHeartbeat();
       else stopHeartbeat();
@@ -52,7 +56,7 @@ import '../styles/site-annotation-editor.css';
       stopHeartbeat();
     });
     pageScope.listen(window, 'pageshow', () => {
-      if (!lease.active) return;
+      if (playground || !lease.active) return;
       sendAuthoring(true);
       startHeartbeat();
     });
@@ -103,6 +107,10 @@ import '../styles/site-annotation-editor.css';
 
     const openLauncherPanel = (panel: HTMLElement) => {
       removeLauncher();
+      if (playground && panel.dataset.devPanelKey === 'section-nav') {
+        setSectionEditor(true);
+        return;
+      }
       if (panel.dataset.devPanelKey === 'asset-manager') {
         window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
           detail: { mode: 'browse', documentKey: panel.dataset.documentKey || '' },
@@ -324,6 +332,18 @@ import '../styles/site-annotation-editor.css';
     html.classList.remove(SECTION_EDITOR_CLASS);
     setDevModeImmediate(devMode);
 
+    pageScope.listen(window, 'vcd:editor-compact-change', () => {
+      if (!restrictedMobileEditor()) return;
+      setSectionEditor(false);
+      removeLauncher();
+      for (const panel of devPanels()) {
+        if (panel.hidden) continue;
+        panel.hidden = true;
+        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+      }
+      syncTunerOpenClass();
+    });
+
     pageScope.listen(window, 'vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active === 'boolean') setDevMode(event.detail.active);
     }) as EventListener);
@@ -433,6 +453,12 @@ import '../styles/site-annotation-editor.css';
       }
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyE') {
+        if (playground) {
+          if (event.repeat || event.isComposing) return;
+          event.preventDefault();
+          setDevMode(!devMode);
+          return;
+        }
         event.preventDefault();
 
         // Alt+E only ever turns Edit mode *on*. Escape is the way out — the

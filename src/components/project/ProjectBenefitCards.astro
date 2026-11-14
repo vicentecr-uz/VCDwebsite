@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import textCursorIcon from 'lucide-static/icons/text-cursor.svg?raw';
 import slidersHorizontalIcon from 'lucide-static/icons/sliders-horizontal.svg?raw';
 import blocksIcon from 'lucide-static/icons/blocks.svg?raw';
@@ -16,7 +17,7 @@ interface Props {
 }
 
 const { items, documentKey, sectionPath, spacing, sectionId, contentId } = Astro.props;
-const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
+const editable = isEditableDocument(documentKey) && documentKey && sectionPath?.length;
 const textAttrs = (index: number, field: 'title' | 'description') => editable && sectionPath ? {
   'data-dev-text-document': documentKey,
   'data-dev-text-path': JSON.stringify([...sectionPath, 'items', index, field]),

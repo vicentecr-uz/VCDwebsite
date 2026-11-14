@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   imageGridConstrainedStyle,
@@ -122,7 +123,7 @@ const {
 
 const constrained = resolveImageGridConstrained(constrainedProp);
 const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
-const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
+const showDevEditing = isEditableDocument(documentKey) && !!documentKey && Array.isArray(basePath);
 const stackClass = projectStackClass(spacing);
 const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing, { contentId });
 
@@ -199,7 +200,7 @@ const blockStyle = [
   id={!nested ? sectionId : undefined}
   data-image-content-id={contentId}
   data-site-annotation-section-id={!nested ? contentId : undefined}
-  data-site-annotation-document={!nested && import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={!nested && isEditableDocument(documentKey) ? documentKey : undefined}
   class:list={[
     'project-image-carousel',
     !nested && stackClass,
@@ -489,7 +490,7 @@ const blockStyle = [
       );
     })}
   </div>
-  {!nested && contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {!nested && contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </div>
 
 <script>

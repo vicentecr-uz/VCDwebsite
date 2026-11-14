@@ -13,7 +13,7 @@ import {
 
 const editor = await readFile(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const picker = await readFile(new URL('../../src/components/DevImageDrop.astro', import.meta.url), 'utf8');
-const config = await readFile(new URL('../../astro.config.mjs', import.meta.url), 'utf8');
+const authoring = await readFile(new URL('../../src/lib/contentAuthoring.mjs', import.meta.url), 'utf8');
 
 assert.match(editor, /data-dev-section-type="imageGrid">Grid/);
 assert.match(editor, /preferredType: type/);
@@ -22,10 +22,10 @@ assert.match(picker, /'Add grid placeholder'/);
 assert.match(picker, /'Add carousel placeholder'/);
 assert.doesNotMatch(picker, /placeholderButton\.hidden = hasCarouselTarget\(\)/);
 assert.match(picker, /: 'Add image placeholder';/);
-assert.match(config, /'placeholderImageGrid'/);
-assert.match(config, /'placeholderImageCarousel'/);
-assert.match(config, /type === 'placeholderImageGrid'/);
-assert.match(config, /type === 'placeholderImageCarousel'/);
+assert.match(authoring, /'placeholderImageGrid'/);
+assert.match(authoring, /'placeholderImageCarousel'/);
+assert.match(authoring, /type === 'placeholderImageGrid'/);
+assert.match(authoring, /type === 'placeholderImageCarousel'/);
 const mount = await readFile(new URL('../../src/scripts/devSectionMount.ts', import.meta.url), 'utf8');
 const gridTuner = await readFile(new URL('../../src/components/project/ProjectImageGridTuner.astro', import.meta.url), 'utf8');
 const carouselTuner = await readFile(new URL('../../src/components/project/ProjectImageCarouselTuner.astro', import.meta.url), 'utf8');

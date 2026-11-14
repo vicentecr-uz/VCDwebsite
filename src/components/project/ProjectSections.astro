@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import ProjectGrid from '../ProjectGrid.astro';
 import ProjectBodyText from './ProjectBodyText.astro';
 import ProjectImage from './ProjectImage.astro';
@@ -27,7 +28,7 @@ import { shouldUseProjectScrollFinale } from '../../lib/projectScrollFinale';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 interface Props {
-  documentKey?: string;
+  documentKey: string;
   sections: Array<Record<string, unknown>>;
   introHeight?: number;
   scrollFinale?: boolean;
@@ -379,11 +380,11 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       <section
         class:list={['project-block', projectStackClass(spacing)]}
         data-site-annotation-section-id={section.id as string | undefined}
-        data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+        data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
         {...(spacingDevAttrs(documentKey, path, spacing, { contentId: section.id as string | undefined }) ?? {})}
       >
         <ProjectGrid variant={variant} items={getProjectGridListings(variant)} />
-        {section.id && (import.meta.env.DEV || (Array.isArray(section.annotations) && section.annotations.length > 0)) && <SiteAnnotationLayer sectionId={section.id as string} annotations={section.annotations} />}
+        {section.id && (isEditableDocument(documentKey) || (Array.isArray(section.annotations) && section.annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={section.id as string} annotations={section.annotations} />}
       </section>
     );
   }

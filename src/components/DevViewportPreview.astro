@@ -25,7 +25,10 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const controls = root?.querySelector<HTMLElement>('[data-viewport-controls]');
     if (!root || !surface || !shadow || !frame || !controls) return scope.destroy;
+    const viewportStorageKey = document.documentElement.hasAttribute('data-editor-playground')
+      ? 'vcd:editor-playground:viewport-restore' : 'vcd-viewport-preview-restore';
     const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
+    const compact = () => document.documentElement.hasAttribute('data-compact-editor');
 
     const presets = {
       tablet: [820, 1180],
@@ -149,7 +152,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       frame.src = 'about:blank';
     };
     const loadWarmFrame = () => {
-      if (frameMode || open || loading || scope.signal.aborted || !document.documentElement.classList.contains('is-dev-mode')) return;
+      if (frameMode || compact() || open || loading || scope.signal.aborted || !document.documentElement.classList.contains('is-dev-mode')) return;
       ready = false;
       loading = true;
       root.hidden = false;
@@ -159,7 +162,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       frame.src = window.location.href;
     };
     const scheduleWarmFrame = (eager = false) => {
-      if (frameMode || open) return;
+      if (frameMode || compact() || open) return;
       dropWarmFrame();
       if (eager) { loadWarmFrame(); return; }
       const warm = () => { warmJob = undefined; loadWarmFrame(); };
@@ -201,7 +204,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
         const scrollY = frame.contentWindow?.scrollY ?? window.scrollY;
         window.scrollTo({ top: scrollY, behavior: 'instant' });
         if (saved) {
-          sessionStorage.setItem('vcd-viewport-preview-restore', JSON.stringify({ scrollY }));
+          sessionStorage.setItem(viewportStorageKey, JSON.stringify({ scrollY }));
           window.location.reload();
         } else finishClose();
       };
@@ -242,7 +245,8 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       if (childWindow.dispatchEvent(beforeReload)) afterPendingWrites(childWindow, () => { void transition('desktop'); });
     };
     const show = (preset: Preset) => {
-      if (frameMode || preparing || !document.documentElement.classList.contains('is-dev-mode')) return false;
+      if (frameMode || preparing || compact()
+        || !document.documentElement.classList.contains('is-dev-mode')) return false;
       if (preset === 'desktop') {
         if (opening) { opening = false; resolveScroll?.(); resolveScroll = undefined; cancelMorph(); }
         close(); return true;
@@ -406,9 +410,9 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       window.parent.postMessage({ type: 'vcd-viewport-preview-ready' }, window.location.origin);
       return () => scope.destroy();
     }
-    const restore = sessionStorage.getItem('vcd-viewport-preview-restore');
+    const restore = sessionStorage.getItem(viewportStorageKey);
     if (restore) {
-      sessionStorage.removeItem('vcd-viewport-preview-restore');
+      sessionStorage.removeItem(viewportStorageKey);
       try {
         const { scrollY } = JSON.parse(restore) as { scrollY?: number };
         window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
@@ -421,6 +425,13 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     }) as EventListener);
     scope.listen(window, 'vcd:dev-pending-committed', () => scheduleWarmFrame());
     scope.listen(window, 'vcd:dev-content-written', () => scheduleWarmFrame());
+    scope.listen(window, 'vcd:editor-compact-change', () => {
+      if (!compact()) { scheduleWarmFrame(); return; }
+      if (open) { close(); return; }
+      opening = false;
+      cancelMorph();
+      dropWarmFrame();
+    });
     select('desktop');
     scheduleWarmFrame();
     return () => { cancelMorph(); if (open) finishClose(); dropWarmFrame(); scope.destroy(); };

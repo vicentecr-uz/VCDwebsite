@@ -53,6 +53,7 @@ async function scriptsFor(html: string): Promise<string> {
 test('production pages load only the media runtimes their rendered content needs', async () => {
   let checked = 0;
   for (const file of await htmlFiles(dist)) {
+    if (file === join(dist, 'preview/editor-playground/index.html')) continue;
     const html = await readFile(file, 'utf8');
     if (!html.includes('id="site-wrapper"')) continue;
     const features = getPageMediaFeatures(html);

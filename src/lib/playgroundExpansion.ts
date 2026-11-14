@@ -7,7 +7,6 @@ export function bindPlaygroundExpansion(
   signal: AbortSignal,
 ) {
   const slot = surface.parentElement!;
-  const narrow = matchMedia('(max-width: 40em)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   let expanded = false;
   let raf = 0;
@@ -15,8 +14,8 @@ export function bindPlaygroundExpansion(
   const inertSiblings: HTMLElement[] = [];
 
   const syncFrame = () => {
-    frame.inert = Boolean(raf) || (narrow.matches && !expanded);
-    frame.contentWindow?.postMessage({ type: 'vcd:editor-playground-mode', desktop: expanded && !narrow.matches }, location.origin);
+    frame.inert = Boolean(raf);
+    frame.contentWindow?.postMessage({ type: 'vcd:editor-playground-mode', desktop: expanded }, location.origin);
   };
   const restorePage = () => {
     document.documentElement.style.overflow = previousOverflow;
@@ -116,7 +115,6 @@ export function bindPlaygroundExpansion(
     syncFrame();
   }, { signal });
   frame.addEventListener('load', syncFrame, { signal });
-  narrow.addEventListener('change', syncFrame, { signal });
   signal.addEventListener('abort', () => {
     stopMotion();
     if (surface.matches(':popover-open') || inertSiblings.length) {

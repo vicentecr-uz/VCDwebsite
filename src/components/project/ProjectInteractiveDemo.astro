@@ -60,7 +60,7 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
         src={'route' in demo ? demo.route : `/preview/${demo.id}`}
         title={demo.title}
         loading="lazy"
-        sandbox={`allow-scripts allow-same-origin${demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
+        sandbox={`allow-scripts allow-same-origin${expandable ? ' allow-modals allow-forms' : demo.id === 'gap-spacing' ? ' allow-top-navigation-by-user-activation' : ''}`}
         referrerpolicy="no-referrer"
       />}
     </project-demo-content>
@@ -172,8 +172,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
 
   @media (max-width: 40em) {
     [data-interactive-demo='editor-playground'] { min-height: var(--demo-narrow-height); }
-    [data-interactive-demo='editor-playground'] iframe { pointer-events: none; }
-    [data-interactive-demo='editor-playground'] :popover-open iframe { pointer-events: auto; }
   }
 
   .project-interactive-demo__url-field {

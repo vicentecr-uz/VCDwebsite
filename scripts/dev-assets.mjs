@@ -7,10 +7,11 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { isVideoSrc } from '../src/lib/imageUpload.mjs';
+import { normalizeAssetSrc, stripAssetRefsFromDocument } from '../src/lib/contentAuthoringMedia.mjs';
+export { normalizeAssetSrc, removeMediaItemFromDocument, stripAssetRefsFromDocument } from '../src/lib/contentAuthoringMedia.mjs';
 
 const UNASSIGNED_SLUG = '__unassigned__';
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']);
-const DEFAULT_COVER = 'black-token.svg';
 const execFile = promisify(execFileCallback);
 const FFMPEG_PROBE = existsSync('/opt/homebrew/bin/ffprobe') ? '/opt/homebrew/bin/ffprobe' : 'ffprobe';
 
@@ -22,27 +23,6 @@ async function writeProjectJson(relativeFile, data) {
     `${JSON.stringify(data, null, 2)}\n`,
     'utf8',
   );
-}
-
-/**
- * Collapse every legacy ref form onto one: decoded, relative to `media/`, no
- * prefix, no leading slash. Legacy input branches (`draft:`, `/draft-media/`)
- * are kept so a stale client (or old JSON that hasn't gone through the
- * one-shot migration) still resolves.
- * @param {string} value
- */
-export function normalizeAssetSrc(value) {
-  const raw = String(value || '').trim();
-  if (!raw || raw === 'placeholder.svg' || raw.endsWith('/placeholder.svg')) return '';
-  if (raw.startsWith('draft:')) return decodeURIComponent(raw.slice('draft:'.length));
-  if (raw.startsWith('/draft-media/')) {
-    return decodeURIComponent(raw.slice('/draft-media/'.length));
-  }
-  if (raw.startsWith('/images/')) {
-    return decodeURIComponent(raw.slice('/images/'.length));
-  }
-  if (raw.startsWith('/')) return '';
-  return raw;
 }
 
 /** @param {string} src */
@@ -228,182 +208,6 @@ export async function listDevAssets(filterProject = '') {
   ];
 
   return { projects: projectRows, assets: list };
-}
-
-/**
- * Strip JSON references to an asset src. Mutates `data`.
- * @param {Record<string, unknown>} data
- * @param {string} targetSrc
- * @returns {number} number of removals
- */
-export function stripAssetRefsFromDocument(data, targetSrc) {
-  const target = normalizeAssetSrc(targetSrc);
-  if (!target) return 0;
-  let removed = 0;
-
-  const matches = (value) => normalizeAssetSrc(String(value || '')) === target;
-
-  const stripItems = (node) => {
-    if (!Array.isArray(node.items)) return;
-    const removedIds = new Set();
-    node.items = node.items.filter((item) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
-      if (item.type === 'imageCarousel' && Array.isArray(item.items)) {
-        const before = removed;
-        stripItems(item);
-        if (removed === before || item.items.length) return true;
-      } else if (matches(item.src)) {
-        removed += 1;
-      } else {
-        return true;
-      }
-      removedIds.add(String(item.id || ''));
-      return false;
-    });
-    if (!removedIds.size) return;
-    if (Array.isArray(node.visible)) {
-      node.visible = node.visible.filter((id) => !removedIds.has(String(id)));
-      if (!node.visible.length) delete node.visible;
-    }
-    for (const settings of [node.layouts, node.breakpoints]) {
-      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) continue;
-      for (const override of Object.values(settings)) {
-        if (!override || typeof override !== 'object' || !Array.isArray(override.visible)) continue;
-        override.visible = override.visible.filter((id) => !removedIds.has(String(id)));
-      }
-    }
-  };
-
-  if (Array.isArray(data.sections)) {
-    data.sections = data.sections.filter((node) => {
-      if (!node || typeof node !== 'object' || Array.isArray(node)) return true;
-      if ((node.type === 'image' || node.type === 'placeholder') && matches(node.src)) {
-        removed += 1;
-        return false;
-      }
-      if (node.type === 'imageGrid' || node.type === 'imageCarousel') stripItems(node);
-      return true;
-    });
-  }
-
-  if (data.listings && typeof data.listings === 'object' && !Array.isArray(data.listings)) {
-    for (const listing of Object.values(/** @type {Record<string, unknown>} */ (data.listings))) {
-      if (!listing || typeof listing !== 'object' || Array.isArray(listing)) continue;
-      const card = /** @type {Record<string, unknown>} */ (listing);
-      if (matches(card.image)) {
-        card.image = DEFAULT_COVER;
-        removed += 1;
-      }
-      // Hover covers are a second image slot on the same card; clear rather than
-      // default, since an empty hover slot is a valid state and a default is not.
-      if (matches(card.hoverImage)) {
-        delete card.hoverImage;
-        removed += 1;
-      }
-    }
-  }
-
-  if (data.teaser && typeof data.teaser === 'object' && !Array.isArray(data.teaser)) {
-    const teaser = /** @type {Record<string, unknown>} */ (data.teaser);
-    if (matches(teaser.coverImage)) {
-      teaser.coverImage = '';
-      removed += 1;
-    }
-  }
-
-  return removed;
-}
-
-/**
- * Remove media from a section by capability, not by type allowlist.
- * New media shapes inherit this without registering.
- * - Multi-item blocks (`items[]`): drop the matching item (refuse if last).
- * - Single-src blocks (`src`): drop the whole section from `sections[]`.
- *
- * @param {Record<string, unknown>} data
- * @param {Array<string | number>} fieldPath
- * @param {string} itemId
- */
-export function removeMediaItemFromDocument(data, fieldPath, itemId) {
-  const id = String(itemId || '');
-  if (!Array.isArray(fieldPath) || !fieldPath.length) {
-    throw new Error('That media block path is invalid.');
-  }
-
-  let cursor = /** @type {unknown} */ (data);
-  for (const part of fieldPath) {
-    if (cursor == null || typeof cursor !== 'object') {
-      throw new Error('That media block path no longer exists.');
-    }
-    cursor = /** @type {Record<string | number, unknown>} */ (cursor)[part];
-  }
-  if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
-    throw new Error('That media block path no longer exists.');
-  }
-
-  const node = /** @type {Record<string, unknown>} */ (cursor);
-
-  // Multi-item media (grid, carousel, future): remove one item by id.
-  if (Array.isArray(node.items)) {
-    if (!id) throw new Error('An item id is required.');
-    const index = node.items.findIndex((item) => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-      return String(/** @type {Record<string, unknown>} */ (item).id || '') === id;
-    });
-    if (index < 0) throw new Error('That image is no longer in this block.');
-    if (node.items.length <= 1) {
-      throw new Error('Keep at least one image, or delete the whole section.');
-    }
-
-    node.items.splice(index, 1);
-
-    if (Array.isArray(node.visible)) {
-      node.visible = node.visible.filter((entry) => String(entry) !== id);
-      if (!node.visible.length) delete node.visible;
-    }
-    if (node.layouts && typeof node.layouts === 'object' && !Array.isArray(node.layouts)) {
-      for (const layout of Object.values(/** @type {Record<string, unknown>} */ (node.layouts))) {
-        if (!layout || typeof layout !== 'object' || Array.isArray(layout)) continue;
-        const visible = /** @type {Record<string, unknown>} */ (layout).visible;
-        if (!Array.isArray(visible)) continue;
-        /** @type {Record<string, unknown>} */ (layout).visible = visible.filter(
-          (entry) => String(entry) !== id,
-        );
-      }
-    }
-    if (node.breakpoints && typeof node.breakpoints === 'object' && !Array.isArray(node.breakpoints)) {
-      for (const bp of Object.values(/** @type {Record<string, unknown>} */ (node.breakpoints))) {
-        if (!bp || typeof bp !== 'object' || Array.isArray(bp)) continue;
-        const visible = /** @type {Record<string, unknown>} */ (bp).visible;
-        if (!Array.isArray(visible)) continue;
-        /** @type {Record<string, unknown>} */ (bp).visible = visible.filter(
-          (entry) => String(entry) !== id,
-        );
-      }
-    }
-
-    return node;
-  }
-
-  // Single-src media (image, future video, …): remove the whole section.
-  if (
-    fieldPath[0] === 'sections'
-    && typeof fieldPath[1] === 'number'
-    && typeof node.src === 'string'
-  ) {
-    const sectionIndex = fieldPath[1];
-    const sections = data.sections;
-    if (!Array.isArray(sections) || sectionIndex < 0 || sectionIndex >= sections.length) {
-      throw new Error('That media block path no longer exists.');
-    }
-    if (sections[sectionIndex] !== node) {
-      throw new Error('That media block path no longer exists.');
-    }
-    const [removed] = sections.splice(sectionIndex, 1);
-    return removed;
-  }
-
-  throw new Error('That block does not hold removable media.');
 }
 
 /**

@@ -79,6 +79,47 @@ test('detects mixed-case authoring attributes on real elements', async () => {
   finally { await rm(root, { recursive: true, force: true }); }
 });
 
+const playgroundPath = 'preview/editor-playground/index.html';
+const playgroundPolicy = "connect-src 'none'; form-action 'none'; worker-src 'none'; object-src 'none'; base-uri 'none'; frame-src 'self'";
+const playgroundDocument = (policy) => (
+  `<html data-editor-playground><head><meta http-equiv="Content-Security-Policy" content="${policy}"></head><body>`
+  + '<button data-dev-image-drop>Choose image</button><script type="module" src="/scripts/playground.js"></script></body></html>'
+);
+const playgroundScripts = {
+  'scripts/playground.js': 'import "./authoring.js";',
+  'scripts/authoring.js': 'fetch("/api/content-batch");',
+};
+
+test('accepts authoring only in the isolated playground document and its exclusive modules', async () => {
+  const root = await fixture({
+    'index.html': '<iframe sandbox="allow-scripts allow-same-origin" src="/preview/editor-playground"></iframe>',
+    [playgroundPath]: playgroundDocument(playgroundPolicy),
+    ...playgroundScripts,
+  });
+  try {
+    assert.equal((await checkProductionOutput(root)).htmlFiles, 2);
+    await writeFile(join(root, 'index.html'), '<script type="module">import("./scripts/playground.js");</script>');
+    await assert.rejects(checkProductionOutput(root), /scripts\/authoring\.js: authoring API endpoint/);
+    await writeFile(join(root, 'index.html'), '<main>Public page</main>');
+    await writeFile(join(root, 'scripts/playground.js'), 'console.log("No authoring import");');
+    await assert.rejects(checkProductionOutput(root), /scripts\/authoring\.js: authoring API endpoint/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('rejects permissive playground CSP and authoring on lookalike routes', async () => {
+  const root = await fixture({
+    'index.html': '<main>Public page</main>',
+    [playgroundPath]: playgroundDocument(`connect-src 'self'; ${playgroundPolicy}`),
+    ...playgroundScripts,
+  });
+  try {
+    await assert.rejects(checkProductionOutput(root), /unsafe playground policy; require connect-src 'none'/);
+    await writeFile(join(root, playgroundPath), playgroundDocument(playgroundPolicy));
+    await writeFile(join(root, 'preview/editor-playground-copy.html'), playgroundDocument(playgroundPolicy));
+    await assert.rejects(checkProductionOutput(root), /scripts\/authoring\.js: authoring API endpoint/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('CLI reports a concise path diagnostic and nonzero status', async () => {
   const root = await fixture({ 'index.html': '<main>Public</main>', 'nested/app.mjs': 'fetch("/api/publish")' });
   const scriptDir = await mkdtemp(join(process.cwd(), 'scripts/test/production boundary-'));

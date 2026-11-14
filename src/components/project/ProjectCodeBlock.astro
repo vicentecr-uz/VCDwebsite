@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { Code } from 'astro:components';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import ProjectCodeCopy from './ProjectCodeCopy.astro';
@@ -19,7 +20,7 @@ interface Props {
 
 const { options, documentKey, sectionPath, spacing = 'group', sectionId, contentId, maxLines } = Astro.props;
 const lines = Number.isInteger(maxLines) && maxLines! > 0 ? maxLines : undefined;
-const editable = import.meta.env.DEV && documentKey && sectionPath;
+const editable = isEditableDocument(documentKey) && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 ---
 
@@ -71,7 +72,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 <script>
   import './optionPanels';
   import './codeBlockScroll';
-  if (import.meta.env.DEV) void import('./codeBlockResize');
+  if (import.meta.env.DEV || document.documentElement.hasAttribute('data-editor-playground')) void import('./codeBlockResize');
 </script>
 
 <style>
