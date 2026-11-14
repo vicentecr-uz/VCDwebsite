@@ -21,8 +21,8 @@ const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 
 const title = 'A long title that runs past the edge of the field';
-const field = (input: string, { dir, before = '', after = '', stable = false }: { dir?: string; before?: string; after?: string; stable?: boolean } = {}) =>
-  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input${stable ? " stable-input" : ""}>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
+const field = (input: string, { dir, before = '', after = '', grow = false }: { dir?: string; before?: string; after?: string; grow?: boolean } = {}) =>
+  `<label class="sabi-page-field"${dir ? ` dir="${dir}"` : ''}>\n  <sabi-input${grow ? " grow-input" : ""}>\n${before}    ${input}\n${after}  </sabi-input>\n</label>`;
 
 // Each option's markup is both the live preview and the code shown under it.
 const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
@@ -39,8 +39,8 @@ const SABI_EXAMPLES: Record<string, Array<{ label: string; html: string }>> = {
     { label: 'Mixed', html: field('<input aria-label="חיפוש" dir="auto" value="הזמנה מספר 48213 עבור Acme Corporation נשלחה ל-London" />', { dir: 'rtl', before: '    <span>חיפוש:</span>\n' }) },
   ],
   'stable-input': [
-    { label: 'Growing', html: field('<input aria-label="Text" value="Sabi" />') },
-    { label: 'Stable width', html: field('<input aria-label="Text" value="Sabi" />', { stable: true }) },
+    { label: 'Stable width', html: field('<input aria-label="Text" value="Sabi" />') },
+    { label: 'Growing', html: field('<input aria-label="Text" value="Sabi" />', { grow: true }) },
   ],
   fade: [
     { label: 'Default', html: field(`<input aria-label="Title" value="${title}" />`) },
