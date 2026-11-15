@@ -1,5 +1,10 @@
 import type { createPageScope } from './pageLifecycle';
 
+export function inspectorWantsShellViewport(stack: string): boolean {
+  return /(?:handleMouseMove|constrainPosition)\b[^\n]*agentation/i.test(stack)
+    || /\b(?:viewport|onPointerMove|onPointerUp)\b[^\n]*lapse/i.test(stack);
+}
+
 export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const cookies = document.cookie.split(';').map((cookie) => cookie.trim());
   if (!cookies.includes('vcd-canvas=1') || !cookies.includes('vcd-canvas-chrome=1')
@@ -75,6 +80,51 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
         Object.defineProperty(type, Symbol.hasInstance, { configurable: true,
           value: (value: unknown) => hasInstance.call(type, value) || hasInstance.call(other, value) });
       });
+    }
+  };
+  const viewportProperties = [
+    { target: window, name: 'innerWidth', shell: () => host.defaultView!.innerWidth },
+    { target: window, name: 'innerHeight', shell: () => host.defaultView!.innerHeight },
+    { target: root, name: 'clientWidth', shell: () => hostRoot.clientWidth },
+    { target: root, name: 'clientHeight', shell: () => hostRoot.clientHeight },
+  ].map(({ target, name, shell }) => {
+    const own = Object.getOwnPropertyDescriptor(target, name);
+    let native = own;
+    let prototype = Object.getPrototypeOf(target);
+    while (!native && prototype) {
+      native = Object.getOwnPropertyDescriptor(prototype, name);
+      prototype = Object.getPrototypeOf(prototype);
+    }
+    const getter = native?.get;
+    const read = getter ? () => getter.call(target) : () => native?.value;
+    return { target, name, shell, own, read };
+  });
+  let viewportPatched = false;
+  const restoreInspectorViewport = () => {
+    if (!viewportPatched) return;
+    for (const { target, name, own } of viewportProperties) {
+      if (own) Object.defineProperty(target, name, own);
+      else Reflect.deleteProperty(target, name);
+    }
+    viewportPatched = false;
+  };
+  const syncInspectorViewport = () => {
+    const hoisted = active && [...moved.keys()].some((node) => node.matches(inspectorSelector)
+      && node.isConnected && node.ownerDocument === host);
+    if (!hoisted) { restoreInspectorViewport(); return; }
+    if (viewportPatched) return;
+    if (viewportProperties.some(({ own }) => own && !own.configurable)) return;
+    viewportPatched = true;
+    // Deliberate dev-only corner-cut: package function names identify inspector reads.
+    // Renamed functions fail safe to today's viewport. Upgrade to an upstream custom
+    // viewport option or bun patch when these packages support a sturdier integration.
+    try {
+      for (const { target, name, shell, read } of viewportProperties) {
+        Object.defineProperty(target, name, { configurable: true, get: () =>
+          inspectorWantsShellViewport(new Error().stack ?? '') ? shell() : read() });
+      }
+    } catch {
+      restoreInspectorViewport();
     }
   };
   const restoreLookups = () => {
@@ -172,6 +222,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     agentation?.observer.disconnect();
     agentation?.wrapper.remove();
     agentationWrappers.delete(node);
+    syncInspectorViewport();
     notifyMoved();
   };
   const beforeAgentationClose = () => {
@@ -187,6 +238,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     mousePressed = false;
     lastPointerTarget = null;
     restoreLookups();
+    restoreInspectorViewport();
     shareRealms(false);
     for (const node of moved.keys()) restoreNode(node);
     for (const clone of styles.values()) clone.remove();
@@ -221,6 +273,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     } else layer.append(node);
     if (open) (node as HTMLElement).showPopover();
     focused?.focus({ preventScroll: true });
+    syncInspectorViewport();
     notifyMoved();
   };
   const hoist = () => {
@@ -266,8 +319,9 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
       }
     }
     if (records.some((record) => record.removedNodes.length)) {
-      for (const [node, placeholder] of moved) if (!placeholder.isConnected) restoreNode(node);
+      for (const [node, placeholder] of moved) if (!placeholder.isConnected || !node.isConnected) restoreNode(node);
     }
+    syncInspectorViewport();
   });
   const onToggle = (event: Event) => {
     const node = event.target as HTMLElement;
@@ -279,19 +333,19 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     }
     const placeholder = moved.get(node);
     if (!placeholder || (event as ToggleEvent).newState !== 'closed') return;
-    moved.delete(node);
-    placeholder.replaceWith(node);
-    notifyMoved();
+    restoreNode(node);
   };
   document.addEventListener('toggle', onToggle, true);
   layer.addEventListener('toggle', onToggle, true);
   bodyObserver.observe(document.body, { childList: true, subtree: true });
+  bodyObserver.observe(layer, { childList: true, subtree: true });
   const cleanup = () => {
     stopped = true;
     stateObserver.disconnect();
     headObserver.disconnect();
     bodyObserver.disconnect();
     if (active) restore();
+    restoreInspectorViewport();
     for (const type of eventTypes) layer.removeEventListener(type, onLayerEvent);
     layer.removeEventListener('toggle', onToggle, true);
     host.removeEventListener('mousedown', rememberMouse, true);

@@ -4,11 +4,11 @@ import { readFileSync } from 'node:fs';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createPortal, flushSync } from 'react-dom';
-import { hoistCanvasChrome } from '../../src/lib/canvasChrome';
+import { hoistCanvasChrome, inspectorWantsShellViewport } from '../../src/lib/canvasChrome';
 import { clampToViewport } from '../../src/lib/floatingLayer';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
-function fixture(cookies = 'both', editing = true) {
+function fixture(cookies = 'both', editing = true, configure?: (frame: Window, shell: Window) => void) {
   const frame = new Window({ url: 'http://localhost:4360/' });
   const shell = new Window({ url: 'http://localhost:4360/' });
   frame.name = 'vcd-canvas';
@@ -51,7 +51,8 @@ function fixture(cookies = 'both', editing = true) {
       cleanups.push(() => target.removeEventListener(type, fn));
     },
   };
-  new Function('window', 'document', 'MutationObserver', `return (${hoistCanvasChrome.toString()});`)(frame, document, frame.MutationObserver)(scope);
+  configure?.(frame, shell);
+  new Function('window', 'document', 'MutationObserver', 'inspectorWantsShellViewport', `return (${hoistCanvasChrome.toString()});`)(frame, document, frame.MutationObserver, inspectorWantsShellViewport)(scope);
   const cleanup = () => cleanups.splice(0).reverse().forEach((fn) => fn());
   return { frame, shell, document, roots, original, cleanup,
     async dispose() { cleanup(); await frame.happyDOM.abort(); await shell.happyDOM.abort(); } };
@@ -438,6 +439,9 @@ test('hoists nested Agentation toolbar, mirrors ancestor attributes and variable
 
 for (const close of ['orphan', 'before-close', 'pagehide', 'astro:before-swap', 'cleanup']) test(`Agentation ${close} releases toolbar and wrapper`, async () => {
   const f = fixture();
+  const properties = [[f.frame, 'innerWidth'], [f.frame, 'innerHeight'],
+    [f.document.documentElement, 'clientWidth'], [f.document.documentElement, 'clientHeight']] as const;
+  const descriptors = properties.map(([target, name]) => Object.getOwnPropertyDescriptor(target, name));
   try {
     const { root, toolbar, original } = addAgentation(f);
     await flush();
@@ -448,6 +452,7 @@ for (const close of ['orphan', 'before-close', 'pagehide', 'astro:before-swap', 
     else (close === 'pagehide' ? f.frame : f.document).dispatchEvent(new f.frame.Event(close));
     await flush();
     expect(wrapper.isConnected).toBe(false);
+    properties.forEach(([target, name], index) => expect(Object.getOwnPropertyDescriptor(target, name)).toEqual(descriptors[index]));
     if (close === 'orphan') expect(toolbar.isConnected).toBe(false);
     else {
       expect(toolbar.parentElement).toBe(root);
@@ -520,4 +525,59 @@ test('a hoisted React body portal handles a toolbar click exactly once and unmou
     else delete (globalThis as any).window;
     await f.dispose();
   }
+});
+
+for (const [name, file] of [
+  ['handleMouseMove', 'agentation'], ['constrainPosition', 'agentation'],
+  ['viewport', 'lapse'], ['onPointerMove', 'lapse'], ['onPointerUp', 'lapse'],
+]) test(`recognises ${name} in V8 and Firefox inspector stacks`, () => {
+  expect(inspectorWantsShellViewport(`Error\n    at ${name} (http://localhost/${file}.js:1:2)`)).toBe(true);
+  expect(inspectorWantsShellViewport(`${name}@http://localhost/${file}.js:1:2`)).toBe(true);
+});
+
+test('header and unrelated stack lines keep the page viewport', () => {
+  expect(inspectorWantsShellViewport('Error\n at updateHeader (http://localhost/Header.js:1:2)')).toBe(false);
+  expect(inspectorWantsShellViewport('at constrainPosition (http://localhost/Header.js:1:2)\nat render (http://localhost/agentation.js:1:2)')).toBe(false);
+  expect(inspectorWantsShellViewport('')).toBe(false);
+});
+
+test('inspector viewport overrides use the shell only for tools and restore exact descriptors', async () => {
+  const f = fixture('both', true, (frame, shell) => {
+    Object.defineProperties(frame, {
+      innerWidth: { configurable: true, get: () => 390 },
+      innerHeight: { configurable: true, get: () => 844 },
+    });
+    Object.defineProperties(frame.document.documentElement, {
+      clientWidth: { configurable: true, get: () => 390 },
+      clientHeight: { configurable: true, get: () => 844 },
+    });
+    Object.defineProperties(shell, { innerWidth: { value: 1200 }, innerHeight: { value: 900 } });
+    Object.defineProperties(shell.document.documentElement, { clientWidth: { value: 1180 }, clientHeight: { value: 880 } });
+  });
+  const root = f.document.documentElement;
+  const properties = [[f.frame, 'innerWidth'], [f.frame, 'innerHeight'], [root, 'clientWidth'], [root, 'clientHeight']] as const;
+  const descriptors = properties.map(([target, name]) => Object.getOwnPropertyDescriptor(target, name));
+  const read = (file: string, name: string) => new Function('window', 'document',
+    `return function ${name}() { return [window.innerWidth, window.innerHeight, document.documentElement.clientWidth, document.documentElement.clientHeight]; }()\n//# sourceURL=http://localhost/${file}.js`)(f.frame, f.document);
+  try {
+    const { toolbar } = addAgentation(f);
+    const lapse = f.document.createElement('div');
+    lapse.setAttribute('data-lapse-slot', 'bottom-left');
+    f.document.body.append(lapse);
+    await flush();
+    expect(read('agentation', 'constrainPosition')).toEqual([1200, 900, 1180, 880]);
+    expect(read('lapse', 'viewport')).toEqual([1200, 900, 1180, 880]);
+    expect(read('Header', 'updateHeader')).toEqual([390, 844, 390, 844]);
+    f.frame.dispatchEvent(new f.frame.CustomEvent('vcd:agentation-before-close'));
+    expect(read('lapse', 'viewport')).toEqual([1200, 900, 1180, 880]);
+    lapse.remove();
+    await flush();
+    properties.forEach(([target, name], index) => expect(Object.getOwnPropertyDescriptor(target, name)).toEqual(descriptors[index]));
+    expect(toolbar.ownerDocument).toBe(f.document);
+    f.document.body.append(lapse);
+    await flush();
+    expect(read('lapse', 'viewport')).toEqual([1200, 900, 1180, 880]);
+    f.cleanup();
+    properties.forEach(([target, name], index) => expect(Object.getOwnPropertyDescriptor(target, name)).toEqual(descriptors[index]));
+  } finally { await f.dispose(); }
 });

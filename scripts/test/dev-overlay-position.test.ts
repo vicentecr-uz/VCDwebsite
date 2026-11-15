@@ -229,3 +229,33 @@ test('hoisted overlay ignores page resize and unrelated chrome moves but follows
   expect(positions).toBe(1);
   listeners.forEach(([target, type, fn]) => target.removeEventListener(type, fn));
 });
+
+test('window resize preserves current coordinates, clamps edges and persists the new fractions', () => {
+  const f = fixture();
+  const start = component.indexOf('    const onViewportResize =');
+  const end = component.indexOf('    let viewportWindow:', start);
+  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(component.slice(start, end) + '\nreturn onViewportResize;');
+  const resize = new Function('window', 'overlay', 'embedded', 'portraitScheduleConstrain', 'applyPosition', compiled)(
+    f.window, f.overlay, false, null, f.position.applyPosition,
+  );
+  f.position.applyPosition(300, 240, true);
+  f.window.innerWidth = 1200;
+  f.window.innerHeight = 1000;
+  resize();
+  expect(f.overlay.style.left).toBe('300px');
+  expect(f.overlay.style.top).toBe('240px');
+  expect(JSON.parse(f.window.localStorage.getItem('devOverlay:test:position')!)).toEqual({ x: 0.25, y: 0.24 });
+  f.window.innerWidth = 400;
+  f.window.innerHeight = 300;
+  resize();
+  expect(f.overlay.style.left).toBe('200px');
+  expect(f.overlay.style.top).toBe('140px');
+  expect(JSON.parse(f.window.localStorage.getItem('devOverlay:test:position')!)).toEqual({ x: 0.5, y: 140 / 300 });
+  f.position.restorePosition();
+  expect(f.overlay.style.left).toBe('200px');
+  expect(f.overlay.style.top).toBe('140px');
+  f.overlay.hidden = true;
+  f.window.innerWidth = 250;
+  resize();
+  expect(f.overlay.style.left).toBe('200px');
+});

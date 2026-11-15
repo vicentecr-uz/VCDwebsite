@@ -153,12 +153,15 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     }
     if (!fluxActive) anchor = pickAnchor();
     postFlux(true);
-    const start = performance.now();
+    // The page's clock, so an inspector that slows time in the page (Lapse) slows the morph with it.
+    const clock = () => { try { return frame.contentWindow?.performance.now() ?? performance.now(); } catch { return performance.now(); } };
+    const start = clock();
     const omega = 2 * Math.PI / (0.35 * 1.2);
-    const tick = (now: number) => {
+    const tick = () => {
       if (token !== revision || scope.signal.aborted) return;
       const target = geometry();
-      const t = (now - start) / 1000;
+      const elapsed = clock() - start;
+      const t = (elapsed < 0 ? 10000 : elapsed) / 1000; // the page reloaded mid-morph: land now
       const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
       if (1 - x <= 0.004) {
         finish(target);

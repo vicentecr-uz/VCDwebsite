@@ -870,7 +870,10 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     const onViewportResize = (event?: Event) => {
       if (event?.currentTarget === window && overlay.ownerDocument.defaultView !== window) return;
       portraitScheduleConstrain?.();
-      if (!embedded) applyPreferredPosition();
+      if (!embedded && !overlay.hidden) {
+        const rect = overlay.getBoundingClientRect();
+        applyPosition(rect.left, rect.top, true);
+      }
     };
     let viewportWindow: Window = window;
     const onChromeMoved = () => {

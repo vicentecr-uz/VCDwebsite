@@ -78,6 +78,7 @@ const { label, class: className, ...rest } = Astro.props;
 
   document.addEventListener('click', (event) => {
     const button = event.target instanceof Element && event.target.closest<HTMLButtonElement>('button.dev-btn');
+    if (button && button.ownerDocument !== document) return;
     const group = button && button.parentElement;
     if (!group?.matches('.dev-segmented[data-slide-selection]')) return;
 

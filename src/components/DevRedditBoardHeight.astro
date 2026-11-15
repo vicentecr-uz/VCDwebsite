@@ -162,7 +162,7 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
     const positionPanel = () => {
-      if (sliderPointerId !== null || !grabber || panel.hidden) return;
+      if (document.documentElement.hasAttribute('data-viewport-flux') || sliderPointerId !== null || !grabber || panel.hidden) return;
       const rect = grabber.getBoundingClientRect();
       const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
       panel.style.left = `${left}px`;
@@ -359,7 +359,9 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     for (const query of ['(max-width: 36em)', '(max-width: 52em)']) {
       scope.listen(matchMedia(query), 'change', syncViewport);
     }
-    scope.listen(window, 'vcd:viewport-flux-frame', positionPanel);
+    scope.listen(window, 'vcd:viewport-flux-end', () => {
+      scope.frame(() => scope.frame(positionPanel));
+    });
     scope.listen(window, 'resize', positionPanel);
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];

@@ -352,6 +352,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     let mobileHeader = false;
     // A header docked at a wide width stays docked through a phone-width spell and back.
     let dockedBeforeMobile = false;
+    let mobileSliding = false;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
@@ -491,6 +492,9 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       const isMobile = window.innerWidth <= 767;
       if (isMobile) {
         if (!mobileHeader) dockedBeforeMobile = mode === 'docked';
+        // A header that is off-screen when the phone layout takes over slides in, as it does when it docks for the menu.
+        // The phone layout already pins it, so its rect cannot say it was hidden; the mode and scroll position can.
+        const slideFrom = !mobileHeader && mode !== 'docked' && window.scrollY > headerHeight ? headerHeight : 0;
         if (updateFrame !== null) {
           cancelAnimationFrame(updateFrame);
           updateFrame = null;
@@ -508,7 +512,22 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         header.classList.remove('is-scrolled-hidden');
         header.style.opacity = '';
         header.style.pointerEvents = '';
-        header.style.transform = '';
+        if (slideFrom > 0) {
+          mobileSliding = true;
+          header.style.transition = 'none';
+          header.style.transform = `translateY(${-slideFrom}px)`;
+          void header.offsetHeight;
+          header.style.transition = 'transform 0.3s ease';
+          header.style.transform = 'translateY(0)';
+          setTimeout(() => {
+            if (!mobileSliding) return;
+            mobileSliding = false;
+            header.style.transition = '';
+            header.style.transform = '';
+          }, 350);
+        } else if (!mobileSliding) {
+          header.style.transform = '';
+        }
       } else if (mobileHeader) {
         if (dockedBeforeMobile && mode === 'docked') {
           header.style.top = `${-headerChromeHeight()}px`;
