@@ -47,10 +47,10 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
   <div class:list={['project-block', 'project-interactive-demo', frame === 'default' && 'demo-frame', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} data-demo-frame={frame} data-interactive-demo={demo.id} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} style={`--demo-height:${demo.height}rem;--demo-narrow-height:${'narrowHeight' in demo ? demo.narrowHeight : demo.height}rem`} {...(spacingAttrs ?? {})}>
     {demo.id === 'gap-spacing' && <p class="project-interactive-demo__mobile-notice">This demo is currently optimized for desktop</p>}
     <project-demo-content class="project-interactive-demo__content" data-demo-loading={embedded || undefined} aria-busy={embedded ? 'true' : undefined} popover={expandable ? 'manual' : undefined}>
-      {expandable && <Button class="playground-expand" label="" raised aria-label="Expand demo" aria-expanded="false" data-playground-expand>
+      {expandable && <Button class="playground-expand" label="" aria-label="Expand demo" aria-expanded="false" data-playground-expand>
         <Fragment slot="icon">
-          <span data-expand-icon set:html={sizeIcon(maximizeIcon, 18)} />
-          <span data-minimize-icon set:html={sizeIcon(minimizeIcon, 18)} />
+          <span data-expand-icon set:html={sizeIcon(maximizeIcon, 16)} />
+          <span data-minimize-icon set:html={sizeIcon(minimizeIcon, 16)} />
         </Fragment>
       </Button>}
       {embedded && <span class="project-interactive-demo__loading page-loading-indicator" role="status" aria-label="Loading demo" set:html={loadingSpinner} />}
@@ -160,11 +160,6 @@ const authoring = import.meta.env.DEV && documentKey && sectionPath && contentId
     right: max(8px, env(safe-area-inset-right));
     top: max(8px, env(safe-area-inset-top));
     z-index: 4;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
   }
 
   [data-minimize-icon], .playground-expand[aria-expanded='true'] [data-expand-icon] { display: none; }
