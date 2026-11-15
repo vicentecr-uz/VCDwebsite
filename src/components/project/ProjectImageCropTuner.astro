@@ -1116,7 +1116,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const target = image.closest<HTMLElement>('[data-dev-image-target]');
       const original = image.classList.contains('project-grid__img--hover')
         ? target?.dataset.devHoverImageSrc : target?.dataset.devImageSrc;
-      return canonicalSrcFromUrl(original ? projectImage(original) : image.src || image.currentSrc);
+      const src = original ? projectImage(original) : image.src || image.currentSrc;
+      return original && src.startsWith('blob:') ? original : canonicalSrcFromUrl(src);
     };
 
     const readTargetDims = (image: HTMLImageElement | null) => {

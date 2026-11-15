@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import ProjectVideoControls from './ProjectVideoControls.astro';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
@@ -61,7 +62,7 @@ if (!resolvedSrc) {
 }
 ---
 
-<div id={sectionId} class:list={['project-block', stackClass, sectionId && 'section-block']} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}>
+<div id={sectionId} class:list={['project-block', stackClass, sectionId && 'section-block']} data-site-annotation-section-id={contentId} data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}>
   {resolvedSrc ? (
     <div class="project-video-player" data-project-video style={containerStyle}>
       <media-controller
@@ -90,7 +91,7 @@ if (!resolvedSrc) {
   ) : (
     <div class="project-video-player project-video-player--empty" style={containerStyle}></div>
   )}
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </div>
 
 {(resolvedSrc || import.meta.env.DEV) && <ProjectVideoControls />}

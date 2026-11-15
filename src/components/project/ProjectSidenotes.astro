@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
@@ -21,7 +22,7 @@ const {
   contentId,
   annotations,
 } = Astro.props;
-const editable = import.meta.env.DEV && documentKey;
+const editable = isEditableDocument(documentKey) && documentKey;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 
 ---
@@ -31,7 +32,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   class:list={['project-block', 'sidenotes', projectStackClass(spacing), sectionId && 'section-block']}
   {...(spacingAttrs ?? {})}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={editable ? documentKey : undefined}
   data-dev-section-deletable={editable ? 'sidenotes' : undefined}
 >
   {items.map((item, index) => {
@@ -82,7 +83,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       </div>
     );
   })}
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </section>
 
 <script>

@@ -15,12 +15,7 @@ const PREVIEW_SUFFIX = '.preview.webp';
 const POSTER_SUFFIX = '.poster.webp';
 const execFileAsync = promisify(execFile);
 
-/** @param {string} token */
-export function isDerivativeToken(token) {
-  const base = path.basename(token);
-  return base.endsWith(THUMB_SUFFIX) || base.endsWith(PREVIEW_SUFFIX)
-    || (base.endsWith(POSTER_SUFFIX) && isVideoSrc(derivativeStem(token) ?? ''));
-}
+export { isDerivativeToken } from '../src/lib/contentAuthoringMedia.mjs';
 
 /** @param {string} token @returns {'thumb' | 'preview' | 'poster' | null} */
 export function derivativeKind(token) {

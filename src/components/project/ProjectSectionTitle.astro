@@ -1,4 +1,5 @@
 ---
+import { isEditableDocument } from '../../lib/playgroundDocument.mjs';
 import {
   projectStackClass,
   spacingDevAttrs,
@@ -64,7 +65,7 @@ const showTitle = {
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
-const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
+const editable = isEditableDocument(documentKey) && documentKey && sectionPath?.length;
 const deletable = Boolean(editable);
 const rawIntroHeight = Number(introHeight);
 const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
@@ -96,7 +97,7 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
   data-dev-section-title={editable ? 'true' : undefined}
   data-dev-show-title={editable ? JSON.stringify(showTitle) : undefined}
   data-site-annotation-section-id={contentId}
-  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
+  data-site-annotation-document={isEditableDocument(documentKey) ? documentKey : undefined}
 >
   <Tag
     class="project-section-title"
@@ -104,5 +105,5 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
     data-dev-text-path={editable ? JSON.stringify([...sectionPath, 'title']) : undefined}
     data-dev-text-kind={editable ? 'text' : undefined}
   >{title}</Tag>
-  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
+  {contentId && (isEditableDocument(documentKey) || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer authoring={isEditableDocument(documentKey)} sectionId={contentId} annotations={annotations} />}
 </div>

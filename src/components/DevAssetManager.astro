@@ -129,6 +129,8 @@ const { documentKey = '' } = Astro.props;
   let thumbObserver = null;
 
   const thumbUrlFor = (asset) => {
+    if (asset.thumb) return asset.thumb;
+    if (asset.url.startsWith('blob:')) return asset.url;
     const lower = asset.filename.toLowerCase();
     if (lower.endsWith('.svg') || lower.endsWith('.gif')) return asset.url;
     return `${asset.url}?w=${THUMB_WIDTH}`;
@@ -260,8 +262,9 @@ const { documentKey = '' } = Astro.props;
       const trash = document.createElement('button');
       trash.type = 'button';
       trash.className = 'dev-asset-manager__trash';
-      trash.title = 'Delete from cloud';
-      trash.setAttribute('aria-label', `Delete ${asset.filename} from cloud`);
+      const destination = document.documentElement.hasAttribute('data-editor-playground') ? 'demo library' : 'cloud';
+      trash.title = `Delete from ${destination}`;
+      trash.setAttribute('aria-label', `Delete ${asset.filename} from ${destination}`);
       trash.innerHTML = sizeIcon(trashIcon);
 
       scope.listen(button, 'click', () => {
@@ -323,7 +326,10 @@ const { documentKey = '' } = Astro.props;
   };
 
   const deleteAsset = async (asset) => {
-    const ok = window.confirm(`Delete “${asset.filename}” forever?\n\nThis removes the file from disk and any places it appears on the site.`);
+    const playground = document.documentElement.hasAttribute('data-editor-playground');
+    const ok = window.confirm(playground
+      ? `Remove “${asset.filename}” and its uses in the demo?`
+      : `Delete “${asset.filename}” forever?\n\nThis removes the file from disk and any places it appears on the site.`);
     if (!ok) return;
     try {
       const response = await pageFetch('/api/assets', {
@@ -487,7 +493,7 @@ const { documentKey = '' } = Astro.props;
 
   scope.listen(document, 'keydown', (event) => {
     if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyA')) return;
-    if (isTypingTarget(event.target)) return;
+    if (document.documentElement.hasAttribute('data-compact-editor') || isTypingTarget(event.target)) return;
 
     if (overlay instanceof HTMLElement && !overlay.hidden) {
       event.preventDefault();

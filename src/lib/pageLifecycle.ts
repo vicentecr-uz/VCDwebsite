@@ -43,15 +43,21 @@ export function onPageLoad(mount: () => void | Cleanup) {
   let cleanup: void | Cleanup;
   const unmount = () => { cleanup?.(); cleanup = undefined; main = undefined; };
   const boot = () => {
+    const root = document.documentElement;
+    if (root.hasAttribute('data-editor-playground') && !root.hasAttribute('data-playground-ready')) return;
     const next = document.getElementById('main-content');
     if (main === next) return;
     unmount(); main = next; cleanup = mount();
   };
   boot();
+  if (document.documentElement.hasAttribute('data-editor-playground')) {
+    document.addEventListener('vcd:playground-ready', boot, { once: true });
+  }
   document.addEventListener('astro:page-load', boot);
   document.addEventListener('astro:before-swap', unmount);
   return () => {
     unmount();
+    document.removeEventListener('vcd:playground-ready', boot);
     document.removeEventListener('astro:page-load', boot);
     document.removeEventListener('astro:before-swap', unmount);
   };

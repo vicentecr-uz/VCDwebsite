@@ -1,19 +1,20 @@
 ---
+const { playground = false } = Astro.props;
 const shortcuts = [
-  { key: '⌥E', name: 'Edit mode' },
+  { key: '⌥E', name: playground ? 'Edit / Preview' : 'Edit mode' },
   { key: '⌥M', name: 'Panels' },
   { key: '⌥A', name: 'Asset manager' },
-  { key: '⌥P', name: 'Gallery pages' },
-  { key: '⌥N', name: 'New project' },
-  { key: '⌥I', name: 'Log issue' },
-  { key: '⌥T', name: 'Theme' },
-  { key: '⌥C', name: 'Comment' },
-  { key: '⌥L', name: 'Lapse' },
+  { key: '⌥P', name: 'Gallery pages', owner: true },
+  { key: '⌥N', name: 'New project', owner: true },
+  { key: '⌥I', name: 'Log issue', owner: true },
+  { key: '⌥T', name: 'Theme', owner: true },
+  { key: '⌥C', name: 'Comment', owner: true },
+  { key: '⌥L', name: 'Lapse', owner: true },
   { key: '⌥S', name: 'Save' },
-  { key: '⌥⇧S', name: 'Save & Publish' },
+  { key: '⌥⇧S', name: 'Save & Publish', owner: true },
   { key: '⌥H', name: 'Shortcuts' },
   { key: '⌥1/2/3', name: 'Desktop/Tablet/Mobile preview' },
-];
+].filter((shortcut) => !playground || !shortcut.owner);
 ---
 
 <div class="dev-shortcuts-help" data-dev-shortcuts-help hidden>
@@ -117,7 +118,7 @@ const shortcuts = [
 
     scope.listen(document, 'keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyH') {
-        if (isTypingTarget(event.target)) return;
+        if (document.documentElement.hasAttribute('data-compact-editor') || isTypingTarget(event.target)) return;
         event.preventDefault();
         toggle(event.shiftKey);
         return;
@@ -130,6 +131,9 @@ const shortcuts = [
       event.stopImmediatePropagation();
       close();
     }, true);
+    scope.listen(window, 'vcd:editor-compact-change', () => {
+      if (document.documentElement.hasAttribute('data-compact-editor')) close();
+    });
   };
 
   initDevShortcutsHelp();

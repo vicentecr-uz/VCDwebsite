@@ -25,6 +25,9 @@ import Menu from './ui/Menu.astro';
 import ProjectSidenotes from './project/ProjectSidenotes.astro';
 import Button from './ui/Button.astro';
 
+interface Props { documentKey?: string }
+const { documentKey } = Astro.props;
+
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
 const formatItalicSvg = sizeIcon(italicIcon, 16);
@@ -38,7 +41,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
 ---
 
-<template data-divider-template><ProjectDivider documentKey="divider-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-divider-template><ProjectDivider documentKey={documentKey ?? "divider-template"} sectionPath={['sections', 0]} spacing="group" /></template>
 <template data-project-details-trigger-template><Button label="" emphasis="ghost" class="project-details__actions" data-project-details-actions data-dev-mode-only aria-label="Row actions" aria-haspopup="menu" aria-expanded="false"><span slot="icon" aria-hidden="true" set:html={sizeIcon(ellipsisIcon, 16)} /></Button></template>
 <template data-project-details-menu-template>
   <Menu class="dev-menu project-details-row-menu" role="menu" aria-label="Row actions" popover="manual">
@@ -48,11 +51,11 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
   </Menu>
 </template>
 
-<template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
-<template data-sidenotes-template><ProjectSidenotes documentKey="sidenotes-template" sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', continuation: '', note: '' }]} /></template>
+<template data-award-template><ProjectAward documentKey={documentKey ?? "award-template"} sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-sidenotes-template><ProjectSidenotes documentKey={documentKey ?? "sidenotes-template"} sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', continuation: '', note: '' }]} /></template>
 
 <div class="dev-text-action-stack">
-  <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(getProjectSlugsForBuild())} hidden>
+  <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(documentKey ? [documentKey] : getProjectSlugsForBuild())} hidden>
       <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
       <button type="button" data-dev-save-ledger aria-expanded="false" aria-controls="dev-save-ledger" hidden>
         <span data-dev-save-ledger-label></span>
@@ -213,6 +216,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
   } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   import { createPageScope, onPageLoad } from '../lib/pageLifecycle';
+  import { PLAYGROUND_PUBLISH_UNAVAILABLE, showPlaygroundNotice } from '../lib/playgroundFeedback.mjs';
   import {
     spacingButtonsHtml, pinGapToolbar as pinGapToolbarTop, unpinGapToolbar,
     GAP_ENTRY_RADIUS as SPACING_ENTRY_RADIUS_PX, GAP_RETENTION_RADIUS as SPACING_RETENTION_RADIUS_PX,
@@ -339,8 +343,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
   };
 
   const initDevTextEditor = () => {
-
-
+    const playground = document.documentElement.hasAttribute('data-editor-playground');
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
     const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
@@ -2795,7 +2798,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
       // so the bar keeps its shape while Publish becomes the next step.
       saveButton.hidden = false;
       commitStylesButton.hidden = publishReadOnly || !styleEngineDirtyCount;
-      publishButton.hidden = publishReadOnly || !publishKnown;
+      publishButton.hidden = !publishKnown || (publishReadOnly && !playground);
       if (!actionsBusy && !branchUpdateBusy) {
         saveButton.disabled = !dirtyCount;
         revertButton.disabled = false;
@@ -2813,7 +2816,8 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
       syncBranchUpdateBar();
     };
 
-    const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
+    const SCROLL_RESTORE_KEY = playground
+      ? 'vcd:editor-playground:scroll-y' : 'vcd-dev-scroll-y';
     const restoreScrollAfterReload = () => {
       const raw = sessionStorage.getItem(SCROLL_RESTORE_KEY);
       if (raw == null) return;
@@ -6864,6 +6868,10 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
       if (!(event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyS')) return;
       event.preventDefault();
       if (event.shiftKey) {
+        if (playground) {
+          if (!event.repeat && !event.isComposing) showPlaygroundNotice(PLAYGROUND_PUBLISH_UNAVAILABLE);
+          return;
+        }
         if (publishButton.hidden || publishButton.disabled || actionsBusy) return;
         publishButton.click();
         return;
@@ -6976,7 +6984,6 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
         const branch = state.branch || 'detached HEAD';
         const target = state.publishBranch ?? 'main';
         const onTarget = state.onPublishBranch !== false;
-        publishButton.hidden = publishReadOnly;
         if (!actionsBusy && !branchUpdateBusy) publishButton.disabled = false;
         branchLabel.hidden = false;
         branchLabel.textContent = branch;
@@ -7005,7 +7012,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
             + `If this edit uses those changes, ${target} cannot render it yet.`;
           warnLabel.title = warning;
           publishButton.title = `${warning} Publish will ask you to confirm.`;
-        } else {
+        } else if (!playground) {
           publishButton.title = onTarget
             ? `Save, commit, and push to ${target}`
             : `Save, commit, and push to ${target} — ${branch} stays as it is`;
@@ -7029,6 +7036,10 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
     };
 
     publishButton.addEventListener('click', () => {
+      if (playground) {
+        showPlaygroundNotice(PLAYGROUND_PUBLISH_UNAVAILABLE);
+        return;
+      }
       if (publishReadOnly) return;
       if (branchUpdateBusy) return;
       void (async () => {
@@ -7158,6 +7169,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
     });
 
     window.addEventListener('beforeunload', (event) => {
+      if (document.documentElement.hasAttribute('data-playground-resetting')) return;
       const draft = { dirty: false };
       window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: draft }));
       const hasContentEdits = actionsBusy || pageHistory.busy || draft.dirty

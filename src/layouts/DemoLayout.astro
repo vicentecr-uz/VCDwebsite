@@ -1,8 +1,8 @@
 ---
 import '../styles/global.css';
 
-interface Props { title: string; captureAssets?: boolean; scrolling?: boolean; authoring?: boolean }
-const { title, captureAssets = false, scrolling = false, authoring = false } = Astro.props;
+interface Props { title: string; captureAssets?: boolean; scrolling?: boolean; authoring?: boolean; playground?: boolean }
+const { title, captureAssets = false, scrolling = false, authoring = false, playground = false } = Astro.props;
 const connections = captureAssets ? "'self'" : "'none'";
 const policy = [
   "default-src 'self'",
@@ -11,6 +11,7 @@ const policy = [
   "font-src 'self'",
   "img-src 'self' data: blob:",
   `connect-src ${import.meta.env.DEV ? `${captureAssets ? connections : authoring ? "'self'" : ''} ws:` : connections}`,
+  ...(playground ? ["frame-src 'self'", "media-src 'self' blob:", "worker-src 'none'"] : []),
   "form-action 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -18,7 +19,7 @@ const policy = [
 ---
 
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" data-editor-playground={playground ? '' : undefined} data-compact-editor={playground ? '' : undefined}>
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content={policy} />

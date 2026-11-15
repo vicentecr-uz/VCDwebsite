@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { Draw, PEN_BY_ID, type DrawHandle, type Stroke } from 'drawesome';
 import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
-import { siteAnnotationSvg, siteAnnotationHasFreeInk } from './siteAnnotationSvg';
+import { siteAnnotationSvg, siteAnnotationHasFreeInk, renderSiteAnnotationLayer } from './siteAnnotationSvg';
 import { captureTextParts, editableTextStrokes } from './siteAnnotationTextParts';
 import { sendSiteDrawEvent } from './siteDrawMode';
 import { annotationRect, annotationBaseRect, annotationVisibleRect, rangeForOffsets, textPartRect, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
@@ -141,43 +141,7 @@ const annotationsFor = (target: Target) => {
 
 const renderCurrent = (target: Target) => {
   const entry = annotationsFor(target);
-  let layer = target.section.querySelector<HTMLElement>('[data-site-annotations]');
-  if (!layer) {
-    layer = document.createElement('div');
-    layer.className = 'site-annotations';
-    layer.setAttribute('data-site-annotations', '[]');
-    layer.setAttribute('aria-hidden', 'true');
-    target.section.append(layer);
-  }
-  layer.dataset.siteAnnotations = JSON.stringify(entry.current);
-  layer.replaceChildren(...entry.current.flatMap((annotation) => {
-    const images: HTMLImageElement[] = [];
-    const addImage = (partIndex?: number, sliceIndex?: number, strokeIndex?: number) => {
-      const image = document.createElement('img');
-      image.dataset.siteAnnotation = annotation.id;
-      if (partIndex !== undefined) {
-        image.dataset.siteAnnotationPart = String(partIndex);
-        image.dataset.siteAnnotationSlice = String(sliceIndex);
-      }
-      if (strokeIndex !== undefined) image.dataset.siteAnnotationStroke = String(strokeIndex);
-      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation,
-        partIndex !== undefined ? { partIndex, sliceIndex: sliceIndex! }
-          : strokeIndex !== undefined ? { strokeIndex } : undefined))}`;
-      image.alt = '';
-      image.draggable = false;
-      images.push(image);
-    };
-    if (annotation.textParts?.length) {
-      annotation.strokes.forEach((stroke, strokeIndex) => {
-        if (stroke.erase) return;
-        const parts = annotation.textParts!.map((part, partIndex) => ({ part, partIndex }))
-          .filter(({ part }) => part.strokeId === stroke.id);
-        if (parts.length) parts.forEach(({ part, partIndex }) => part.slices.forEach((_, sliceIndex) => addImage(partIndex, sliceIndex)));
-        else addImage(undefined, undefined, strokeIndex);
-      });
-    } else if (siteAnnotationHasFreeInk(annotation)) addImage();
-    return images;
-  }));
+  renderSiteAnnotationLayer(target.section, entry.current);
   updateCount(target);
   positionSiteAnnotations();
 };
@@ -977,6 +941,7 @@ window.visualViewport?.addEventListener('resize', launcherViewportChanged, { sig
 window.visualViewport?.addEventListener('scroll', launcherViewportChanged, { signal: lifecycle.signal });
 
 window.addEventListener('keydown', (event) => {
+  if (document.documentElement.hasAttribute('data-compact-editor')) return;
   suppressDrawingMenuClick = false;
   if (activeDrawingMenu) {
     if (event.key === 'Escape') {
@@ -1036,6 +1001,11 @@ window.addEventListener('vcd:dev-mode-change', (event) => {
   if (!active) closeStage();
   else bindButtons();
   syncLauncher(active);
+}, { signal: lifecycle.signal });
+window.addEventListener('vcd:editor-compact-change', () => {
+  if (!document.documentElement.hasAttribute('data-compact-editor')) return;
+  closeDrawingMenu();
+  closeStage();
 }, { signal: lifecycle.signal });
 const syncTargets = () => {
   closeDrawingMenu();
