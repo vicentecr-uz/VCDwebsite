@@ -113,26 +113,21 @@ const { label, class: className, ...rest } = Astro.props;
       oldPill?.remove();
       group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
 
-      // Move each edge independently without scaling the corners. A circular clip
-      // works for arc corners. Native continuous corners need the shaped box.
+      // Move each edge independently without scaling the corners, using transforms only so the
+      // slide stays smooth while the page is busy (a viewport preview morph reflows it every frame).
+      // The pill is a clip whose right edge is the selection's right edge; its fill is a same-size
+      // box whose left edge is the selection's left edge. What shows is the overlap, with the
+      // clip's corners on the right and the fill's own on the left.
       const target = box(next, group);
       const span = group.clientWidth;
-      const buttonStyle = getComputedStyle(next);
-      const shape = buttonStyle.getPropertyValue('corner-shape');
-      const continuous = shape === 'superellipse(1.33)';
-      const radius = buttonStyle.borderTopLeftRadius;
       const pill = document.createElement('span');
+      const fill = document.createElement('span');
       pill.className = 'dev-segmented__indicator';
       pill.setAttribute('aria-hidden', 'true');
-      Object.assign(pill.style, {
-        width: `${span}px`,
-        height: `${target.height}px`,
-        transform: `translateY(${target.top}px)`,
-        borderRadius: continuous ? radius : '0',
-      });
+      pill.append(fill);
+      Object.assign(pill.style, { width: `${span}px`, height: `${target.height}px` });
       next.setAttribute('data-segment-target', '');
       group.prepend(pill);
-      if (continuous) pill.style.setProperty('corner-shape', shape);
 
       const to = { left: target.left, right: target.left + target.width };
       const rightward = to.left > from.left;
@@ -145,12 +140,9 @@ const { label, class: className, ...rest } = Astro.props;
       for (; t < 3000 && !(resting(leftSpring, dl, t) && resting(rightSpring, dr, t)); t += STEP) edges.push([from.left + leftSpring(t / 1000, dl)[0], from.right + rightSpring(t / 1000, dr)[0]]);
       edges.push([to.left, to.right]);
 
-      const animation = pill.animate(
-        edges.map(([left, right]) => continuous
-          ? { width: `${Math.max(0, right - left)}px`, transform: `translate(${left}px, ${target.top}px)` }
-          : { clipPath: `inset(0 ${span - right}px 0 ${left}px round ${radius})` }),
-        { duration: t + STEP, easing: 'linear', fill: 'forwards' },
-      );
+      const timing = { duration: t + STEP, easing: 'linear', fill: 'forwards' } as const;
+      const animation = pill.animate(edges.map(([, right]) => ({ transform: `translate(${right - span}px, ${target.top}px)` })), timing);
+      fill.animate(edges.map(([left, right]) => ({ transform: `translateX(${Math.min(left, right) - right + span}px)` })), timing);
       flights.set(pill, { edges, animation });
       animation.onfinish = () => {
         if (pill.parentElement !== group) return;

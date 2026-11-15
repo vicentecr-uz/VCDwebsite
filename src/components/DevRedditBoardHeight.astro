@@ -161,8 +161,17 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       if (!gesture) recordHeight(root, before, { ...authored }, merge ? `board-height:${identity(root)}:${selected}` : undefined);
     };
     const preview = () => { if (root) breakpoints.forEach((breakpoint) => root!.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`)); };
+    // In the Edit canvas the page sits in a frame that moves and scales while a viewport preview morphs.
+    const frameBox = () => {
+      const rect = window.frameElement?.getBoundingClientRect();
+      return rect ? { x: rect.left, y: rect.top, scale: rect.width / window.innerWidth || 1 } : null;
+    };
+    let restBox = frameBox();
+    let held: { x: number; y: number } | null = null;
     const positionPanel = () => {
       if (document.documentElement.hasAttribute('data-viewport-flux') || sliderPointerId !== null || !grabber || panel.hidden) return;
+      restBox = frameBox();
+      held = null;
       const rect = grabber.getBoundingClientRect();
       const left = clamp(rect.left + rect.width / 2 - panel.offsetWidth / 2, 8, window.innerWidth - panel.offsetWidth - 8);
       panel.style.left = `${left}px`;
@@ -359,6 +368,15 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     for (const query of ['(max-width: 36em)', '(max-width: 52em)']) {
       scope.listen(matchMedia(query), 'change', syncViewport);
     }
+    // During the morph the panel holds its place in the browser window; it moves under the grabber once the board settles.
+    scope.listen(window, 'vcd:viewport-flux-frame', () => {
+      const box = frameBox();
+      if (panel.hidden || !box || !restBox) return;
+      held ??= { x: restBox.x + restBox.scale * Number.parseFloat(panel.style.left), y: restBox.y + restBox.scale * Number.parseFloat(panel.style.top) };
+      if (!Number.isFinite(held.x) || !Number.isFinite(held.y)) return;
+      panel.style.left = `${(held.x - box.x) / box.scale}px`;
+      panel.style.top = `${(held.y - box.y) / box.scale}px`;
+    });
     scope.listen(window, 'vcd:viewport-flux-end', () => {
       scope.frame(() => scope.frame(positionPanel));
     });

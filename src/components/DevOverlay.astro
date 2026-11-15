@@ -870,11 +870,21 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     const onViewportResize = (event?: Event) => {
       if (event?.currentTarget === window && overlay.ownerDocument.defaultView !== window) return;
       portraitScheduleConstrain?.();
+      // Dragging the window's left or top edge moves its origin by exactly what it resizes;
+      // shift the panel back by that much so it holds still on screen.
+      const win = overlay.ownerDocument.defaultView ?? window;
+      const next = { x: win.screenX, y: win.screenY, width: win.outerWidth, height: win.outerHeight };
+      const dx = next.x - screenBox.x;
+      const dy = next.y - screenBox.y;
+      const shiftX = dx && Math.abs(dx + next.width - screenBox.width) <= 1 ? dx : 0;
+      const shiftY = dy && Math.abs(dy + next.height - screenBox.height) <= 1 ? dy : 0;
+      screenBox = next;
       if (!embedded && !overlay.hidden) {
         const rect = overlay.getBoundingClientRect();
-        applyPosition(rect.left, rect.top, true);
+        applyPosition(rect.left - shiftX, rect.top - shiftY, true);
       }
     };
+    let screenBox = { x: window.screenX, y: window.screenY, width: window.outerWidth, height: window.outerHeight };
     let viewportWindow: Window = window;
     const onChromeMoved = () => {
       if (viewportWindow === (overlay.ownerDocument.defaultView ?? window)) return;

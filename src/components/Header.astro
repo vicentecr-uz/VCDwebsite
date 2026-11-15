@@ -350,8 +350,6 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     let updateFrame: number | null = null;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
     let mobileHeader = false;
-    // A header docked at a wide width stays docked through a phone-width spell and back.
-    let dockedBeforeMobile = false;
     let mobileSliding = false;
 
     const isSectionReorderDragging = () =>
@@ -491,7 +489,6 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     const syncMobileHeaderMode = () => {
       const isMobile = window.innerWidth <= 767;
       if (isMobile) {
-        if (!mobileHeader) dockedBeforeMobile = mode === 'docked';
         // A header that is off-screen when the phone layout takes over slides in, as it does when it docks for the menu.
         // The phone layout already pins it, so its rect cannot say it was hidden; the mode and scroll position can.
         const slideFrom = !mobileHeader && mode !== 'docked' && window.scrollY > headerHeight ? headerHeight : 0;
@@ -529,7 +526,8 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
           header.style.transform = '';
         }
       } else if (mobileHeader) {
-        if (dockedBeforeMobile && mode === 'docked') {
+        // The phone header is always showing, so away from the page top it stays showing at the wider width.
+        if (mode === 'docked' && window.scrollY > 8) {
           header.style.top = `${-headerChromeHeight()}px`;
           applyGeo();
         } else {
