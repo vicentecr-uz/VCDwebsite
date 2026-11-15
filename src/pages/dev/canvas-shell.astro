@@ -43,7 +43,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   type Preset = 'desktop' | keyof typeof presets;
   const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
   let preset: Preset = 'desktop';
-  let editActive = false;
   let raf = 0;
   let revision = 0;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -132,7 +131,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     }
   };
   const transition = (next: Preset) => {
-    if (next !== 'desktop' && !editActive) return;
     if (next === preset) return;
     preset = next;
     select();
@@ -200,10 +198,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       document.title = event.data.title;
       postPreset();
     }
-    if (event.data?.type === 'vcd-canvas-dev-mode') {
-      editActive = event.data.active === true;
-      if (!editActive && preset !== 'desktop') choose('desktop');
-    }
     if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) choose(event.data.preset);
   });
   scope.listen(controls, 'click', (event) => {
@@ -221,7 +215,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
         ? event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined
         : undefined;
       if (next) { event.preventDefault(); choose(next); return; }
-      if (event.key === 'Escape' && preset !== 'desktop') { event.preventDefault(); choose('desktop'); return; }
     }
     const child = frame.contentWindow as (Window & typeof globalThis) | null;
     if (!child || !frame.contentDocument) return;
