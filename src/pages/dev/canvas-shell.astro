@@ -73,14 +73,27 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     const middle = win.innerHeight / 2;
     let element: Element | undefined;
     let nearest = Infinity;
+    // A cropped or sliding image is larger than the box that shows it, and is re-cropped per viewport: hold that box.
+    const shown = (media: Element) => {
+      if (!media.matches('img, video')) return media;
+      const rect = media.getBoundingClientRect();
+      for (let parent = media.parentElement, depth = 0; parent && depth < 4; parent = parent.parentElement, depth += 1) {
+        const box = parent.getBoundingClientRect();
+        if ((box.height < rect.height - 1 || box.width < rect.width - 1) && win.getComputedStyle(parent).overflow !== 'visible') return parent;
+      }
+      return media;
+    };
     // Prefer the finest piece of content; a block can be several screens tall.
     for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
       for (const media of doc.querySelectorAll(selector)) {
-        // A cropped image is larger than the frame that shows it and is re-cropped per viewport; hold the frame.
-        const candidate = media.closest('.project-image-grid__frame, .project-crop-clip') ?? media;
+        const raw = media.getBoundingClientRect();
+        if (!raw.height || !raw.width || raw.bottom < 0 || raw.top > win.innerHeight) continue;
+        const candidate = shown(media);
         const rect = candidate.getBoundingClientRect();
-        if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight) continue;
-        const distance = rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0;
+        if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight || rect.right < 0 || rect.left > win.innerWidth) continue;
+        // Several pieces can span the middle; take the one centred nearest to it, not the first in the page.
+        const distance = (rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0) * 1000
+          + Math.abs(rect.top + rect.height / 2 - middle);
         if (distance < nearest) { nearest = distance; element = candidate; }
       }
       if (element) break;
