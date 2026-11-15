@@ -811,17 +811,19 @@ import Button from '../ui/Button.astro';
       clearOverrideButton.hidden = true;
     };
 
-    const renderDraft = () => {
-      viewportButtons.forEach((button) => {
-        const active = button.dataset.gridViewport === selectedViewport;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', active ? 'true' : 'false');
-      });
-      columnsSelect.value = String(draftColumns[selectedViewport]);
-      constrainedSelect.value = String(draftConstrained[selectedViewport]);
-      aspectSelect.value = draftAspect;
-      matchHeightInput.checked = draftMatchHeight;
-      renderBoard();
+    const renderDraft = (repaint = true) => {
+      if (repaint) {
+        viewportButtons.forEach((button) => {
+          const active = button.dataset.gridViewport === selectedViewport;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        columnsSelect.value = String(draftColumns[selectedViewport]);
+        constrainedSelect.value = String(draftConstrained[selectedViewport]);
+        aspectSelect.value = draftAspect;
+        matchHeightInput.checked = draftMatchHeight;
+        renderBoard();
+      }
       applyColumnsLive();
       applyConstrainedLive();
       applyAspectLive();
@@ -952,7 +954,7 @@ import Button from '../ui/Button.astro';
       if (target) selectTarget(target, true);
     }) as EventListener);
 
-    const revertToSaved = () => {
+    const revertToSaved = (repaint = true) => {
       draftColumns = { ...savedColumns };
       draftConstrained = { ...savedConstrained };
       draftAspect = savedAspect;
@@ -960,13 +962,13 @@ import Button from '../ui/Button.astro';
       draftLayouts = cloneLayouts(savedLayouts);
       localHistory.clear();
       lastHistorySnapshot = snapshotDraft();
-      renderDraft();
+      renderDraft(repaint);
     };
 
     pageScope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'grid') return;
-      revertToSaved();
+      revertToSaved(false);
       liveApply = false;
       historyReady = false;
       unregisterHistoryScope?.(); unregisterHistoryScope = null;
@@ -1032,7 +1034,7 @@ import Button from '../ui/Button.astro';
     pageScope.listen(saveButton, 'click', saveDraft);
 
     pageScope.listen(cancelButton, 'click', () => {
-      revertToSaved();
+      revertToSaved(false);
       closePanel();
     });
 

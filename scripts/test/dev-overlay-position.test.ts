@@ -125,6 +125,7 @@ test('resizing suppresses position writes but still snaps, while content resize 
     f.position.applyPosition(...args);
   };
   new Function(
+    'window',
     'overlay',
     'embedded',
     'collapse',
@@ -141,6 +142,7 @@ test('resizing suppresses position writes but still snaps, while content resize 
     'setMinimized',
     observerCompiled,
   )(
+    f.window,
     f.overlay,
     false,
     collapse,
@@ -176,4 +178,54 @@ test('resizing suppresses position writes but still snaps, while content resize 
   callback([{ borderBoxSize: [{ blockSize: 120 }], contentRect: { height: 120 } }]);
   expect(positionWrites).toBe(1);
   expect(f.overlay.getBoundingClientRect().left).toBe(800);
+});
+
+test('portrait opening clears the stale natural cap before showing and schedules a fresh cap after opening', () => {
+  for (const height of ['', '220px']) {
+    const f = fixture();
+    f.overlay.classList.add('dev-overlay--portrait');
+    f.overlay.style.maxHeight = '280px';
+    f.overlay.style.height = height;
+    const frames: Array<() => void> = [];
+    let constrained = 0;
+    const showStart = component.indexOf('    const finishShow =');
+    const showEnd = component.indexOf('    const showOverlay =', showStart);
+    const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(component.slice(showStart, showEnd) + '\nfinishShow();');
+    new Function('overlay', 'body', 'setNativeHidden', 'restorePosition', 'scope', 'wantVisible', 'portraitScheduleConstrain', compiled)(
+      f.overlay, { scrollTop: 0 }, () => {
+        expect(f.overlay.style.maxHeight).toBe(height ? '280px' : '');
+      }, () => {}, { frame: (fn: () => void) => frames.push(fn) }, true, () => {
+        expect(f.overlay.classList.contains('is-dev-overlay-open')).toBe(true);
+        constrained++;
+      },
+    );
+    expect(constrained).toBe(0);
+    frames.shift()!();
+    frames.shift()!();
+    expect(constrained).toBe(1);
+  }
+});
+
+test('hoisted overlay ignores page resize and unrelated chrome moves but follows shell resize', () => {
+  const f = fixture();
+  const shell = new Window();
+  shell.document.body.append(f.overlay);
+  const listeners: Array<[EventTarget, string, EventListener]> = [];
+  let positions = 0;
+  const start = component.indexOf('    const onViewportResize =');
+  const end = component.indexOf('\n  };', start);
+  const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(component.slice(start, end).replace('import.meta.env.DEV', 'true'));
+  new Function('window', 'overlay', 'embedded', 'preferredPosition', 'portraitScheduleConstrain', 'applyPreferredPosition', 'applyPosition', 'scope', compiled)(
+    f.window, f.overlay, false, { x: 0.3, y: 0.3 }, () => {}, () => positions++, () => positions++, {
+      listen(target: EventTarget, type: string, fn: EventListener) { target.addEventListener(type, fn); listeners.push([target, type, fn]); },
+      add() {},
+    },
+  );
+  expect(positions).toBe(0);
+  f.window.dispatchEvent(new f.window.Event('resize'));
+  f.window.dispatchEvent(new f.window.Event('vcd:canvas-chrome-moved'));
+  expect(positions).toBe(0);
+  shell.dispatchEvent(new shell.Event('resize'));
+  expect(positions).toBe(1);
+  listeners.forEach(([target, type, fn]) => target.removeEventListener(type, fn));
 });

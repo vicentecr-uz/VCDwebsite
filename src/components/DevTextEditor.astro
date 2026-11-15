@@ -2649,11 +2649,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const path = event.composedPath();
       if (!path.includes(ledger) && !path.includes(actions)) closeLedger();
     }, { signal: editorSignal });
-    const onLedgerResize = () => {
+    const onLedgerResize = (event?: Event) => {
+      if (event?.currentTarget === window && actions.ownerDocument.defaultView !== window) return;
       if (ledger.matches(':popover-open')) placeLedger();
     };
     let ledgerWindow: Window = window;
     const onLedgerMoved = () => {
+      if (ledgerWindow === (actions.ownerDocument.defaultView ?? window)) return;
       if (ledgerWindow !== window) ledgerWindow.removeEventListener('resize', onLedgerResize);
       ledgerWindow = actions.ownerDocument.defaultView ?? window;
       if (ledgerWindow !== window) ledgerWindow.addEventListener('resize', onLedgerResize);

@@ -862,28 +862,30 @@ import ToggleRow from '../ui/ToggleRow.astro';
       parkingHint.hidden = parked.length > 0;
     };
 
-    const renderDraft = () => {
-      orientationButtons.forEach((button) => {
-        const active = button.dataset.carouselOrientation === draft.orientation;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', active ? 'true' : 'false');
-      });
-      viewportButtons.forEach((button) => {
-        const active = button.dataset.carouselViewport === selectedViewport;
-        button.classList.toggle('is-active', active);
-        button.setAttribute('aria-pressed', active ? 'true' : 'false');
-      });
-      const live = bp();
-      constrainedSelect.value = String(draftConstrained[selectedViewport]);
-      heightSelect.value = live.heightMode;
-      maxSelect.value = live.maxHeightVh ? String(live.maxHeightVh) : '';
-      pinnedInput.checked = live.scrollPinned;
-      dotsSelect.value = live.dotsPlacement;
-      const showInherit = selectedViewport !== 'desktop' && !live.overridden;
-      inheritNote.hidden = !showInherit;
-      // Figma Panel Actions: Revert + Save only.
-      clearOverrideButton.hidden = true;
-      renderBoard();
+    const renderDraft = (repaint = true) => {
+      if (repaint) {
+        orientationButtons.forEach((button) => {
+          const active = button.dataset.carouselOrientation === draft.orientation;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        viewportButtons.forEach((button) => {
+          const active = button.dataset.carouselViewport === selectedViewport;
+          button.classList.toggle('is-active', active);
+          button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        const live = bp();
+        constrainedSelect.value = String(draftConstrained[selectedViewport]);
+        heightSelect.value = live.heightMode;
+        maxSelect.value = live.maxHeightVh ? String(live.maxHeightVh) : '';
+        pinnedInput.checked = live.scrollPinned;
+        dotsSelect.value = live.dotsPlacement;
+        const showInherit = selectedViewport !== 'desktop' && !live.overridden;
+        inheritNote.hidden = !showInherit;
+        // Figma Panel Actions: Revert + Save only.
+        clearOverrideButton.hidden = true;
+        renderBoard();
+      }
       applyLive();
       applyConstrainedLive();
       const snapshot = snapshotDraft();
@@ -1005,7 +1007,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (editTarget) window.dispatchEvent(new CustomEvent('vcd:dev-convert-carousel-to-image', { detail: editTarget }));
     });
 
-    const revertToSaved = () => {
+    const revertToSaved = (repaint = true) => {
       if (!editTarget) return;
       draft = cloneDraft(saved);
       draftConstrained = { ...savedConstrained };
@@ -1013,13 +1015,13 @@ import ToggleRow from '../ui/ToggleRow.astro';
       lastHistorySnapshot = snapshotDraft();
       const wasLive = liveApply;
       liveApply = true;
-      renderDraft();
+      renderDraft(repaint);
       liveApply = wasLive;
     };
 
     const restoreOnClose = () => {
       if (!editTarget) return;
-      revertToSaved();
+      revertToSaved(false);
       liveApply = false;
       clearTunerPreview(editTarget);
       applyCarouselViewportSettings(editTarget, matchCarouselViewport());

@@ -966,9 +966,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       pushUndo(extra);
     };
 
-    const invalidateReplacement = () => {
+    const invalidateReplacement = (repaint = true) => {
       replacementAttempt += 1;
       replacementPending = false;
+      if (!repaint) return;
       saveButton.disabled = false;
       saveButton.textContent = 'Save changes';
       saveButton.removeAttribute('aria-busy');
@@ -1501,7 +1502,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncDraftDirty();
     };
 
-    const applyPageCrop = (target: HTMLElement, state: CropUndoEntry) => {
+    const applyPageCrop = (target: HTMLElement, state: CropUndoEntry, repaint = true) => {
       if (!target.isConnected) throw new Error('Restore this image before restoring its crop.');
       const listing = isListingCover(target);
       applyVariantsToTarget(target, state.allCover, { clearOwn: !state.ownVariants, hoverVariants: state.allHover, authored: state.authored });
@@ -1561,7 +1562,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         savedMaxVh = draftMaxVh = state.maxVhValue;
         savedMobileInset = draftMobileInset = state.mobileInset;
         savedBackground = draftBackground = state.background;
-        syncBackgroundControl();
+        if (repaint) syncBackgroundControl();
         savedSrc = draftSrc = listing && activeSlot === 'hover' ? state.hoverSrc : state.coverSrc;
         savedSrcWidth = draftSrcWidth = state.srcWidth;
         savedSrcHeight = draftSrcHeight = state.srcHeight;
@@ -1573,8 +1574,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         liveApply = false;
         openingSnapshot = structuredClone(state);
         clearAllStacks();
-        renderDraft();
-        syncWidthConstrainUi();
+        if (repaint) {
+          renderDraft();
+          syncWidthConstrainUi();
+        }
       }
       announceFrameChange(target);
     };
@@ -1821,12 +1824,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
      * or the state read off the page when this target was selected; so saving
      * and then cancelling without touching anything is a no-op.
      */
-    const revertToSaved = () => {
-      invalidateReplacement();
+    const revertToSaved = (repaint = true) => {
+      invalidateReplacement(repaint);
       const target = editTarget;
       if (!target) return;
       if (openingSnapshot) {
-        applyPageCrop(target, openingSnapshot);
+        applyPageCrop(target, openingSnapshot, repaint);
         draftDirty = false;
         return;
       }
@@ -1850,7 +1853,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftMobileInset = savedMobileInset;
       draftBackground = savedBackground;
       applyBackgroundLive(target, draftBackground);
-      syncBackgroundControl();
+      if (repaint) syncBackgroundControl();
       const srcNeedsRestore = Boolean(savedSrc) && draftSrc !== savedSrc;
       draftSrc = savedSrc;
       draftSrcWidth = savedSrcWidth;
@@ -1863,7 +1866,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
           });
           const url = projectImage(savedSrc);
-          previewImage.src = url;
+          if (repaint) previewImage.src = url;
           if (pageStage) pageStage.ghostImg.src = url;
         }
         if (targetWasCropped || savedSinceSelect) {
@@ -1895,7 +1898,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         });
       }
       applyMobileInsetLive(target, savedMobileInset);
-      syncWidthConstrainUi();
+      if (repaint) syncWidthConstrainUi();
       liveApply = false;
       clearAllStacks();
       draftDirty = false;
@@ -2768,7 +2771,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       unregisterHistoryScope = null;
       unmountPageStage();
       // Closing is a cancel: unsaved crop edits never survive the panel.
-      revertToSaved();
+      revertToSaved(false);
       editingSession = false;
     };
 
@@ -3454,8 +3457,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     pageScope.listen(cancelButton, 'click', () => {
-      revertToSaved();
-      renderDraft();
+      revertToSaved(false);
       closePanel();
     });
 

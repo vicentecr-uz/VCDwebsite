@@ -350,6 +350,8 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     let updateFrame: number | null = null;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
     let mobileHeader = false;
+    // A header docked at a wide width stays docked through a phone-width spell and back.
+    let dockedBeforeMobile = false;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
@@ -488,6 +490,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     const syncMobileHeaderMode = () => {
       const isMobile = window.innerWidth <= 767;
       if (isMobile) {
+        if (!mobileHeader) dockedBeforeMobile = mode === 'docked';
         if (updateFrame !== null) {
           cancelAnimationFrame(updateFrame);
           updateFrame = null;
@@ -507,8 +510,13 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         header.style.pointerEvents = '';
         header.style.transform = '';
       } else if (mobileHeader) {
-        if (mode !== 'flow') setMode('flow');
-        header.classList.remove('is-scrolled-hidden');
+        if (dockedBeforeMobile && mode === 'docked') {
+          header.style.top = `${-headerChromeHeight()}px`;
+          applyGeo();
+        } else {
+          if (mode !== 'flow') setMode('flow');
+          header.classList.remove('is-scrolled-hidden');
+        }
       }
       mobileHeader = isMobile;
     };

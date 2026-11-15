@@ -214,7 +214,7 @@ import {
       const range = window.getSelection();
       range?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
     };
-    const restoreDraft = (value: CaptionBaseline, selection?: CaptionSelection) => {
+    const restoreDraft = (value: CaptionBaseline, selection?: CaptionSelection, repaint = true) => {
       const positions = resolveDraftsFromRaw(value.captionPosition);
       draftCaptions = structuredClone(value.captions);
       draftStyle = value.captionStyle;
@@ -224,7 +224,7 @@ import {
       lastDraft = captureDraft();
       if (selection) selectedViewport = selection.viewport;
       if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession, restoreFocusedText: true });
-      renderFields();
+      if (repaint) renderFields();
       restoreSelection(selection);
       lastTextSelection = selection ?? null;
       pendingSelection = null;
@@ -903,14 +903,14 @@ import {
       status.textContent = 'Caption cleared — keep typing, or click away to show Add caption.';
     });
 
-    const revertToSaved = () => {
+    const revertToSaved = (repaint = true) => {
       if (!editTarget || !openingCaption) return;
-      restoreDraft(openingCaption);
+      restoreDraft(openingCaption, undefined, repaint);
       localHistory.clear();
     };
 
     pageScope.listen(cancelButton, 'click', () => {
-      revertToSaved();
+      revertToSaved(false);
       closePanel();
     });
 
@@ -923,7 +923,7 @@ import {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'caption') return;
       captionSession = false;
-      revertToSaved();
+      revertToSaved(false);
     }) as EventListener);
 
     const saveDraft = () => {

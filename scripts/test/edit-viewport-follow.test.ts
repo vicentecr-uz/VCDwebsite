@@ -22,10 +22,12 @@ function fixture(attribute = 'data-crop-viewport', visible = true) {
   const mount = new Function('window', 'document', `return (${followEditViewport.toString()});`)(window, document);
   mount(scope);
   const clicks: string[] = [];
+  const details: number[] = [];
+  group.addEventListener('click', (event) => details.push(event.detail));
   group.addEventListener('click', (event) => clicks.push((event.target as HTMLButtonElement).textContent!));
   const change = (preset: string) => window.dispatchEvent(new window.CustomEvent('vcd:edit-viewport-change', { detail: { preset } }));
   const step = () => frames.splice(0).forEach((callback) => callback());
-  return { window, group, clicks, change, step, dispose: async () => {
+  return { window, group, clicks, details, change, step, dispose: async () => {
     cleanups.forEach((cleanup) => cleanup());
     await window.happyDOM.abort();
   } };
@@ -36,6 +38,7 @@ test('visible selectors follow Mobile, Tablet and Desktop through their own clic
   try {
     f.change('mobile'); f.change('tablet'); f.change('desktop');
     expect(f.clicks).toEqual(['mobile', 'tablet', 'desktop']);
+    expect(f.details).toEqual([1, 1, 1]);
   } finally { await f.dispose(); }
 });
 
@@ -81,6 +84,28 @@ test('choosing a viewport in a panel requests that preview once; following the p
     expect(requests).toEqual(['mobile']);
     f.change('tablet');
     expect(f.clicks).toEqual(['mobile', 'tablet']);
+    expect(f.details).toEqual([0, 1]);
     expect(requests).toEqual(['mobile']);
   } finally { await f.dispose(); }
+});
+
+test('a hoisted selector receives a detail-one click from its own realm', async () => {
+  const f = fixture();
+  const shell = new Window();
+  try {
+    shell.document.body.append(f.group);
+    const queryAll = f.window.document.querySelectorAll.bind(f.window.document);
+    f.window.document.querySelectorAll = ((selector: string) => selector === '.dev-segmented'
+      ? shell.document.querySelectorAll(selector) : queryAll(selector)) as typeof queryAll;
+    let click: MouseEvent | undefined;
+    shell.document.addEventListener('click', (event) => { click = event as unknown as MouseEvent; }, true);
+    f.change('mobile');
+    expect(f.details).toEqual([1]);
+    expect(click).toBeInstanceOf(shell.MouseEvent);
+    expect(click!.bubbles).toBe(true);
+    expect(click!.cancelable).toBe(true);
+  } finally {
+    await f.dispose();
+    await shell.happyDOM.abort();
+  }
 });

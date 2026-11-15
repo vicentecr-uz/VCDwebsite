@@ -963,7 +963,9 @@ const syncLauncher = (active = document.documentElement.classList.contains('is-d
   positionLauncher();
 };
 
-const launcherViewportChanged = () => {
+const launcherViewportChanged = (event?: Event) => {
+  if (event && (event.currentTarget === window || event.currentTarget === window.visualViewport)
+    && drawLauncher?.ownerDocument.defaultView !== window) return;
   if (launcherDragStart) {
     const pointerId = launcherDragStart.pointerId;
     launcherPosition = launcherDragStart.position;
@@ -977,6 +979,7 @@ const launcherViewportChanged = () => {
 };
 let launcherWindow: Window = window;
 const bindLauncherViewport = () => {
+  if (launcherWindow === (drawLauncher?.ownerDocument.defaultView ?? window)) return;
   if (launcherWindow !== window) {
     launcherWindow.removeEventListener('resize', launcherViewportChanged);
     launcherWindow.visualViewport?.removeEventListener('resize', launcherViewportChanged);

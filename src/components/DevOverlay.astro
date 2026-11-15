@@ -300,6 +300,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
     };
 
     const finishShow = () => {
+      if (overlay.classList.contains('dev-overlay--portrait') && !overlay.style.height) overlay.style.maxHeight = '';
       setNativeHidden(false);
       restorePosition();
       if (overlay.classList.contains('dev-overlay--portrait') && body.scrollTop !== 0) {
@@ -312,6 +313,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         scope.frame(() => {
           if (!wantVisible) return;
           overlay.classList.add('is-dev-overlay-open');
+          portraitScheduleConstrain?.();
         });
       });
     };
@@ -540,7 +542,7 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
       const previous = lastObservedHeight;
       lastObservedHeight = height;
       if (collapse.animating || !wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
-      if (!embedded && !overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
+      if (!embedded && overlay.ownerDocument.defaultView === window && !overlay.classList.contains('is-dragging') && !overlay.classList.contains('is-resizing')) {
         if (legacyCenter || legacyPosition) restorePosition();
         else {
           const rect = overlay.getBoundingClientRect();
@@ -865,17 +867,20 @@ import DevOverlayFrame from './ui/DevOverlayFrame.astro';
         raiseOverlay(overlay);
       });
     }
-    const onViewportResize = () => {
+    const onViewportResize = (event?: Event) => {
+      if (event?.currentTarget === window && overlay.ownerDocument.defaultView !== window) return;
       portraitScheduleConstrain?.();
       if (!embedded) applyPreferredPosition();
     };
     let viewportWindow: Window = window;
     const onChromeMoved = () => {
+      if (viewportWindow === (overlay.ownerDocument.defaultView ?? window)) return;
       if (viewportWindow !== window) viewportWindow.removeEventListener('resize', onViewportResize);
       viewportWindow = overlay.ownerDocument.defaultView ?? window;
       if (viewportWindow !== window) viewportWindow.addEventListener('resize', onViewportResize);
-      onViewportResize();
-      if (!embedded && !preferredPosition && !overlay.hidden) {
+      portraitScheduleConstrain?.();
+      if (viewportWindow === window) onViewportResize();
+      if (viewportWindow === window && !embedded && !preferredPosition && !overlay.hidden) {
         const rect = overlay.getBoundingClientRect();
         applyPosition(rect.left, rect.top, false);
       }

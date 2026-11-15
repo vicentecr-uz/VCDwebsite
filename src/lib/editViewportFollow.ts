@@ -12,7 +12,10 @@ export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
       );
       if (button && !button.classList.contains('is-active') && button.getAttribute('aria-pressed') !== 'true') {
         applying = true;
-        try { button.click(); } finally { applying = false; }
+        try {
+          const view = button.ownerDocument.defaultView ?? window;
+          button.dispatchEvent(new view.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+        } finally { applying = false; }
       }
     });
   };
