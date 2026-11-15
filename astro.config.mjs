@@ -1700,6 +1700,7 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'projectDetails',
   'divider',
   'quote',
+  'sidenotes',
   'award',
   'image',
   'imageGrid',
@@ -2373,6 +2374,10 @@ export function contentSectionDevWriter() {
             send(400, { error: 'That section cannot be inserted.' });
             return;
           }
+          if (type === 'sidenotes' && data.stack === 'legacy') {
+            send(400, { error: 'Sidenotes are available only on modern pages.' });
+            return;
+          }
 
           let section;
           let insertSpacing;
@@ -2410,6 +2415,14 @@ export function contentSectionDevWriter() {
               id: `quote-${Date.now().toString(36)}`,
               spacing: insertSpacing,
               paragraphs: [''],
+            };
+          } else if (type === 'sidenotes') {
+            const id = `sidenotes-${Date.now().toString(36)}`;
+            section = {
+              type: 'sidenotes',
+              id,
+              spacing: insertSpacing,
+              items: [{ paragraph: '', continuation: '', note: '' }],
             };
           } else if (type === 'divider') {
             section = {
