@@ -20,6 +20,8 @@ async function scriptsFor(html: string): Promise<string> {
   const scripts: Array<{ src?: string; code: string }> = [];
   function visit(node: DefaultTreeAdapterTypes.Node) {
     if ('tagName' in node && node.tagName === 'script') {
+      const type = node.attrs.find((attr) => attr.name === 'type')?.value.toLowerCase();
+      if (type && type !== 'module' && !/^(?:text|application)\/(?:java|ecma)script$/.test(type)) return;
       scripts.push({
         src: node.attrs.find((attr) => attr.name === 'src')?.value,
         code: node.childNodes.filter((child) => child.nodeName === '#text').map((child) => 'value' in child ? child.value : '').join(''),
@@ -50,16 +52,18 @@ async function scriptsFor(html: string): Promise<string> {
   return codes.join('\n');
 }
 
-test('production pages load only the media runtimes their rendered content needs', async () => {
+test('production pages load only the media runtimes they need', async () => {
   let checked = 0;
   for (const file of await htmlFiles(dist)) {
-    if (file === join(dist, 'preview/editor-playground/index.html')) continue;
+    const playground = file === join(dist, 'preview/editor-playground/index.html');
     const html = await readFile(file, 'utf8');
-    if (!html.includes('id="site-wrapper"')) continue;
+    if (!playground && !html.includes('id="site-wrapper"')) continue;
     const features = getPageMediaFeatures(html);
     const code = await scriptsFor(html);
     const label = file.slice(dist.length);
-    expect(code.includes('media-volume-range'), `${label}: video controls`).toBe(features.video);
+    // The playground can add videos after the page loads.
+    expect(code.includes('media-volume-range'), `${label}: video controls`).toBe(playground || features.video);
+    if (playground) continue;
     expect(code.includes('[data-image-lightbox-viewer]'), `${label}: image lightbox`).toBe(features.lightbox);
     expect(code.includes('.project-grid__chip'), `${label}: gallery contrast`).toBe(features.gallery);
     expect(code.includes('img.project-image-grid__image, img.project-media__img, img.project-image__img'), `${label}: caption contrast`).toBe(features.captions);
