@@ -33,6 +33,8 @@ const authoringComponents = new Set([
   'project/archive/ProjectCaptionShadowTuner.astro',
 ].map((file) => fileURLToPath(new URL(`../src/components/${file}`, import.meta.url))));
 
+const debugRecord = fileURLToPath(new URL('../src/lib/debugRecord.ts', import.meta.url));
+
 export function productionBoundary() {
   return {
     name: 'vcd-production-boundary',
@@ -41,6 +43,8 @@ export function productionBoundary() {
     load(id) {
       // Remove the component before Astro discovers its scripts, styles, or imports.
       if (authoringComponents.has(id.split('?')[0])) return '';
+      // A recorder call left in by mistake must do nothing in production.
+      if (id.split('?')[0] === debugRecord) return 'export function debugRecord() {}';
     },
   };
 }
