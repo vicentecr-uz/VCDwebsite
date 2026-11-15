@@ -11,7 +11,7 @@ if (!document.documentElement.hasAttribute('data-canvas-shell')) {
   // Visibility only — do not unmount. Unmount resets speed to 1× and drops take state.
   // Panel host is created asynchronously (React root after mountLapse), so hide when it appears.
   const panelHost = (): HTMLElement | null =>
-    document.querySelector<HTMLElement>('[data-lapse-panel]');
+    document.querySelector<HTMLElement>('[data-lapse-slot]');
 
   const hidePanelByDefault = () => {
     const host = panelHost();

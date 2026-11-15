@@ -76,6 +76,7 @@ if (!document.documentElement.hasAttribute('data-canvas-shell')) {
   const unmountAgentation = () => {
     toolbarObserver?.disconnect();
     toolbarObserver = null;
+    window.dispatchEvent(new CustomEvent('vcd:agentation-before-close'));
     root?.unmount();
     container?.remove();
     root = null;

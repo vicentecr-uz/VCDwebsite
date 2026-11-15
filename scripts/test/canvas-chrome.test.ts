@@ -1,6 +1,9 @@
 import { expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
+import { createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { createPortal, flushSync } from 'react-dom';
 import { hoistCanvasChrome } from '../../src/lib/canvasChrome';
 import { clampToViewport } from '../../src/lib/floatingLayer';
 
@@ -341,4 +344,180 @@ test('mirrors body styles and lets each realm recognise the other\'s nodes while
     expect(frame.document.body instanceof (shell as unknown as { HTMLElement: typeof HTMLElement }).HTMLElement).toBe(true);
     expect({} instanceof (frame as unknown as { Element: typeof Element }).Element).toBe(false);
   } finally { await f.dispose?.(); }
+});
+
+test('only the Lapse slot hoists while scope and board height panels stay in the page', async () => {
+  const f = fixture('both', false);
+  try {
+    const addPanels = () => {
+      const lapse = f.document.createElement('div');
+      lapse.setAttribute('data-lapse-panel', '');
+      lapse.setAttribute('data-lapse-slot', 'bottom-left');
+      const scope = f.document.createElement('div');
+      scope.setAttribute('data-lapse-panel', '');
+      scope.setAttribute('data-lapse-scope-ui', '');
+      const board = f.document.createElement('div');
+      board.setAttribute('data-reddit-board-height-panel', '');
+      board.setAttribute('data-dev-overlay', '');
+      f.document.body.append(lapse, scope, board);
+      return { lapse, scope, board };
+    };
+    const initial = addPanels();
+    f.document.documentElement.classList.add('is-dev-mode');
+    await flush();
+    const late = addPanels();
+    await flush();
+    for (const panels of [initial, late]) {
+      expect(panels.lapse.ownerDocument).toBe(f.shell.document);
+      expect(panels.scope.ownerDocument).toBe(f.document);
+      expect(panels.board.ownerDocument).toBe(f.document);
+    }
+    expect(f.document.querySelector('[data-lapse-slot]')).toBe(initial.lapse);
+    expect(f.document.getElementById('image-panel')!.ownerDocument).toBe(f.shell.document);
+    f.cleanup();
+    for (const panels of [initial, late]) expect(panels.lapse.parentNode).toBe(f.document.body);
+  } finally { await f.dispose(); }
+});
+
+
+function addAgentation(f: ReturnType<typeof fixture>) {
+  const root = f.document.createElement('div');
+  root.setAttribute('data-agentation-root', '');
+  root.setAttribute('data-agentation-theme', 'dark');
+  root.setAttribute('data-agentation-accent', 'blue');
+  root.setAttribute('data-unrelated', 'ignore');
+  root.style.cssText = 'display: contents; --agentation-accent: blue; color: red';
+  root.innerHTML = '<div data-agentation-toolbar><button>Settings</button></div><canvas></canvas><div data-overlay></div>';
+  const toolbar = root.firstElementChild!;
+  const original = root.innerHTML;
+  f.document.body.append(root);
+  return { root, toolbar, original };
+}
+
+test('hoists nested Agentation toolbar, mirrors ancestor attributes and variables, and restores exact position', async () => {
+  const f = fixture();
+  try {
+    const { root, toolbar, original } = addAgentation(f);
+    await flush();
+    const wrapper = toolbar.parentElement!;
+    expect(wrapper.parentElement === f.shell.document.querySelector('[data-canvas-chrome]')).toBe(true);
+    expect(wrapper.getAttribute('data-agentation-root')).toBe('');
+    expect(wrapper.getAttribute('data-agentation-theme')).toBe('dark');
+    expect(wrapper.getAttribute('data-agentation-accent')).toBe('blue');
+    expect(wrapper.hasAttribute('data-unrelated')).toBe(false);
+    expect((wrapper as any).style.display).toBe('contents');
+    expect((wrapper as any).style.color).toBe('');
+    expect((wrapper as any).style.getPropertyValue('--agentation-accent')).toBe('blue');
+    expect(root.querySelector('canvas')!.ownerDocument).toBe(f.document);
+    expect(root.querySelector('[data-overlay]')!.ownerDocument).toBe(f.document);
+    root.setAttribute('data-agentation-theme', 'light');
+    root.removeAttribute('data-agentation-accent');
+    root.style.removeProperty('--agentation-accent');
+    root.style.setProperty('--agentation-color', 'green', 'important');
+    await flush();
+    expect(wrapper.getAttribute('data-agentation-theme')).toBe('light');
+    expect(wrapper.hasAttribute('data-agentation-accent')).toBe(false);
+    expect((wrapper as any).style.getPropertyValue('--agentation-accent')).toBe('');
+    expect((wrapper as any).style.getPropertyPriority('--agentation-color')).toBe('important');
+    let clicks = 0;
+    f.document.body.addEventListener('click', (event) => {
+      clicks++;
+      expect(event.target).toBe(toolbar.firstElementChild);
+    });
+    (toolbar.firstElementChild as any).click();
+    expect(clicks).toBe(1);
+    f.document.documentElement.classList.remove('is-dev-mode');
+    await flush();
+    expect(root.innerHTML).toBe(original);
+    expect(wrapper.isConnected).toBe(false);
+    root.setAttribute('data-agentation-theme', 'dark');
+    await flush();
+    expect(wrapper.getAttribute('data-agentation-theme')).toBe('light');
+  } finally { await f.dispose(); }
+});
+
+for (const close of ['orphan', 'before-close', 'pagehide', 'astro:before-swap', 'cleanup']) test(`Agentation ${close} releases toolbar and wrapper`, async () => {
+  const f = fixture();
+  try {
+    const { root, toolbar, original } = addAgentation(f);
+    await flush();
+    const wrapper = toolbar.parentElement!;
+    if (close === 'orphan') root.remove();
+    else if (close === 'before-close') f.frame.dispatchEvent(new f.frame.CustomEvent('vcd:agentation-before-close'));
+    else if (close === 'cleanup') f.cleanup();
+    else (close === 'pagehide' ? f.frame : f.document).dispatchEvent(new f.frame.Event(close));
+    await flush();
+    expect(wrapper.isConnected).toBe(false);
+    if (close === 'orphan') expect(toolbar.isConnected).toBe(false);
+    else {
+      expect(toolbar.parentElement).toBe(root);
+      expect(root.innerHTML).toBe(original);
+    }
+    if (close === 'orphan' || close === 'before-close') {
+      root.remove();
+      const next = addAgentation(f);
+      await flush();
+      expect(next.toolbar.ownerDocument).toBe(f.shell.document);
+    }
+  } finally { await f.dispose(); }
+});
+
+for (const press of ['pointerdown', 'mousedown']) test(`bridges mouse drags after ${press}, even when Lapse stops propagation`, async () => {
+  const f = fixture();
+  try {
+    const slot = f.document.createElement('div');
+    slot.setAttribute('data-lapse-slot', 'bottom-left');
+    slot.addEventListener(press, (event) => event.stopPropagation());
+    f.document.body.append(slot);
+    await flush();
+    const moves: number[] = [];
+    let releases = 0;
+    f.frame.addEventListener('mousemove', (event) => moves.push(event.clientX));
+    f.frame.addEventListener('mouseup', () => releases++);
+    f.shell.document.dispatchEvent(new f.shell.MouseEvent('mousemove', { bubbles: true, clientX: 1 }));
+    slot.dispatchEvent(press === 'pointerdown'
+      ? new f.shell.PointerEvent(press, { bubbles: true, pointerId: 7 })
+      : new f.shell.MouseEvent(press, { bubbles: true }));
+    f.shell.document.dispatchEvent(new f.shell.MouseEvent('mousemove', { bubbles: true, clientX: 42 }));
+    slot.dispatchEvent(new f.shell.MouseEvent('mouseup', { bubbles: true }));
+    f.shell.document.dispatchEvent(new f.shell.MouseEvent('mousemove', { bubbles: true, clientX: 43 }));
+    expect(moves).toEqual([42]);
+    expect(releases).toBe(1);
+  } finally { await f.dispose(); }
+});
+
+
+test('a hoisted React body portal handles a toolbar click exactly once and unmounts after before-close', async () => {
+  const f = fixture();
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: f.frame });
+  const container = f.document.createElement('div');
+  f.document.body.append(container);
+  const reactRoot = createRoot(container as any);
+  let mounted = true;
+  try {
+    let clicks = 0;
+    flushSync(() => reactRoot.render(createPortal(createElement('div', { 'data-agentation-root': '' },
+      createElement('div', { 'data-agentation-toolbar': '' },
+        createElement('button', { onClick: () => clicks++ }, 'Settings'))), f.document.body as any)));
+    await flush();
+    const button = f.document.querySelector('[data-agentation-toolbar] button')!;
+    expect(button.ownerDocument === f.shell.document).toBe(true);
+    (button as any).click();
+    expect(clicks).toBe(1);
+    f.frame.dispatchEvent(new f.frame.CustomEvent('vcd:agentation-before-close'));
+    flushSync(() => reactRoot.unmount());
+    mounted = false;
+    await flush();
+    expect(f.shell.document.querySelector('[data-agentation-root]')).toBeNull();
+    expect(f.document.querySelector('[data-agentation-toolbar]')).toBeNull();
+  } finally {
+    if (mounted) {
+      f.frame.dispatchEvent(new f.frame.CustomEvent('vcd:agentation-before-close'));
+      reactRoot.unmount();
+    }
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else delete (globalThis as any).window;
+    await f.dispose();
+  }
 });

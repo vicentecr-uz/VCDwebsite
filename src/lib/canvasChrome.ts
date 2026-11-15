@@ -13,6 +13,10 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const previous = new Map([...hostRoot.attributes].filter((attr) => isState(attr.name)).map((attr) => [attr.name, attr.value]));
   const styles = new Map<Element, Element>();
   const moved = new Map<Element, Comment>();
+  const inspectorSelector = '[data-lapse-slot], [data-agentation-toolbar]';
+  const chromeSelector = `.dev-text-action-stack, .site-draw-launcher, [data-dev-overlay], .dev-shortcuts-help, ${inspectorSelector}`;
+  const agentationWrappers = new Map<Element, { wrapper: HTMLElement; observer: MutationObserver }>();
+  const closingToolbars = new WeakSet<Element>();
   const query = document.querySelector.bind(document);
   const queryAll = document.querySelectorAll.bind(document);
   const byId = document.getElementById.bind(document);
@@ -20,6 +24,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const lookupDescriptors = lookupNames.map((name) => Object.getOwnPropertyDescriptor(document, name));
   const bridged = new WeakSet<Event>();
   const pointers = new Set<number>();
+  let mousePressed = false;
   let lastPointerTarget: Node | null = null;
   let active = false;
   let stopped = false;
@@ -127,53 +132,99 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   };
   const onLayerEvent = (event: Event) => {
     if (!owns(event.target)) return;
-    if (event.type === 'pointerdown') pointers.add((event as PointerEvent).pointerId);
     bridge(event);
   };
   const eventTypes = ['click', 'dblclick', 'contextmenu', 'pointerdown', 'pointerup', 'pointercancel',
     'mousedown', 'mouseup', 'keydown', 'keyup', 'input', 'change', 'focusin', 'focusout', 'wheel'];
   for (const type of eventTypes) layer.addEventListener(type, onLayerEvent);
-  const rememberPointer = (event: PointerEvent) => { lastPointerTarget = event.target as Node | null; };
+  const rememberPointer = (event: PointerEvent) => {
+    lastPointerTarget = event.target as Node | null;
+    // Lapse stops pointerdown at its host, before the layer's bubbling listener.
+    if (owns(event.target)) {
+      pointers.add(event.pointerId);
+      if (!event.pointerType || event.pointerType === 'mouse') mousePressed = true;
+    }
+  };
+  const rememberMouse = (event: MouseEvent) => { if (owns(event.target)) mousePressed = true; };
+  const mouseDragEvent = (event: MouseEvent) => {
+    if (!mousePressed) return;
+    if (event.type === 'mousemove' || !owns(event.target)) bridge(event);
+    if (event.type === 'mouseup') { mousePressed = false; pointers.clear(); }
+  };
   const dragEvent = (event: PointerEvent) => {
     if (!pointers.has(event.pointerId)) return;
     if (event.type === 'pointermove' || !owns(event.target)) bridge(event);
     if (event.type !== 'pointermove') pointers.delete(event.pointerId);
+    if (event.type === 'pointercancel') mousePressed = false;
   };
+  host.addEventListener('mousedown', rememberMouse, true);
+  for (const type of ['mousemove', 'mouseup']) host.addEventListener(type, mouseDragEvent, true);
   host.addEventListener('pointerdown', rememberPointer, true);
   document.addEventListener('pointerdown', rememberPointer, true);
   for (const type of ['pointermove', 'pointerup', 'pointercancel'] as const) host.addEventListener(type, dragEvent, true);
+  const restoreNode = (node: Element) => {
+    const placeholder = moved.get(node);
+    if (!placeholder) return;
+    moved.delete(node);
+    if (node.isConnected && placeholder.isConnected) placeholder.replaceWith(node);
+    else { node.remove(); placeholder.remove(); }
+    const agentation = agentationWrappers.get(node);
+    agentation?.observer.disconnect();
+    agentation?.wrapper.remove();
+    agentationWrappers.delete(node);
+    notifyMoved();
+  };
+  const beforeAgentationClose = () => {
+    for (const node of agentationWrappers.keys()) {
+      closingToolbars.add(node);
+      restoreNode(node);
+    }
+  };
+  scope.listen(window, 'vcd:agentation-before-close', beforeAgentationClose);
   const restore = () => {
     active = false;
     pointers.clear();
+    mousePressed = false;
     lastPointerTarget = null;
     restoreLookups();
     shareRealms(false);
-    for (const [node, placeholder] of moved) {
-      if (node.isConnected) placeholder.replaceWith(node);
-      else placeholder.remove();
-      moved.delete(node);
-      notifyMoved();
-    }
-    moved.clear();
+    for (const node of moved.keys()) restoreNode(node);
     for (const clone of styles.values()) clone.remove();
     styles.clear();
     for (const attr of [...hostRoot.attributes]) if (isState(attr.name)) hostRoot.removeAttribute(attr.name);
     for (const [name, value] of previous) hostRoot.setAttribute(name, value);
   };
   const move = (node: Element) => {
-    if (moved.has(node) || layer.contains(node)) return;
+    if (!node.isConnected || closingToolbars.has(node) || node.matches('[data-reddit-board-height-panel]') || moved.has(node) || layer.contains(node)) return;
     const focused = node.contains(node.ownerDocument.activeElement) ? node.ownerDocument.activeElement as HTMLElement : null;
     const open = node.hasAttribute('popover') && node.matches(':popover-open');
     const placeholder = document.createComment('canvas chrome');
     node.before(placeholder);
     moved.set(node, placeholder);
-    layer.append(node);
+    const agentationRoot = node.matches('[data-agentation-toolbar]') ? node.closest<HTMLElement>('[data-agentation-root]') : null;
+    if (agentationRoot) {
+      const wrapper = host.createElement('div');
+      const mirrorAgentation = () => {
+        for (const attr of [...wrapper.attributes]) if (attr.name.startsWith('data-agentation-')) wrapper.removeAttribute(attr.name);
+        for (const attr of agentationRoot.attributes) if (attr.name.startsWith('data-agentation-')) wrapper.setAttribute(attr.name, attr.value);
+        wrapper.style.cssText = 'display: contents';
+        for (const property of Array.from(agentationRoot.style)) if (property.startsWith('--')) {
+          wrapper.style.setProperty(property, agentationRoot.style.getPropertyValue(property), agentationRoot.style.getPropertyPriority(property));
+        }
+      };
+      mirrorAgentation();
+      const observer = new MutationObserver(mirrorAgentation);
+      observer.observe(agentationRoot, { attributes: true });
+      agentationWrappers.set(node, { wrapper, observer });
+      layer.append(wrapper);
+      wrapper.append(node);
+    } else layer.append(node);
     if (open) (node as HTMLElement).showPopover();
     focused?.focus({ preventScroll: true });
     notifyMoved();
   };
   const hoist = () => {
-    for (const node of queryAll('.dev-text-action-stack, .site-draw-launcher, [data-dev-overlay], .dev-shortcuts-help, [data-lapse-panel]')) {
+    for (const node of queryAll(chromeSelector)) {
       if (node.matches('.dev-shortcuts-help') && window.getComputedStyle(node).position !== 'fixed') continue;
       move(node);
     }
@@ -203,7 +254,20 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
         if (node.matches('[popover]:popover-open')) move(node);
       }
     }
-    hoist();
+    for (const record of records) {
+      for (const added of record.addedNodes) {
+        if (!(added instanceof window.Element)) continue;
+        const candidates = [added, ...added.querySelectorAll(chromeSelector)];
+        for (const node of candidates) {
+          if (!node.matches(chromeSelector)) continue;
+          if (node.matches('.dev-shortcuts-help') && window.getComputedStyle(node).position !== 'fixed') continue;
+          move(node);
+        }
+      }
+    }
+    if (records.some((record) => record.removedNodes.length)) {
+      for (const [node, placeholder] of moved) if (!placeholder.isConnected) restoreNode(node);
+    }
   });
   const onToggle = (event: Event) => {
     const node = event.target as HTMLElement;
@@ -230,6 +294,8 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     if (active) restore();
     for (const type of eventTypes) layer.removeEventListener(type, onLayerEvent);
     layer.removeEventListener('toggle', onToggle, true);
+    host.removeEventListener('mousedown', rememberMouse, true);
+    for (const type of ['mousemove', 'mouseup']) host.removeEventListener(type, mouseDragEvent, true);
     host.removeEventListener('pointerdown', rememberPointer, true);
     document.removeEventListener('pointerdown', rememberPointer, true);
     document.removeEventListener('toggle', onToggle, true);
