@@ -105,10 +105,49 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   };
   const holdAnchor = () => {
     const win = frame.contentWindow;
-    if (!anchor || !win || !anchor.element.isConnected) return;
-    const rect = anchor.element.getBoundingClientRect();
+    if (!anchor || !win || !anchor.element.isConnected) return false;
+    // A piece that one viewport hides has no box; its nearest rendered ancestor stands in for it.
+    let element: Element | null = anchor.element;
+    while (element && !element.getClientRects().length) element = element.parentElement;
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
     const delta = rect.top + rect.height * anchor.within - anchor.ratio * win.innerHeight;
-    if (Math.abs(delta) >= 0.5) win.scrollBy({ top: delta, behavior: 'instant' });
+    if (Math.abs(delta) < 0.5) return false;
+    win.scrollBy({ top: delta, behavior: 'instant' });
+    return true;
+  };
+  // While this holds the anchor, the browser's own scroll anchoring must stand down: the two
+  // correct the same shift in turn and the page jumps (seen in Firefox).
+  const releaseKeys = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+  let held: Window | null = null;
+  const releaseAnchor = () => {
+    anchor = undefined;
+    if (!held) return;
+    for (const type of releaseKeys) held.removeEventListener(type, releaseAnchor, true);
+    try { held.document.documentElement.style.overflowAnchor = ''; } catch { /* the page navigated away */ }
+    held = null;
+  };
+  const takeAnchor = () => {
+    releaseAnchor();
+    anchor = pickAnchor();
+    held = frame.contentWindow;
+    try { if (held) held.document.documentElement.style.overflowAnchor = 'none'; } catch { held = null; }
+  };
+  // The page's deferred resize work lands over the frames after a morph. Keep holding until it has
+  // been still for a while, or the reader does something.
+  const settleAnchor = (token: number) => {
+    const win = held;
+    if (!win) return;
+    for (const type of releaseKeys) win.addEventListener(type, releaseAnchor, { capture: true, passive: true });
+    const started = performance.now();
+    let still = 0;
+    const step = () => {
+      if (token !== revision || held !== win) return;
+      still = holdAnchor() ? 0 : still + 1;
+      if (still >= 45 || performance.now() - started > 3000) { releaseAnchor(); return; }
+      window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
   };
   const render = (value: Geometry, barZone = 0) => {
     current = value;
@@ -164,7 +203,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       if (fluxActive) postFlux(false);
       return;
     }
-    if (!fluxActive) anchor = pickAnchor();
+    if (!fluxActive) takeAnchor();
     postFlux(true);
     // The page's clock, so an inspector that slows time in the page (Lapse) slows the morph with it.
     const clock = () => { try { return frame.contentWindow?.performance.now() ?? performance.now(); } catch { return performance.now(); } };
@@ -180,12 +219,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
         finish(target);
         raf = 0;
         postFlux(false);
-        // The page's deferred resize work lands over the next frames; hold the anchor through it.
-        window.requestAnimationFrame(() => {
-          if (token !== revision) return;
-          holdAnchor();
-          window.requestAnimationFrame(() => { if (token === revision) { holdAnchor(); anchor = undefined; } });
-        });
+        settleAnchor(token);
         return;
       }
       render({
