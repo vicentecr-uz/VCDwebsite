@@ -73,15 +73,32 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     const middle = win.innerHeight / 2;
     let element: Element | undefined;
     let nearest = Infinity;
-    // A cropped or sliding image is larger than the box that shows it, and is re-cropped per viewport: hold that box.
-    const shown = (media: Element) => {
-      if (!media.matches('img, video')) return media;
-      const rect = media.getBoundingClientRect();
-      for (let parent = media.parentElement, depth = 0; parent && depth < 4; parent = parent.parentElement, depth += 1) {
-        const box = parent.getBoundingClientRect();
-        if ((box.height < rect.height - 1 || box.width < rect.width - 1) && win.getComputedStyle(parent).overflow !== 'visible') return parent;
+    // Hold what is actually shown. A cropped or sliding image is larger than the box that shows it, and
+    // content inside a scroller (a carousel, the comment board's loop) extends unseen past that box and
+    // moves on its own: the box stands in for both.
+    const clips = new Map<Element, boolean>();
+    const clipping = (box: Element) => {
+      let known = clips.get(box);
+      if (known === undefined) {
+        const style = win.getComputedStyle(box);
+        known = style.overflowX !== 'visible' || style.overflowY !== 'visible';
+        clips.set(box, known);
       }
-      return media;
+      return known;
+    };
+    const main = doc.querySelector('main');
+    const shown = (media: Element) => {
+      let candidate = media;
+      let rect = media.getBoundingClientRect();
+      for (let parent = media.parentElement; parent && parent !== main && parent !== doc.body; parent = parent.parentElement) {
+        if (!clipping(parent)) continue;
+        const box = parent.getBoundingClientRect();
+        if (box.height > win.innerHeight * 2) continue; // a page-level wrapper, not a frame around this piece
+        const scrolls = parent.scrollHeight > parent.clientHeight + 1 || parent.scrollWidth > parent.clientWidth + 1;
+        const inside = rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+        if (scrolls || !inside) { candidate = parent; rect = box; }
+      }
+      return candidate;
     };
     // Prefer the finest piece of content; a block can be several screens tall.
     for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
