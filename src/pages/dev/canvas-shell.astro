@@ -75,7 +75,9 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     let nearest = Infinity;
     // Prefer the finest piece of content; a block can be several screens tall.
     for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
-      for (const candidate of doc.querySelectorAll(selector)) {
+      for (const media of doc.querySelectorAll(selector)) {
+        // A cropped image is larger than the frame that shows it and is re-cropped per viewport; hold the frame.
+        const candidate = media.closest('.project-image-grid__frame, .project-crop-clip') ?? media;
         const rect = candidate.getBoundingClientRect();
         if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight) continue;
         const distance = rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0;
