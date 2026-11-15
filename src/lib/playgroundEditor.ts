@@ -52,6 +52,34 @@ function restoreParagraphs(element: HTMLElement, values: string[]) {
 }
 
 function restoreTextBlock(root: HTMLElement, section: Json, templates: DocumentFragment) {
+  if (section.type === 'sidenotes') {
+    const model = templates.querySelector<HTMLElement>('.sidenotes__row')!;
+    root.querySelectorAll(':scope > .sidenotes__row').forEach((row) => row.remove());
+    root.prepend(...section.items.map((item: Json, index: number) => {
+      const row = model.cloneNode(true) as HTMLElement;
+      const number = String(index + 1);
+      const noteId = section.id + '-note-' + number;
+      row.querySelector<HTMLElement>('[data-sidenote-note]')!.id = noteId;
+      row.querySelector<HTMLElement>('.sidenotes__number')!.textContent = number;
+      for (const marker of row.querySelectorAll<HTMLElement>('.sidenotes__marker')) {
+        marker.textContent = number;
+        marker.setAttribute('aria-label', 'Note ' + number);
+        if (marker.hasAttribute('data-sidenote-toggle')) {
+          marker.dataset.sidenoteToggle = number;
+          marker.setAttribute('aria-controls', noteId);
+        } else marker.setAttribute('aria-describedby', noteId);
+      }
+      for (const field of row.querySelectorAll<HTMLElement>('[data-dev-text-path]')) {
+        const key = JSON.parse(field.dataset.devTextPath!).at(-1);
+        field.dataset.devTextPath = JSON.stringify(['sections', 0, 'items', index, key]);
+        field.textContent = item[key] ?? '';
+        if (key === 'continuation' && item[key] && !/^[.,;:!?)]/.test(item[key])) field.before(' ');
+      }
+      return row;
+    }));
+    return;
+  }
+
   const field = root.querySelector<HTMLElement>('[data-dev-text-kind]');
   if (!field) return;
   if (field.dataset.devTextKind === 'paragraphs') {
@@ -144,6 +172,12 @@ function restoreSavedPage(seed: Json, data: Json) {
     if (!root) continue;
     const intro = section.intro === true;
     root.classList.toggle('project-block--intro', intro);
+    if (type === 'bodyText') {
+      for (const key of ['data-inline-sidenote-block', 'data-dev-inline-sidenotes']) {
+        if (intro) root.removeAttribute(key);
+        else root.setAttribute(key, 'true');
+      }
+    }
     if (intro) {
       const height = normalizeIntroHeight(data.introHeight ?? section.introHeight);
       root.dataset.devIntro = 'true';
