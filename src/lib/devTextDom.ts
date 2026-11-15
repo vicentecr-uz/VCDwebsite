@@ -86,6 +86,9 @@ const serializeNode = (node: Node, preserveWrap = true): string => {
   if (!(node instanceof Element) || IGNORED_TAGS.has(node.tagName)) return '';
 
   const tag = node.tagName;
+  if (tag === 'SUP' && node.hasAttribute('data-inline-sidenote')) {
+    return `<sup data-inline-sidenote="${escapeAttribute(node.getAttribute('data-inline-sidenote') ?? '')}"></sup>`;
+  }
   if (tag === 'BR') {
     return node.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE) ? '' : '<br>';
   }
