@@ -20,6 +20,11 @@ import { clamp, easeInOutCubic, isDev, warn } from './util'
 /** loop: repeats while on screen. once: plays when first seen, then holds the end. hover: plays while the pointer is over it, settles back when it leaves; on a screen with no hover (a phone) it plays once. */
 export type Play = 'loop' | 'once' | 'hover'
 
+type FocusEntry = { measure: () => { ratio: number; distance: number }; focus: () => void; yield: () => void }
+type Focus = { entries: Set<FocusEntry>; current: FocusEntry | null }
+// Share of a stage that must be on screen before it can take focus.
+const FOCUS_RATIO = 0.6
+
 /** Design tokens for a look: `--ss-accent`, `--ss-radius-md`, `--ss-font` and the rest. */
 export type LookTokens = { [token: `--ss-${string}`]: string }
 
@@ -501,7 +506,7 @@ export function Stage<S extends object>({
     }
 
     const start = () => {
-      if (ctrl || done || !onScreen || document.hidden) return
+      if (ctrl || done || !onScreen || (!focused && play !== 'hover') || document.hidden) return
       if (play === 'hover' && !hovering) return
       cancelReset()
       if (cursor) place(resolve(restAt()))
@@ -540,15 +545,63 @@ export function Stage<S extends object>({
       if (!done) reset(glide)
     }
 
+    function pickFocus() {
+      let best: FocusEntry | null = null
+      let bestDistance = Infinity
+      for (const candidate of registry.entries) {
+        const { ratio, distance } = candidate.measure()
+        if (ratio >= FOCUS_RATIO && distance < bestDistance) { best = candidate; bestDistance = distance }
+      }
+      // With no clear winner, whatever is playing keeps going.
+      if (!best || best === registry.current) return best?.focus()
+      registry.current = best
+      registry.entries.forEach((other) => { if (other !== best) other.yield() })
+      best.focus()
+    }
+
     const markOffscreen = () => stage.toggleAttribute('data-offscreen', !onScreen || document.hidden)
     markOffscreen()
     const io = new IntersectionObserver(([entry]) => {
       onScreen = entry.isIntersecting
       // Off screen its CSS animations pause too, so nothing runs out of view
       markOffscreen()
-      onScreen ? start() : stop()
+      if (!onScreen) stop()
+      pickFocus()
     })
     io.observe(root)
+    // Demos sit in same-origin iframes on one page, so stages register with that
+    // page and only the most dominant plays: mostly visible, nearest its centre.
+    let host: Window = window
+    try { host = window.parent; void host.document } catch { host = window }
+    const registry: Focus = ((host as Window & { __stageshowFocus?: Focus }).__stageshowFocus ??= { entries: new Set(), current: null })
+    let focused = false
+    const entry: FocusEntry = {
+      measure: () => {
+        const box = root.getBoundingClientRect()
+        let top = box.top, bottom = box.bottom
+        const frame = host === window ? null : window.frameElement?.getBoundingClientRect()
+        if (frame) {
+          const scale = frame.height / window.innerHeight || 1
+          top = frame.top + top * scale
+          bottom = frame.top + bottom * scale
+        }
+        const height = host.innerHeight
+        const visible = Math.max(0, Math.min(bottom, height) - Math.max(top, 0))
+        return { ratio: visible / Math.max(1, Math.min(bottom - top, height)), distance: Math.abs((top + bottom) / 2 - height / 2) }
+      },
+      focus: () => {
+        focused = true
+        start()
+      },
+      yield: () => {
+        focused = false
+        stop()
+      },
+    }
+    registry.entries.add(entry)
+    pickFocus()
+    host.addEventListener('scroll', pickFocus, { passive: true })
+    host.addEventListener('resize', pickFocus)
     const onVisibility = () => {
       markOffscreen()
       document.hidden ? stop() : start()
@@ -567,6 +620,10 @@ export function Stage<S extends object>({
       root.addEventListener('pointerleave', leave)
     }
     return () => {
+      registry.entries.delete(entry)
+      if (registry.current === entry) registry.current = null
+      host.removeEventListener('scroll', pickFocus)
+      host.removeEventListener('resize', pickFocus)
       io.disconnect()
       document.removeEventListener('visibilitychange', onVisibility)
       root.removeEventListener('pointerenter', enter)

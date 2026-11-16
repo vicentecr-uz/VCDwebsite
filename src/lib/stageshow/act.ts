@@ -56,9 +56,11 @@ export interface Act<S> {
    * a scroll offset in px, or the name of a target inside it to bring to the
    * top (less `offset`). Once scrolled, its edges fade over what's hidden.
    * A visible cursor moves into the area first if it isn't over it already,
-   * and holds still while the content scrolls under it.
+   * and holds still while the content scrolls under it. `axis: 'x'` scrolls
+   * sideways. `bounce` lets a scroll that ends on an edge carry its speed
+   * past it and spring back, as a trackpad's overscroll does.
    */
-  scroll(name: string, to: number | string, opts?: { duration?: number; offset?: number }): Promise<void>
+  scroll(name: string, to: number | string, opts?: { duration?: number; offset?: number; axis?: 'x' | 'y'; bounce?: boolean }): Promise<void>
   cursor(kind: CursorKind): Promise<void>
   /**
    * Apply a patch with transitions off, for resets nothing on screen should
@@ -412,13 +414,16 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
       check()
       const el = targetEl(name) as HTMLElement | null
       if (!el) return
-      const from = el.scrollTop
+      const x = opts?.axis === 'x'
+      const from = x ? el.scrollLeft : el.scrollTop
+      const max = x ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight
       let end = typeof to === 'number' ? to : from
       if (typeof to === 'string') {
         const t = targetEl(to) as HTMLElement | null
-        if (t) end = from + (t.getBoundingClientRect().top - el.getBoundingClientRect().top) / drawnScale(rootRef.current, scaleRef.current) - (opts?.offset ?? 0)
+        const side = x ? 'left' : 'top'
+        if (t) end = from + (t.getBoundingClientRect()[side] - el.getBoundingClientRect()[side]) / drawnScale(rootRef.current, scaleRef.current) - (opts?.offset ?? 0)
       }
-      end = clamp(end, 0, el.scrollHeight - el.clientHeight)
+      end = clamp(end, 0, max)
       // You can only scroll what the pointer is over: a visible cursor
       // outside the area moves into it first, then holds still while the
       // content moves under it
@@ -435,14 +440,36 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
       const wrap = el.parentElement?.classList.contains('ss-scroller') ? el.parentElement : null
       wrap?.setAttribute('data-scrolling', '')
       const release = own(() => wrap?.removeAttribute('data-scrolling'))
+      const duration = opts?.duration ?? clamp(420 + Math.abs(end - from) * 1.2, 500, 1400)
+      const bounce = opts?.bounce && end !== from && (end === 0 || end === max)
+      const kids = [...el.children] as HTMLElement[]
+      const shift = (px: number) => kids.forEach((kid) => { kid.style.translate = px ? (x ? `${px}px 0` : `0 ${px}px`) : '' })
       try {
-        await tween(opts?.duration ?? clamp(420 + Math.abs(end - from) * 1.2, 500, 1400), (t) => {
-          el.scrollTop = from + (end - from) * easeInOutCubic(t)
-          el.toggleAttribute('data-scrolled', el.scrollTop > 0.5)
-          thumb(el)
+        // A bounce eases in and reaches the edge still moving (t²(2-t) leaves at full speed);
+        // otherwise the scroll eases in and out.
+        await tween(duration, (t) => {
+          const at = from + (end - from) * (bounce ? t * t * (2 - t) : easeInOutCubic(t))
+          if (x) el.scrollLeft = at
+          else el.scrollTop = at
+          el.toggleAttribute('data-scrolled', at > 0.5)
+          if (!x) thumb(el)
         })
+        if (bounce) {
+          // Overscroll is a critically damped spring kicked at the arrival speed:
+          // a·(t/τ)·e^(1-t/τ) peaks at a when t = τ, then settles back to rest.
+          const tau = 80
+          const speedIn = Math.abs(end - from) / (duration / speed)
+          const peak = Math.min(48, (speedIn * tau) / Math.E)
+          const sign = end > from ? -1 : 1
+          // Five τ leaves under a tenth of the peak, too little to see snap to rest.
+          await tween(tau * 5, (t) => {
+            const k = t * 5
+            shift(t === 1 ? 0 : sign * peak * k * Math.exp(1 - k))
+          })
+        }
         check()
       } finally {
+        shift(0)
         release()
       }
       remeasure()

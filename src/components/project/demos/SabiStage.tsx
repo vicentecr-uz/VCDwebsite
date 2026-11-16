@@ -11,6 +11,8 @@ const example = 'A little more room to say what you mean, even when the words ru
 const empty = {};
 const demoScale = 2;
 const cursorRest = { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } };
+// These read best still: the reader explores them by hand.
+const unscripted = ['handles', 'direction', 'gradient'];
 
 // Two tangent-matched curves per corner keep the flat sides easing into the turn.
 function squircle(width: number, height: number, radius = 18) {
@@ -52,6 +54,11 @@ function Scene({ kind, controller, onManual, compact }: {
   const choices = handles ? ['Original', 'More room', 'No scroll', 'Container'] : ['Before', 'After'];
   useLayoutEffect(() => {
     const handle = mountSabiDemo(root.current!);
+    // The gradient's flaw is visible at rest, so it opens on Before with text hidden on both sides.
+    if (kind === 'gradient') { handle.choose('before'); handle.seek(Math.round(example.length / 2)); }
+    // Comparisons open scrolled to the end. text() sizes the input now rather than when
+    // sabi-input next measures, so a replay doesn't show the start for a frame.
+    else if (comparison) handle.text(example);
     controller.current = handle;
     return () => { handle.destroy(); controller.current = null; };
   }, [kind, controller]);
@@ -89,14 +96,15 @@ function Scene({ kind, controller, onManual, compact }: {
   return <div ref={root} className="sabi-scene" data-kind={kind} data-mode="after"
     onPointerDownCapture={onManual} onKeyDownCapture={onManual} onFocusCapture={onManual} onWheelCapture={onManual}>
     {handles ? <SquircleField width={fieldWidth} handles>
-      <div className="handle-viewport"><span className="handle-text">A little more <span className="selection">room<span className="handle start" /><span className="handle end" /></span> to say it.</span></div>
+      <div className="handle-viewport"><span className="handle-text"><span className="handle-lead">A little more </span><span className="selection">room to say what you mean, even when the words<span className="handle start" /><span className="handle end" /></span> run past the edge.</span></div>
+      <span className="handle start handle-overlay" />
     </SquircleField> : <SquircleField width={fieldWidth}>
       {/* The input is uncontrolled: the guide yields the same DOM node to the reader. */}
       <sabi-input>
-        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, Sabi 2026 — קצת מקום לכתוב ולערוך' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
+        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, זה Sabi, רכיב טקסט שמעמעם טקסט שגולש מעבר לקצה השדה, כך שתמיד רואים שיש עוד מה לקרוא :)' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
       </sabi-input>
     </SquircleField>}
-    {(comparison || handles) && <div className="dev-segmented sabi-choices" role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
+    {(comparison || handles) && <div className="dev-segmented sabi-choices" data-slide-selection role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
       {choices.map((label, index) => <button key={label} type="button" className="dev-btn dev-btn--ghost dev-btn--align-center"
         data-target={label.toLowerCase().replace(' ', '-')} data-cursor="hand" data-choice={label.toLowerCase().replace(' ', '-')}
         aria-pressed={index === choices.length - 1 ? 'true' : 'false'}>{label}</button>)}
@@ -114,24 +122,64 @@ function Take({ kind }: { kind: string }) {
     const demo = controller.current;
     if (!demo) return;
     a.signal.addEventListener('abort', () => demo.stop(), { once: true });
-    const comparison = kind !== 'playground';
-    await a.wait(500);
-    if (comparison) { await a.click({ at: 'before', x: .85, y: .55 }); demo.choose('before'); }
-    const target = demo.caretTarget(.65);
-    await a.click({ at: 'field', x: target.x, y: .5 });
-    demo.begin(target.offset);
-    await a.wait(150);
-    // Select all explains replacing the sample without a visible rewind.
-    a.mark('keyboard');
-    await a.key('cmd+a', async () => { demo.selectAll(); await a.wait(400); });
-    await a.wait(200);
-    await a.key('backspace', async () => { demo.text(''); await a.wait(120); });
-    await a.wait(250);
-    for (let i = 1; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
-    if (comparison) {
-      await a.key('left');
-      for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
+    const holdLeft = (from: number) => a.key('left', async () => {
+      for (let offset = from - 1; offset >= 0; offset--) { demo.seek(offset); await a.wait(35); }
+    });
+    // Fade is about the edges keeping up: jump end to end, then flick the scroll.
+    // The rest scroll by holding left into the edge.
+    const exercise = async (from: number) => {
+      if (kind !== 'fade') return holdLeft(from);
+      await a.key('cmd+right'); demo.seek(example.length); await a.wait(550);
+      await a.key('cmd+left'); demo.seek(0); await a.wait(450);
+      // A few short flicks off the start edge, like idly nudging a trackpad.
+      for (let i = 0; i < 3; i++) {
+        await a.scroll('strip', 100, { axis: 'x', duration: 300 });
+        await a.scroll('strip', 0, { axis: 'x', duration: 300, bounce: true });
+      }
+    };
+    if (kind !== 'playground') {
+      // Comparisons open on finished text, scrolled to the end, so nothing is typed twice.
+      demo.seek(example.length);
+      await a.wait(500);
+      await a.click({ at: 'before', x: .85, y: .55 }); demo.choose('before');
+      const target = demo.caretTarget(.65);
+      await a.click({ at: 'field', x: target.x, y: .5 });
+      demo.begin(target.offset);
+      await a.wait(150);
+      a.mark('keyboard');
+      await exercise(target.offset);
+      await a.wait(700);
+      a.mark('pointer');
+      await a.click({ at: 'after', x: .85, y: .55 }); demo.choose('after');
+      if (kind === 'caret' || kind === 'jump') {
+        // Restore the end-scrolled field with the switch, then start just right of the left fade.
+        demo.seek(example.length);
+        const near = demo.caretTarget(.16);
+        await a.click({ at: 'field', x: near.x, y: .5 });
+        demo.begin(near.offset);
+        await a.wait(150);
+        a.mark('keyboard');
+        await holdLeft(near.offset);
+      } else {
+        demo.begin();
+        await a.move({ at: 'field', x: .9, y: .5 });
+        a.mark('keyboard');
+        if (kind === 'fade') await exercise(0);
+        else { await a.key('End'); demo.seek(example.length); await holdLeft(example.length); }
+      }
     } else {
+      await a.wait(500);
+      const target = demo.caretTarget(.65);
+      await a.click({ at: 'field', x: target.x, y: .5 });
+      demo.begin(target.offset);
+      await a.wait(150);
+      // Select all explains replacing the sample without a visible rewind.
+      a.mark('keyboard');
+      await a.key('cmd+a', async () => { demo.selectAll(); await a.wait(400); });
+      await a.wait(200);
+      await a.key('backspace', async () => { demo.text(''); await a.wait(120); });
+      await a.wait(250);
+      for (let i = 1; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
       let firstStop = example.length;
       let previousScroll = demo.seek(example.length);
       let scrollingSteps = 0;
@@ -153,18 +201,7 @@ function Take({ kind }: { kind: string }) {
           await a.wait(180);
         }
       });
-    }
-    if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
-    await a.wait(700);
-    if (comparison) {
-      a.mark('pointer');
-      await a.click({ at: 'after', x: .85, y: .55 }); demo.choose('after'); demo.begin();
-      await a.move({ at: 'field', x: .9, y: .5 });
-      a.mark('keyboard');
-      await a.key('End'); demo.seek(example.length);
-      await a.key('left');
-      for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
-      if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
+      await a.wait(700);
     }
     await a.move(cursorRest);
     await a.wait(2000);
@@ -172,11 +209,10 @@ function Take({ kind }: { kind: string }) {
   }, [kind]);
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
-      script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="bottom" cursor={manual || kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
+      script={manual || unscripted.includes(kind) ? undefined : script} play="once" unframed
+      palette="mono" fidelity="realistic" keys="bottom" cursor={manual || unscripted.includes(kind) ? undefined : { at: cursorRest, style: 'real' }}
       tokens={{ '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
-        '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
-        '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
+        '--sabi-demo-scale': demoScale }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} compact={layout === 'compact'} />}
     </Stage>
   </div>;
@@ -186,7 +222,7 @@ export default function SabiStage({ kind }: { kind: string }) {
   const [take, setTake] = useState(0);
   return <div className="sabi-demo">
     <Take key={take} kind={kind} />
-    {!['handles', 'direction'].includes(kind) && <button type="button" className="dev-btn dev-btn--ghost sabi-replay"
+    {!unscripted.includes(kind) && <button type="button" className="dev-btn dev-btn--ghost sabi-replay"
       aria-label="Replay demo" title="Replay" onClick={() => setTake((value) => value + 1)}>
       <span className="dev-btn__icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: replayIcon }} />
     </button>}

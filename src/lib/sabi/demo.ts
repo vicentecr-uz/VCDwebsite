@@ -1,4 +1,5 @@
 import type { SabiInput } from 'sabi-input';
+import { selected, slideSelection } from '../segmentedSlide';
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const fadeMask = (left: number, right: number, linear: boolean, fadeWidth: number, solid: number) => {
@@ -16,7 +17,12 @@ export function mountSabiDemo(root: HTMLElement) {
   const { signal } = lifecycle;
   const kind = root.dataset.kind!;
   const buttons = [...root.querySelectorAll<HTMLButtonElement>('button[data-choice]')];
-  const setButtons = (choice: string) => buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.choice === choice)));
+  const setButtons = (choice: string) => {
+    const group = buttons[0]?.parentElement;
+    const previous = group?.querySelector<HTMLElement>(selected);
+    if (group && previous && previous.dataset.choice !== choice) slideSelection(group, previous);
+    buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.choice === choice)));
+  };
   if (kind === 'handles') {
     const example = root.querySelector<HTMLElement>('.handle-example')!;
     buttons.forEach((button) => button.addEventListener('click', () => {
@@ -29,6 +35,7 @@ export function mountSabiDemo(root: HTMLElement) {
 
   const input = root.querySelector<HTMLInputElement>('input')!;
   let strip = input.parentElement!;
+  strip.dataset.target = 'strip';
   const geometry = () => {
     const style = getComputedStyle(strip);
     const value = (name: string, fallback: number) => Number.parseFloat(style.getPropertyValue(name)) || fallback;
@@ -63,28 +70,46 @@ export function mountSabiDemo(root: HTMLElement) {
   let mode = 'after';
   let composing = false;
 
-  const cancelFrames = () => { cancelAnimationFrame(frame); cancelAnimationFrame(fadeFrame); };
+  const cancelFrames = () => { cancelAnimationFrame(frame); cancelAnimationFrame(fadeFrame); fadeFrame = 0; lastPaint = 0; };
   const stop = () => {
     auto = false;
     delete input.dataset.demoSelected;
     caret.hidden = true;
-    cancelFrames();
+    // Leave the fade paint running: it only settles on the current scroll, and cutting it short freezes an edge.
+    cancelAnimationFrame(frame);
   };
-  const fades = () => {
+  // The fade kind replays the old 150ms transition: each edge moves toward its target
+  // at no more than a full fade per 150ms, so a jump exposes text while it catches up,
+  // and a steady stream of scroll events can't hold it in place.
+  let target = { left: 0, right: 0 };
+  let lastPaint = 0;
+  const paintFade = (now: number) => {
+    const step = (lastPaint ? now - lastPaint : 16) / 150;
+    lastPaint = now;
+    left += Math.max(-step, Math.min(step, target.left - left));
+    right += Math.max(-step, Math.min(step, target.right - right));
+    const settled = left === target.left && right === target.right;
+    const { fadeWidth, solid } = geometry();
+    strip.style.maskImage = fadeMask(left, right, false, fadeWidth, solid);
+    fadeFrame = settled ? 0 : requestAnimationFrame(paintFade);
+    if (settled) lastPaint = 0;
+  };
+  // `snap` paints the settled fade at once: switching modes isn't a scroll the lag should replay.
+  const fades = (snap = false) => {
     if (mode !== 'before') return;
     const { fadeWidth, solid } = geometry();
-    const targetLeft = clamp(strip.scrollLeft / fadeWidth);
-    const targetRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
-    cancelAnimationFrame(fadeFrame);
-    const fromLeft = left, fromRight = right, start = performance.now();
-    const paint = (now: number) => {
-      const t = kind === 'fade' ? clamp((now - start) / 150) : 1;
-      left = fromLeft + (targetLeft - fromLeft) * t;
-      right = fromRight + (targetRight - fromRight) * t;
+    const hiddenLeft = strip.scrollLeft;
+    const hiddenRight = strip.scrollWidth - strip.clientWidth - strip.scrollLeft;
+    // The old fade was simply on or off; following how much is hidden is the fix this demo leads to.
+    const toLeft = kind === 'fade' ? Number(hiddenLeft > .5) : clamp(hiddenLeft / fadeWidth);
+    const toRight = kind === 'fade' ? Number(hiddenRight > .5) : clamp(hiddenRight / fadeWidth);
+    if (kind !== 'fade' || snap) {
+      left = toLeft; right = toRight; target = { left, right };
       strip.style.maskImage = fadeMask(left, right, kind === 'gradient', fadeWidth, solid);
-      if (t < 1) fadeFrame = requestAnimationFrame(paint);
-    };
-    paint(start);
+      return;
+    }
+    target = { left: toLeft, right: toRight };
+    fadeFrame ||= requestAnimationFrame(paintFade);
   };
   const position = (offset: number, inset: number) => {
     const x = geometry().gutter + width(input.value.slice(0, offset));
@@ -114,6 +139,7 @@ export function mountSabiDemo(root: HTMLElement) {
     cancelFrames();
     const next = document.createElement(choice === 'after' ? 'sabi-input' : 'div');
     if (choice === 'before') next.className = 'sabi-before';
+    next.dataset.target = 'strip';
     strip.removeEventListener('scroll', onScroll);
     strip.replaceWith(next);
     next.append(input, caret);
@@ -123,7 +149,7 @@ export function mountSabiDemo(root: HTMLElement) {
     input.setSelectionRange(selection[0], selection[1]);
     strip.scrollLeft = scroll;
     if (focused) input.focus({ preventScroll: true });
-    if (choice === 'before') { renderBefore(); fades(); }
+    if (choice === 'before') { renderBefore(); fades(true); }
     else (strip as SabiInput).sync?.();
   };
   buttons.forEach((button) => button.addEventListener('click', () => { stop(); choose(button.dataset.choice!); }, { signal }));
