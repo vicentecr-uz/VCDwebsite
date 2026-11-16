@@ -1,4 +1,5 @@
 ---
+import type { ImageMetadata } from 'astro';
 import HeroLayout from '../layouts/HeroLayout.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
 import { loadPageDocument } from '../lib/projects';
@@ -6,9 +7,24 @@ import { pageColumnStyle } from '../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const page = loadPageDocument('sabi');
+// The /digital write-up's cover is absent from engine-only fixture builds.
+const covers = import.meta.glob<ImageMetadata>('../../media/sabi-cover.png', { eager: true, import: 'default' });
+const cover = covers['../../media/sabi-cover.png'];
 ---
 
-<HeroLayout title={page.title ?? 'Sabi'} description={page.description} columnStyle={pageColumnStyle(page.sections)} canonicalUrl="https://sabi.vicentecr.uz/">
+<HeroLayout
+  title={page.title ?? 'Sabi'}
+  description={page.description}
+  columnStyle={pageColumnStyle(page.sections)}
+  canonicalUrl="https://sabi.vicentecr.uz/"
+  favicon="/sabi-favicon.png"
+  ogImage={cover?.src}
+  ogImageDetails={cover && {
+    alt: 'A Sabi text input with text fading at the right edge.',
+    width: cover.width,
+    height: cover.height,
+  }}
+>
   <div data-dev-project-drop-zone>
     <ProjectSections documentKey="sabi" sections={page.sections} />
     <div
