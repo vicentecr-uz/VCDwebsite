@@ -264,8 +264,8 @@ export function stylesComponents(examples: NonNullable<ReturnType<typeof loadPag
     purpose: 'Presentational shell mirroring the Figma Segmented Control — click a segment in the catalog to move selection; live panels wire their own data-* hooks.',
     classRef: '.dev-segmented',
     source: 'src/components/ui/SegmentedControl.astro',
-    props: 'label, ...rest (children passed via default slot)',
-    usedOn: ['ViewportSelector', 'Edit carousel Direction', 'Pages', 'Section title visibility'],
+    props: 'label, class? (dev-segmented--demo: the larger pill variant for switching an interactive demo between versions), ...rest (children passed via default slot)',
+    usedOn: ['ViewportSelector', 'Edit carousel Direction', 'Pages', 'Section title visibility', 'Sabi demos (Demo variant)'],
     preview: 'ui-segmented-control',
   },
   {

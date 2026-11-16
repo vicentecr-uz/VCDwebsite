@@ -104,7 +104,7 @@ function Scene({ kind, controller, onManual, compact }: {
         <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, זה Sabi, רכיב טקסט שמעמעם טקסט שגולש מעבר לקצה השדה, כך שתמיד רואים שיש עוד מה לקרוא :)' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
       </sabi-input>
     </SquircleField>}
-    {(comparison || handles) && <div className="dev-segmented sabi-choices" data-slide-selection role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
+    {(comparison || handles) && <div className="dev-segmented dev-segmented--demo sabi-choices" data-slide-selection role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
       {choices.map((label, index) => <button key={label} type="button" className="dev-btn dev-btn--ghost dev-btn--align-center"
         data-target={label.toLowerCase().replace(' ', '-')} data-cursor="hand" data-choice={label.toLowerCase().replace(' ', '-')}
         aria-pressed={index === choices.length - 1 ? 'true' : 'false'}>{label}</button>)}
