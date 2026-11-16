@@ -20,7 +20,9 @@
   .handle-lead { position: absolute; right: 100%; white-space: pre; }
   .selection { position: relative; background: #007aff30; }
   /* Like iOS, each bar reaches past the line and carries its knob beyond that. */
-  .handle { position: absolute; width: 2px; background: #007aff; top: 0; bottom: 0; }
+  /* The bar is its own layer above the knob, so the knob's shadow never falls across it. */
+  .handle { position: absolute; width: 2px; top: 0; bottom: 0; isolation: isolate; }
+  .handle::before { content: ''; position: absolute; inset: 0; z-index: 1; border-radius: 1px; background: #007aff; }
   .handle::after { content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #007aff; left: -7px; box-shadow: 0 1px 3px rgb(0 0 0 / .3); }
   .handle.start { left: -1px; top: -6px; }.handle.start::after { top: -14px; }
   .handle.end { right: -1px; bottom: -6px; }.handle.end::after { bottom: -14px; }
