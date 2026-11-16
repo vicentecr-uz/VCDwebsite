@@ -1,21 +1,17 @@
 ---
 // Hero page: no site header, one centred column of blocks led by a
 // productHero block, which carries the page's h1.
+import type { ComponentProps } from 'astro/types';
 import Layout from './Layout.astro';
 import Footer from '../components/Footer.astro';
 import '../styles/project.css';
 
-interface Props {
-  title: string;
-  description?: string;
-  columnStyle?: string;
-  canonicalUrl?: string;
-}
-
-const { title, description, columnStyle, canonicalUrl } = Astro.props;
+type Props = Pick<ComponentProps<typeof Layout>,
+  'title' | 'description' | 'columnStyle' | 'canonicalUrl' | 'ogImage' | 'ogImageDetails' | 'favicon'
+>;
 ---
 
-<Layout persistentNavigation title={title} description={description} columnStyle={columnStyle} canonicalUrl={canonicalUrl}>
+<Layout persistentNavigation {...Astro.props}>
   <div data-page-shell class="project-page hero-page flex flex-col min-h-dvh">
     <main id="main-content" class="project-page__main flex-1">
       <slot />

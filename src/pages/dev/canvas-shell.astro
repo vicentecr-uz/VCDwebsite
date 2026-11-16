@@ -326,6 +326,15 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       if (typeof href !== 'string' || new URL(href, location.href).origin !== location.origin) return;
       history.replaceState(history.state, '', href);
       document.title = event.data.title;
+      const icons = frame.contentDocument?.head.querySelectorAll<HTMLLinkElement>('link[rel="icon"]');
+      if (icons?.length) {
+        document.head.querySelectorAll('link[rel="icon"]').forEach(icon => icon.remove());
+        for (const icon of icons) {
+          const copy = document.importNode(icon, false);
+          copy.href = icon.href;
+          document.head.append(copy);
+        }
+      }
       postPreset();
     }
     if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) choose(event.data.preset);
