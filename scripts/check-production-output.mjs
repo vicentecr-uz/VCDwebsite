@@ -19,6 +19,7 @@ const INSPECTOR_MARKERS = [
   'agentation-root',
   '/src/lib/agentationDev',
   '/src/lib/lapseDev',
+  'vcd-record',
 ];
 const AUTHORING_CONTROLS = [
   'data-dev-text-actions',

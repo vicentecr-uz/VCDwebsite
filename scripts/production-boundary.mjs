@@ -39,6 +39,8 @@ const canvasShellPage = fileURLToPath(new URL('../src/pages/dev/canvas-shell.ast
 const canvasChrome = fileURLToPath(new URL('../src/lib/canvasChrome.ts', import.meta.url));
 const pageLayout = fileURLToPath(new URL('../src/layouts/Layout.astro', import.meta.url));
 
+const debugRecord = fileURLToPath(new URL('../src/lib/debugRecord.ts', import.meta.url));
+
 export function productionBoundary() {
   return {
     name: 'vcd-production-boundary',
@@ -49,6 +51,8 @@ export function productionBoundary() {
       if (authoringComponents.has(id.split('?')[0])
         || id.split('?')[0] === canvasShellPage) return '';
       if (id.split('?')[0] === canvasChrome) return 'export function hoistCanvasChrome() {}';
+      // A recorder call left in by mistake must do nothing in production.
+      if (id.split('?')[0] === debugRecord) return 'export function debugRecord() {}';
       if (id === pageLayout) {
         return readFileSync(pageLayout, 'utf8').replace(
           /\{showDevTools && \(\s*<script is:inline data-canvas-resize-observer>[\s\S]*?<\/script>\s*\)\}/,

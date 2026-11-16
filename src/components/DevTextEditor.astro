@@ -11,6 +11,7 @@ import checkIcon from 'lucide-static/icons/check.svg?raw';
 import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
 import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
+import superscriptIcon from 'lucide-static/icons/superscript.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import '../styles/gapSpacingControl.css';
 import SelectField from './ui/EditorSelectField.astro';
@@ -21,6 +22,7 @@ import ellipsisIcon from 'lucide-static/icons/ellipsis.svg?raw';
 import SaveBar from './ui/SaveBar.astro';
 import { getProjectSlugsForBuild } from '../lib/projects';
 import Menu from './ui/Menu.astro';
+import ProjectSidenotes from './project/ProjectSidenotes.astro';
 import Button from './ui/Button.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
@@ -33,6 +35,7 @@ const formatCheckSvg = sizeIcon(checkIcon, 16);
 const formatPilcrowSvg = sizeIcon(pilcrowIcon, 16);
 const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
+const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
 ---
 
 <template data-divider-template><ProjectDivider documentKey="divider-template" sectionPath={['sections', 0]} spacing="group" /></template>
@@ -46,6 +49,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 </template>
 
 <template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
+<template data-sidenotes-template><ProjectSidenotes documentKey="sidenotes-template" sectionPath={['sections', 0]} spacing="group" items={[{ paragraph: '', continuation: '', note: '' }]} /></template>
 
 <div class="dev-text-action-stack">
   <SaveBar data-dev-text-actions data-dev-ledger-projects={JSON.stringify(getProjectSlugsForBuild())} hidden>
@@ -138,6 +142,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         <button type="button" data-dev-format="link" title="Link (⌘K)" aria-label="Link" aria-pressed="false">
           <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
         </button>
+        <button type="button" data-dev-add-inline-sidenote title="Add sidenote" aria-label="Add sidenote" hidden>
+          <span class="dev-text-format__icon" aria-hidden="true" set:html={formatSidenoteSvg} />
+        </button>
       </div>
     </div>
     <form class="dev-text-format__link" data-dev-text-link-panel aria-hidden="true">
@@ -159,6 +166,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import { scrollToEditorBlock } from '../lib/sectionScroll';
   import { sabiDocsPages } from '../lib/sabi-docs-pages';
   import { applyInlineMark } from '../lib/devInlineMarks';
+  import { syncInlineSidenotes } from '../scripts/inlineSidenotes';
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
@@ -252,7 +260,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'divider' | 'bodyText' | 'quote' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'divider' | 'bodyText' | 'quote' | 'sidenotes' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
   const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
   const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
@@ -352,6 +360,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
+    const addInlineSidenoteButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-add-inline-sidenote]');
     const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
     const emphasisStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-emphasis-style]');
     const fontStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-font-style]');
@@ -837,6 +846,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="award">Award</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="quote">Quote</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sidenotes">Sidenotes</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="divider">Divider</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
@@ -2902,6 +2912,30 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return { root: section, textElement: proxy, textKind: 'text' as const, textPath: [...sectionPath, 'href'] };
       }
 
+      if (type === 'sidenotes') {
+        const template = document.querySelector<HTMLTemplateElement>('[data-sidenotes-template]');
+        if (!template?.content.firstElementChild) throw new Error('Sidenotes template is unavailable.');
+        const section = template.content.firstElementChild.cloneNode(true) as HTMLElement;
+        section.className = `project-block sidenotes ${spacingClass}`;
+        section.dataset.devSpacingDocument = documentKey;
+        section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+        section.dataset.devSpacingValue = spacing;
+        section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
+        section.dataset.devSectionDeletable = 'sidenotes';
+        const fields = [...section.querySelectorAll<HTMLElement>('[data-dev-text-path]')];
+        const paragraph = fields[0];
+        if (!paragraph || fields.length !== 3) throw new Error('Sidenotes template fields are unavailable.');
+        const noteId = `sidenote-note-${crypto.randomUUID()}`;
+        section.querySelector('[data-sidenote-note]')?.setAttribute('id', noteId);
+        section.querySelector('[data-sidenote-toggle]')?.setAttribute('aria-controls', noteId);
+        section.querySelector('.sidenotes__marker--reference')?.setAttribute('aria-describedby', noteId);
+        fields.forEach((field, index) => {
+          field.dataset.devTextDocument = documentKey;
+          field.dataset.devTextPath = JSON.stringify([...sectionPath, 'items', 0, ['paragraph', 'continuation', 'note'][index]]);
+        });
+        return { root: section, textElement: paragraph, textKind: 'text' as const, textPath: [...sectionPath, 'items', 0, 'paragraph'] };
+      }
+
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
@@ -3295,7 +3329,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : type === 'quote' ? 'quote' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : type === 'divider' ? 'divider' : type === 'quote' ? 'quote' : type === 'sidenotes' ? 'sidenotes' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -3320,6 +3354,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       const built = type === 'divider' ? buildDivider() : buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       built.root.dataset.devContentId = sectionId;
+      if (type === 'bodyText' && !options?.intro) {
+        built.root.dataset.devInlineSidenotes = 'true';
+        built.root.dataset.inlineSidenoteBlock = 'true';
+      }
       if (type === 'bodyText' || type === 'sectionTitle' || type === 'quote') {
         built.root.dataset.siteAnnotationSectionId = sectionId;
         built.root.dataset.siteAnnotationDocument = documentKey;
@@ -3328,6 +3366,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       else host.before(built.root);
 
       const spacingState = mountSpacingControl(built.root);
+      if (built.root.dataset.inlineSidenoteBlock === 'true') syncInlineSidenotes(built.root);
       if (spacingState) {
         spacingStates.push(spacingState);
         wireSectionAddMenu(spacingState);
@@ -3340,7 +3379,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         kind: built.textKind,
         savedValue: built.textKind === 'paragraphs' ? [''] : type === 'award' ? '' : 'Section title',
       } : null;
-      if (type === 'projectDetails') {
+      if (type === 'projectDetails' || type === 'sidenotes') {
         registerTextStates(built.root);
       } else if (textState) {
         textStates.push(textState);
@@ -3373,7 +3412,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacing: newSpacing,
         sectionId,
         root: built.root,
-        textStates: type === 'projectDetails' ? textStates.filter((state) => built.root.contains(state.element)) : textState ? [textState] : [],
+        textStates: type === 'projectDetails' || type === 'sidenotes' ? textStates.filter((state) => built.root.contains(state.element)) : textState ? [textState] : [],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
       });
@@ -3389,7 +3428,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             type,
             id: sectionId,
             sectionId,
-            ...(type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
+            ...(type === 'sidenotes'
+              ? { items: [{ paragraph: '', continuation: '', note: '' }] }
+              : type === 'divider' ? {} : { title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title' }),
           },
           ...(type === 'sectionTitle' ? { outlineEntries: [] } : {}),
         },
@@ -3595,7 +3636,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'quote' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'quote' && type !== 'sidenotes' && type !== 'projectDetails' && type !== 'award' && type !== 'divider') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
@@ -4797,6 +4838,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return null;
     };
 
+    const inlineSidenoteBlockForRange = (range: Range | null) => {
+      if (!range) return null;
+      const block = findBlockState(range.commonAncestorContainer);
+      if (!block || block.state.kind !== 'paragraphs' || !block.state.element.isContentEditable
+        || block.section.dataset.devInlineSidenotes !== 'true' || block.section.dataset.devIntro === 'true') return null;
+      const start = (range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement)?.closest('p');
+      const end = (range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement)?.closest('p');
+      return start && start === end && start.parentElement === block.state.element ? { ...block, paragraph: start } : null;
+    };
+
     const blockStyleValue = (state: EditableTextState): string => {
       if (state.element.matches('h3.project-section-title')) return 'sectionTitle:3';
       if (state.element.matches('h2.project-section-title')) return 'sectionTitle:2';
@@ -5457,6 +5508,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       formatBar.hidden = false;
       formatBar.dataset.linkOpen = linkPanelOpen ? 'true' : 'false';
+      if (addInlineSidenoteButton) addInlineSidenoteButton.hidden = !inlineSidenoteBlockForRange(range);
 
       const buttons = formatBar.querySelector<HTMLElement>('.dev-text-format__buttons');
       const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
@@ -5930,6 +5982,34 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
       }, { signal: editorSignal });
     });
+
+    addInlineSidenoteButton?.addEventListener('click', (event) => {
+      event.preventDefault();
+      if (!restoreFormatRange() || !savedFormatRange) return;
+      const eligible = inlineSidenoteBlockForRange(savedFormatRange);
+      if (!eligible) return;
+      pageHistory.breakGroup();
+      const range = savedFormatRange.cloneRange();
+      range.collapse(false);
+      const marker = document.createElement('sup');
+      marker.dataset.inlineSidenote = '';
+      marker.contentEditable = 'false';
+      range.insertNode(marker);
+      range.setStartAfter(marker);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      savedFormatRange = range.cloneRange();
+      syncInlineSidenotes(eligible.section);
+      eligible.state.element.dispatchEvent(new Event('input', { bubbles: true }));
+      const index = [...eligible.state.element.querySelectorAll('sup[data-inline-sidenote]')].indexOf(marker);
+      const note = eligible.section.querySelector<HTMLElement>(`.dev-inline-sidenotes__note[data-inline-sidenote-index="${index}"]`);
+      note?.classList.add('is-open');
+      note?.querySelector<HTMLElement>('.dev-inline-sidenotes__text')?.focus({ preventScroll: true });
+      queueMicrotask(() => pageHistory.breakGroup());
+      updateActions();
+    }, { signal: editorSignal });
 
     linkPanel.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -7283,7 +7363,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     min-width: 7em;
   }
 
-  .dev-text-format__buttons button[data-dev-format] {
+  .dev-text-format__buttons button[data-dev-format],
+  .dev-text-format__buttons button[data-dev-add-inline-sidenote] {
     padding: 8px;
     gap: 8px;
     border-radius: calc(var(--dev-radius-control) * var(--continuous-corner-scale, 1));
@@ -7296,6 +7377,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     align-items: center;
     justify-content: center;
     cursor: pointer;
+  }
+
+  .dev-text-format__buttons button[data-dev-add-inline-sidenote][hidden] {
+    display: none;
   }
 
   @media (max-width: 40em) {
@@ -7322,21 +7407,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       min-height: 44px;
     }
 
-    .dev-text-format__buttons button[data-dev-format] {
+    .dev-text-format__buttons button[data-dev-format],
+    .dev-text-format__buttons button[data-dev-add-inline-sidenote] {
       min-width: 44px;
       min-height: 44px;
     }
   }
 
-  .dev-text-format__buttons button[data-dev-format]:hover {
+  .dev-text-format__buttons button[data-dev-format]:hover,
+  .dev-text-format__buttons button[data-dev-add-inline-sidenote]:hover {
     background: var(--comp-button-ghost-container-hover);
   }
 
-  .dev-text-format__buttons button[data-dev-format]:active {
+  .dev-text-format__buttons button[data-dev-format]:active,
+  .dev-text-format__buttons button[data-dev-add-inline-sidenote]:active {
     background: var(--comp-button-ghost-container-pressed);
   }
 
-  .dev-text-format__buttons button[data-dev-format]:focus-visible {
+  .dev-text-format__buttons button[data-dev-format]:focus-visible,
+  .dev-text-format__buttons button[data-dev-add-inline-sidenote]:focus-visible {
     position: relative;
     z-index: 1;
   }

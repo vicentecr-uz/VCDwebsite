@@ -72,6 +72,7 @@ import { carouselDragTuningWriter } from './scripts/carousel-drag-tuning-writer.
 import { signupDevApi } from './scripts/signup-dev-api.mjs';
 import { annotationDevWriter } from './scripts/dev-annotations.mjs';
 import { componentNotesDevApi } from './scripts/dev-component-notes.mjs';
+import { debugRecordDevApi } from './scripts/dev-debug-record.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
@@ -1701,6 +1702,7 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'projectDetails',
   'divider',
   'quote',
+  'sidenotes',
   'award',
   'image',
   'imageGrid',
@@ -2374,6 +2376,10 @@ export function contentSectionDevWriter() {
             send(400, { error: 'That section cannot be inserted.' });
             return;
           }
+          if (type === 'sidenotes' && data.stack === 'legacy') {
+            send(400, { error: 'Sidenotes are available only on modern pages.' });
+            return;
+          }
 
           let section;
           let insertSpacing;
@@ -2411,6 +2417,14 @@ export function contentSectionDevWriter() {
               id: `quote-${Date.now().toString(36)}`,
               spacing: insertSpacing,
               paragraphs: [''],
+            };
+          } else if (type === 'sidenotes') {
+            const id = `sidenotes-${Date.now().toString(36)}`;
+            section = {
+              type: 'sidenotes',
+              id,
+              spacing: insertSpacing,
+              items: [{ paragraph: '', continuation: '', note: '' }],
             };
           } else if (type === 'divider') {
             section = {
@@ -2913,6 +2927,7 @@ export default defineConfig({
       projectSettingsDevWriter(),
       publishDevWriter(),
       issueDevWriter(),
+      debugRecordDevApi(),
       commitEngineDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),

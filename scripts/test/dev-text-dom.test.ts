@@ -23,6 +23,11 @@ test('serializes supported inline markup and escapes unsafe content', () => {
   assert.equal(serializeInlineHtml(el('<p><br></p>').firstElementChild!), '');
 });
 
+test('serializes inline sidenote anchors without their generated marker children', () => {
+  const paragraph = el('start<strong> text</strong><sup data-inline-sidenote="Use &quot;plain&quot; &amp; escaped text" onclick="bad()">8<span>9</span></sup>end');
+  assert.equal(serializeInlineHtml(paragraph), 'start<strong> text</strong><sup data-inline-sidenote="Use &quot;plain&quot; &amp; escaped text"></sup>end');
+});
+
 test('reads BR elements as newlines in plain DOM text', () => {
   assert.equal(readPlainDomText(el('writer\'s<br>dream')), "writer's\ndream");
   assert.equal(readPlainDomText(el('<br data-dev-placeholder="true">')), '');
