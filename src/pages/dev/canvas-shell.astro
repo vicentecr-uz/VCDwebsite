@@ -1,5 +1,4 @@
 ---
-import RangeField from '../../components/ui/RangeField.astro';
 import ViewportSelector from '../../components/ui/ViewportSelector.astro';
 import '../../styles/global.css';
 import '../../styles/dev-chrome.css';
@@ -25,16 +24,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       <iframe name="vcd-canvas" title="Page" data-canvas-frame></iframe>
     </div>
     <div data-canvas-chrome></div>
-    <!-- TEMPORARY (T20): width scrubber for checking how blocks hold at each width. -->
-    <div class="canvas-ruler dev-surface" data-canvas-ruler>
-      <RangeField label="Width" id="canvas-ruler-width" unit="px" min="320" max="2560" step="1" value="1280">
-        <span slot="labelAccessory" data-canvas-ruler-viewport>Desktop</span>
-      </RangeField>
-      <div class="canvas-ruler__marks" aria-hidden="true">
-        <span data-canvas-ruler-mark="768">768</span>
-        <span data-canvas-ruler-mark="992">992</span>
-      </div>
-    </div>
     <div class="dev-viewport-preview__controls dev-surface" data-canvas-controls>
       <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
     </div>
@@ -54,21 +43,14 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   type Preset = 'desktop' | keyof typeof presets;
   const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
   let preset: Preset = 'desktop';
-  // TEMPORARY (T20): a width dragged on the scrubber, shown instead of the preset's own size.
+  // TEMPORARY (T21): a width dragged in the page's Viewport Width panel, shown instead of the preset's own size.
   let custom: number | undefined;
-  const ruler = document.querySelector<HTMLInputElement>('#canvas-ruler-width')!;
-  const rulerViewport = document.querySelector<HTMLElement>('[data-canvas-ruler-viewport]')!;
+  let shownWidth = '';
   const showWidth = (width: number) => {
-    ruler.max = String(window.innerWidth);
-    ruler.value = String(Math.round(width));
-    ruler.dispatchEvent(new window.Event('vcd:range-refresh'));
-    rulerViewport.textContent = width <= 767 ? 'Mobile' : width <= 991 ? 'Tablet' : 'Desktop';
-    const min = Number(ruler.min);
-    document.querySelectorAll<HTMLElement>('[data-canvas-ruler-mark]').forEach((mark) => {
-      const at = (Number(mark.dataset.canvasRulerMark) - min) / (window.innerWidth - min);
-      mark.hidden = at > 1;
-      mark.style.left = `calc(8px + (100% - 16px) * ${at})`;
-    });
+    const next = `${Math.round(width)}/${window.innerWidth}`;
+    if (next === shownWidth) return;
+    shownWidth = next;
+    frame.contentWindow?.postMessage({ type: 'vcd-canvas-width', width: Math.round(width), max: window.innerWidth }, location.origin);
   };
   let raf = 0;
   let revision = 0;
@@ -307,6 +289,16 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       postPreset();
     }
     if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) choose(event.data.preset);
+    if (event.data?.type === 'vcd-canvas-request-width' && Number.isFinite(event.data.width)) {
+      window.cancelAnimationFrame(raf);
+      revision += 1;
+      if (fluxActive) postFlux(false);
+      if (!anchor) takeAnchor();
+      custom = Math.max(320, Math.min(window.innerWidth, Math.round(event.data.width)));
+      backdrop.style.visibility = 'visible';
+      render(geometry(), barZone());
+      if (event.data.done) settleAnchor(revision);
+    }
   });
   scope.listen(controls, 'click', (event) => {
     const next = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset : undefined;
@@ -314,16 +306,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     if (event.isTrusted) focusFrame();
   });
   scope.listen(backdrop, 'click', focusFrame);
-  scope.listen(ruler, 'input', () => {
-    window.cancelAnimationFrame(raf);
-    revision += 1;
-    if (fluxActive) postFlux(false);
-    if (!anchor) takeAnchor();
-    custom = Math.min(window.innerWidth, Number(ruler.value));
-    backdrop.style.visibility = 'visible';
-    render(geometry(), barZone());
-  });
-  scope.listen(ruler, 'change', () => { settleAnchor(revision); focusFrame(); });
+
   const forwardKey = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (event.composedPath().some((node) => node instanceof Element && node.hasAttribute('data-canvas-chrome'))) return;
@@ -349,7 +332,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     if (fluxActive) render(current, barZone());
     else finish(geometry());
   });
-  scope.listen(frame, 'load', () => { postPreset(); focusFrame(); });
+  scope.listen(frame, 'load', () => { postPreset(); shownWidth = ''; showWidth(current.width); focusFrame(); });
   select();
   finish(desktop());
   frame.src = location.href;
@@ -368,11 +351,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
   .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
   .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
-  .canvas-ruler { z-index: 2147483647; position: fixed; top: 12px; left: 12px; width: 360px; padding: 10px 12px 6px; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); }
-  .canvas-ruler [data-canvas-ruler-viewport] { font: inherit; color: var(--sys-color-on-srf-subtle); }
-  .canvas-ruler__marks { position: relative; height: 22px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
-  .canvas-ruler__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
-  .canvas-ruler__marks span::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 6px; background: currentColor; }
   [data-canvas-chrome] { display: contents; pointer-events: none; }
   [data-canvas-chrome] :global(> *) { pointer-events: auto; }
   .dev-viewport-preview__controls { z-index: 2147483647; position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }

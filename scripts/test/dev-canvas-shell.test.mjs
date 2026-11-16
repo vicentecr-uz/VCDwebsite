@@ -49,7 +49,7 @@ function shellFixture(reduced = false) {
     .replace(/^\s*import .*;$/gm, '').replace('import.meta.hot?.dispose(() => scope.destroy());', ''));
   const window = new Window({ url: 'http://localhost:4360/', settings: { disableIframePageLoading: true } });
   const document = window.document;
-  document.body.innerHTML = '<div data-canvas-surface><iframe data-canvas-frame></iframe></div><div data-canvas-shadow></div><div data-canvas-backdrop></div><div data-canvas-controls></div><input id="canvas-ruler-width" min="320"><span data-canvas-ruler-viewport></span>';
+  document.body.innerHTML = '<div data-canvas-surface><iframe data-canvas-frame></iframe></div><div data-canvas-shadow></div><div data-canvas-backdrop></div><div data-canvas-controls></div>';
   const frame = document.querySelector('iframe');
   const child = { focus() {}, postMessage(data) { posts.push(data); } };
   Object.defineProperty(frame, 'contentWindow', { value: child });

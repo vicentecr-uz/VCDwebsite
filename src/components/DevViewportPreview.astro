@@ -1,6 +1,30 @@
 ---
 import ViewportSelector from './ui/ViewportSelector.astro';
+import DevOverlay from './DevOverlay.astro';
+import RangeField from './ui/RangeField.astro';
+import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
+import tabletIcon from 'lucide-static/icons/tablet.svg?raw';
+import smartphoneIcon from 'lucide-static/icons/smartphone.svg?raw';
+import { sizeIcon } from '../lib/icons';
 ---
+
+<!-- TEMPORARY (T21): canvas-only width scrubber, opened from the ⌥M panels list. -->
+<DevOverlay title="Viewport Width" storageKey="viewport-width" panelKey="viewport-width" defaultHidden data-viewport-width-panel>
+  <div class="viewport-width">
+    <RangeField label="Width" id="viewport-width-range" unit="px" min="320" max="2560" step="1" value="1280">
+      <span slot="labelAccessory" class="viewport-width__device">
+        <span data-viewport-width-name>Desktop</span>
+        <span data-viewport-width-icon="desktop" set:html={sizeIcon(monitorIcon)} />
+        <span data-viewport-width-icon="tablet" hidden set:html={sizeIcon(tabletIcon)} />
+        <span data-viewport-width-icon="mobile" hidden set:html={sizeIcon(smartphoneIcon)} />
+      </span>
+    </RangeField>
+    <div class="viewport-width__marks" aria-hidden="true">
+      <span data-viewport-width-mark="768">768</span>
+      <span data-viewport-width-mark="992">992</span>
+    </div>
+  </div>
+</DevOverlay>
 
 <div class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview" hidden>
   <div class="dev-viewport-preview__backdrop"></div>
@@ -29,9 +53,12 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     const canvasMode = window.parent !== window && window.name === 'vcd-canvas';
     const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
 
+    const widthPanel = document.querySelector<HTMLElement>('[data-viewport-width-panel]');
+    if (!canvasMode) widthPanel?.remove();
+
     const isTypingTarget = (target: EventTarget | null) => {
       const element = target instanceof HTMLElement ? target : null;
-      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
+      return Boolean(element?.isContentEditable || element?.closest('input:not([type="range"]), textarea, select'));
     };
     if (canvasMode) {
       if (document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=1')) hoistCanvasChrome(scope);
@@ -62,6 +89,26 @@ import ViewportSelector from './ui/ViewportSelector.astro';
       scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
         if (event.detail?.preset) requestPreset(event.detail.preset);
       }) as EventListener);
+      const range = widthPanel?.querySelector<HTMLInputElement>('#viewport-width-range');
+      const showWidth = (width: number, max: number) => {
+        if (!range || !widthPanel || !Number.isFinite(width) || !Number.isFinite(max)) return;
+        range.max = String(max);
+        range.value = String(width);
+        range.dispatchEvent(new Event('vcd:range-refresh'));
+        const device = width <= 767 ? 'mobile' : width <= 991 ? 'tablet' : 'desktop';
+        widthPanel.querySelector('[data-viewport-width-name]')!.textContent = device[0].toUpperCase() + device.slice(1);
+        widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-icon]').forEach((icon) => { icon.hidden = icon.dataset.viewportWidthIcon !== device; });
+        const min = Number(range.min);
+        widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-mark]').forEach((mark) => {
+          const at = (Number(mark.dataset.viewportWidthMark) - min) / (max - min);
+          mark.hidden = at > 1;
+          mark.style.left = `calc(8px + (100% - 16px) * ${at})`;
+        });
+      };
+      if (range) {
+        scope.listen(range, 'input', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value) }));
+        scope.listen(range, 'change', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value), done: true }));
+      }
       scope.listen(window, 'message', (event) => {
         if (event.origin !== location.origin || event.source !== window.parent) return;
         if (event.data?.type === 'vcd-canvas-flux') {
@@ -73,6 +120,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
           }
           return;
         }
+        if (event.data?.type === 'vcd-canvas-width') { showWidth(Number(event.data.width), Number(event.data.max)); return; }
         if (event.data?.type !== 'vcd-canvas-preset') return;
         const next = event.data.preset;
         if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile') return;
@@ -494,6 +542,12 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 </script>
 
 <style>
+  .viewport-width__device { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
+  .viewport-width__device > span { display: inline-flex; }
+  .viewport-width__device > span[hidden] { display: none; }
+  .viewport-width__marks { position: relative; height: 22px; margin-top: 4px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
+  .viewport-width__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
+  .viewport-width__marks span::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 6px; background: currentColor; }
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
   :global(html[data-viewport-flux] .site-header) { transition: none; }
