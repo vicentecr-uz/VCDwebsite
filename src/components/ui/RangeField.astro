@@ -38,7 +38,7 @@ const labelId = `${id}-label`;
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
-  // The thumb and fill follow the value on a slightly underdamped spring, so they carry a little weight.
+  // The thumb and fill ease onto the value without overshooting; momentum comes from the grip, not from here.
   const springs = new WeakMap<HTMLElement, { at: number; speed: number; target: number; frame: number; last: number }>();
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const moveTo = (field: HTMLElement, target: number) => {
@@ -57,7 +57,7 @@ const labelId = `${id}-label`;
       // Small fixed steps keep the spring steady when frames run long.
       for (let left = Math.min(0.064, (now - state.last) / 1000); left > 0; left -= 0.004) {
         const dt = Math.min(0.004, left);
-        state.speed += (-600 * (state.at - state.target) - 22 * state.speed) * dt;
+        state.speed += (-900 * (state.at - state.target) - 60 * state.speed) * dt;
         state.at += state.speed * dt;
       }
       state.last = now;
@@ -90,14 +90,30 @@ const labelId = `${id}-label`;
   };
 
   // Pressing anywhere on the track grips the thumb where it is; the value moves by how far the pointer travels.
+  // Let go while moving and it carries on, losing speed at UIKit's fast deceleration rate (0.99 per millisecond).
   const bindGrip = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
-    let grip: { id: number; x: number; value: number; changed: boolean } | undefined;
+    let grip: { id: number; x: number; value: number; changed: boolean; trail: Array<[number, number]> } | undefined;
+    let coast = 0;
     const emit = (type: string) => input.dispatchEvent(new (input.ownerDocument.defaultView ?? window).Event(type, { bubbles: true }));
+    const limits = () => ({ min: Number(input.min || 0), max: Number(input.max || 100), step: Number(input.step) || 1 });
+    const perPixel = () => { const { min, max } = limits(); return (max - min) / Math.max(1, input.getBoundingClientRect().width - 16); };
+    const place = (raw: number) => {
+      const { min, max, step } = limits();
+      const next = String(Math.min(max, Math.max(min, min + Math.round((raw - min) / step) * step)));
+      if (next === input.value) return false;
+      input.value = next;
+      emit('input');
+      return true;
+    };
+    const stopCoast = () => { cancelAnimationFrame(coast); coast = 0; };
+    scope.add(stopCoast);
     // The native control would jump the thumb to the pointer.
     scope.listen(input, 'mousedown', (event) => { if (event.button === 0) event.preventDefault(); });
     scope.listen(input, 'pointerdown', (event) => {
       if (event.button !== 0 || input.disabled) return;
-      grip = { id: event.pointerId, x: event.clientX, value: Number(input.value), changed: false };
+      const coasting = coast !== 0;
+      stopCoast();
+      grip = { id: event.pointerId, x: event.clientX, value: Number(input.value), changed: coasting, trail: [[event.timeStamp, event.clientX]] };
       input.setPointerCapture(event.pointerId);
       // Focus taken by the pointer shows no ring; the keyboard still gets one.
       input.parentElement?.setAttribute('data-pointer-focus', '');
@@ -106,26 +122,38 @@ const labelId = `${id}-label`;
     });
     const keyboardFocus = () => input.parentElement?.removeAttribute('data-pointer-focus');
     scope.listen(input, 'blur', keyboardFocus);
-    scope.listen(input, 'keydown', keyboardFocus);
+    scope.listen(input, 'keydown', () => { keyboardFocus(); if (coast) { stopCoast(); emit('change'); } });
     scope.listen(input, 'pointermove', (event) => {
       if (!grip || event.pointerId !== grip.id) return;
-      const min = Number(input.min || 0);
-      const max = Number(input.max || 100);
-      const step = Number(input.step) || 1;
-      const travel = Math.max(1, input.getBoundingClientRect().width - 16);
-      const raw = grip.value + (event.clientX - grip.x) / travel * (max - min);
-      const next = String(Math.min(max, Math.max(min, min + Math.round((raw - min) / step) * step)));
-      if (next === input.value) return;
-      input.value = next;
-      grip.changed = true;
-      emit('input');
+      grip.trail.push([event.timeStamp, event.clientX]);
+      while (grip.trail.length > 2 && event.timeStamp - grip.trail[0][0] > 100) grip.trail.shift();
+      if (place(grip.value + (event.clientX - grip.x) * perPixel())) grip.changed = true;
     });
     const release = (event: PointerEvent) => {
       if (!grip || event.pointerId !== grip.id) return;
-      const changed = grip.changed;
+      const { changed, trail } = grip;
       grip = undefined;
       input.parentElement?.classList.remove('is-gripped');
-      if (changed) emit('change');
+      const [firstAt, firstX] = trail[0];
+      const [lastAt, lastX] = trail[trail.length - 1];
+      // Pixels per millisecond over the last tenth of a second; none if the pointer had come to rest.
+      let speed = event.type === 'pointerup' && lastAt > firstAt && event.timeStamp - lastAt < 60 ? (lastX - firstX) / (lastAt - firstAt) : 0;
+      if (Math.abs(speed) < 0.15 || reducedMotion.matches) { if (changed) emit('change'); return; }
+      let raw = Number(input.value);
+      let last = performance.now();
+      const step = (now: number) => {
+        const dt = Math.min(64, now - last);
+        last = now;
+        // Distance covered while the speed decays by 0.99 each millisecond.
+        const decay = 0.99 ** dt;
+        raw += speed * (decay - 1) / Math.log(0.99) * perPixel();
+        speed *= decay;
+        place(raw);
+        const { min, max } = limits();
+        if (Math.abs(speed) < 0.02 || raw <= min || raw >= max) { coast = 0; emit('change'); return; }
+        coast = requestAnimationFrame(step);
+      };
+      coast = requestAnimationFrame(step);
     };
     scope.listen(input, 'pointerup', release);
     scope.listen(input, 'pointercancel', release);
