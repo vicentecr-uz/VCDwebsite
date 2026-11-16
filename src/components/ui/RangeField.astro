@@ -28,6 +28,10 @@ const labelId = `${id}-label`;
       aria-labelledby={labelId}
       data-range-unit={unit}
     />
+    <span class="dev-range-field__edit" data-range-edit>
+      <input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label={`${label} value`} data-native-text-field />
+      {unit && <span aria-hidden="true">{unit}</span>}
+    </span>
   </div>
 </Field>
 
@@ -45,6 +49,64 @@ const labelId = `${id}-label`;
     input.parentElement?.style.setProperty('--range-progress', String(progress));
     input.setAttribute('aria-valuetext', valueText);
     if (output) output.textContent = valueText;
+    const edit = input.parentElement?.querySelector<HTMLInputElement>('[data-range-edit] input');
+    if (edit && !input.parentElement?.classList.contains('is-editing')) {
+      edit.value = input.value;
+      edit.style.width = `${Math.max(1, input.value.length)}ch`;
+    }
+  };
+
+  // Click the value to type one: Enter or clicking away commits, Escape puts the old value back.
+  const bindEdit = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
+    const field = input.parentElement;
+    const wrap = field?.querySelector<HTMLElement>('[data-range-edit]');
+    const edit = wrap?.querySelector<HTMLInputElement>('input');
+    if (!field || !wrap || !edit) return;
+    let stopKeys: (() => void) | undefined;
+    const finish = (commit: boolean) => {
+      if (!field.classList.contains('is-editing')) return;
+      field.classList.remove('is-editing');
+      stopKeys?.();
+      stopKeys = undefined;
+      const typed = Number.parseFloat(edit.value);
+      if (commit && Number.isFinite(typed)) {
+        const min = Number(input.min || 0);
+        const max = Number(input.max || 100);
+        const step = Number(input.step) || 1;
+        const next = String(Math.min(max, Math.max(min, min + Math.round((typed - min) / step) * step)));
+        if (next !== input.value) {
+          const View = input.ownerDocument.defaultView ?? window;
+          input.value = next;
+          input.dispatchEvent(new View.Event('input', { bubbles: true }));
+          input.dispatchEvent(new View.Event('change', { bubbles: true }));
+        }
+      }
+      format(input);
+      if (edit.ownerDocument.activeElement === edit) edit.blur();
+    };
+    scope.listen(wrap, 'pointerdown', (event) => {
+      if (event.target === edit || input.disabled) return;
+      event.preventDefault();
+      edit.focus();
+    });
+    scope.listen(edit, 'focus', () => {
+      if (input.disabled) { edit.blur(); return; }
+      field.classList.add('is-editing');
+      edit.select();
+      // The window hears keys before any page-level Escape handling can blur the field and commit it.
+      const view = edit.ownerDocument.defaultView ?? window;
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finish(event.key === 'Enter');
+      };
+      view.addEventListener('keydown', onKey, true);
+      stopKeys = () => view.removeEventListener('keydown', onKey, true);
+    });
+    scope.listen(edit, 'input', () => { edit.style.width = `${Math.max(1, edit.value.length)}ch`; });
+    scope.listen(edit, 'blur', () => finish(true));
+    scope.add(() => stopKeys?.());
   };
 
   const dispose = onPageLoad(() => {
@@ -53,6 +115,7 @@ const labelId = `${id}-label`;
       scope.listen(input, 'input', () => format(input));
       scope.listen(input, 'change', () => format(input));
       scope.listen(input, 'vcd:range-refresh', () => format(input));
+      bindEdit(input, scope);
       format(input);
     });
     return () => scope.destroy();
@@ -125,6 +188,49 @@ const labelId = `${id}-label`;
 
   .dev-range-field--compact .dev-range-field__output {
     inset-inline: auto 14px;
+  }
+
+  .dev-range-field__edit {
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-start: 4px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding-inline: 14px 10px;
+    border-radius: calc((var(--dev-radius-control) - 4px) * var(--continuous-corner-scale, 1));
+    background: var(--sys-color-srf);
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    cursor: text;
+    transition: opacity 120ms ease-out;
+  }
+
+  .dev-range-field--compact .dev-range-field__edit {
+    inset-inline: auto 4px;
+    padding-inline: 10px;
+  }
+
+  .dev-range-field.is-editing .dev-range-field__edit { opacity: 1; }
+
+  .dev-range-field__edit input {
+    box-sizing: content-box;
+    min-width: 1ch;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    font-variant-numeric: inherit;
+    color: inherit;
+    text-align: end;
+  }
+
+  .dev-range-field:has(.dev-range-field__input:disabled) .dev-range-field__edit { pointer-events: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-range-field__edit { transition: none; }
   }
 
   .dev-range-field__input {
