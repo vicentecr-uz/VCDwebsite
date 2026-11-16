@@ -88,6 +88,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 ## Task router
 
 - UI, typography, spacing, motion, responsive layout, components, Figma: [`docs/interface-conventions.md`](docs/interface-conventions.md)
+- Anything checked in a browser on the dev server, viewport previews, the page-in-a-frame shell: [`docs/dev-canvas.md`](docs/dev-canvas.md). Dev pages open inside the canvas by default; automated browsers and phones get the plain page.
 - Demo frames, embedded demos, Stageshow: [`docs/interface-conventions.md` → Demo frames](docs/interface-conventions.md#demo-frames)
 - In-page Edit, content/media, project statuses, Save/Publish internals: [`docs/dev-authoring.md`](docs/dev-authoring.md)
 - Page-width token and breakpoint inventory: [`docs/page-width.md`](docs/page-width.md)

@@ -69,9 +69,9 @@ function fixture(reduced = false, frameMode = false, idleSupported = true, canva
     destroy() { scope.signal.aborted = true; cleanups.reverse().forEach(fn => fn()); },
   };
   const follow = new Function('window', 'document', `return (${followEditViewport.toString()});`)(window, document);
-  const dispose = new Function('window', 'document', 'HTMLElement', 'Element', 'location', 'CustomEvent', 'Event', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', 'followEditViewport', script)(
+  const dispose = new Function('window', 'document', 'HTMLElement', 'Element', 'location', 'CustomEvent', 'Event', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', 'followEditViewport', 'hoistCanvasChrome', script)(
     window, document, window.HTMLElement, window.Element, window.location, window.CustomEvent, window.Event, window.MutationObserver,
-    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(), follow,
+    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(), follow, () => {},
   );
   const request = (preset: string) => window.dispatchEvent(new window.CustomEvent('vcd:edit-viewport-request', { detail: { preset } }));
   const message = (type: string, extra = {}) => window.dispatchEvent(new window.MessageEvent('message', { origin: window.location.origin, source: child, data: { type, ...extra } }));

@@ -2,12 +2,26 @@ import { extname } from 'node:path';
 
 const excludedPrefixes = ['/dev/', '/api/', '/src/', '/@', '/node_modules/', '/_', '/preview/', '/reports/prototypes/'];
 
+const hasCookie = (headers, pair) => String(headers.cookie ?? '').split(';').some((cookie) => cookie.trim() === pair);
+
+/**
+ * The canvas is on unless this browser chose otherwise (docs/dev-canvas.md).
+ * `vcd-canvas=1` forces it on and `vcd-canvas=0` turns it off. With no choice made it is skipped for
+ * phones and automated browsers: by their request headers here, and by `vcd-canvas-skip=1`, which the
+ * shell sets when it finds itself on a phone-sized screen or under WebDriver.
+ */
+export function canvasWanted(headers) {
+  if (hasCookie(headers, 'vcd-canvas=1')) return true;
+  if (hasCookie(headers, 'vcd-canvas=0') || hasCookie(headers, 'vcd-canvas-skip=1')) return false;
+  return headers['sec-ch-ua-mobile'] !== '?1' && !/HeadlessChrome|Mobi|Android|iPhone|iPad/.test(String(headers['user-agent'] ?? ''));
+}
+
 export function shouldServeCanvasShell({ method, url, headers }) {
   const pathname = new URL(url, 'http://localhost').pathname;
   return method === 'GET'
     && headers['sec-fetch-dest'] === 'document'
     && String(headers.accept ?? '').includes('text/html')
-    && String(headers.cookie ?? '').split(';').some((cookie) => cookie.trim() === 'vcd-canvas=1')
+    && canvasWanted(headers)
     && !excludedPrefixes.some((prefix) => pathname.startsWith(prefix))
     && !extname(pathname);
 }
@@ -33,9 +47,8 @@ export function devCanvasShell() {
         const pathname = new URL(req.url, 'http://localhost').pathname;
         if (req.method === 'GET' && ['/dev/canvas/on', '/dev/canvas/off', '/dev/canvas/chrome-on', '/dev/canvas/chrome-off'].includes(pathname)) {
           const cookie = pathname.includes('/chrome-') ? 'vcd-canvas-chrome' : 'vcd-canvas';
-          res.setHeader('Set-Cookie', pathname.endsWith('on')
-            ? `${cookie}=1; Path=/; SameSite=Lax`
-            : `${cookie}=; Path=/; SameSite=Lax; Max-Age=0`);
+          // Either answer is a choice this browser keeps; the default only applies where none was made.
+          res.setHeader('Set-Cookie', `${cookie}=${pathname.endsWith('on') ? 1 : 0}; Path=/; SameSite=Lax; Max-Age=31536000`);
           res.setHeader('Cache-Control', 'no-store');
           res.setHeader('Location', canvasFlagReturnPath(req.headers, req.url));
           res.statusCode = 302;

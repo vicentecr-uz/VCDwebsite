@@ -59,7 +59,7 @@ import { sizeIcon } from '../lib/icons';
       return Boolean(element?.isContentEditable || element?.closest('input:not([type="range"]), textarea, select'));
     };
     if (canvasMode) {
-      if (document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=1')) hoistCanvasChrome(scope);
+      if (!document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=0')) hoistCanvasChrome(scope);
       followEditViewport(scope);
       scope.listen(window, 'resize', (event) => {
         if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
