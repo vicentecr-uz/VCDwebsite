@@ -66,8 +66,13 @@ const labelId = `${id}-label`;
       if (event.button !== 0 || input.disabled) return;
       grip = { id: event.pointerId, x: event.clientX, value: Number(input.value), changed: false };
       input.setPointerCapture(event.pointerId);
+      // Focus taken by the pointer shows no ring; the keyboard still gets one.
+      input.parentElement?.setAttribute('data-pointer-focus', '');
       input.focus({ preventScroll: true });
     });
+    const keyboardFocus = () => input.parentElement?.removeAttribute('data-pointer-focus');
+    scope.listen(input, 'blur', keyboardFocus);
+    scope.listen(input, 'keydown', keyboardFocus);
     scope.listen(input, 'pointermove', (event) => {
       if (!grip || event.pointerId !== grip.id) return;
       const min = Number(input.min || 0);
@@ -282,7 +287,8 @@ const labelId = `${id}-label`;
   .dev-range-field__input::-moz-range-track { background: transparent; }
   .dev-range-field__input::-webkit-slider-thumb { width: 16px; height: 1px; appearance: none; opacity: 0; }
   .dev-range-field__input::-moz-range-thumb { width: 16px; height: 1px; border: 0; opacity: 0; }
-  .dev-range-field:has(.dev-range-field__input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+  /* Drawn inside the field: a ring outside it is clipped by the panel body. */
+  .dev-range-field:has(.dev-range-field__input:focus-visible):not([data-pointer-focus]) { outline: 2px solid var(--sys-color-on-srf); outline-offset: -2px; }
   .dev-range-field:has(.dev-range-field__input:disabled) { opacity: var(--dev-opacity-disabled); }
   .dev-range-field__input:disabled { cursor: default; }
 </style>
