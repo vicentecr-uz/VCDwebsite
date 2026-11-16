@@ -6,7 +6,7 @@ import path from 'node:path';
 // containing block for `position: fixed` (`container-type: inline-size`). A menu,
 // listbox or tooltip inside one block paints under the next block whatever its
 // z-index, so floating layers must open as native popovers (top layer).
-// See docs/interface-conventions.md → Floating layers and src/lib/floatingLayer.ts.
+// See docs/interface/menus.md and src/lib/floatingLayer.ts.
 
 const root = path.resolve(import.meta.dir, '../..');
 const src = path.join(root, 'src');
