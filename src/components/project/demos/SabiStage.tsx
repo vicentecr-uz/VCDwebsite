@@ -11,6 +11,8 @@ const example = 'A little more room to say what you mean, even when the words ru
 const empty = {};
 const demoScale = 2;
 const cursorRest = { wide: { x: 620, y: 290 }, compact: { x: 320, y: 290 } };
+// These read best still: the reader explores them by hand.
+const unscripted = ['handles', 'direction', 'gradient'];
 
 // Two tangent-matched curves per corner keep the flat sides easing into the turn.
 function squircle(width: number, height: number, radius = 18) {
@@ -52,6 +54,8 @@ function Scene({ kind, controller, onManual, compact }: {
   const choices = handles ? ['Original', 'More room', 'No scroll', 'Container'] : ['Before', 'After'];
   useLayoutEffect(() => {
     const handle = mountSabiDemo(root.current!);
+    // The gradient's flaw is visible at rest, so it opens on Before with text hidden on both sides.
+    if (kind === 'gradient') { handle.choose('before'); handle.seek(Math.round(example.length / 2)); }
     controller.current = handle;
     return () => { handle.destroy(); controller.current = null; };
   }, [kind, controller]);
@@ -201,8 +205,8 @@ function Take({ kind }: { kind: string }) {
   }, [kind]);
   return <div className="sabi-show" data-manual={manual || undefined}>
     <Stage width={720} height={336} compact={{ below: 560, width: 358, height: 336 }} initial={empty} poster={empty}
-      script={manual || kind === 'handles' || kind === 'direction' ? undefined : script} play="once" unframed
-      palette="mono" fidelity="realistic" keys="bottom" cursor={manual || kind === 'handles' || kind === 'direction' ? undefined : { at: cursorRest, style: 'real' }}
+      script={manual || unscripted.includes(kind) ? undefined : script} play="once" unframed
+      palette="mono" fidelity="realistic" keys="bottom" cursor={manual || unscripted.includes(kind) ? undefined : { at: cursorRest, style: 'real' }}
       tokens={{ '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
         '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
         '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
@@ -215,7 +219,7 @@ export default function SabiStage({ kind }: { kind: string }) {
   const [take, setTake] = useState(0);
   return <div className="sabi-demo">
     <Take key={take} kind={kind} />
-    {!['handles', 'direction'].includes(kind) && <button type="button" className="dev-btn dev-btn--ghost sabi-replay"
+    {!unscripted.includes(kind) && <button type="button" className="dev-btn dev-btn--ghost sabi-replay"
       aria-label="Replay demo" title="Replay" onClick={() => setTake((value) => value + 1)}>
       <span className="dev-btn__icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: replayIcon }} />
     </button>}
