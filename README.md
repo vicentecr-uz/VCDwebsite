@@ -104,7 +104,7 @@ media/            # private source media supplied before a content-backed build
 ## Docs
 
 - [`AGENTS.md`](AGENTS.md) — canonical cross-harness project and delivery workflow.
-- [`docs/interface-conventions.md`](docs/interface-conventions.md) — UI, layout, component, motion, accessibility, and Figma rules.
+- [`docs/interface-conventions.md`](docs/interface-conventions.md) — the always-read UI index; topic detail lives in [`docs/interface/`](docs/interface/).
 - [`docs/dev-authoring.md`](docs/dev-authoring.md) — in-page Edit, content/media, project status, and publishing internals.
 - [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG). Not a sprint backlog.
 

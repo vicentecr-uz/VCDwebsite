@@ -1,156 +1,35 @@
 # Interface conventions
 
-Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md) owns the delivery workflow; this file owns the detailed interface rules.
-
-## Foundations
-
-- **Spacing:** Use `var(--space-unit)` consistently for header, grid, footer, and gaps. It is the ink gap between two body lines (baseline to next cap top): `--text-body-size × (--text-body-leading − 0.697)`, about `15.4px` on desktop and `14.4px` below `40em`, so it follows the body size. Text gaps are whole units, measured ink to ink: line `1u`; every related gap around text is `2u`, from the cap line above or the baseline below, never the descender: paragraph breaks, title to body text, and body text or a title to a box (image, embed, code block, form) on either side. It is defined in `src/styles/global.css`; do not replace it with a literal `1em`. Prefer inline `style=` over framework arbitrary values when guaranteed rendering matters.
-- **Mobile breakpoint:** `40em` (640px). This is where the body size, and with it `--space-unit`, steps down and the header steps down through `--header-wordmark-size`, `--header-menu-link-size`, and `--header-logo-size`.
-- **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. Content Heading 2 uses the body size, leading, and tracking with bold weight 700; body emphasis stays at 500. It remains a heading block in the editor and rendered document.
-- **Page ground:** Use `--sys-color-srf` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
-
-## Text links
-
-Inline text links follow the home intro’s Kingfisher link: an underline at 10% of the current text colour, `0.08em` thick and `0.15em` below the text; pointer hover strengthens it to 30% over 150ms. Use the shared `.text-link` class outside body-text blocks. Body-text links, the existing `.project-inline-link` alias and the home intro action share the same rules in `global.css`; do not recreate the underline at call sites. The editor’s explicit underline-off formatting remains supported. Navigation, cards, media hit areas and filled buttons retain their own component treatment.
-
-The write-up Index control is a native link to `/digital`, styled as a quiet text control: label and return icon both use `on-srf-subtle`, darken together to `on-srf` on hover or keyboard focus, and never underline. Keep this single-use treatment in `WriteupLayout` until another real caller needs it.
-
-## Scrollable overflow
-
-Scrollable content needs a clear edge treatment. For grouped controls, cards, and other contained UI, put the existing radius token on the actual overflow viewport and clip its contents to that rounded shape, as with the clipped areas of the Asset manager. For text-like content that continues past its edge, use a gradient alpha mask to fade the text, as with overflowing text fields. Preserve native scrolling and visible keyboard focus in both cases. Reuse the existing dev controls and styling patterns rather than introducing a new overflow abstraction. Hiding scrollbars is a local choice for a specific control; this pattern does not make it a global rule.
-
-## Floating layers
-
-Menus, dropdowns, listboxes, popovers and tooltips open in the native top layer: put `popover="manual"` on the floating element, open it with `showPopover()`, and place it with `position: fixed` in viewport coordinates using `placeBeside()` / `clampToViewport()` from `src/lib/floatingLayer.ts`. The one select, `EditorSelectField` (Base UI), is the exception: Base UI positions its popup and aligns the selected option with the trigger. It portals to `body`, or into an enclosing modal `<dialog>` so it paints in that dialog's top layer. Every `.project-block` is a stacking context (`isolation: isolate` from `site-annotations.css`) and, through `container-type: inline-size`, the containing block for `position: fixed`. So a layer inside one block paints under the next block whatever its `z-index`, and `position: fixed` alone does not escape. Never fix draw order by raising a block's `z-index`.
-
-In the popover's CSS, reset the UA defaults (`inset: auto; margin: 0; border: 0; overflow: visible`) and set `display` only under `:popover-open`, so the closed popover stays `display: none`. The element stays in its DOM position, so `:has()`, `:hover`, inheritance and event delegation still work; ancestor `opacity` no longer applies to it.
-
-`bun test scripts/test/top-layer-floating.test.ts` fails when an element with `role="menu"`, `"listbox"` or `"tooltip"` renders without `popover`. A layer that genuinely never sits inside a block, such as an inline toolbar row or a node appended to `<body>`, goes on the test's exemption list with a reason. Do not add an exemption for a layer that renders inside a block.
-
-### Menus
-
-Every dropdown menu and listbox is a `Menu` (`src/components/ui/Menu.astro`, `.dev-menu`). Assemble it from `.dev-menu__item` rows (ghost `Button`, align start, width fill) and `Hairline` separators, then place it with `src/lib/floatingLayer.ts`. The component owns the rest: padding equal to the 4px row gap, concentric corners (row radius + padding), separator inset and colour, the selected-row fill with hover one step darker, and opening and closing in the top layer instantly (menus are frequent, often keyboard-driven tools, so they don't fade). Never set menu padding, gap, radius or separator spacing at the call site; change `.dev-menu` in `dev-chrome.css` so every menu moves together. The same test fails when a top-layer menu or listbox lacks `.dev-menu`. A select's trigger value and its options read one token, `--dev-text-select-value` (the Menu row size), so the open listbox overlays the value exactly; never set either font on its own.
-
-## Page width and viewport height
-
-Text and media use separate caps:
-
-- `--page-text-max-width` (`40em`) caps body text and section titles.
-- `--page-media-max-width` (`50em`) caps images, grids, carousels, video, press ticker, Reddit board, and project grids.
-- `--page-max-width` is derived with `max()` and defines the outer column used by `#site-wrapper`, the header feather, and sidebar navigation.
-
-All three tokens live in the `html` block of `src/styles/global.css`. The sidebar-nav breakpoint is derived from outer column + `28.5em` (currently `78.5em`), but media-query conditions cannot read custom properties. Roughly six literals across `SectionSidebarNav.astro`, `project.css`, `DevTextEditor.astro`, and `DevPageWidthToggle.astro` must be re-derived together. Missing one can leave the nav positioned and hidden in the same band. Read [`page-width.md`](page-width.md) before changing a width; the dev-mode **Page width** panel previews both caps but does not update shipped CSS for you.
-
-Never use raw `svh` or `vh` for a visually important height constraint. Microsoft Edge on iOS can let `svh` follow address-bar movement and push content during scroll. Use `bindSafeVh()` from `src/lib/safeVh.ts`, initialized in `Layout.astro`; it sets `--vh-safe` on load and recomputes only for a genuine width change. Keep `svh` only as the pre-JS/no-JS fallback:
-
-```css
-height: calc(var(--vh-safe, 1svh) * 100);
-```
-
-Do not reimplement safe viewport height per component.
-
-## Ground, ink, and edit affordances
-
-Choose text and rule tokens by purpose using [Colour roles](colour-roles.md): primary reading, readable supporting content, or readable optional metadata. Text and decorative rules have separate contrast requirements.
-
-Light/dark variants are named for the **ground**, not the ink. `on-dark` is the white-icon set because it sits on a dark ground. Listing `dark` and `hoverDark` flags likewise describe the cover. Project-grid chip palettes are `--chip-{ink,fill,ring,press}-on-{light,dark}`; the ring is always one step darker than its fill on both grounds.
-
-Gallery title/meta ink flips from one shared threshold: `HOVER_LUMA_THRESHOLD` in `src/scripts/coverLuminance.ts`, used by `adaptiveMediaInk` and `bindGalleryMediaInk`. Higher keeps dark ink over more mid-tones; lower switches to light ink sooner. Do not tune this in CSS or `ProjectGrid.astro`.
-
-A dashed hairline means **editable**, and nothing else in dev chrome may use one.
-
-- Text fields show it while `contenteditable`.
-- Media frames show it during image drag, inset and rounded so it reads as the receiving slot rather than the frame border.
-- Solid rules and fills communicate state: selected, lifted, span frame, or dropping.
-- Use `--dev-edit-dash` and `--dev-edit-dash-color` from `global.css`. When touching a legacy hand-rolled `color-mix`, converge that instance; do not sweep unrelated code.
-
-## Labels and accessibility
-
-Site and dev-layer chrome ships with **labels only**. A control names itself and stops; if it needs an explanatory sentence, improve its label, grouping, or interaction.
-
-Do not volunteer subtitles that repeat headings, helper prose below fields or toggles, panel introductions, parenthetical hints, or explanatory tooltips. These are still valid:
-
-- the control label;
-- an inline unit such as `px` or `%`;
-- actionable error text;
-- editorial site content such as About or a case study;
-- invisible accessible names such as `aria-label` and `title` on icon-only controls.
-
-Never strip an accessible name to satisfy the labels-only rule. If Anto explicitly asks for tooltips or onboarding, build that requested help layer properly rather than reducing it to a bare label.
-
-## Motion
-
-Dev chrome should not pop into existence. Standalone panels such as `DevOverlay` fade with a slight rise and mirror it on exit. Veils covering an existing surface fade only.
-
-`prefers-reduced-motion` suppresses **movement**, not fades. Opacity keeps its transition and easing. A translate/rise keeps its duration but uses zero offset; scale, width/height, and layout motion are suppressed or crossfaded. Never use `transition: none` for a fade or zero a shared duration that opacity also reads.
-
-This rule includes JavaScript timing. Do not turn an enter/exit duration into zero, skip its class lifecycle, or call the finish path in the same frame merely because reduced motion is enabled; those make a CSS fade snap. Existing genuine-movement overrides include the section-lift `scale(1.02)`, drop-indicator height, and crop-stage transforms.
-
-Broader reduced-motion parity is deprioritized until v1 **actually ships**. The former target date, 2026-08-31, is not evidence that v1 shipped. Do not proactively extend or audit reduced-motion coverage before then, but do not regress behavior already implemented. Revisit after the real v1 release or if the site-builder work begins serving other people.
-
-Page navigation starts with `#transition-overlay` opaque. On initial load, a small inline controller fades it out over `0.25s` after fonts and viewport-visible LQIP/thumb images are ready and one painted frame has elapsed, with a four-second fallback; the deferred transition module adopts that state without re-covering the page. Preview upgrades begin as the fade starts. There is no minimum hold. Outgoing navigation fades in over `0.25s`, and the CSS five-second safety reveal remains if JavaScript fails. In dev, `?dev-transition=visible` keeps the page visible while preserving the readiness boundary; the fixed `Fade would start` status marker appears exactly when the normal fade and preview upgrade would begin, and remains visible for diagnosis. Internal links carry the query forward. A production build honors the no-veil query only on loopback hosts for local performance capture; deployed hosts ignore it. Passive `vcd:` User Timing marks align readiness and fade events with browser Performance traces.
-
-## Approved components
-
-Use only components and patterns listed on `/styles`. Ask Anto before introducing something outside that library. Do not copy legacy case-study markup from `src/components/project/legacy/`.
-
-Build UI by assembling existing components and sub-components, not by defining one-off styles. If a needed sub-component does not exist, consider it properly, then add it to the design system and `/styles` rather than hand-styling it in place. Each component should settle a decision once so later work does not re-make it.
-
-Raised buttons (`raised` on `Button`, `.dev-btn--raised`) are opt-in for a filled or soft button that should stand out a little more, such as the Sabi hero CTAs or a Save bar. They do not replace the flat default. A dark fill gets a semi-transparent top highlight only; a light fill gets a bottom shade only, from `--sys-color-surface-shadow`; `light-dark()` swaps them by theme. Pressing flattens the bevel. Do not hand-roll a bevel or drop shadow on a button.
-
-When creating a page, compose its headings, text, and media from the existing content-backed page blocks wherever they fit, so Anto can edit them through in-page Edit. Use the disk-backed page loader and verify Save survives a reload; styled hardcoded text is not equivalent to an editable block.
-
-Treat difficulty expressing a page through blocks as evidence of an editor capability gap. Identify the missing capability and address it within the agreed task scope, or explicitly report the remaining gap. Do not silently bypass the editor with page-specific markup. Functional controls may still need engine code; keep that boundary explicit.
-
-Signed-off Tapico/future case-study primitives:
-
-- `ProjectLayout`
-- `ProjectImage`
-- `ProjectImageGrid`
-- `ProjectBodyText`
-- `ProjectSectionTitle`
-- `ProjectPressQuoteTicker`
-- `ProjectRedditCommentCarousel`
-- `ProjectInteractiveDemo`
-
-Home, Work, and Play use `ProjectGrid` from `src/components/ProjectGrid.astro`. Its `variant` is `home`, `work`, or `play`; listings come from each project document. `src/components/project/legacy/LegacyProjectGrid` is a case-study media cluster, not the same listing grid.
-
-Any interactive element built from Button Base or its variants needs a hit area extending `space/hit-inset` (8px in Figma Primitives) beyond every visual edge. Figma deliberately does not model this geometry. In code, use an interactive wrapper or a pseudo-element with `inset: -8px`; when the token is exported to CSS, reference it instead of hardcoding the value.
-
-## Demo frames
-
-The outer demo frame sits directly on the page with shallow, raised edges. Use [`ProjectInteractiveDemo`](../src/components/project/ProjectInteractiveDemo.astro) through an `interactiveDemo` content block. Register the demo in [`craftDemos.ts`](../src/lib/craftDemos.ts); the shared component supplies the frame automatically. Do not recreate its frame in a demo component or add `dev-surface`, a stronger elevation shadow, or a second background plate.
-
-The shared frame ([`demoFrame.css`](../src/styles/demoFrame.css)) owns `--comp-demo-frame-container` (aliased to the page surface, `--sys-color-srf`), the save bar’s shared `--surface-stroke-shadow` (a light inner ring and dark outer ring, both zero-blur) drawn above demo content, a tighter soft drop shadow, corner radius, and mobile full bleed. Full bleed applies to any `.project-block.demo-frame`, so every demo in the page flow gets it without component CSS; nested frames stay inset. Pad demo content with `--demo-frame-inset` (`2u`, then `--page-gutter` once the frame bleeds) so it lines up with the page column at every width. Depth comes from these edges rather than a contrasting fill or a broad floating-card shadow. At widths below `40em`, it must reach both page edges without horizontal overflow. Controls or product panels **inside** the demo may use the editor's surfaces; that does not change the outer frame.
-
-Only use another frame treatment when Anto explicitly requests it. Record a frameless exception as `frame: 'none'` in the registry, as the image-framing demo does. Keep exceptions out of page-specific CSS so the default remains shared and reviewable.
-
-The shared frame shows the existing `LoadingSpinner` while an iframe loads and any Astro islands finish hydrating. Keep this loading state in `ProjectInteractiveDemo`, not in individual scenes.
-
-Iframe demos use [`DemoLayout`](../src/layouts/DemoLayout.astro). A small control demo must fit its frame without vertical scrolling; opt into `scrolling` only when scrolling is part of the demonstrated interaction. Size the scene and layout together rather than merely hiding an overflowing control. Stageshow supplies the scene and choreography inside this frame, not a replacement outer surface.
-
-Demo cursors keep their native proportions relative to the featured control. Share the control’s enlargement factor with every cursor kind, including the I-beam: a control enlarged by 47% needs a cursor at 1.47×. Use one scale setting for the control and cursor, then let stage fitting scale both together. Do not choose an independent large-cursor preset. Sabi uses `--sabi-demo-scale` for its field height and Stageshow’s `--ss-cursor-size`.
-
-Cursors, pointing/grabbing hands, finger circles and click ripples represent the demonstrator using the reader’s screen. By default they belong above the page, outside the demo frame’s clipping and iframe viewport. Use `createDemoIndicatorLayer` (`src/lib/demoIndicatorLayer.ts`) for DOM guides; Stageshow projects its cursor and ripples through this layer automatically. Keep the scene and keypress visualizer inside the frame. The layer preserves coordinate scale, follows scroll/resize, ignores pointer events, and is removed with the guide. Only constrain indicators to a frame when explicitly requested.
-
-Use `demoCursorGlyphs.ts` for the shared artwork, dimensions and hotspots, and `demoIndicators.css` for cursor shadows and finger-circle surfaces. The home intro guide, DOM demos and Stageshow must use the same set. Keep control-relative scaling on top of these shared base dimensions; do not redraw a separate pointer or finger style for a new demo.
-
-At mobile widths below `40em`, omit the frame’s outer drop shadow while retaining its edge strokes and full bleed.
-
-Run `bun scripts/test/craft-demo-build.test.mjs` after a build. It checks that embedded demos use the shared frame and that exceptions are explicit. Review the save-bar rings above the content, subtle outer shadow, full bleed, and absence of accidental scrolling at desktop and phone widths.
-
-## Figma
-
-Build Figma work from the existing design-system components: elements → atom variants → atoms → particle components. A text sample in a mockup is an instance of the text-style particle, not a hand-styled raw text node. If the needed component does not exist, create it properly first or ask Anto about the structure. A raw node that merely looks right hides the missing system component.
-
-When mentioning a Figma component, frame, or mockup in chat, PRs, or rotation docs, link its canonical node URL (`https://www.figma.com/design/:fileKey?node-id=:id`, with an ID such as `123-456`) rather than giving only its name. See [`figma-design-system.md`](figma-design-system.md) and [`figma-source-alignment.md`](figma-source-alignment.md).
-
-## About page
-
-The About page uses a CSS-only three-state layout, with no Flip or resize tween:
-
-- Wide (`>=50em`): 3:4 photo in a `17em` column left; Contact, About, and Experience stacked right.
-- Medium (`40–50em`): square `17em` photo and Contact in the top row; About and Experience full width below.
-- Narrow (`<40em`): square full-width photo, then Contact, About, Experience.
-- Photo position is `50% 35%` for the square crop and `50% 50%` for portrait.
-- Bio `max-width` is `38em`.
+Read this before any site or dev-layer UI work. It holds the rules every UI task needs; open a topic file only when the table below sends you there. The `design-system-first` skill carries the same workflow. Root [`AGENTS.md`](../AGENTS.md) owns delivery.
+
+## Always
+
+- **Compose, don't style.** Build from `src/components/ui/` and the blocks on `/styles`. A component owns its padding, gap and radius; a call site never sets them. To change one, change the component so every instance moves together.
+- **Tokens only.** Page spacing is `var(--space-unit)`; dev chrome reads the `--dev-*` tokens in `global.css`. No literal spacing, and no re-pointing a token at a call site.
+- **Measure, don't eyeball.** In a preview, `(await import('/scripts/dev-measure.ts')).report('<selector>')` prints all four insets and the baselines of texts sharing a row. Equal means within 0.5px.
+- **Floating layers** are native popovers, and menus are `Menu` (`.dev-menu`).
+- **Motion:** dev chrome fades, never pops; reduced motion removes travel, never the fade.
+- **Labels only.** A control names itself and stops: no subtitles, helper text, panel intros or volunteered tooltips. Keep accessible names, units and error text.
+- **Checks:** `bun test scripts/test/dev-chrome-ownership.test.ts scripts/test/top-layer-floating.test.ts` before handing off UI work.
+
+## When the component does not exist
+
+1. Stop and say which component or page block is missing. Do not style a one-off at the call site.
+2. Build it into `src/components/ui/` (or as a content block) with a specimen on `/styles`: properly, or as a good-enough version marked `good-enough: #<issue>` at the top of its file.
+3. Spend at most two rounds of iteration on a good-enough version.
+4. File a GitHub issue (label and milestone) to finish it, and put its number in the marker.
+
+## Doing X? Read Y
+
+| Doing | Read |
+| --- | --- |
+| Building or changing a dev panel (`DevOverlay`, `DevPanel`) | [panels](interface/panels.md), or the `design-system-first` skill |
+| Menus, dropdowns, listboxes, popovers, tooltips | [menus](interface/menus.md) |
+| Fields, selects, sliders, toggles, segmented controls | [fields](interface/fields.md) |
+| Any animation or transition, page transitions | [motion](interface/motion.md) |
+| Page spacing, type, widths, breakpoints, viewport height, overflow | [spacing](interface/spacing.md) |
+| Colour, ink, page ground, links, edit affordances | [colour and ink](interface/colour-and-ink.md) |
+| Choosing or adding components, buttons, hit areas, page blocks, labels | [components](interface/components.md) |
+| Demo frames, embedded demos, Stageshow | [demo frames](interface/demo-frames.md) |
+| Figma | [figma](interface/figma.md) |
+| About page | [about page](interface/about-page.md) |
