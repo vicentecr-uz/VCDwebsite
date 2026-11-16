@@ -8,15 +8,14 @@ import { hoistCanvasChrome, inspectorWantsShellViewport } from '../../src/lib/ca
 import { clampToViewport } from '../../src/lib/floatingLayer';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
-function fixture(cookies = 'both', editing = true, configure?: (frame: Window, shell: Window) => void) {
+function fixture(cookies = 'default', editing = true, configure?: (frame: Window, shell: Window) => void) {
   const frame = new Window({ url: 'http://localhost:4360/' });
   const shell = new Window({ url: 'http://localhost:4360/' });
   frame.name = 'vcd-canvas';
   Object.defineProperty(frame, 'parent', { value: shell });
   const document = frame.document;
-  if (cookies !== 'none') document.cookie = 'vcd-canvas=1';
-  if (cookies === 'both' || cookies === 'chrome-only') document.cookie = 'vcd-canvas-chrome=1';
-  if (cookies === 'chrome-only') document.cookie = 'vcd-canvas=; Max-Age=0';
+  if (cookies === 'chrome-off') document.cookie = 'vcd-canvas-chrome=0';
+  if (cookies === 'outside-canvas') frame.name = '';
   document.documentElement.className = editing ? 'is-dev-mode' : '';
   document.documentElement.setAttribute('data-theme', 'dark');
   document.head.innerHTML = '<style>.save { color: red }</style><link rel="stylesheet" href="/chrome.css">';
@@ -120,7 +119,7 @@ test('mirrors style additions, removals, text HMR, link attributes and root stat
   } finally { await f.dispose(); }
 });
 
-for (const cookies of ['none', 'canvas-only', 'chrome-only']) test(`does nothing with ${cookies} cookies`, async () => {
+for (const cookies of ['chrome-off', 'outside-canvas']) test(`does nothing when ${cookies}`, async () => {
   const f = fixture(cookies);
   try {
     expect(f.document.body.innerHTML).toBe(f.original);

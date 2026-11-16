@@ -16,6 +16,14 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     <link rel="stylesheet" href="/fonts/hanken-grotesk/hanken.css" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Page</title>
+    <script is:inline>
+      // With no choice made, a phone-sized screen or an automated browser gets the plain page (docs/dev-canvas.md).
+      if (!/(?:^|; )vcd-canvas=1(?:;|$)/.test(document.cookie) && (navigator.webdriver || Math.min(screen.width, screen.height) <= 640)) {
+        document.documentElement.setAttribute('data-canvas-skip', '');
+        document.cookie = 'vcd-canvas-skip=1; Path=/; SameSite=Lax';
+        location.replace(location.href);
+      }
+    </script>
   </head>
   <body>
     <div class="dev-viewport-preview__backdrop" data-canvas-backdrop></div>
@@ -367,7 +375,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   scope.listen(frame, 'load', () => { postPreset(); shownWidth = ''; showWidth(current.width); focusFrame(); });
   select();
   finish(desktop());
-  frame.src = location.href;
+  if (!document.documentElement.hasAttribute('data-canvas-skip')) frame.src = location.href;
   focusFrame();
   scope.add(() => window.cancelAnimationFrame(raf));
   import.meta.hot?.dispose(() => scope.destroy());

@@ -12,7 +12,7 @@ const shortcuts = [
   { key: '⌥S', name: 'Save' },
   { key: '⌥⇧S', name: 'Save & Publish' },
   { key: '⌥H', name: 'Shortcuts' },
-  { key: '⌥1/2/3', name: 'Desktop/Tablet/Mobile preview' },
+  { key: '⌥1/2/3', name: 'Desktop/Tablet/Mobile preview', canvasOnly: true },
 ];
 ---
 
@@ -27,8 +27,8 @@ const shortcuts = [
       data-dev-shortcuts-card
     >
       <ul class="dev-shortcuts-help__list">
-        {shortcuts.map(({ key, name }) => (
-          <li class="dev-shortcuts-help__item">
+        {shortcuts.map(({ key, name, canvasOnly }) => (
+          <li class="dev-shortcuts-help__item" data-canvas-only={canvasOnly || undefined}>
             <span class="dev-shortcuts-help__shortcut">{key}</span>
             <span class="dev-shortcuts-help__name">{name}</span>
           </li>
@@ -52,6 +52,9 @@ const shortcuts = [
     const card = document.querySelector('[data-dev-shortcuts-card]');
     const version = document.querySelector('[data-dev-shortcuts-version]');
     if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement) || !(version instanceof HTMLElement)) return;
+
+    // Device previews exist only in the dev canvas (docs/dev-canvas.md); off it, the list does not offer them.
+    if (window.name !== 'vcd-canvas' || window.parent === window) root.querySelectorAll('[data-canvas-only]').forEach((item) => item.remove());
 
     let versionRequestId = 0;
 

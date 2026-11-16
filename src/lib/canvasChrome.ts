@@ -7,8 +7,8 @@ export function inspectorWantsShellViewport(stack: string): boolean {
 
 export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const cookies = document.cookie.split(';').map((cookie) => cookie.trim());
-  if (!cookies.includes('vcd-canvas=1') || !cookies.includes('vcd-canvas-chrome=1')
-    || window.name !== 'vcd-canvas' || window.parent === window) return;
+  // On wherever the page runs in the canvas, unless this browser turned the chrome off.
+  if (cookies.includes('vcd-canvas-chrome=0') || window.name !== 'vcd-canvas' || window.parent === window) return;
   const host = window.parent.document;
   const layer = host.querySelector<HTMLElement>('[data-canvas-chrome]');
   if (!layer || !host.documentElement.hasAttribute('data-canvas-shell')) return;

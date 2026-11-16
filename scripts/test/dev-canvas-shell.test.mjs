@@ -6,15 +6,22 @@ import { Window } from 'happy-dom';
 
 const request = { method: 'GET', url: '/work?edit=1', headers: { 'sec-fetch-dest': 'document', accept: 'text/html', cookie: 'other=1; vcd-canvas=1' } };
 for (const [name, overrides, expected] of [
-  ['flag off', { headers: { ...request.headers, cookie: '' } }, false],
-  ['flag on top-level', {}, true],
+  ['no choice made: on', { headers: { ...request.headers, cookie: '' } }, true],
+  ['turned off', { headers: { ...request.headers, cookie: 'vcd-canvas=0' } }, false],
+  ['forced on top-level', {}, true],
+  ['no choice, phone user agent', { headers: { ...request.headers, cookie: '', 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 19_0 like Mac OS X) Mobile/15E148' } }, false],
+  ['no choice, mobile client hint', { headers: { ...request.headers, cookie: '', 'sec-ch-ua-mobile': '?1' } }, false],
+  ['no choice, headless browser', { headers: { ...request.headers, cookie: '', 'user-agent': 'Mozilla/5.0 HeadlessChrome/140.0' } }, false],
+  ['no choice, shell asked to be skipped', { headers: { ...request.headers, cookie: 'vcd-canvas-skip=1' } }, false],
+  ['forced on beats a headless browser', { headers: { ...request.headers, 'user-agent': 'Mozilla/5.0 HeadlessChrome/140.0' } }, true],
+  ['forced on beats a skip', { headers: { ...request.headers, cookie: 'vcd-canvas-skip=1; vcd-canvas=1' } }, true],
   ['iframe request', { headers: { ...request.headers, 'sec-fetch-dest': 'iframe' } }, false],
   ['asset path', { url: '/image.png' }, false],
   ['dev path', { url: '/dev/scroll-hold' }, false],
   ['non-GET', { method: 'POST' }, false],
   ['non-HTML', { headers: { ...request.headers, accept: 'application/json' } }, false],
   ['missing destination', { headers: { ...request.headers, 'sec-fetch-dest': undefined } }, false],
-  ['cookie value must match', { headers: { ...request.headers, cookie: 'vcd-canvas=10' } }, false],
+  ['an unknown cookie value is no choice', { headers: { ...request.headers, cookie: 'vcd-canvas=10', 'user-agent': 'Mozilla/5.0 HeadlessChrome/140.0' } }, false],
   ...['/api/write', '/src/page', '/@vite/client', '/node_modules/pkg', '/_astro/a', '/preview/page', '/reports/prototypes/page'].map((url) => [url, { url }, false]),
 ]) {
   test(name, () => assert.equal(shouldServeCanvasShell({ ...request, ...overrides }), expected));
@@ -33,7 +40,7 @@ test('dev middleware toggles the cookie and rewrites only eligible requests', ()
     assert.equal(res.statusCode, 302);
     assert.equal(headers.Location, '/');
     const cookie = chrome ? 'vcd-canvas-chrome' : 'vcd-canvas';
-    assert.equal(headers['Set-Cookie'], enabled ? `${cookie}=1; Path=/; SameSite=Lax` : `${cookie}=; Path=/; SameSite=Lax; Max-Age=0`);
+    assert.equal(headers['Set-Cookie'], `${cookie}=${enabled ? 1 : 0}; Path=/; SameSite=Lax; Max-Age=31536000`);
     assert.equal(ended, true);
   }
   const req = { ...request };
