@@ -56,6 +56,41 @@ const labelId = `${id}-label`;
     }
   };
 
+  // Pressing anywhere on the track grips the thumb where it is; the value moves by how far the pointer travels.
+  const bindGrip = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
+    let grip: { id: number; x: number; value: number; changed: boolean } | undefined;
+    const emit = (type: string) => input.dispatchEvent(new (input.ownerDocument.defaultView ?? window).Event(type, { bubbles: true }));
+    // The native control would jump the thumb to the pointer.
+    scope.listen(input, 'mousedown', (event) => { if (event.button === 0) event.preventDefault(); });
+    scope.listen(input, 'pointerdown', (event) => {
+      if (event.button !== 0 || input.disabled) return;
+      grip = { id: event.pointerId, x: event.clientX, value: Number(input.value), changed: false };
+      input.setPointerCapture(event.pointerId);
+      input.focus({ preventScroll: true });
+    });
+    scope.listen(input, 'pointermove', (event) => {
+      if (!grip || event.pointerId !== grip.id) return;
+      const min = Number(input.min || 0);
+      const max = Number(input.max || 100);
+      const step = Number(input.step) || 1;
+      const travel = Math.max(1, input.getBoundingClientRect().width - 16);
+      const raw = grip.value + (event.clientX - grip.x) / travel * (max - min);
+      const next = String(Math.min(max, Math.max(min, min + Math.round((raw - min) / step) * step)));
+      if (next === input.value) return;
+      input.value = next;
+      grip.changed = true;
+      emit('input');
+    });
+    const release = (event: PointerEvent) => {
+      if (!grip || event.pointerId !== grip.id) return;
+      const changed = grip.changed;
+      grip = undefined;
+      if (changed) emit('change');
+    };
+    scope.listen(input, 'pointerup', release);
+    scope.listen(input, 'pointercancel', release);
+  };
+
   // Click the value to type one: Enter or clicking away commits, Escape puts the old value back.
   const bindEdit = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
     const field = input.parentElement;
@@ -115,6 +150,7 @@ const labelId = `${id}-label`;
       scope.listen(input, 'input', () => format(input));
       scope.listen(input, 'change', () => format(input));
       scope.listen(input, 'vcd:range-refresh', () => format(input));
+      bindGrip(input, scope);
       bindEdit(input, scope);
       format(input);
     });
@@ -239,6 +275,7 @@ const labelId = `${id}-label`;
     outline: 0;
     background: transparent;
     cursor: ew-resize;
+    touch-action: pan-y;
   }
 
   .dev-range-field__input::-webkit-slider-runnable-track { background: transparent; }
