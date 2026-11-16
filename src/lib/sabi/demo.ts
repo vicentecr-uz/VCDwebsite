@@ -24,11 +24,12 @@ export function mountSabiDemo(root: HTMLElement) {
       example.setAttribute('aria-label', `Selection handle clipping illustration: ${button.textContent?.trim()}`);
       setButtons(button.dataset.choice!);
     }, { signal }));
-    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, selectAll: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, scroll: async (_to: number) => {}, caretTarget: (x: number) => ({ x, offset: 0 }), begin: (_offset?: number) => {}, finish: () => {} };
+    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, selectAll: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, caretTarget: (x: number) => ({ x, offset: 0 }), begin: (_offset?: number) => {}, finish: () => {} };
   }
 
   const input = root.querySelector<HTMLInputElement>('input')!;
   let strip = input.parentElement!;
+  strip.dataset.target = 'strip';
   const geometry = () => {
     const style = getComputedStyle(strip);
     const value = (name: string, fallback: number) => Number.parseFloat(style.getPropertyValue(name)) || fallback;
@@ -68,7 +69,8 @@ export function mountSabiDemo(root: HTMLElement) {
     auto = false;
     delete input.dataset.demoSelected;
     caret.hidden = true;
-    cancelFrames();
+    // Leave the fade paint running: it only settles on the current scroll, and cutting it short freezes an edge.
+    cancelAnimationFrame(frame);
   };
   const fades = () => {
     if (mode !== 'before') return;
@@ -114,6 +116,7 @@ export function mountSabiDemo(root: HTMLElement) {
     cancelFrames();
     const next = document.createElement(choice === 'after' ? 'sabi-input' : 'div');
     if (choice === 'before') next.className = 'sabi-before';
+    next.dataset.target = 'strip';
     strip.removeEventListener('scroll', onScroll);
     strip.replaceWith(next);
     next.append(input, caret);
@@ -178,21 +181,6 @@ export function mountSabiDemo(root: HTMLElement) {
         frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { if (auto) position(offset, geometry().safeInset); }); });
       }
       return strip.scrollLeft;
-    },
-    // A trackpad-style scroll of the strip itself; the caret stays where it is in the text.
-    scroll(to: number, duration = 320) {
-      const from = strip.scrollLeft;
-      const end = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, to));
-      const start = performance.now();
-      return new Promise<void>((resolve) => {
-        const step = (now: number) => {
-          const t = clamp((now - start) / duration);
-          strip.scrollLeft = from + (end - from) * (t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-          if (t < 1 && auto) requestAnimationFrame(step);
-          else resolve();
-        };
-        requestAnimationFrame(step);
-      });
     },
     stop,
     finish() { auto = false; },

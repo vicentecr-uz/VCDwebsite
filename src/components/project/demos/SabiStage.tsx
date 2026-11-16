@@ -123,8 +123,8 @@ function Take({ kind }: { kind: string }) {
       if (kind !== 'fade') return holdLeft(from);
       await a.key('cmd+left'); demo.seek(0); await a.wait(550);
       await a.key('cmd+right'); demo.seek(example.length); await a.wait(550);
-      await demo.scroll(0); await a.wait(250);
-      await demo.scroll(Infinity);
+      await a.scroll('strip', 0, { axis: 'x', duration: 380, bounce: true }); await a.wait(250);
+      await a.scroll('strip', Infinity, { axis: 'x', duration: 380, bounce: true });
     };
     if (kind !== 'playground') {
       // Comparisons open on finished text, scrolled to the end, so nothing is typed twice.
