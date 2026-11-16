@@ -105,11 +105,14 @@ import { sizeIcon } from '../lib/icons';
         if (!from || reducedMotion.matches) return;
         const up = devices.indexOf(device) > devices.indexOf(from.dataset.viewportWidthDevice ?? '') ? 1 : -1;
         // On a wheel: the name tips back as it travels, and it fades as a whole, and the row's mask clears it before the slider's edge.
-        const away = (direction: number) => ({ transform: `translateY(${direction * 12}px) rotateX(${direction * -75}deg)`, opacity: 0 });
-        const rest = { transform: 'translateY(0) rotateX(0deg)', opacity: 1 };
+        const away = (direction: number) => ({ transform: `perspective(90px) translateY(${direction * 12}px) rotateX(${direction * -75}deg)`, opacity: 0 });
+        const rest = { transform: 'perspective(90px) translateY(0) rotateX(0deg)', opacity: 1 };
         const timing = { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
+        // The fade mask is only on while a name is turning, so at rest the text and icon are plain and sharp.
+        const row = to.parentElement!;
+        row.classList.add('is-rolling');
         from.animate([rest, away(-up)], timing);
-        to.animate([away(up), rest], timing);
+        to.animate([away(up), rest], timing).finished.then(() => row.classList.remove('is-rolling'), () => {});
       };
       // The canvas reports each width back a frame or two late; while a requested width is still on
       // its way, an older report must not pull the slider back.
@@ -602,13 +605,13 @@ import { sizeIcon } from '../lib/icons';
   /* The device name shares the marks' row, on the numbers' line. */
   .viewport-width { display: grid; gap: 6px; }
   /* The name rolls a little past the body's edge; its mask clears it inside the panel's padding. */
-  :global([data-viewport-width-panel] .dev-overlay__body) { overflow: visible; }
+  :global(.dev-overlay[data-viewport-width-panel]:not(.is-body-scrollable) .dev-overlay__body) { overflow: visible; }
   .viewport-width__marks { grid-area: 2 / 1; }
   .viewport-width__device {
     grid-area: 2 / 1; align-self: center; justify-self: end; display: grid; align-items: center; justify-items: end;
-    position: relative; top: 4px; height: 48px; margin-block: -13px; padding-inline-start: 12px; pointer-events: none; perspective: 90px;
-    mask-image: linear-gradient(to bottom, transparent 9px, #000 15px, #000 33px, transparent 39px); font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
-  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; will-change: transform; }
+    position: relative; top: 4px; height: 48px; margin-block: -13px; padding-inline-start: 12px; pointer-events: none; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
+  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; }
+  .viewport-width__device.is-rolling { mask-image: linear-gradient(to bottom, transparent 9px, #000 15px, #000 33px, transparent 39px); }
   .viewport-width__device > span[data-active] { opacity: 1; }
   .viewport-width__marks { position: relative; height: 22px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
   .viewport-width__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }

@@ -292,6 +292,25 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     if (button) button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     else transition(next);
   };
+  // A dragged width is laid out at most once a frame, and a page that is slow to reflow only every
+  // second to fourth frame, so the slider that asks for it keeps frames of its own in between.
+  let widthFrame = 0;
+  let widthDone = false;
+  let widthSkip = 0;
+  const applyWidth = () => {
+    widthFrame = 0;
+    if (!widthDone && widthSkip > 0) {
+      widthSkip -= 1;
+      widthFrame = window.requestAnimationFrame(applyWidth);
+      return;
+    }
+    const started = performance.now();
+    render(geometry(), barZone());
+    widthSkip = widthDone ? 0 : Math.min(3, Math.floor((performance.now() - started) / 8));
+    if (widthDone) settleAnchor(revision);
+    widthDone = false;
+  };
+  scope.add(() => window.cancelAnimationFrame(widthFrame));
   scope.listen(window, 'message', (event) => {
     if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
     if (event.data?.type === 'vcd-canvas-location') {
@@ -309,8 +328,8 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       if (!anchor) takeAnchor();
       custom = Math.max(320, Math.min(window.innerWidth, Math.round(event.data.width)));
       backdrop.style.visibility = 'visible';
-      render(geometry(), barZone());
-      if (event.data.done) settleAnchor(revision);
+      widthDone ||= event.data.done === true;
+      if (!widthFrame) widthFrame = window.requestAnimationFrame(applyWidth);
     }
   });
   scope.listen(controls, 'click', (event) => {
