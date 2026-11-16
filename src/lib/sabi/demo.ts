@@ -98,8 +98,11 @@ export function mountSabiDemo(root: HTMLElement) {
   const fades = (snap = false) => {
     if (mode !== 'before') return;
     const { fadeWidth, solid } = geometry();
-    const toLeft = clamp(strip.scrollLeft / fadeWidth);
-    const toRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
+    const hiddenLeft = strip.scrollLeft;
+    const hiddenRight = strip.scrollWidth - strip.clientWidth - strip.scrollLeft;
+    // The old fade was simply on or off; following how much is hidden is the fix this demo leads to.
+    const toLeft = kind === 'fade' ? Number(hiddenLeft > .5) : clamp(hiddenLeft / fadeWidth);
+    const toRight = kind === 'fade' ? Number(hiddenRight > .5) : clamp(hiddenRight / fadeWidth);
     if (kind !== 'fade' || snap) {
       left = toLeft; right = toRight; target = { left, right };
       strip.style.maskImage = fadeMask(left, right, kind === 'gradient', fadeWidth, solid);
