@@ -15,14 +15,19 @@
   .sabi-caption { font-size: 0.8rem; color: var(--sys-color-on-srf-variant); margin: -2rem 0 0; }
   .handle-example { height: 64px; display: flex; align-items: center; }
   .handle-viewport { width: 100%; border-radius: inherit; corner-shape: inherit; padding-inline: var(--sabi-edge-gutter); overflow: hidden; height: 100%; display: flex; align-items: center; mask-image: linear-gradient(to right, transparent, black var(--sabi-fade-width), black calc(100% - var(--sabi-fade-width)), transparent); }
-  .handle-text { white-space: nowrap; }
+  /* The selection starts just inside the left fade and runs past the right edge; the lead text hangs off its start. */
+  .handle-text { position: relative; margin-left: 14px; white-space: nowrap; }
+  .handle-lead { position: absolute; right: 100%; white-space: pre; }
   .selection { position: relative; background: #007aff30; }
-  .handle { position: absolute; width: 2px; height: 100%; background: #007aff; top: 0; }
-  .handle::after { content: ''; position: absolute; width: 10px; height: 10px; border-radius: 50%; background: #007aff; left: -4px; }
-  .handle.start { left: 0; }.handle.start::after { top: -8px; }
-  .handle.end { right: 0; }.handle.end::after { bottom: -8px; }
-  [data-choice='original'] .handle-viewport { height: 32px; border-radius: 0; }
-  [data-choice='more-room'] .handle-viewport { height: 48px; border-radius: 0; }
+  .handle { position: absolute; width: 3px; height: 100%; background: #007aff; top: 0; }
+  .handle::after { content: ''; position: absolute; width: 18px; height: 18px; border-radius: 50%; background: #007aff; left: -7.5px; box-shadow: 0 1px 4px rgb(0 0 0 / .3); }
+  .handle.start { left: -1.5px; }.handle.start::after { top: -16px; }
+  .handle.end { right: -1.5px; }.handle.end::after { bottom: -16px; }
+  /* Container draws the handle above the fade, clipped only by the field's shape. */
+  .handle.handle-overlay { display: none; top: calc(50% - 16px); height: 32px; left: calc(var(--sabi-edge-gutter) + 14px - 1.5px); }
+  [data-choice='container'] .handle.handle-overlay { display: block; }
+  [data-choice='container'] .handle-viewport .handle { display: none; }
+  [data-choice='original'] .handle-viewport { height: 40px; border-radius: 0; }
   [data-choice='no-scroll'] .handle-viewport { overflow: visible; mask-image: none; }
   @media (max-width: 40em) { .sabi-scene .sabi-choices .dev-btn { padding-inline: 10px; font-size: 13px; } }
 .sabi-demo, .sabi-show { width: 100%; }
@@ -58,7 +63,7 @@
 .sabi-show .sabi-field-shape { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .sabi-show .sabi-field-fill { fill: var(--comp-field-container); }
 .sabi-show .sabi-field-clip { height: 100%; width: 100%; clip-path: var(--sabi-clip); }
-.sabi-show .handle-example .sabi-field-clip { display: flex; align-items: center; }
+.sabi-show .handle-example .sabi-field-clip { position: relative; display: flex; align-items: center; }
 .sabi-show .handle-example[data-choice='no-scroll'] .sabi-field-clip { clip-path: none; }
 .sabi-show .sabi-demo-field sabi-input, .sabi-show .sabi-demo-field .sabi-before { border-radius: 0; }
 

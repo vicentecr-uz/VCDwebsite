@@ -93,7 +93,8 @@ function Scene({ kind, controller, onManual, compact }: {
   return <div ref={root} className="sabi-scene" data-kind={kind} data-mode="after"
     onPointerDownCapture={onManual} onKeyDownCapture={onManual} onFocusCapture={onManual} onWheelCapture={onManual}>
     {handles ? <SquircleField width={fieldWidth} handles>
-      <div className="handle-viewport"><span className="handle-text">A little more <span className="selection">room<span className="handle start" /><span className="handle end" /></span> to say it.</span></div>
+      <div className="handle-viewport"><span className="handle-text"><span className="handle-lead">A little more </span><span className="selection">room to say what you mean, even when the words<span className="handle start" /><span className="handle end" /></span> run past the edge.</span></div>
+      <span className="handle start handle-overlay" />
     </SquircleField> : <SquircleField width={fieldWidth}>
       {/* The input is uncontrolled: the guide yields the same DOM node to the reader. */}
       <sabi-input>
