@@ -1,4 +1,5 @@
 ---
+import RangeField from '../../components/ui/RangeField.astro';
 import ViewportSelector from '../../components/ui/ViewportSelector.astro';
 import '../../styles/global.css';
 import '../../styles/dev-chrome.css';
@@ -24,6 +25,16 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       <iframe name="vcd-canvas" title="Page" data-canvas-frame></iframe>
     </div>
     <div data-canvas-chrome></div>
+    <!-- TEMPORARY (T20): width scrubber for checking how blocks hold at each width. -->
+    <div class="canvas-ruler dev-surface" data-canvas-ruler>
+      <RangeField label="Width" id="canvas-ruler-width" unit="px" min="320" max="2560" step="1" value="1280">
+        <span slot="labelAccessory" data-canvas-ruler-viewport>Desktop</span>
+      </RangeField>
+      <div class="canvas-ruler__marks" aria-hidden="true">
+        <span data-canvas-ruler-mark="768">768</span>
+        <span data-canvas-ruler-mark="992">992</span>
+      </div>
+    </div>
     <div class="dev-viewport-preview__controls dev-surface" data-canvas-controls>
       <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
     </div>
@@ -43,6 +54,22 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   type Preset = 'desktop' | keyof typeof presets;
   const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
   let preset: Preset = 'desktop';
+  // TEMPORARY (T20): a width dragged on the scrubber, shown instead of the preset's own size.
+  let custom: number | undefined;
+  const ruler = document.querySelector<HTMLInputElement>('#canvas-ruler-width')!;
+  const rulerViewport = document.querySelector<HTMLElement>('[data-canvas-ruler-viewport]')!;
+  const showWidth = (width: number) => {
+    ruler.max = String(window.innerWidth);
+    ruler.value = String(Math.round(width));
+    ruler.dispatchEvent(new window.Event('vcd:range-refresh'));
+    rulerViewport.textContent = width <= 767 ? 'Mobile' : width <= 991 ? 'Tablet' : 'Desktop';
+    const min = Number(ruler.min);
+    document.querySelectorAll<HTMLElement>('[data-canvas-ruler-mark]').forEach((mark) => {
+      const at = (Number(mark.dataset.canvasRulerMark) - min) / (window.innerWidth - min);
+      mark.hidden = at > 1;
+      mark.style.left = `calc(8px + (100% - 16px) * ${at})`;
+    });
+  };
   let raf = 0;
   let revision = 0;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -137,8 +164,13 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   // correct the same shift in turn and the page jumps (seen in Firefox).
   const releaseKeys = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
   let held: Window | null = null;
+  // The page resizes blocks from its own frame callbacks and observers, which run after this shell's
+  // tick. Correct again once layout has settled for the frame, before it is painted.
+  let watcher: ResizeObserver | undefined;
   const releaseAnchor = () => {
     anchor = undefined;
+    watcher?.disconnect();
+    watcher = undefined;
     if (!held) return;
     for (const type of releaseKeys) held.removeEventListener(type, releaseAnchor, true);
     try { held.document.documentElement.style.overflowAnchor = ''; } catch { /* the page navigated away */ }
@@ -148,7 +180,14 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     releaseAnchor();
     anchor = pickAnchor();
     held = frame.contentWindow;
-    try { if (held) held.document.documentElement.style.overflowAnchor = 'none'; } catch { held = null; }
+    try {
+      if (held) held.document.documentElement.style.overflowAnchor = 'none';
+      const Observer = (held as (Window & { ResizeObserver?: typeof ResizeObserver }) | null)?.ResizeObserver;
+      if (held && Observer && anchor) {
+        watcher = new Observer(() => { holdAnchor(); });
+        for (const block of held.document.querySelectorAll('main, main > *, main .project-block')) watcher.observe(block);
+      }
+    } catch { held = null; }
   };
   // The page's deferred resize work lands over the frames after a morph. Keep holding until it has
   // been still for a while, or the reader does something.
@@ -186,23 +225,26 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     frame.style.width = `${width}px`;
     frame.style.height = `${height}px`;
     frame.style.transform = `scale(${scale})`;
+    showWidth(value.width);
     // The page's own resize event arrives a frame late; the fixed header must size with this frame.
     if (fluxActive) frame.contentWindow?.dispatchEvent?.(new Event('vcd:viewport-flux-frame'));
     holdAnchor();
   };
-  const geometry = (): Geometry => preset === 'desktop' ? desktop() : {
+  const geometry = (): Geometry => custom !== undefined ? { width: custom, height: window.innerHeight, radius: 0, device: 1 }
+    : preset === 'desktop' ? desktop() : {
     width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
   };
   const barZone = () => window.innerHeight - controls.getBoundingClientRect().top;
   const finish = (target: Geometry) => {
     render(target, barZone());
-    if (preset === 'desktop') {
-      controls.style.visibility = 'hidden';
+    if (preset === 'desktop') controls.style.visibility = 'hidden';
+    if (preset === 'desktop' && custom === undefined) {
       backdrop.style.visibility = 'hidden';
     }
   };
   const transition = (next: Preset) => {
-    if (next === preset) return;
+    if (next === preset && custom === undefined) return;
+    custom = undefined;
     preset = next;
     select();
     postPreset();
@@ -272,6 +314,16 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     if (event.isTrusted) focusFrame();
   });
   scope.listen(backdrop, 'click', focusFrame);
+  scope.listen(ruler, 'input', () => {
+    window.cancelAnimationFrame(raf);
+    revision += 1;
+    if (fluxActive) postFlux(false);
+    if (!anchor) takeAnchor();
+    custom = Math.min(window.innerWidth, Number(ruler.value));
+    backdrop.style.visibility = 'visible';
+    render(geometry(), barZone());
+  });
+  scope.listen(ruler, 'change', () => { settleAnchor(revision); focusFrame(); });
   const forwardKey = (event: KeyboardEvent) => {
     const target = event.target instanceof HTMLElement ? event.target : null;
     if (event.composedPath().some((node) => node instanceof Element && node.hasAttribute('data-canvas-chrome'))) return;
@@ -316,6 +368,11 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
   .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
   .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
+  .canvas-ruler { z-index: 2147483647; position: fixed; top: 12px; left: 12px; width: 360px; padding: 10px 12px 6px; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); }
+  .canvas-ruler [data-canvas-ruler-viewport] { font: inherit; color: var(--sys-color-on-srf-subtle); }
+  .canvas-ruler__marks { position: relative; height: 22px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
+  .canvas-ruler__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
+  .canvas-ruler__marks span::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 6px; background: currentColor; }
   [data-canvas-chrome] { display: contents; pointer-events: none; }
   [data-canvas-chrome] :global(> *) { pointer-events: auto; }
   .dev-viewport-preview__controls { z-index: 2147483647; position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
