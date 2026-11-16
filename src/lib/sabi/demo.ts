@@ -94,13 +94,14 @@ export function mountSabiDemo(root: HTMLElement) {
     fadeFrame = settled ? 0 : requestAnimationFrame(paintFade);
     if (settled) lastPaint = 0;
   };
-  const fades = () => {
+  // `snap` paints the settled fade at once: switching modes isn't a scroll the lag should replay.
+  const fades = (snap = false) => {
     if (mode !== 'before') return;
     const { fadeWidth, solid } = geometry();
     const toLeft = clamp(strip.scrollLeft / fadeWidth);
     const toRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
-    if (kind !== 'fade') {
-      left = toLeft; right = toRight;
+    if (kind !== 'fade' || snap) {
+      left = toLeft; right = toRight; target = { left, right };
       strip.style.maskImage = fadeMask(left, right, kind === 'gradient', fadeWidth, solid);
       return;
     }
@@ -145,7 +146,7 @@ export function mountSabiDemo(root: HTMLElement) {
     input.setSelectionRange(selection[0], selection[1]);
     strip.scrollLeft = scroll;
     if (focused) input.focus({ preventScroll: true });
-    if (choice === 'before') { renderBefore(); fades(); }
+    if (choice === 'before') { renderBefore(); fades(true); }
     else (strip as SabiInput).sync?.();
   };
   buttons.forEach((button) => button.addEventListener('click', () => { stop(); choose(button.dataset.choice!); }, { signal }));

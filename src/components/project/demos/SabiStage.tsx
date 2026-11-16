@@ -56,6 +56,9 @@ function Scene({ kind, controller, onManual, compact }: {
     const handle = mountSabiDemo(root.current!);
     // The gradient's flaw is visible at rest, so it opens on Before with text hidden on both sides.
     if (kind === 'gradient') { handle.choose('before'); handle.seek(Math.round(example.length / 2)); }
+    // Comparisons open scrolled to the end. text() sizes the input now rather than when
+    // sabi-input next measures, so a replay doesn't show the start for a frame.
+    else if (comparison) handle.text(example);
     controller.current = handle;
     return () => { handle.destroy(); controller.current = null; };
   }, [kind, controller]);
