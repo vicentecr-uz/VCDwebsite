@@ -117,11 +117,14 @@ function Take({ kind }: { kind: string }) {
     const holdLeft = (from: number) => a.key('left', async () => {
       for (let offset = from - 1; offset >= 0; offset--) { demo.seek(offset); await a.wait(35); }
     });
-    // Fade is about jumping end to end; the rest scroll by holding left into the edge.
+    // Fade is about the edges keeping up: jump end to end, then scroll quickly both ways.
+    // The rest scroll by holding left into the edge.
     const exercise = async (from: number) => {
       if (kind !== 'fade') return holdLeft(from);
-      await a.key('Home'); demo.seek(0); await a.wait(550);
-      await a.key('End'); demo.seek(example.length);
+      await a.key('cmd+left'); demo.seek(0); await a.wait(550);
+      await a.key('cmd+right'); demo.seek(example.length); await a.wait(550);
+      await demo.scroll(0); await a.wait(250);
+      await demo.scroll(Infinity);
     };
     if (kind !== 'playground') {
       // Comparisons open on finished text, scrolled to the end, so nothing is typed twice.

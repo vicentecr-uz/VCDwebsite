@@ -24,7 +24,7 @@ export function mountSabiDemo(root: HTMLElement) {
       example.setAttribute('aria-label', `Selection handle clipping illustration: ${button.textContent?.trim()}`);
       setButtons(button.dataset.choice!);
     }, { signal }));
-    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, selectAll: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, caretTarget: (x: number) => ({ x, offset: 0 }), begin: (_offset?: number) => {}, finish: () => {} };
+    return { destroy: () => lifecycle.abort(), stop: () => {}, choose: () => {}, selectAll: () => {}, text: (_value: string) => {}, seek: (_offset: number) => 0, scroll: async (_to: number) => {}, caretTarget: (x: number) => ({ x, offset: 0 }), begin: (_offset?: number) => {}, finish: () => {} };
   }
 
   const input = root.querySelector<HTMLInputElement>('input')!;
@@ -178,6 +178,21 @@ export function mountSabiDemo(root: HTMLElement) {
         frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => { if (auto) position(offset, geometry().safeInset); }); });
       }
       return strip.scrollLeft;
+    },
+    // A trackpad-style scroll of the strip itself; the caret stays where it is in the text.
+    scroll(to: number, duration = 320) {
+      const from = strip.scrollLeft;
+      const end = Math.max(0, Math.min(strip.scrollWidth - strip.clientWidth, to));
+      const start = performance.now();
+      return new Promise<void>((resolve) => {
+        const step = (now: number) => {
+          const t = clamp((now - start) / duration);
+          strip.scrollLeft = from + (end - from) * (t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+          if (t < 1 && auto) requestAnimationFrame(step);
+          else resolve();
+        };
+        requestAnimationFrame(step);
+      });
     },
     stop,
     finish() { auto = false; },
