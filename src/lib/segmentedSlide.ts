@@ -1,0 +1,133 @@
+// The editor segmented control's sliding selection, shared with controls that change selection from script.
+export const selected = ':scope > .dev-btn:is(.is-active, .is-selected, [aria-pressed="true"])';
+const motion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: no-preference)') : null;
+
+// Each edge of the pill rides its own spring, after Motion's time-defined springs
+// (motion-dom generators/spring.ts): stiffness (2π / (visualDuration × 1.2))², damping ratio
+// 1 − bounce, unit mass, starting at rest. The leading edge is quicker and lands without
+// overshoot; the trailing edge follows, so the pill stretches toward the target and then catches
+// up. The animation runs until both edges rest instead of for a fixed time, so it never cuts a
+// moving spring short. Tuned live on a throwaway prototype.
+const LEAD = { visualDuration: 250, bounce: 0 };
+const TRAIL = { visualDuration: 400, bounce: 0.2 };
+const STEP = 10; // ms between samples, as Motion's linear() easing
+const REST_DELTA = 0.1; // px; Motion's default 0.5 left a visible last-frame jump
+const REST_SPEED = 2; // px/s, Motion's default
+
+// Position and velocity (px, px/s) t seconds into an edge's move of delta px.
+const spring = ({ visualDuration, bounce }: typeof LEAD) => {
+  const w = (2 * Math.PI) / ((visualDuration / 1000) * 1.2);
+  const z = Math.max(1 - bounce, 0.05);
+  if (z >= 1) {
+    return (t: number, delta: number) => {
+      const e = Math.exp(-w * t);
+      return [delta - e * delta * (1 + w * t), delta * w * w * t * e];
+    };
+  }
+  const wd = w * Math.sqrt(1 - z * z);
+  return (t: number, delta: number) => {
+    const e = Math.exp(-z * w * t);
+    return [
+      delta - e * delta * (Math.cos(wd * t) + ((z * w) / wd) * Math.sin(wd * t)),
+      delta * (w / Math.sqrt(1 - z * z)) * e * Math.sin(wd * t),
+    ];
+  };
+};
+const lead = spring(LEAD);
+const trail = spring(TRAIL);
+const resting = (edge: typeof lead, delta: number, ms: number) => {
+  const [x, v] = edge(ms / 1000, delta);
+  return Math.abs(delta - x) <= REST_DELTA && Math.abs(v) <= REST_SPEED;
+};
+
+// Fractional layout box within the group: offset* round to whole pixels, so the pill would land
+// off the button and snap when removed. Size comes from computed style and position from the
+// rect's center, so a pressed button's centered scale doesn't shrink the box.
+// Rects are divided by the group's drawn scale, so a group inside a CSS-scaled stage measures in its own px.
+const box = (el: Element, group: HTMLElement) => {
+  const r = el.getBoundingClientRect();
+  const g = group.getBoundingClientRect();
+  const scale = (group.offsetWidth && g.width / group.offsetWidth) || 1;
+  const style = getComputedStyle(el);
+  const width = parseFloat(style.width);
+  const height = parseFloat(style.height);
+  return {
+    left: (r.left + r.width / 2 - g.left) / scale - width / 2 - group.clientLeft,
+    top: (r.top + r.height / 2 - g.top) / scale - height / 2 - group.clientTop,
+    width,
+    height,
+  };
+};
+
+const pending = new WeakMap<Element, number>();
+// The sampled [left, right] edges of a pill in flight, so a click mid-flight starts from them.
+const flights = new WeakMap<Element, { edges: Array<[number, number]>; animation: Animation }>();
+
+/** Slide the pill off `previous` to whatever is selected once the caller's own handlers have run. */
+export function slideSelection(group: HTMLElement, previous: HTMLElement) {
+  if (pending.has(group) || !motion?.matches) return;
+  const oldPill = group.querySelector<HTMLElement>(':scope > .dev-segmented__indicator');
+  const flight = oldPill && previous.hasAttribute('data-segment-target') ? flights.get(oldPill) : undefined;
+  const prev = box(previous, group);
+  let from = { left: prev.left, right: prev.left + prev.width };
+  if (flight && flight.animation.playState === 'running') {
+    const progress = Number(flight.animation.currentTime) / Number(flight.animation.effect!.getTiming().duration);
+    const [left, right] = flight.edges[Math.min(flight.edges.length - 1, Math.round(progress * (flight.edges.length - 1)))];
+    from = { left, right };
+  }
+
+  // Existing click handlers own selection. Read their result before paint.
+  pending.set(group, requestAnimationFrame(() => {
+    pending.delete(group);
+    const [next, extra] = group.querySelectorAll<HTMLButtonElement>(selected);
+    if (!next || next === previous || extra || !motion?.matches || !next.offsetWidth
+      || previous.offsetTop !== next.offsetTop || previous.offsetHeight !== next.offsetHeight) return;
+
+    oldPill?.remove();
+    group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
+
+    // Move each edge independently without scaling the corners, using transforms only so the
+    // slide stays smooth while the page is busy (a viewport preview morph reflows it every frame).
+    // The pill is a clip whose right edge is the selection's right edge; its fill is a same-size
+    // box whose left edge is the selection's left edge. What shows is the overlap, with the
+    // clip's corners on the right and the fill's own on the left.
+    const target = box(next, group);
+    const span = group.clientWidth;
+    const pill = document.createElement('span');
+    const fill = document.createElement('span');
+    pill.className = 'dev-segmented__indicator';
+    pill.setAttribute('aria-hidden', 'true');
+    pill.append(fill);
+    Object.assign(pill.style, { width: `${span}px`, height: `${target.height}px` });
+    next.setAttribute('data-segment-target', '');
+    group.prepend(pill);
+
+    const to = { left: target.left, right: target.left + target.width };
+    const rightward = to.left > from.left;
+    const leftSpring = rightward ? trail : lead;
+    const rightSpring = rightward ? lead : trail;
+    const dl = to.left - from.left;
+    const dr = to.right - from.right;
+    const edges: Array<[number, number]> = [];
+    let t = 0;
+    for (; t < 3000 && !(resting(leftSpring, dl, t) && resting(rightSpring, dr, t)); t += STEP) edges.push([from.left + leftSpring(t / 1000, dl)[0], from.right + rightSpring(t / 1000, dr)[0]]);
+    edges.push([to.left, to.right]);
+
+    const timing = { duration: t + STEP, easing: 'linear', fill: 'forwards' } as const;
+    const animation = pill.animate(edges.map(([, right]) => ({ transform: `translate(${right - span}px, ${target.top}px)` })), timing);
+    fill.animate(edges.map(([left, right]) => ({ transform: `translateX(${Math.min(left, right) - right + span}px)` })), timing);
+    flights.set(pill, { edges, animation });
+    animation.onfinish = () => {
+      if (pill.parentElement !== group) return;
+      pill.remove();
+      next.removeAttribute('data-segment-target');
+    };
+  }));
+}
+
+/** Drop a slide that hasn't started, as a keyboard-driven change does. */
+export function cancelSlide(group: HTMLElement) {
+  const frame = pending.get(group);
+  if (frame !== undefined) cancelAnimationFrame(frame);
+  pending.delete(group);
+}

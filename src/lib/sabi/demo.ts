@@ -1,4 +1,5 @@
 import type { SabiInput } from 'sabi-input';
+import { selected, slideSelection } from '../segmentedSlide';
 
 const clamp = (value: number) => Math.max(0, Math.min(1, value));
 const fadeMask = (left: number, right: number, linear: boolean, fadeWidth: number, solid: number) => {
@@ -16,7 +17,12 @@ export function mountSabiDemo(root: HTMLElement) {
   const { signal } = lifecycle;
   const kind = root.dataset.kind!;
   const buttons = [...root.querySelectorAll<HTMLButtonElement>('button[data-choice]')];
-  const setButtons = (choice: string) => buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.choice === choice)));
+  const setButtons = (choice: string) => {
+    const group = buttons[0]?.parentElement;
+    const previous = group?.querySelector<HTMLElement>(selected);
+    if (group && previous && previous.dataset.choice !== choice) slideSelection(group, previous);
+    buttons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.choice === choice)));
+  };
   if (kind === 'handles') {
     const example = root.querySelector<HTMLElement>('.handle-example')!;
     buttons.forEach((button) => button.addEventListener('click', () => {
