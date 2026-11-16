@@ -53,6 +53,7 @@ const launcherPositionKey = 'vcd:draw-launcher-position:v1';
 const launcherMargin = 16;
 type LauncherPoint = { x: number; y: number };
 let drawLauncher: HTMLElement | null = null;
+let launcherShown = false;
 let launcherPosition = 4;
 let launcherDragging = false;
 let launcherDragStart: { pointerId: number; x: number; y: number; left: number; top: number; position: number } | null = null;
@@ -281,7 +282,7 @@ const closeStage = () => {
   stage = null;
   sendSiteDrawEvent('stage-close');
   if (drawLauncher) {
-    drawLauncher.hidden = !document.documentElement.classList.contains('is-dev-mode');
+    drawLauncher.hidden = !launcherShown || !document.documentElement.classList.contains('is-dev-mode');
     positionLauncher();
   }
 };
@@ -953,7 +954,7 @@ const createLauncher = () => {
 };
 
 const syncLauncher = (active = document.documentElement.classList.contains('is-dev-mode')) => {
-  if (!active) {
+  if (!active || !launcherShown) {
     if (drawLauncher) drawLauncher.hidden = true;
     return;
   }
@@ -1050,13 +1051,13 @@ window.addEventListener('keydown', (event) => {
     return;
   }
   if (!document.documentElement.classList.contains('is-dev-mode')) return;
-  if (window.matchMedia('(max-width: 40em)').matches) return;
   if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.code !== 'KeyD') return;
-  const selected = drawingSelection();
-  if (!selected && !shortcutTarget()) return;
+  if (event.target instanceof Element && (event.target.closest('input, textarea, select')
+    || (event.target as HTMLElement).isContentEditable)) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  startFromSelection(selected);
+  launcherShown = !launcherShown;
+  syncLauncher();
 }, { capture: true, signal: lifecycle.signal });
 
 window.addEventListener('vcd:dev-mode-change', (event) => {
