@@ -87,8 +87,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 
 ## Task router
 
-- UI, typography, spacing, motion, responsive layout, components, Figma: [`docs/interface-conventions.md`](docs/interface-conventions.md)
-- Demo frames, embedded demos, Stageshow: [`docs/interface-conventions.md` → Demo frames](docs/interface-conventions.md#demo-frames)
+- Any UI work (site or dev layer): read the short index [`docs/interface-conventions.md`](docs/interface-conventions.md) in full; it routes to one topic file in [`docs/interface/`](docs/interface/) per task (panels, menus, fields, motion, spacing, demo frames, Figma and more).
 - In-page Edit, content/media, project statuses, Save/Publish internals: [`docs/dev-authoring.md`](docs/dev-authoring.md)
 - Page-width token and breakpoint inventory: [`docs/page-width.md`](docs/page-width.md)
 - Navigation lifecycle, header menu, veil and other runtime state machines: [`docs/state-machines.md`](docs/state-machines.md)

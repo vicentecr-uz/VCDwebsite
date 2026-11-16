@@ -9,7 +9,7 @@ variable for a reason CSS won't let us work around.
 
 | Knob | Value | What it caps |
 | --- | --- | --- |
-| `--page-text-max-width` | `40em` | Body text, section titles |
+| `--page-text-max-width` | `37.5em` | Body text, section titles |
 | `--page-media-max-width` | `50em` | Everything else — images, grids, carousels, video, press ticker, Reddit board, project grid |
 | `--page-max-width` | *derived* `max(text, media)` = `50em` | The **outer** column: wrapper gutter, header fill feather, sidebar nav offset |
 
