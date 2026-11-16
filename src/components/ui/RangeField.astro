@@ -128,7 +128,7 @@ const labelId = `${id}-label`;
   :global(.dev-field.dev-field--range:hover:not(.dev-field--quiet) > .dev-field__value),
   :global(.dev-field.dev-field--range > .dev-field__value:has(:focus-visible)) {
     padding: 0;
-    background: var(--comp-field-container);
+    background: transparent;
     --on-surface-faint: var(--sys-color-on-srf-container-faint);
   }
 
@@ -143,23 +143,17 @@ const labelId = `${id}-label`;
     min-height: var(--dev-control-height);
     overflow: hidden;
     border-radius: inherit;
+    corner-shape: inherit;
+    /* Track and fill are one painted shape, so no second rounded edge shows the track through at the
+       corners. The fill runs one inset past the thumb and meets the far edge at the maximum. */
+    --range-fill-end: calc(2 * var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
+    background: linear-gradient(to right, var(--range-fill-color) var(--range-fill-end), var(--comp-field-container) var(--range-fill-end));
   }
 
-  .dev-range-field::before,
   .dev-range-field::after {
     content: '';
     position: absolute;
     pointer-events: none;
-  }
-
-  .dev-range-field::before {
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0) + var(--range-thumb-width) / 2 + 4px);
-    background: var(--range-fill-color);
-  }
-
-  .dev-range-field::after {
     top: 50%;
     left: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
     width: var(--range-thumb-width);
