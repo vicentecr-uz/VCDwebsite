@@ -104,8 +104,9 @@ import { sizeIcon } from '../lib/icons';
         });
         if (!from || reducedMotion.matches) return;
         const up = devices.indexOf(device) > devices.indexOf(from.dataset.viewportWidthDevice ?? '') ? 1 : -1;
-        const away = (direction: number) => ({ transform: `translateY(${direction * 70}%) scale(0.85)`, opacity: 0, filter: 'blur(4px)' });
-        const rest = { transform: 'none', opacity: 1, filter: 'blur(0)' };
+        // On a wheel: the name tips back as it travels, and the row's mask fades it out at the rim.
+        const away = (direction: number) => ({ transform: `translateY(${direction * 20}px) rotateX(${direction * -75}deg)`, opacity: 1 });
+        const rest = { transform: 'translateY(0) rotateX(0deg)', opacity: 1 };
         const timing = { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
         from.animate([rest, away(-up)], timing);
         to.animate([away(up), rest], timing);
@@ -127,15 +128,28 @@ import { sizeIcon } from '../lib/icons';
         // Let go with the thumb over a mark (within 2px on screen) and it lands on it; dragging past one never catches.
         const snaps = [768, 992];
         let byPointer = false;
-        scope.listen(range, 'pointerdown', () => { byPointer = true; });
+        let easing = 0;
+        // The same settle as a code block's height easing to a whole line.
+        const easeTo = (from: number, to: number) => {
+          const start = performance.now();
+          const step = (now: number) => {
+            const t = Math.min(1, (now - start) / 180);
+            const width = Math.round(from + (to - from) * (1 - (1 - t) ** 5));
+            post({ type: 'vcd-canvas-request-width', width, done: t === 1 });
+            easing = t < 1 ? requestAnimationFrame(step) : 0;
+          };
+          easing = requestAnimationFrame(step);
+        };
+        scope.add(() => cancelAnimationFrame(easing));
+        scope.listen(range, 'pointerdown', () => { byPointer = true; cancelAnimationFrame(easing); easing = 0; });
         scope.listen(range, 'input', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value) }));
         scope.listen(range, 'change', () => {
           let width = Number(range.value);
           const perPixel = (Number(range.max) - Number(range.min)) / Math.max(1, range.getBoundingClientRect().width - 16);
           const near = byPointer ? snaps.find((snap) => Math.abs(snap - width) <= 4 * perPixel) : undefined;
           byPointer = false;
-          if (near !== undefined) width = near;
-          post({ type: 'vcd-canvas-request-width', width, done: true });
+          if (near !== undefined && near !== width && !reducedMotion.matches) { easeTo(width, near); return; }
+          post({ type: 'vcd-canvas-request-width', width: near ?? width, done: true });
         });
       }
       scope.listen(window, 'message', (event) => {
@@ -574,8 +588,11 @@ import { sizeIcon } from '../lib/icons';
   /* The device name shares the marks' row; the space under it is room for the name to roll into. */
   .viewport-width { display: grid; gap: 6px; padding-bottom: 8px; }
   .viewport-width__marks { grid-area: 2 / 1; }
-  .viewport-width__device { grid-area: 2 / 1; align-self: end; display: grid; justify-items: end; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
-  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; transform-origin: right center; will-change: transform, opacity, filter; }
+  .viewport-width__device {
+    grid-area: 2 / 1; align-self: center; justify-self: end; display: grid; align-items: center; justify-items: end;
+    height: 48px; margin-block: -13px; padding-inline-start: 12px; pointer-events: none; perspective: 90px;
+    mask-image: linear-gradient(to bottom, transparent 4px, #000 14px, #000 34px, transparent 44px); font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
+  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; will-change: transform; }
   .viewport-width__device > span[data-active] { opacity: 1; }
   .viewport-width__marks { position: relative; height: 22px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
   .viewport-width__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
