@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { checkProductionOutput } from '../check-production-output.mjs';
+import { productionBoundary } from '../production-boundary.mjs';
 
 const checker = join(process.cwd(), 'scripts/check-production-output.mjs');
 
@@ -93,4 +94,43 @@ test('CLI reports a concise path diagnostic and nonzero status', async () => {
     await rm(root, { recursive: true, force: true });
     await rm(scriptDir, { recursive: true, force: true });
   }
+});
+
+
+test('rejects canvas shell output and orphan canvas scripts', async () => {
+  for (const files of [
+    { 'index.html': '<main>Public</main>', 'dev/canvas-shell/index.html': '' },
+    { 'index.html': '<main>Public</main>', 'assets/canvas.js': 'const name = "vcd-canvas";' },
+  ]) {
+    const root = await fixture(files);
+    try { await assert.rejects(checkProductionOutput(root), /development (canvas route|inspector marker)/); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+
+test('strips the canvas page before its scripts and styles are discovered in production', () => {
+  const plugin = productionBoundary();
+  assert.equal(plugin.apply, 'build');
+  const shell = new URL('../../src/pages/dev/canvas-shell.astro', import.meta.url).pathname;
+  assert.equal(plugin.load(shell), '');
+  assert.equal(plugin.load(`${shell}?astro&type=script`), '');
+  assert.equal(plugin.load(new URL('../../src/layouts/DemoLayout.astro', import.meta.url).pathname), undefined);
+  const layout = plugin.load(new URL('../../src/layouts/Layout.astro', import.meta.url).pathname);
+  assert.ok(layout.includes('<head>'));
+  assert.ok(!layout.includes('data-canvas-resize-observer'));
+  assert.ok(!layout.includes('vcd:viewport-flux-end'));
+});
+
+test('rejects orphan canvas flux shims in production output', async () => {
+  for (const marker of ['vcd:canvas-chrome-moved', 'data-canvas-resize-observer', 'data-viewport-flux', 'vcd:viewport-flux-end', 'data-canvas-chrome', 'data-canvas-mirrored', 'hoistCanvasChrome']) {
+    const root = await fixture({ 'index.html': `<script>${JSON.stringify(marker)}</script>` });
+    try { await assert.rejects(checkProductionOutput(root), /development inspector marker/); }
+    finally { await rm(root, { recursive: true, force: true }); }
+  }
+});
+
+test('stubs the canvas chrome module before production bundling', () => {
+  const path = new URL('../../src/lib/canvasChrome.ts', import.meta.url).pathname;
+  assert.equal(productionBoundary().load(path), 'export function hoistCanvasChrome() {}');
 });

@@ -214,7 +214,7 @@ import {
       const range = window.getSelection();
       range?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
     };
-    const restoreDraft = (value: CaptionBaseline, selection?: CaptionSelection) => {
+    const restoreDraft = (value: CaptionBaseline, selection?: CaptionSelection, repaint = true) => {
       const positions = resolveDraftsFromRaw(value.captionPosition);
       draftCaptions = structuredClone(value.captions);
       draftStyle = value.captionStyle;
@@ -224,7 +224,7 @@ import {
       lastDraft = captureDraft();
       if (selection) selectedViewport = selection.viewport;
       if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession, restoreFocusedText: true });
-      renderFields();
+      if (repaint) renderFields();
       restoreSelection(selection);
       lastTextSelection = selection ?? null;
       pendingSelection = null;
@@ -540,7 +540,7 @@ import {
 
       IMAGE_VIEWPORTS.forEach((viewport) => {
         const node = host.querySelector<HTMLElement>(`[data-caption-bp="${viewport}"]`);
-        if (!node || (!options?.restoreFocusedText && document.activeElement === node)) return;
+        if (!node || (!options?.restoreFocusedText && node.ownerDocument.activeElement === node)) return;
         if (node.textContent !== captions[viewport]) {
           node.textContent = captions[viewport];
         }
@@ -696,7 +696,7 @@ import {
           retainEmptyHost: true,
         });
       }
-      if (!syncingUi && document.activeElement !== textArea) {
+      if (!syncingUi && textArea.ownerDocument.activeElement !== textArea) {
         textArea.value = draftCaptions[selectedViewport];
       }
       if (!syncingUi) {
@@ -876,7 +876,7 @@ import {
       setDraftText(textArea.value, selectedViewport);
     });
     pageScope.listen(textArea, 'beforeinput', (event) => {
-      if (!captionSession || document.activeElement !== textArea) return;
+      if (!captionSession || textArea.ownerDocument.activeElement !== textArea) return;
       if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
       pendingSelection = capturePanelSelection(selectedViewport);
     });
@@ -903,14 +903,14 @@ import {
       status.textContent = 'Caption cleared — keep typing, or click away to show Add caption.';
     });
 
-    const revertToSaved = () => {
+    const revertToSaved = (repaint = true) => {
       if (!editTarget || !openingCaption) return;
-      restoreDraft(openingCaption);
+      restoreDraft(openingCaption, undefined, repaint);
       localHistory.clear();
     };
 
     pageScope.listen(cancelButton, 'click', () => {
-      revertToSaved();
+      revertToSaved(false);
       closePanel();
     });
 
@@ -923,7 +923,7 @@ import {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'caption') return;
       captionSession = false;
-      revertToSaved();
+      revertToSaved(false);
     }) as EventListener);
 
     const saveDraft = () => {
@@ -1096,7 +1096,7 @@ import {
       const node = event.target as HTMLElement | null;
       if (!(node instanceof HTMLElement)) return;
       if (!node.matches('[data-caption-bp][contenteditable]')) return;
-      if (document.activeElement !== node) return;
+      if (node.ownerDocument.activeElement !== node) return;
       const target = resolveCaptionEditTarget(node.closest<HTMLElement>('[data-project-image-caption]') ?? node);
       if (!target || target !== editTarget) return;
       const bp = (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport;
@@ -1107,7 +1107,7 @@ import {
       if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-caption-bp][contenteditable]')) return;
       if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
       const node = event.target;
-      if (document.activeElement !== node) return;
+      if (node.ownerDocument.activeElement !== node) return;
       const target = resolveCaptionEditTarget(node.closest<HTMLElement>('[data-project-image-caption]') ?? node);
       if (!target || target !== editTarget) return;
       pendingSelection = capturePageSelection(node, (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport);

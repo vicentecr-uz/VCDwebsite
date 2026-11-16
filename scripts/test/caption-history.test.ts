@@ -22,6 +22,7 @@ function setup(surface: 'panel' | 'page', initial = 'before') {
     childNodes: Array<{ textContent: string }> = [];
     dataset: { captionBp: string };
     constructor(bp: string) { this.dataset = { captionBp: bp }; this.textContent = initial; }
+    get ownerDocument() { return env.document; }
     get textContent() { return this.childNodes.map(node => node.textContent).join(''); }
     set textContent(value: string) { this.childNodes = value ? [{ textContent: value }] : []; }
     contains(node: unknown) { return node === this || this.childNodes.includes(node as any); }
@@ -47,6 +48,7 @@ function setup(surface: 'panel' | 'page', initial = 'before') {
   const target = { dataset: {}, closest: () => null };
   let areaValue = initial;
   const textArea = {
+    get ownerDocument() { return env.document; },
     get value() { return areaValue; },
     set value(value: string) { areaValue = value; this.selectionStart = this.selectionEnd = value.length; },
     selectionStart: 0, selectionEnd: 0, selectionDirection: 'none',

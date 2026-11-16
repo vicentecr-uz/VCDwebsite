@@ -5,16 +5,20 @@ interface Props {
   label: string;
   id: string;
   unit?: string;
+  /** compact: the label sits inside the track and the value is right-aligned; no label row. */
+  variant?: 'default' | 'compact';
   [key: string]: any;
 }
 
-const { label, id, unit = '', class: className, ...rest } = Astro.props;
+const { label, id, unit = '', variant = 'default', class: className, ...rest } = Astro.props;
+const compact = variant === 'compact';
 const labelId = `${id}-label`;
 ---
 
-<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', className]}>
+<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', compact && 'dev-field--no-label', className]}>
   <Fragment slot="labelAccessory"><slot name="labelAccessory" /></Fragment>
-  <div class="dev-range-field" data-dev-range-field>
+  <div class:list={['dev-range-field', compact && 'dev-range-field--compact']} data-dev-range-field>
+    {compact && <span class="dev-range-field__label" aria-hidden="true">{label}</span>}
     <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
     <input
       {...rest}
@@ -24,11 +28,48 @@ const labelId = `${id}-label`;
       aria-labelledby={labelId}
       data-range-unit={unit}
     />
+    <span class="dev-range-field__edit" data-range-edit>
+      <input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label={`${label} value`} data-native-text-field />
+      {unit && <span aria-hidden="true">{unit}</span>}
+    </span>
   </div>
 </Field>
 
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+
+  // The thumb and fill ease onto the value without overshooting; momentum comes from the grip, not from here.
+  const springs = new WeakMap<HTMLElement, { at: number; speed: number; target: number; frame: number; last: number }>();
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const moveTo = (field: HTMLElement, target: number) => {
+    let spring = springs.get(field);
+    if (!spring || reducedMotion.matches) {
+      if (spring) cancelAnimationFrame(spring.frame);
+      springs.set(field, { at: target, speed: 0, target, frame: 0, last: 0 });
+      field.style.setProperty('--range-progress', String(target));
+      return;
+    }
+    spring.target = target;
+    if (spring.frame) return;
+    const state = spring;
+    state.last = performance.now();
+    const step = (now: number) => {
+      // Small fixed steps keep the spring steady when frames run long.
+      for (let left = Math.min(0.064, (now - state.last) / 1000); left > 0; left -= 0.004) {
+        const dt = Math.min(0.004, left);
+        state.speed += (-900 * (state.at - state.target) - 60 * state.speed) * dt;
+        state.at += state.speed * dt;
+      }
+      state.last = now;
+      if (Math.abs(state.at - state.target) < 0.0004 && Math.abs(state.speed) < 0.004) {
+        state.at = state.target;
+        state.speed = 0;
+        state.frame = 0;
+      } else state.frame = requestAnimationFrame(step);
+      field.style.setProperty('--range-progress', String(state.at));
+    };
+    state.frame = requestAnimationFrame(step);
+  };
 
   const format = (input: HTMLInputElement) => {
     const min = Number(input.min);
@@ -38,9 +79,137 @@ const labelId = `${id}-label`;
     const unit = input.dataset.rangeUnit || '';
     const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
     const valueText = `${input.value}${unit}`;
-    input.parentElement?.style.setProperty('--range-progress', String(progress));
+    if (input.parentElement) moveTo(input.parentElement, progress);
     input.setAttribute('aria-valuetext', valueText);
     if (output) output.textContent = valueText;
+    const edit = input.parentElement?.querySelector<HTMLInputElement>('[data-range-edit] input');
+    if (edit && !input.parentElement?.classList.contains('is-editing')) {
+      edit.value = input.value;
+      edit.style.width = `${Math.max(1, input.value.length)}ch`;
+    }
+  };
+
+  // Pressing anywhere on the track grips the thumb where it is; the value moves by how far the pointer travels.
+  // Let go while moving and it carries on, losing speed at UIKit's fast deceleration rate (0.99 per millisecond).
+  const bindGrip = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
+    let grip: { id: number; x: number; value: number; changed: boolean; trail: Array<[number, number]> } | undefined;
+    let coast = 0;
+    const emit = (type: string) => input.dispatchEvent(new (input.ownerDocument.defaultView ?? window).Event(type, { bubbles: true }));
+    const limits = () => ({ min: Number(input.min || 0), max: Number(input.max || 100), step: Number(input.step) || 1 });
+    const perPixel = () => { const { min, max } = limits(); return (max - min) / Math.max(1, input.getBoundingClientRect().width - 16); };
+    const place = (raw: number) => {
+      const { min, max, step } = limits();
+      const next = String(Math.min(max, Math.max(min, min + Math.round((raw - min) / step) * step)));
+      if (next === input.value) return false;
+      input.value = next;
+      emit('input');
+      return true;
+    };
+    const stopCoast = () => { cancelAnimationFrame(coast); coast = 0; };
+    scope.add(stopCoast);
+    // The native control would jump the thumb to the pointer.
+    scope.listen(input, 'mousedown', (event) => { if (event.button === 0) event.preventDefault(); });
+    scope.listen(input, 'pointerdown', (event) => {
+      if (event.button !== 0 || input.disabled) return;
+      const coasting = coast !== 0;
+      stopCoast();
+      grip = { id: event.pointerId, x: event.clientX, value: Number(input.value), changed: coasting, trail: [[event.timeStamp, event.clientX]] };
+      input.setPointerCapture(event.pointerId);
+      // Focus taken by the pointer shows no ring; the keyboard still gets one.
+      input.parentElement?.setAttribute('data-pointer-focus', '');
+      input.parentElement?.classList.add('is-gripped');
+      input.focus({ preventScroll: true });
+    });
+    const keyboardFocus = () => input.parentElement?.removeAttribute('data-pointer-focus');
+    scope.listen(input, 'blur', keyboardFocus);
+    scope.listen(input, 'keydown', () => { keyboardFocus(); if (coast) { stopCoast(); emit('change'); } });
+    scope.listen(input, 'pointermove', (event) => {
+      if (!grip || event.pointerId !== grip.id) return;
+      grip.trail.push([event.timeStamp, event.clientX]);
+      while (grip.trail.length > 2 && event.timeStamp - grip.trail[0][0] > 100) grip.trail.shift();
+      if (place(grip.value + (event.clientX - grip.x) * perPixel())) grip.changed = true;
+    });
+    const release = (event: PointerEvent) => {
+      if (!grip || event.pointerId !== grip.id) return;
+      const { changed, trail } = grip;
+      grip = undefined;
+      input.parentElement?.classList.remove('is-gripped');
+      const [firstAt, firstX] = trail[0];
+      const [lastAt, lastX] = trail[trail.length - 1];
+      // Pixels per millisecond over the last tenth of a second; none if the pointer had come to rest.
+      let speed = event.type === 'pointerup' && lastAt > firstAt && event.timeStamp - lastAt < 60 ? (lastX - firstX) / (lastAt - firstAt) : 0;
+      if (Math.abs(speed) < 0.15 || reducedMotion.matches) { if (changed) emit('change'); return; }
+      let raw = Number(input.value);
+      let last = performance.now();
+      const step = (now: number) => {
+        const dt = Math.min(64, now - last);
+        last = now;
+        // Distance covered while the speed decays by 0.99 each millisecond.
+        const decay = 0.99 ** dt;
+        raw += speed * (decay - 1) / Math.log(0.99) * perPixel();
+        speed *= decay;
+        place(raw);
+        const { min, max } = limits();
+        if (Math.abs(speed) < 0.02 || raw <= min || raw >= max) { coast = 0; emit('change'); return; }
+        coast = requestAnimationFrame(step);
+      };
+      coast = requestAnimationFrame(step);
+    };
+    scope.listen(input, 'pointerup', release);
+    scope.listen(input, 'pointercancel', release);
+  };
+
+  // Click the value to type one: Enter or clicking away commits, Escape puts the old value back.
+  const bindEdit = (input: HTMLInputElement, scope: ReturnType<typeof createPageScope>) => {
+    const field = input.parentElement;
+    const wrap = field?.querySelector<HTMLElement>('[data-range-edit]');
+    const edit = wrap?.querySelector<HTMLInputElement>('input');
+    if (!field || !wrap || !edit) return;
+    let stopKeys: (() => void) | undefined;
+    const finish = (commit: boolean) => {
+      if (!field.classList.contains('is-editing')) return;
+      field.classList.remove('is-editing');
+      stopKeys?.();
+      stopKeys = undefined;
+      const typed = Number.parseFloat(edit.value);
+      if (commit && Number.isFinite(typed)) {
+        const min = Number(input.min || 0);
+        const max = Number(input.max || 100);
+        const step = Number(input.step) || 1;
+        const next = String(Math.min(max, Math.max(min, min + Math.round((typed - min) / step) * step)));
+        if (next !== input.value) {
+          const View = input.ownerDocument.defaultView ?? window;
+          input.value = next;
+          input.dispatchEvent(new View.Event('input', { bubbles: true }));
+          input.dispatchEvent(new View.Event('change', { bubbles: true }));
+        }
+      }
+      format(input);
+      if (edit.ownerDocument.activeElement === edit) edit.blur();
+    };
+    scope.listen(wrap, 'pointerdown', (event) => {
+      if (event.target === edit || input.disabled) return;
+      event.preventDefault();
+      edit.focus();
+    });
+    scope.listen(edit, 'focus', () => {
+      if (input.disabled) { edit.blur(); return; }
+      field.classList.add('is-editing');
+      edit.select();
+      // The window hears keys before any page-level Escape handling can blur the field and commit it.
+      const view = edit.ownerDocument.defaultView ?? window;
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key !== 'Enter' && event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        finish(event.key === 'Enter');
+      };
+      view.addEventListener('keydown', onKey, true);
+      stopKeys = () => view.removeEventListener('keydown', onKey, true);
+    });
+    scope.listen(edit, 'input', () => { edit.style.width = `${Math.max(1, edit.value.length)}ch`; });
+    scope.listen(edit, 'blur', () => finish(true));
+    scope.add(() => stopKeys?.());
   };
 
   const dispose = onPageLoad(() => {
@@ -49,6 +218,8 @@ const labelId = `${id}-label`;
       scope.listen(input, 'input', () => format(input));
       scope.listen(input, 'change', () => format(input));
       scope.listen(input, 'vcd:range-refresh', () => format(input));
+      bindGrip(input, scope);
+      bindEdit(input, scope);
       format(input);
     });
     return () => scope.destroy();
@@ -61,7 +232,7 @@ const labelId = `${id}-label`;
   :global(.dev-field.dev-field--range:hover:not(.dev-field--quiet) > .dev-field__value),
   :global(.dev-field.dev-field--range > .dev-field__value:has(:focus-visible)) {
     padding: 0;
-    background: var(--comp-field-container);
+    background: transparent;
     --on-surface-faint: var(--sys-color-on-srf-container-faint);
   }
 
@@ -76,30 +247,31 @@ const labelId = `${id}-label`;
     min-height: var(--dev-control-height);
     overflow: hidden;
     border-radius: inherit;
+    corner-shape: inherit;
+    /* Track and fill are one painted shape, so no second rounded edge shows the track through at the
+       corners. The fill runs one inset past the thumb and meets the far edge at the maximum. */
+    --range-fill-end: calc(2 * var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
+    background: linear-gradient(to right, var(--range-fill-color) var(--range-fill-end), var(--comp-field-container) var(--range-fill-end));
   }
 
-  .dev-range-field::before,
   .dev-range-field::after {
     content: '';
     position: absolute;
     pointer-events: none;
-  }
-
-  .dev-range-field::before {
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0) + var(--range-thumb-width) / 2 + 4px);
-    background: var(--range-fill-color);
-  }
-
-  .dev-range-field::after {
     top: 50%;
     left: calc(var(--range-track-inset) + (100% - 2 * var(--range-track-inset)) * var(--range-progress, 0));
     width: var(--range-thumb-width);
     height: 20px;
     translate: -50% -50%;
+    transition: height 160ms cubic-bezier(0.23, 1, 0.32, 1), width 160ms cubic-bezier(0.23, 1, 0.32, 1);
     border-radius: 999px;
-    background: var(--sys-color-on-srf-subtle);
+    background: color-mix(in oklab, var(--sys-color-on-srf-subtle) 70%, var(--range-fill-color));
+  }
+
+  .dev-range-field.is-gripped::after { width: calc(var(--range-thumb-width) + 1px); height: 24px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-range-field::after { transition: none; }
   }
 
   .dev-range-field__output {
@@ -108,6 +280,62 @@ const labelId = `${id}-label`;
     z-index: 1;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
+  }
+
+  .dev-range-field__label {
+    position: absolute;
+    inset-inline-start: 14px;
+    z-index: 1;
+    pointer-events: none;
+    font: var(--dev-text-field-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .dev-range-field--compact .dev-range-field__output {
+    inset-inline: auto 14px;
+  }
+
+  .dev-range-field__edit {
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-start: 4px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    padding-inline: 14px 10px;
+    border-radius: calc((var(--dev-radius-control) - 4px) * var(--continuous-corner-scale, 1));
+    background: var(--sys-color-srf);
+    font-variant-numeric: tabular-nums;
+    opacity: 0;
+    cursor: text;
+    transition: opacity 120ms ease-out;
+  }
+
+  .dev-range-field--compact .dev-range-field__edit {
+    inset-inline: auto 4px;
+    padding-inline: 10px;
+  }
+
+  .dev-range-field.is-editing .dev-range-field__edit { opacity: 1; }
+
+  .dev-range-field__edit input {
+    box-sizing: content-box;
+    min-width: 1ch;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    font-variant-numeric: inherit;
+    color: inherit;
+    text-align: end;
+  }
+
+  .dev-range-field:has(.dev-range-field__input:disabled) .dev-range-field__edit { pointer-events: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-range-field__edit { transition: none; }
   }
 
   .dev-range-field__input {
@@ -122,13 +350,15 @@ const labelId = `${id}-label`;
     outline: 0;
     background: transparent;
     cursor: ew-resize;
+    touch-action: pan-y;
   }
 
   .dev-range-field__input::-webkit-slider-runnable-track { background: transparent; }
   .dev-range-field__input::-moz-range-track { background: transparent; }
   .dev-range-field__input::-webkit-slider-thumb { width: 16px; height: 1px; appearance: none; opacity: 0; }
   .dev-range-field__input::-moz-range-thumb { width: 16px; height: 1px; border: 0; opacity: 0; }
-  .dev-range-field:has(.dev-range-field__input:focus-visible) { outline: 2px solid var(--sys-color-on-srf); outline-offset: 1px; }
+  /* Drawn inside the field: a ring outside it is clipped by the panel body. */
+  .dev-range-field:has(.dev-range-field__input:focus-visible):not([data-pointer-focus]) { outline: 2px solid var(--sys-color-on-srf); outline-offset: -2px; }
   .dev-range-field:has(.dev-range-field__input:disabled) { opacity: var(--dev-opacity-disabled); }
   .dev-range-field__input:disabled { cursor: default; }
 </style>

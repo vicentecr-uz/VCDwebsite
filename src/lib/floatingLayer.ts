@@ -10,8 +10,9 @@ const VIEWPORT_MARGIN = 8;
 
 /** Moves a fixed, open popover to `left`/`top`, kept 8px inside the viewport. */
 export function clampToViewport(layer: HTMLElement, left: number, top: number) {
-  const maxTop = window.innerHeight - VIEWPORT_MARGIN - layer.offsetHeight;
-  const maxLeft = window.innerWidth - VIEWPORT_MARGIN - layer.offsetWidth;
+  const win = layer.ownerDocument.defaultView ?? window;
+  const maxTop = win.innerHeight - VIEWPORT_MARGIN - layer.offsetHeight;
+  const maxLeft = win.innerWidth - VIEWPORT_MARGIN - layer.offsetWidth;
   layer.style.top = `${Math.max(VIEWPORT_MARGIN, Math.min(top, maxTop))}px`;
   layer.style.left = `${Math.max(VIEWPORT_MARGIN, Math.min(left, maxLeft))}px`;
 }

@@ -344,9 +344,13 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     let headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
     let viewportWidth = document.documentElement.clientWidth;
     let ticking = false;
+    // Set while the Edit canvas morphs a viewport preview: it scrolls the page to hold content steady,
+    // which is not the reader scrolling and must not dock, ride or hide the header.
+    let viewportFluxUntil = 0;
     let updateFrame: number | null = null;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
     let mobileHeader = false;
+    let mobileSliding = false;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
@@ -485,6 +489,9 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     const syncMobileHeaderMode = () => {
       const isMobile = window.innerWidth <= 767;
       if (isMobile) {
+        // A header that is off-screen when the phone layout takes over slides in, as it does when it docks for the menu.
+        // The phone layout already pins it, so its rect cannot say it was hidden; the mode and scroll position can.
+        const slideFrom = !mobileHeader && mode !== 'docked' && window.scrollY > headerHeight ? headerHeight : 0;
         if (updateFrame !== null) {
           cancelAnimationFrame(updateFrame);
           updateFrame = null;
@@ -495,13 +502,38 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
           offscreenTimer = null;
         }
         if (mode !== 'docked') setMode('docked');
+        // A header docked at a wider width keeps that width's offset and box; the phone header has its own.
+        header.style.top = `${-headerChromeHeight()}px`;
+        header.style.left = '0';
+        header.style.width = '100%';
         header.classList.remove('is-scrolled-hidden');
         header.style.opacity = '';
         header.style.pointerEvents = '';
-        header.style.transform = '';
+        if (slideFrom > 0) {
+          mobileSliding = true;
+          header.style.transition = 'none';
+          header.style.transform = `translateY(${-slideFrom}px)`;
+          void header.offsetHeight;
+          header.style.transition = 'transform 0.3s ease';
+          header.style.transform = 'translateY(0)';
+          setTimeout(() => {
+            if (!mobileSliding) return;
+            mobileSliding = false;
+            header.style.transition = '';
+            header.style.transform = '';
+          }, 350);
+        } else if (!mobileSliding) {
+          header.style.transform = '';
+        }
       } else if (mobileHeader) {
-        if (mode !== 'flow') setMode('flow');
-        header.classList.remove('is-scrolled-hidden');
+        // The phone header is always showing, so away from the page top it stays showing at the wider width.
+        if (mode === 'docked' && window.scrollY > 8) {
+          header.style.top = `${-headerChromeHeight()}px`;
+          applyGeo();
+        } else {
+          if (mode !== 'flow') setMode('flow');
+          header.classList.remove('is-scrolled-hidden');
+        }
       }
       mobileHeader = isMobile;
     };
@@ -588,6 +620,13 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
       }
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
+
+      if (performance.now() < viewportFluxUntil) {
+        trend = null;
+        anchorY = lastY = y;
+        ticking = false;
+        return;
+      }
 
       if (isSectionReorderDragging()) {
         // At the page top the in-flow header stays visible; deep, hide it so
@@ -743,7 +782,7 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
     captureGeo();
     syncHeaderWidth(logicalHeaderRect().bottom, true);
 
-    window.addEventListener('resize', () => {
+    const syncViewportWidth = () => {
       const nextViewportWidth = document.documentElement.clientWidth;
       if (nextViewportWidth === viewportWidth) return;
       viewportWidth = nextViewportWidth;
@@ -769,6 +808,18 @@ const menuDemoFeatherStops = Array.from({ length: 33 }, (_, index) => {
         header.style.left = '0';
         header.style.width = '100%';
       }
+    };
+    window.addEventListener('resize', syncViewportWidth);
+    // The Edit canvas holds back resize while a viewport preview morphs; the fixed header still has to follow.
+    window.addEventListener('vcd:viewport-flux-frame', () => {
+      viewportFluxUntil = performance.now() + 150;
+      // A header riding away with the page is pinned to a scroll position the morph is about to change.
+      // Settle it: docked if any of it is on screen, otherwise back in the flow and hidden.
+      if (window.innerWidth > 767 && mode === 'riding') {
+        setMode(logicalHeaderRect().bottom > 0 ? 'docked' : 'flow');
+        if (mode === 'flow') header.classList.toggle('is-scrolled-hidden', logicalHeaderRect().bottom <= 0);
+      }
+      syncViewportWidth();
     });
   }
 

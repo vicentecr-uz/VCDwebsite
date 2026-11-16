@@ -1,0 +1,397 @@
+---
+import ViewportSelector from '../../components/ui/ViewportSelector.astro';
+import '../../styles/global.css';
+import '../../styles/dev-chrome.css';
+
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+---
+
+<!doctype html>
+<html lang="en" data-theme="light" data-canvas-shell>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="preload" href="/fonts/hanken-grotesk/normal-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/hanken-grotesk/hanken.css" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Page</title>
+  </head>
+  <body>
+    <div class="dev-viewport-preview__backdrop" data-canvas-backdrop></div>
+    <div class="dev-viewport-preview__shadow" data-canvas-shadow></div>
+    <div class="dev-viewport-preview__surface" data-canvas-surface>
+      <iframe name="vcd-canvas" title="Page" data-canvas-frame></iframe>
+    </div>
+    <div data-canvas-chrome></div>
+    <div class="dev-viewport-preview__controls dev-surface" data-canvas-controls>
+      <ViewportSelector dataAttr="data-viewport-preset" label="Viewport" tabindex="-1" />
+    </div>
+  </body>
+</html>
+
+<script>
+  import { createPageScope } from '../../lib/pageLifecycle';
+
+  const scope = createPageScope();
+  const frame = document.querySelector<HTMLIFrameElement>('[data-canvas-frame]')!;
+  const surface = document.querySelector<HTMLElement>('[data-canvas-surface]')!;
+  const shadow = document.querySelector<HTMLElement>('[data-canvas-shadow]')!;
+  const backdrop = document.querySelector<HTMLElement>('[data-canvas-backdrop]')!;
+  const controls = document.querySelector<HTMLElement>('[data-canvas-controls]')!;
+  const presets = { tablet: [820, 1180], mobile: [390, 844] } as const;
+  type Preset = 'desktop' | keyof typeof presets;
+  const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
+  let preset: Preset = 'desktop';
+  // A width dragged in the page's Viewport Width panel, shown instead of the preset's own size.
+  let custom: number | undefined;
+  let shownWidth = '';
+  const showWidth = (width: number) => {
+    const next = `${Math.round(width)}/${window.innerWidth}`;
+    if (next === shownWidth) return;
+    shownWidth = next;
+    frame.contentWindow?.postMessage({ type: 'vcd-canvas-width', width: Math.round(width), max: window.innerWidth }, location.origin);
+  };
+  let raf = 0;
+  let revision = 0;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const focusFrame = () => frame.contentWindow?.focus();
+  const postPreset = () => frame.contentWindow?.postMessage({ type: 'vcd-canvas-preset', preset }, location.origin);
+  const select = () => {
+    controls.querySelectorAll<HTMLElement>('[data-viewport-preset]').forEach((button) => {
+      const selected = button.dataset.viewportPreset === preset;
+      button.classList.toggle('is-active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  };
+  type Geometry = { width: number; height: number; radius: number; device: number };
+  const desktop = (): Geometry => ({ width: window.innerWidth, height: window.innerHeight, radius: 0, device: 0 });
+  let current = desktop();
+  let fluxActive = false;
+  const postFlux = (active: boolean) => {
+    fluxActive = active;
+    frame.contentWindow?.postMessage({ type: 'vcd-canvas-flux', active }, location.origin);
+  };
+  // Keep what is under the middle of the viewport where it is while the page reflows around it:
+  // the image or text there, and the same point within it.
+  let anchor: { element: Element; within: number; ratio: number } | undefined;
+  const pickAnchor = () => {
+    const win = frame.contentWindow;
+    const doc = frame.contentDocument;
+    if (!win || !doc || win.scrollY <= 0) return undefined;
+    const middle = win.innerHeight / 2;
+    let element: Element | undefined;
+    let nearest = Infinity;
+    // Hold what is actually shown. A cropped or sliding image is larger than the box that shows it, and
+    // content inside a scroller (a carousel, the comment board's loop) extends unseen past that box and
+    // moves on its own: the box stands in for both.
+    const clips = new Map<Element, boolean>();
+    const clipping = (box: Element) => {
+      let known = clips.get(box);
+      if (known === undefined) {
+        const style = win.getComputedStyle(box);
+        known = style.overflowX !== 'visible' || style.overflowY !== 'visible';
+        clips.set(box, known);
+      }
+      return known;
+    };
+    const main = doc.querySelector('main');
+    const shown = (media: Element) => {
+      let candidate = media;
+      let rect = media.getBoundingClientRect();
+      for (let parent = media.parentElement; parent && parent !== main && parent !== doc.body; parent = parent.parentElement) {
+        if (!clipping(parent)) continue;
+        const box = parent.getBoundingClientRect();
+        if (box.height > win.innerHeight * 2) continue; // a page-level wrapper, not a frame around this piece
+        const scrolls = parent.scrollHeight > parent.clientHeight + 1 || parent.scrollWidth > parent.clientWidth + 1;
+        const inside = rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
+        if (scrolls || !inside) { candidate = parent; rect = box; }
+      }
+      return candidate;
+    };
+    // Prefer the finest piece of content; a block can be several screens tall.
+    for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
+      for (const media of doc.querySelectorAll(selector)) {
+        const raw = media.getBoundingClientRect();
+        if (!raw.height || !raw.width || raw.bottom < 0 || raw.top > win.innerHeight) continue;
+        const candidate = shown(media);
+        const rect = candidate.getBoundingClientRect();
+        if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight || rect.right < 0 || rect.left > win.innerWidth) continue;
+        // Several pieces can span the middle; take the one centred nearest to it, not the first in the page.
+        const distance = (rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0) * 1000
+          + Math.abs(rect.top + rect.height / 2 - middle);
+        if (distance < nearest) { nearest = distance; element = candidate; }
+      }
+      if (element) break;
+    }
+    if (!element) return undefined;
+    const rect = element.getBoundingClientRect();
+    const point = Math.min(rect.bottom, Math.max(rect.top, middle));
+    return { element, within: (point - rect.top) / rect.height, ratio: point / win.innerHeight };
+  };
+  const holdAnchor = () => {
+    const win = frame.contentWindow;
+    if (!anchor || !win || !anchor.element.isConnected) return false;
+    // A piece that one viewport hides has no box; its nearest rendered ancestor stands in for it.
+    let element: Element | null = anchor.element;
+    while (element && !element.getClientRects().length) element = element.parentElement;
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    const delta = rect.top + rect.height * anchor.within - anchor.ratio * win.innerHeight;
+    if (Math.abs(delta) < 0.5) return false;
+    win.scrollBy({ top: delta, behavior: 'instant' });
+    return true;
+  };
+  // While this holds the anchor, the browser's own scroll anchoring must stand down: the two
+  // correct the same shift in turn and the page jumps (seen in Firefox).
+  const releaseKeys = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+  let held: Window | null = null;
+  // The page resizes blocks from its own frame callbacks and observers, which run after this shell's
+  // tick. Correct again once layout has settled for the frame, before it is painted.
+  let watcher: ResizeObserver | undefined;
+  const releaseAnchor = () => {
+    anchor = undefined;
+    watcher?.disconnect();
+    watcher = undefined;
+    if (!held) return;
+    for (const type of releaseKeys) held.removeEventListener(type, releaseAnchor, true);
+    try { held.document.documentElement.style.overflowAnchor = ''; } catch { /* the page navigated away */ }
+    held = null;
+  };
+  const takeAnchor = () => {
+    releaseAnchor();
+    anchor = pickAnchor();
+    held = frame.contentWindow;
+    try {
+      if (held) held.document.documentElement.style.overflowAnchor = 'none';
+      const Observer = (held as (Window & { ResizeObserver?: typeof ResizeObserver }) | null)?.ResizeObserver;
+      if (held && Observer && anchor) {
+        watcher = new Observer(() => { holdAnchor(); });
+        for (const block of held.document.querySelectorAll('main, main > *, main .project-block')) watcher.observe(block);
+      }
+    } catch { held = null; }
+  };
+  // The page's deferred resize work lands over the frames after a morph. Keep holding until it has
+  // been still for a while, or the reader does something.
+  const settleAnchor = (token: number) => {
+    const win = held;
+    if (!win) return;
+    for (const type of releaseKeys) win.addEventListener(type, releaseAnchor, { capture: true, passive: true });
+    const started = performance.now();
+    let still = 0;
+    const step = () => {
+      if (token !== revision || held !== win) return;
+      still = holdAnchor() ? 0 : still + 1;
+      if (still >= 45 || performance.now() - started > 3000) { releaseAnchor(); return; }
+      window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+  };
+  const render = (value: Geometry, barZone = 0) => {
+    current = value;
+    const width = Math.round(value.width);
+    const height = Math.round(value.height);
+    const hostWidth = Math.max(1, window.innerWidth - 24 * value.device);
+    const hostHeight = Math.max(1, window.innerHeight - (24 + barZone) * value.device);
+    const scale = Math.min(1, hostWidth / width, hostHeight / height);
+    const left = (window.innerWidth - width * scale) / 2;
+    const top = 12 * value.device + (hostHeight - height * scale) / 2;
+    const radius = value.radius * scale;
+    const bounds = {
+      transform: `translate(${left}px, ${top}px)`, width: `${width * scale}px`, height: `${height * scale}px`,
+    };
+    Object.assign(surface.style, bounds);
+    Object.assign(shadow.style, bounds, { opacity: String(value.device) });
+    surface.style.setProperty('--viewport-radius', `${radius}px`);
+    shadow.style.setProperty('--viewport-radius', `${radius}px`);
+    frame.style.width = `${width}px`;
+    frame.style.height = `${height}px`;
+    frame.style.transform = `scale(${scale})`;
+    showWidth(value.width);
+    // The page's own resize event arrives a frame late; the fixed header must size with this frame.
+    if (fluxActive) frame.contentWindow?.dispatchEvent?.(new Event('vcd:viewport-flux-frame'));
+    holdAnchor();
+  };
+  const presetGeometry = (which: Preset): Geometry => which === 'desktop' ? desktop() : {
+    width: presets[which][0], height: presets[which][1], radius: which === 'tablet' ? 20 : 42, device: 1,
+  };
+  // A dragged width takes the frame the preset morphs pass through at that width.
+  const customGeometry = (width: number): Geometry => {
+    const stops = [desktop(), presetGeometry('tablet'), presetGeometry('mobile')].filter((stop, index) => index === 0 || stop.width < window.innerWidth);
+    for (let index = 1; index < stops.length; index += 1) {
+      const wide = stops[index - 1];
+      const narrow = stops[index];
+      if (width < narrow.width) continue;
+      const t = (wide.width - width) / (wide.width - narrow.width);
+      const mix = (key: keyof Geometry) => wide[key] + (narrow[key] - wide[key]) * t;
+      return { width, height: mix('height'), radius: mix('radius'), device: mix('device') };
+    }
+    return { ...stops[stops.length - 1], width };
+  };
+  const geometry = (): Geometry => custom !== undefined ? customGeometry(custom) : presetGeometry(preset);
+  const barZone = () => window.innerHeight - controls.getBoundingClientRect().top;
+  const finish = (target: Geometry) => {
+    render(target, barZone());
+    if (preset === 'desktop') controls.style.visibility = 'hidden';
+    if (preset === 'desktop' && custom === undefined) {
+      backdrop.style.visibility = 'hidden';
+    }
+  };
+  const transition = (next: Preset) => {
+    if (next === preset && custom === undefined) return;
+    custom = undefined;
+    preset = next;
+    select();
+    postPreset();
+    window.cancelAnimationFrame(raf);
+    const token = ++revision;
+    backdrop.style.visibility = 'visible';
+    if (preset !== 'desktop') controls.style.visibility = 'visible';
+    controls.style.opacity = preset === 'desktop' ? '0' : '1';
+    const from = current;
+    const target = geometry();
+    const zone = barZone();
+    if (reducedMotion.matches) {
+      finish(target);
+      raf = 0;
+      if (fluxActive) postFlux(false);
+      return;
+    }
+    if (!fluxActive) takeAnchor();
+    postFlux(true);
+    // The page's clock, so an inspector that slows time in the page (Lapse) slows the morph with it.
+    const clock = () => { try { return frame.contentWindow?.performance.now() ?? performance.now(); } catch { return performance.now(); } };
+    const start = clock();
+    const omega = 2 * Math.PI / (0.35 * 1.2);
+    const tick = () => {
+      if (token !== revision || scope.signal.aborted) return;
+      const target = geometry();
+      const elapsed = clock() - start;
+      const t = (elapsed < 0 ? 10000 : elapsed) / 1000; // the page reloaded mid-morph: land now
+      const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
+      if (1 - x <= 0.004) {
+        finish(target);
+        raf = 0;
+        postFlux(false);
+        settleAnchor(token);
+        return;
+      }
+      render({
+        width: from.width + (target.width - from.width) * x,
+        height: from.height + (target.height - from.height) * x,
+        radius: from.radius + (target.radius - from.radius) * x,
+        device: from.device + (target.device - from.device) * x,
+      }, zone);
+      raf = window.requestAnimationFrame(tick);
+    };
+    raf = window.requestAnimationFrame(tick);
+  };
+  // Every change goes through the bar's own segment, so its selection slides as it does for a click.
+  const choose = (next: Preset) => {
+    const button = controls.querySelector<HTMLElement>(`[data-viewport-preset="${next}"]`);
+    if (button) button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    else transition(next);
+  };
+  // A dragged width is laid out at most once a frame, and a page that is slow to reflow only every
+  // second to fourth frame, so the slider that asks for it keeps frames of its own in between.
+  let widthFrame = 0;
+  let widthDone = false;
+  let widthSkip = 0;
+  const applyWidth = () => {
+    widthFrame = 0;
+    if (!widthDone && widthSkip > 0) {
+      widthSkip -= 1;
+      widthFrame = window.requestAnimationFrame(applyWidth);
+      return;
+    }
+    const started = performance.now();
+    render(geometry(), barZone());
+    widthSkip = widthDone ? 0 : Math.min(3, Math.floor((performance.now() - started) / 8));
+    if (widthDone) settleAnchor(revision);
+    widthDone = false;
+  };
+  scope.add(() => window.cancelAnimationFrame(widthFrame));
+  scope.listen(window, 'message', (event) => {
+    if (event.origin !== location.origin || event.source !== frame.contentWindow) return;
+    if (event.data?.type === 'vcd-canvas-location') {
+      const href = event.data.href;
+      if (typeof href !== 'string' || new URL(href, location.href).origin !== location.origin) return;
+      history.replaceState(history.state, '', href);
+      document.title = event.data.title;
+      postPreset();
+    }
+    if (event.data?.type === 'vcd-canvas-request-preset' && isPreset(event.data.preset)) choose(event.data.preset);
+    if (event.data?.type === 'vcd-canvas-request-width' && Number.isFinite(event.data.width)) {
+      window.cancelAnimationFrame(raf);
+      revision += 1;
+      if (fluxActive) postFlux(false);
+      if (!anchor) takeAnchor();
+      custom = Math.max(320, Math.min(window.innerWidth, Math.round(event.data.width)));
+      backdrop.style.visibility = 'visible';
+      widthDone ||= event.data.done === true;
+      if (!widthFrame) widthFrame = window.requestAnimationFrame(applyWidth);
+    }
+  });
+  scope.listen(controls, 'click', (event) => {
+    const next = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-viewport-preset]')?.dataset.viewportPreset : undefined;
+    if (isPreset(next)) transition(next);
+    if (event.isTrusted) focusFrame();
+  });
+  scope.listen(backdrop, 'click', focusFrame);
+
+  const forwardKey = (event: KeyboardEvent) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    if (event.composedPath().some((node) => node instanceof Element && node.hasAttribute('data-canvas-chrome'))) return;
+    if (target?.isContentEditable || target?.closest('input, textarea, select')) return;
+    if (event.type === 'keydown') {
+      const next = event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+        ? event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined
+        : undefined;
+      if (next) { event.preventDefault(); choose(next); return; }
+    }
+    const child = frame.contentWindow as (Window & typeof globalThis) | null;
+    if (!child || !frame.contentDocument) return;
+    const forwarded = new child.KeyboardEvent(event.type, {
+      key: event.key, code: event.code, altKey: event.altKey, ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey, shiftKey: event.shiftKey, repeat: event.repeat, bubbles: true, cancelable: true,
+    });
+    frame.contentDocument.dispatchEvent(forwarded);
+    if (forwarded.defaultPrevented) event.preventDefault();
+  };
+  scope.listen(document, 'keydown', forwardKey);
+  scope.listen(document, 'keyup', forwardKey);
+  scope.listen(window, 'resize', () => {
+    if (fluxActive) render(current, barZone());
+    else finish(geometry());
+  });
+  scope.listen(frame, 'load', () => { postPreset(); shownWidth = ''; showWidth(current.width); focusFrame(); });
+  select();
+  finish(desktop());
+  frame.src = location.href;
+  focusFrame();
+  scope.add(() => window.cancelAnimationFrame(raf));
+  import.meta.hot?.dispose(() => scope.destroy());
+</script>
+
+<style>
+  html, body { height: 100%; margin: 0; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__backdrop { position: fixed; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }
+  .dev-viewport-preview__shadow, .dev-viewport-preview__surface {
+    border-radius: calc(var(--viewport-radius, 0px) * var(--continuous-corner-scale, 1));
+    corner-shape: var(--squircle-shape);
+  }
+  .dev-viewport-preview__shadow { position: absolute; inset: 0 auto auto 0; box-shadow: var(--elevated-surface-shadow); pointer-events: none; }
+  .dev-viewport-preview__surface { position: absolute; inset: 0 auto auto 0; contain: layout paint; overflow: hidden; background: var(--sys-color-srf); }
+  .dev-viewport-preview__surface iframe { position: absolute; inset: 0 auto auto 0; display: block; transform-origin: top left; border: 0; background: var(--sys-color-srf); }
+  [data-canvas-chrome] { display: contents; pointer-events: none; }
+  [data-canvas-chrome] :global(> *) { pointer-events: auto; }
+  .dev-viewport-preview__controls { z-index: 2147483647; position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; border: 0; border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1)); corner-shape: var(--squircle-shape); padding: 6px; opacity: 0; visibility: hidden; transition: opacity 150ms; }
+  .dev-viewport-preview__controls :global(.dev-segmented) {
+    width: auto;
+    padding: 0;
+    gap: 4px;
+    background: transparent;
+    --dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg);
+  }
+  .dev-viewport-preview__controls :global(.dev-segmented[tabindex='-1']:focus) { outline: none; }
+</style>

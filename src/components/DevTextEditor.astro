@@ -2479,7 +2479,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
         ledger.append(list);
         return list;
       };
-      const active = document.activeElement;
+      const active = ledger.ownerDocument.activeElement;
       const focusedItem = active instanceof HTMLElement ? active.closest('li') : null;
       const focusedIndex = focusedItem && ledger.contains(focusedItem)
         ? [...ledger.querySelectorAll('li')].indexOf(focusedItem) : -1;
@@ -2578,7 +2578,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
     }, { signal: editorSignal });
     ledger.addEventListener('pointerout', (event) => {
       if (getLedgerRow(event.target) === getLedgerRow(event.relatedTarget)) return;
-      const row = getLedgerRow(document.activeElement);
+      const row = getLedgerRow(ledger.ownerDocument.activeElement);
       const entry = row && ledgerRowTargets.get(row);
       if (entry) highlightLedgerRow(entry);
       else clearLedgerHighlight();
@@ -2623,7 +2623,7 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
       closeLedger(true);
       const targets = highlightLedgerRow(entry);
       const headerBottom = Math.max(0, siteHeader?.getBoundingClientRect().bottom ?? 0);
-      const visibleBottom = Math.min(window.innerHeight, actions.getBoundingClientRect().top);
+      const visibleBottom = Math.min((actions.ownerDocument.defaultView ?? window).innerHeight, actions.getBoundingClientRect().top);
       const visible = targets.some((target) => {
         const bounds = target.getBoundingClientRect();
         return bounds.bottom > headerBottom && bounds.top < visibleBottom;
@@ -2659,9 +2659,24 @@ const formatSidenoteSvg = sizeIcon(superscriptIcon, 16);
       const path = event.composedPath();
       if (!path.includes(ledger) && !path.includes(actions)) closeLedger();
     }, { signal: editorSignal });
-    window.addEventListener('resize', () => {
+    const onLedgerResize = (event?: Event) => {
+      if (event?.currentTarget === window && actions.ownerDocument.defaultView !== window) return;
       if (ledger.matches(':popover-open')) placeLedger();
-    }, { signal: editorSignal });
+    };
+    let ledgerWindow: Window = window;
+    const onLedgerMoved = () => {
+      if (ledgerWindow === (actions.ownerDocument.defaultView ?? window)) return;
+      if (ledgerWindow !== window) ledgerWindow.removeEventListener('resize', onLedgerResize);
+      ledgerWindow = actions.ownerDocument.defaultView ?? window;
+      if (ledgerWindow !== window) ledgerWindow.addEventListener('resize', onLedgerResize);
+      onLedgerResize();
+    };
+    window.addEventListener('resize', onLedgerResize, { signal: editorSignal });
+    window.addEventListener('vcd:canvas-chrome-moved', onLedgerMoved, { signal: editorSignal });
+    onLedgerMoved();
+    editorSignal.addEventListener('abort', () => {
+      if (ledgerWindow !== window) ledgerWindow.removeEventListener('resize', onLedgerResize);
+    }, { once: true });
     editorSignal.addEventListener('abort', () => {
       closeLedger();
       clearLedgerHighlight();

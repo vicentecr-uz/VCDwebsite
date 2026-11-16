@@ -33,7 +33,8 @@ test('pointer-opened selects mark themselves until the pointer moves', () => {
 
 test('select popup portals into an enclosing modal dialog', () => {
   // A body portal paints under a modal <dialog>'s top layer (the image lightbox's input mode).
-  assert.match(editorSelect, /setPortalContainer\(trigger\?\.closest\('dialog'\) \?\? undefined\)/);
+  assert.match(editorSelect, /trigger\?\.closest\('dialog'\) \?\?/);
+  assert.match(editorSelect, /setPortalContainer\(resolvePortalContainer\(/);
   assert.match(editorSelect, /<Select\.Portal container=\{portalContainer\}>/);
 });
 

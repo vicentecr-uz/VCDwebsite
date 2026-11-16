@@ -1,6 +1,28 @@
 ---
 import ViewportSelector from './ui/ViewportSelector.astro';
+import DevOverlay from './DevOverlay.astro';
+import RangeField from './ui/RangeField.astro';
+import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
+import tabletIcon from 'lucide-static/icons/tablet.svg?raw';
+import smartphoneIcon from 'lucide-static/icons/smartphone.svg?raw';
+import { sizeIcon } from '../lib/icons';
 ---
+
+<!-- Dev tool, canvas only: sets the page width by hand; opened from the ⌥M panels list. -->
+<DevOverlay title="Viewport Width" storageKey="viewport-width" panelKey="viewport-width" defaultHidden data-viewport-width-panel>
+  <div class="viewport-width">
+    <RangeField variant="compact" label="Width" id="viewport-width-range" unit="px" min="320" max="2560" step="1" value="1280" />
+    <div class="viewport-width__marks" aria-hidden="true">
+      <span data-viewport-width-mark="768">768</span>
+      <span data-viewport-width-mark="992">992</span>
+    </div>
+    <div class="viewport-width__device" aria-live="polite">
+      <span data-viewport-width-device="desktop" data-active>Desktop<Fragment set:html={sizeIcon(monitorIcon)} /></span>
+      <span data-viewport-width-device="tablet" aria-hidden="true">Tablet<Fragment set:html={sizeIcon(tabletIcon)} /></span>
+      <span data-viewport-width-device="mobile" aria-hidden="true">Mobile<Fragment set:html={sizeIcon(smartphoneIcon)} /></span>
+    </div>
+  </div>
+</DevOverlay>
 
 <div class="dev-viewport-preview" data-dev-viewport-preview aria-label="Edit viewport preview" hidden>
   <div class="dev-viewport-preview__backdrop"></div>
@@ -15,6 +37,8 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 
 <script>
   import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+  import { hoistCanvasChrome } from '../lib/canvasChrome';
+  import { followEditViewport } from '../lib/editViewportFollow';
 
   const dispose = onPageLoad(() => {
     const scope = createPageScope();
@@ -24,7 +48,159 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     const frame = root?.querySelector<HTMLIFrameElement>('[data-viewport-frame]');
     const controls = root?.querySelector<HTMLElement>('[data-viewport-controls]');
     if (!root || !surface || !shadow || !frame || !controls) return scope.destroy;
+    const canvasMode = window.parent !== window && window.name === 'vcd-canvas';
     const frameMode = window.parent !== window && window.name === 'vcd-edit-viewport-preview';
+
+    const widthPanel = document.querySelector<HTMLElement>('[data-viewport-width-panel]');
+    if (!canvasMode) widthPanel?.remove();
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target instanceof HTMLElement ? target : null;
+      return Boolean(element?.isContentEditable || element?.closest('input:not([type="range"]), textarea, select'));
+    };
+    if (canvasMode) {
+      if (document.cookie.split(';').some((cookie) => cookie.trim() === 'vcd-canvas-chrome=1')) hoistCanvasChrome(scope);
+      followEditViewport(scope);
+      scope.listen(window, 'resize', (event) => {
+        if (document.documentElement.hasAttribute('data-viewport-flux')) event.stopImmediatePropagation();
+      }, true);
+      let preset = 'desktop';
+      const post = (message: object) => window.parent.postMessage(message, location.origin);
+      const reportLocation = () => post({ type: 'vcd-canvas-location', href: location.href, title: document.title });
+      const reportDevMode = () => post({ type: 'vcd-canvas-dev-mode', active: document.documentElement.classList.contains('is-dev-mode') });
+      const requestPreset = (preset: string) => {
+        if (preset === 'desktop' || preset === 'tablet' || preset === 'mobile') post({ type: 'vcd-canvas-request-preset', preset });
+      };
+      reportLocation();
+      reportDevMode();
+      scope.listen(window, 'popstate', reportLocation);
+      scope.listen(window, 'hashchange', reportLocation);
+      scope.listen(document, 'astro:page-load', reportLocation);
+      scope.listen(window, 'vcd:dev-mode-change', reportDevMode);
+      scope.listen(document, 'keydown', (event) => {
+        if (isTypingTarget(event.target) || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const requested = event.code === 'Digit1' ? 'desktop' : event.code === 'Digit2' ? 'tablet' : event.code === 'Digit3' ? 'mobile' : undefined;
+        if (!requested) return;
+        event.preventDefault();
+        requestPreset(requested);
+      }, true);
+      scope.listen(window, 'vcd:edit-viewport-request', ((event: CustomEvent<{ preset?: string }>) => {
+        if (event.detail?.preset) requestPreset(event.detail.preset);
+      }) as EventListener);
+      const range = widthPanel?.querySelector<HTMLInputElement>('#viewport-width-range');
+      // The device name turns like a counter wheel: narrower rolls up, wider rolls down.
+      const devices = ['desktop', 'tablet', 'mobile'];
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const showDevice = (device: string) => {
+        if (!widthPanel) return;
+        const items = [...widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-device]')];
+        const from = items.find((item) => item.hasAttribute('data-active'));
+        const to = items.find((item) => item.dataset.viewportWidthDevice === device);
+        if (!to || from === to) return;
+        items.forEach((item) => {
+          item.getAnimations().forEach((animation) => animation.cancel());
+          item.toggleAttribute('data-active', item === to);
+          item.setAttribute('aria-hidden', String(item !== to));
+        });
+        if (!from || reducedMotion.matches) return;
+        const up = devices.indexOf(device) > devices.indexOf(from.dataset.viewportWidthDevice ?? '') ? 1 : -1;
+        // On a wheel: the name tips back as it travels, and it fades as a whole, and the row's mask clears it before the slider's edge.
+        const away = (direction: number) => ({ transform: `perspective(90px) translateY(${direction * 12}px) rotateX(${direction * -75}deg)`, opacity: 0 });
+        const rest = { transform: 'perspective(90px) translateY(0) rotateX(0deg)', opacity: 1 };
+        const timing = { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
+        // The fade mask is only on while a name is turning, so at rest the text and icon are plain and sharp.
+        const row = to.parentElement!;
+        row.classList.add('is-rolling');
+        from.animate([rest, away(-up)], timing);
+        to.animate([away(up), rest], timing).finished.then(() => row.classList.remove('is-rolling'), () => {});
+      };
+      // The canvas reports each width back a frame or two late; while a requested width is still on
+      // its way, an older report must not pull the slider back.
+      let asked: number | undefined;
+      let askedAt = 0;
+      const ask = (width: number, done = false) => {
+        asked = width;
+        askedAt = performance.now();
+        post({ type: 'vcd-canvas-request-width', width, done });
+      };
+      const showWidth = (width: number, max: number) => {
+        if (!range || !widthPanel || !Number.isFinite(width) || !Number.isFinite(max)) return;
+        range.max = String(max);
+        if (asked !== undefined && (width === asked || performance.now() - askedAt > 400)) asked = undefined;
+        if (asked === undefined && range.value !== String(width)) {
+          range.value = String(width);
+          range.dispatchEvent(new Event('vcd:range-refresh'));
+        }
+        showDevice(width <= 767 ? 'mobile' : width <= 991 ? 'tablet' : 'desktop');
+        const min = Number(range.min);
+        widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-mark]').forEach((mark) => {
+          const at = (Number(mark.dataset.viewportWidthMark) - min) / (max - min);
+          mark.hidden = at > 1;
+          mark.style.left = `calc(8px + (100% - 16px) * ${at})`;
+        });
+      };
+      if (range) {
+        // Let go with the thumb over a mark (within 2px on screen) and it lands on it; dragging past one never catches.
+        const snaps = [768, 992];
+        let byPointer = false;
+        let easing = 0;
+        // The same settle as a code block's height easing to a whole line.
+        const easeTo = (from: number, to: number) => {
+          const start = performance.now();
+          const step = (now: number) => {
+            const t = Math.min(1, (now - start) / 180);
+            const width = Math.round(from + (to - from) * (1 - (1 - t) ** 5));
+            range.value = String(width);
+            range.dispatchEvent(new Event('vcd:range-refresh'));
+            ask(width, t === 1);
+            easing = t < 1 ? requestAnimationFrame(step) : 0;
+          };
+          easing = requestAnimationFrame(step);
+        };
+        scope.add(() => cancelAnimationFrame(easing));
+        scope.listen(range, 'pointerdown', () => { byPointer = true; cancelAnimationFrame(easing); easing = 0; });
+        scope.listen(range, 'input', () => ask(Number(range.value)));
+        scope.listen(range, 'change', () => {
+          let width = Number(range.value);
+          const perPixel = (Number(range.max) - Number(range.min)) / Math.max(1, range.getBoundingClientRect().width - 16);
+          const near = byPointer ? snaps.find((snap) => Math.abs(snap - width) <= 4 * perPixel) : undefined;
+          byPointer = false;
+          if (near !== undefined && near !== width && !reducedMotion.matches) { easeTo(width, near); return; }
+          ask(near ?? width, true);
+        });
+      }
+      scope.listen(window, 'message', (event) => {
+        if (event.origin !== location.origin || event.source !== window.parent) return;
+        if (event.data?.type === 'vcd-canvas-flux') {
+          if (event.data.active === true) document.documentElement.setAttribute('data-viewport-flux', '');
+          if (event.data.active === false) {
+            document.documentElement.removeAttribute('data-viewport-flux');
+            window.dispatchEvent(new CustomEvent('vcd:viewport-flux-end'));
+            window.dispatchEvent(new Event('resize'));
+          }
+          return;
+        }
+        if (event.data?.type === 'vcd-canvas-width') { showWidth(Number(event.data.width), Number(event.data.max)); return; }
+        if (event.data?.type !== 'vcd-canvas-preset') return;
+        const next = event.data.preset;
+        if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile') return;
+        preset = next;
+        document.documentElement.toggleAttribute('data-edit-viewport-frame', preset !== 'desktop');
+        window.dispatchEvent(new CustomEvent('vcd:edit-viewport-change', { detail: { preset } }));
+      });
+      scope.listen(document, 'click', (event) => {
+        if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+        if (!anchor || anchor.hasAttribute('target') || new URL(anchor.href).origin === location.origin) return;
+        event.preventDefault();
+        window.top!.location.href = anchor.href;
+      }, true);
+      scope.add(() => {
+        document.documentElement.removeAttribute('data-edit-viewport-frame');
+        document.documentElement.removeAttribute('data-viewport-flux');
+      });
+      return () => scope.destroy();
+    }
 
     const presets = {
       tablet: [820, 1180],
@@ -52,10 +228,6 @@ import ViewportSelector from './ui/ViewportSelector.astro';
     let previousOverflow = '';
     let isolatedSiblings: Array<{ element: HTMLElement; inert: boolean }> = [];
     let isolationObserver: MutationObserver | null = null;
-    const isTypingTarget = (target: EventTarget | null) => {
-      const element = target instanceof HTMLElement ? target : null;
-      return Boolean(element?.isContentEditable || element?.closest('input, textarea, select'));
-    };
     const isolatePage = () => {
       if (!open) return;
       [...document.body.children]
@@ -430,8 +602,23 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 </script>
 
 <style>
+  /* The device name shares the marks' row, on the numbers' line. */
+  .viewport-width { display: grid; gap: 6px; }
+  /* The name rolls a little past the body's edge; its mask clears it inside the panel's padding. */
+  :global(.dev-overlay[data-viewport-width-panel]:not(.is-body-scrollable) .dev-overlay__body) { overflow: visible; }
+  .viewport-width__marks { grid-area: 2 / 1; }
+  .viewport-width__device {
+    grid-area: 2 / 1; align-self: center; justify-self: end; display: grid; align-items: center; justify-items: end;
+    position: relative; top: 4px; height: 48px; margin-block: -13px; padding-inline-start: 12px; pointer-events: none; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
+  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; }
+  .viewport-width__device.is-rolling { mask-image: linear-gradient(to bottom, transparent 9px, #000 15px, #000 33px, transparent 39px); }
+  .viewport-width__device > span[data-active] { opacity: 1; }
+  .viewport-width__marks { position: relative; height: 22px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
+  .viewport-width__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
+  .viewport-width__marks span::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 6px; background: currentColor; }
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }
   :global(html[data-edit-viewport-frame]) { overflow-x: clip; }
+  :global(html[data-viewport-flux] .site-header) { transition: none; }
   :global(html[data-viewport-layout-commit] .site-header) { transition: none; }
   :global(html[data-edit-viewport-frame] .dev-text-action-stack) { z-index: 116; }
   .dev-viewport-preview__backdrop { position: absolute; inset: 0; background: var(--sys-color-srf-container); --on-surface-faint: var(--sys-color-on-srf-container-faint); }

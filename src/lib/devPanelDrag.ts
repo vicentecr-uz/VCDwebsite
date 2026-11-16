@@ -19,8 +19,8 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
   panel.dataset.devPanelDragInitialized = 'true';
 
   const clampPosition = (left: number, top: number) => ({
-    left: clamp(left, 0, Math.max(0, win.innerWidth - panel.offsetWidth)),
-    top: clamp(top, 0, Math.max(0, win.innerHeight - panel.offsetHeight)),
+    left: clamp(left, 0, Math.max(0, (panel.ownerDocument.defaultView ?? win).innerWidth - panel.offsetWidth)),
+    top: clamp(top, 0, Math.max(0, (panel.ownerDocument.defaultView ?? win).innerHeight - panel.offsetHeight)),
   });
 
   const setViewportPosition = (left: number, top: number) => {
@@ -114,10 +114,20 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
     pointerId = null;
     panel.classList.remove('is-dragging');
   }, { signal });
-  win.addEventListener('resize', () => {
+  const onViewportResize = () => {
     if (!userPositioned || pointerId !== null) return;
     reclampPosition();
-  }, { signal });
+  };
+  let viewportWindow = win;
+  const onChromeMoved = () => {
+    if (viewportWindow !== win) viewportWindow.removeEventListener('resize', onViewportResize);
+    viewportWindow = panel.ownerDocument.defaultView ?? win;
+    if (viewportWindow !== win) viewportWindow.addEventListener('resize', onViewportResize);
+    onViewportResize();
+  };
+  win.addEventListener('resize', onViewportResize, { signal });
+  if (import.meta.env.DEV) win.addEventListener('vcd:canvas-chrome-moved', onChromeMoved, { signal });
+  onChromeMoved();
 
   const resizeObserver = new win.ResizeObserver(() => {
     if (!userPositioned || pointerId !== null) return;
@@ -127,6 +137,7 @@ export function createDevPanelDrag(panel: HTMLElement): () => void {
 
   return () => {
     abort.abort();
+    if (viewportWindow !== win) viewportWindow.removeEventListener('resize', onViewportResize);
     if (pointerId !== null) {
       commitPosition(pendingLeft, pendingTop);
       if (dragHandle.hasPointerCapture(pointerId)) dragHandle.releasePointerCapture(pointerId);

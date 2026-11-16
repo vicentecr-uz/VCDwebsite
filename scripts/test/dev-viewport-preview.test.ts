@@ -1,13 +1,14 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { followEditViewport } from '../../src/lib/editViewportFollow';
 
 const source = readFileSync(new URL('../../src/components/DevViewportPreview.astro', import.meta.url), 'utf8');
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.split('<script>')[1].split('</script>')[0]
   .replace(/^\s*import .*;$/gm, '').replace('import.meta.hot?.dispose(dispose);', 'return dispose;'));
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
-function fixture(reduced = false, frameMode = false, idleSupported = true) {
+function fixture(reduced = false, frameMode = false, idleSupported = true, canvasMode = false) {
   const window = new Window({ url: 'http://localhost:4358/', settings: { disableIframePageLoading: true } });
   const document = window.document;
   document.documentElement.classList.add('is-dev-mode');
@@ -27,9 +28,9 @@ function fixture(reduced = false, frameMode = false, idleSupported = true) {
   child.postMessage = (data: unknown) => { outgoing.push(data); };
   const posts: any[] = [];
   const parent = { postMessage: (data: unknown) => posts.push(data) };
-  if (frameMode) {
+  if (frameMode || canvasMode) {
     Object.defineProperty(window, 'parent', { value: parent });
-    window.name = 'vcd-edit-viewport-preview';
+    window.name = canvasMode ? 'vcd-canvas' : 'vcd-edit-viewport-preview';
   }
   let reloads = 0;
   Object.defineProperty(window.location, 'reload', { value: () => reloads++ });
@@ -67,9 +68,10 @@ function fixture(reduced = false, frameMode = false, idleSupported = true) {
     add(callback: () => void) { cleanups.push(callback); },
     destroy() { scope.signal.aborted = true; cleanups.reverse().forEach(fn => fn()); },
   };
-  const dispose = new Function('window', 'document', 'HTMLElement', 'CustomEvent', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', script)(
-    window, document, window.HTMLElement, window.CustomEvent, window.MutationObserver,
-    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(),
+  const follow = new Function('window', 'document', `return (${followEditViewport.toString()});`)(window, document);
+  const dispose = new Function('window', 'document', 'HTMLElement', 'Element', 'location', 'CustomEvent', 'Event', 'MutationObserver', 'matchMedia', 'sessionStorage', 'performance', 'createPageScope', 'onPageLoad', 'followEditViewport', script)(
+    window, document, window.HTMLElement, window.Element, window.location, window.CustomEvent, window.Event, window.MutationObserver,
+    () => ({ matches: reduced }), window.sessionStorage, { now: () => now }, () => scope, (mount: () => () => void) => mount(), follow,
   );
   const request = (preset: string) => window.dispatchEvent(new window.CustomEvent('vcd:edit-viewport-request', { detail: { preset } }));
   const message = (type: string, extra = {}) => window.dispatchEvent(new window.MessageEvent('message', { origin: window.location.origin, source: child, data: { type, ...extra } }));
@@ -378,3 +380,79 @@ test('frame save guard and rejected pending writes prevent close', async () => {
     expect(f.root.style.visibility).toBe('hidden');
   } finally { await f.dispose(); }
 });
+
+
+test('canvas reports location and Edit state with no warm preview or save reload', async () => {
+  const f = fixture(false, false, true, true);
+  try {
+    expect(f.posts).toEqual([
+      { type: 'vcd-canvas-location', href: f.window.location.href, title: f.document.title },
+      { type: 'vcd-canvas-dev-mode', active: true },
+    ]);
+    expect(f.idle.size).toBe(0);
+    expect(f.root.hidden).toBe(true);
+    for (const name of ['popstate', 'hashchange']) f.window.dispatchEvent(new f.window.Event(name));
+    f.document.dispatchEvent(new f.window.Event('astro:page-load'));
+    expect(f.posts.filter((post) => post.type === 'vcd-canvas-location')).toHaveLength(4);
+    f.document.documentElement.classList.remove('is-dev-mode');
+    f.window.dispatchEvent(new f.window.Event('vcd:dev-mode-change'));
+    expect(f.posts.at(-1)).toEqual({ type: 'vcd-canvas-dev-mode', active: false });
+    f.window.dispatchEvent(new f.window.Event('vcd:dev-content-written'));
+    expect(f.idle.size).toBe(0);
+    expect(f.reloads()).toBe(0);
+  } finally { await f.dispose(); }
+});
+
+test('canvas routes presets, leaves Escape to Edit, and removes frame state on cleanup', async () => {
+  const f = fixture(false, false, true, true);
+  try {
+    const key = new f.window.KeyboardEvent('keydown', { code: 'Digit3', altKey: true, cancelable: true, bubbles: true });
+    f.document.dispatchEvent(key);
+    expect(key.defaultPrevented).toBe(true);
+    expect(f.posts.at(-1)).toEqual({ type: 'vcd-canvas-request-preset', preset: 'mobile' });
+    f.request('tablet');
+    expect(f.posts.at(-1)).toEqual({ type: 'vcd-canvas-request-preset', preset: 'tablet' });
+    f.message('vcd-canvas-preset', { preset: 'mobile' });
+    expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(false);
+    const changes: string[] = [];
+    f.window.addEventListener('vcd:edit-viewport-change', ((event: CustomEvent) => changes.push(event.detail.preset)) as EventListener);
+    f.parentMessage('vcd-canvas-preset', { preset: 'tablet' });
+    expect(changes).toEqual(['tablet']);
+    expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(true);
+    // Escape is DevModeController's: it asks for Desktop through this event once inner layers are closed.
+    const count = f.posts.length;
+    f.document.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
+    expect(f.posts.length).toBe(count);
+    f.window.dispatchEvent(new f.window.CustomEvent('vcd:edit-viewport-request', { detail: { preset: 'desktop' } }));
+    expect(f.posts.at(-1)).toEqual({ type: 'vcd-canvas-request-preset', preset: 'desktop' });
+    f.parentMessage('vcd-canvas-preset', { preset: 'desktop' });
+    expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(false);
+    f.parentMessage('vcd-canvas-preset', { preset: 'mobile' });
+  } finally { await f.dispose(); }
+  expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(false);
+});
+
+test('canvas flux suppresses page resize reactions and releases them once without posting', async () => {
+  const f = fixture(false, false, true, true);
+  try {
+    const posts = [...f.posts];
+    const events: string[] = [];
+    f.window.addEventListener('resize', () => events.push('resize'));
+    f.window.addEventListener('vcd:viewport-flux-end', () => events.push('end'));
+    f.message('vcd-canvas-flux', { active: true });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+    f.parentMessage('vcd-canvas-flux', { active: true });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(true);
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    f.parentMessage('vcd-canvas-flux', { active: true });
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    expect(events).toEqual([]);
+    f.parentMessage('vcd-canvas-flux', { active: false });
+    expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+    expect(events).toEqual(['end', 'resize']);
+    expect(f.posts).toEqual(posts);
+    f.parentMessage('vcd-canvas-flux', { active: true });
+  } finally { await f.dispose(); }
+  expect(f.document.documentElement.hasAttribute('data-viewport-flux')).toBe(false);
+});
+
