@@ -54,6 +54,8 @@ const BASELINE: string[] = [
   'src/components/project/ProjectSignup.astro .dev-field__value:has(input:focus-visible)::after border-radius',
   'src/components/DevViewportPreview.astro .dev-segmented padding',
   'src/components/DevViewportPreview.astro .dev-segmented gap',
+  'src/pages/dev/canvas-shell.astro .dev-segmented padding',
+  'src/pages/dev/canvas-shell.astro .dev-segmented gap',
   'src/components/project/demos/sabi-stage.css .dev-btn padding',
   'src/components/project/demos/sabi-stage.css .dev-btn border-radius',
   'src/components/project/demos/sabi-stage.css .dev-btn padding-inline',

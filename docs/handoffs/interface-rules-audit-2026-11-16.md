@@ -8,7 +8,7 @@ Audit of the former 156-line `docs/interface-conventions.md` and the UI rules in
 | --- | --- |
 | Floating layers render in the top layer (`popover`) | `top-layer-floating.test.ts` |
 | Top-layer menus and listboxes use `.dev-menu` | `top-layer-floating.test.ts` |
-| A call site never re-sets padding, gap or radius a `ui/` component owns, by CSS rule, a class on the component tag, inline `style`, a utility class, or re-pointing a `--dev-*` spacing token | `dev-chrome-ownership.test.ts` **(new)**; 21 older overrides form a baseline that may only shrink |
+| A call site never re-sets padding, gap or radius a `ui/` component owns, by CSS rule, a class on the component tag, inline `style`, a utility class, or re-pointing a `--dev-*` spacing token | `dev-chrome-ownership.test.ts` **(new)**; 23 older overrides form a baseline that may only shrink |
 | DevOverlay content sets no padding or margin on its root and no bottom padding or margin on its last child | `dev-chrome-ownership.test.ts` **(new)** |
 | The interface index stays under 40 lines, links resolve, every topic file is routed | `interface-docs.test.ts` **(new)** |
 | A good-enough component names its finishing issue (`good-enough: #N`) | `interface-docs.test.ts` **(new)** |
