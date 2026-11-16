@@ -457,12 +457,13 @@ export function createAct<S>(signal: AbortSignal, env: ActEnv<S>): Act<S> {
         if (bounce) {
           // Overscroll is a critically damped spring kicked at the arrival speed:
           // a·(t/τ)·e^(1-t/τ) peaks at a when t = τ, then settles back to rest.
-          const tau = 100
+          const tau = 80
           const speedIn = Math.abs(end - from) / (duration / speed)
           const peak = Math.min(48, (speedIn * tau) / Math.E)
           const sign = end > from ? -1 : 1
-          await tween(tau * 7, (t) => {
-            const k = t * 7
+          // Five τ leaves under a tenth of the peak, too little to see snap to rest.
+          await tween(tau * 5, (t) => {
+            const k = t * 5
             shift(t === 1 ? 0 : sign * peak * k * Math.exp(1 - k))
           })
         }
