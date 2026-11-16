@@ -11,14 +11,12 @@ import { sizeIcon } from '../lib/icons';
 <!-- TEMPORARY (T21): canvas-only width scrubber, opened from the ⌥M panels list. -->
 <DevOverlay title="Viewport Width" storageKey="viewport-width" panelKey="viewport-width" defaultHidden data-viewport-width-panel>
   <div class="viewport-width">
-    <RangeField label="Width" id="viewport-width-range" unit="px" min="320" max="2560" step="1" value="1280">
-      <span slot="labelAccessory" class="viewport-width__device">
-        <span data-viewport-width-name>Desktop</span>
-        <span data-viewport-width-icon="desktop" set:html={sizeIcon(monitorIcon)} />
-        <span data-viewport-width-icon="tablet" hidden set:html={sizeIcon(tabletIcon)} />
-        <span data-viewport-width-icon="mobile" hidden set:html={sizeIcon(smartphoneIcon)} />
-      </span>
-    </RangeField>
+    <div class="viewport-width__device" aria-live="polite">
+      <span data-viewport-width-device="desktop" data-active>Desktop<Fragment set:html={sizeIcon(monitorIcon)} /></span>
+      <span data-viewport-width-device="tablet" aria-hidden="true">Tablet<Fragment set:html={sizeIcon(tabletIcon)} /></span>
+      <span data-viewport-width-device="mobile" aria-hidden="true">Mobile<Fragment set:html={sizeIcon(smartphoneIcon)} /></span>
+    </div>
+    <RangeField variant="compact" label="Width" id="viewport-width-range" unit="px" min="320" max="2560" step="1" value="1280" />
     <div class="viewport-width__marks" aria-hidden="true">
       <span data-viewport-width-mark="768">768</span>
       <span data-viewport-width-mark="992">992</span>
@@ -90,14 +88,34 @@ import { sizeIcon } from '../lib/icons';
         if (event.detail?.preset) requestPreset(event.detail.preset);
       }) as EventListener);
       const range = widthPanel?.querySelector<HTMLInputElement>('#viewport-width-range');
+      // The device name turns like a counter wheel: narrower rolls up, wider rolls down.
+      const devices = ['desktop', 'tablet', 'mobile'];
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const showDevice = (device: string) => {
+        if (!widthPanel) return;
+        const items = [...widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-device]')];
+        const from = items.find((item) => item.hasAttribute('data-active'));
+        const to = items.find((item) => item.dataset.viewportWidthDevice === device);
+        if (!to || from === to) return;
+        items.forEach((item) => {
+          item.getAnimations().forEach((animation) => animation.cancel());
+          item.toggleAttribute('data-active', item === to);
+          item.setAttribute('aria-hidden', String(item !== to));
+        });
+        if (!from || reducedMotion.matches) return;
+        const up = devices.indexOf(device) > devices.indexOf(from.dataset.viewportWidthDevice ?? '') ? 1 : -1;
+        const away = (direction: number) => ({ transform: `translateY(${direction * 90}%) scale(0.85)`, opacity: 0, filter: 'blur(4px)' });
+        const rest = { transform: 'none', opacity: 1, filter: 'blur(0)' };
+        const timing = { duration: 260, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
+        from.animate([rest, away(-up)], timing);
+        to.animate([away(up), rest], timing);
+      };
       const showWidth = (width: number, max: number) => {
         if (!range || !widthPanel || !Number.isFinite(width) || !Number.isFinite(max)) return;
         range.max = String(max);
         range.value = String(width);
         range.dispatchEvent(new Event('vcd:range-refresh'));
-        const device = width <= 767 ? 'mobile' : width <= 991 ? 'tablet' : 'desktop';
-        widthPanel.querySelector('[data-viewport-width-name]')!.textContent = device[0].toUpperCase() + device.slice(1);
-        widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-icon]').forEach((icon) => { icon.hidden = icon.dataset.viewportWidthIcon !== device; });
+        showDevice(width <= 767 ? 'mobile' : width <= 991 ? 'tablet' : 'desktop');
         const min = Number(range.min);
         widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-mark]').forEach((mark) => {
           const at = (Number(mark.dataset.viewportWidthMark) - min) / (max - min);
@@ -106,8 +124,18 @@ import { sizeIcon } from '../lib/icons';
         });
       };
       if (range) {
+        // Let go near a layout switch or a device width and it lands on it; dragging past one never catches.
+        const snaps = [390, 768, 820, 992];
+        let byPointer = false;
+        scope.listen(range, 'pointerdown', () => { byPointer = true; });
         scope.listen(range, 'input', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value) }));
-        scope.listen(range, 'change', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value), done: true }));
+        scope.listen(range, 'change', () => {
+          let width = Number(range.value);
+          const near = byPointer ? snaps.find((snap) => Math.abs(snap - width) <= 8) : undefined;
+          byPointer = false;
+          if (near !== undefined) width = near;
+          post({ type: 'vcd-canvas-request-width', width, done: true });
+        });
       }
       scope.listen(window, 'message', (event) => {
         if (event.origin !== location.origin || event.source !== window.parent) return;
@@ -542,10 +570,11 @@ import { sizeIcon } from '../lib/icons';
 </script>
 
 <style>
-  .viewport-width__device { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
-  .viewport-width__device > span { display: inline-flex; }
-  .viewport-width__device > span[hidden] { display: none; }
-  .viewport-width__marks { position: relative; height: 22px; margin-top: 4px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
+  .viewport-width { display: grid; gap: 6px; }
+  .viewport-width__device { display: grid; justify-items: end; font: var(--dev-text-field-label); color: var(--sys-color-on-srf-variant); }
+  .viewport-width__device > span { grid-area: 1 / 1; display: inline-flex; align-items: center; gap: 6px; opacity: 0; transform-origin: right center; will-change: transform, opacity, filter; }
+  .viewport-width__device > span[data-active] { opacity: 1; }
+  .viewport-width__marks { position: relative; height: 22px; font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; color: var(--sys-color-on-srf-subtle); }
   .viewport-width__marks span { position: absolute; top: 0; padding-top: 8px; translate: -50% 0; }
   .viewport-width__marks span::before { content: ''; position: absolute; top: 0; left: 50%; width: 1px; height: 6px; background: currentColor; }
   .dev-viewport-preview { position: fixed; z-index: 110; inset: 0; color: var(--sys-color-on-srf); }

@@ -5,16 +5,20 @@ interface Props {
   label: string;
   id: string;
   unit?: string;
+  /** compact: the label sits inside the track and the value is right-aligned; no label row. */
+  variant?: 'default' | 'compact';
   [key: string]: any;
 }
 
-const { label, id, unit = '', class: className, ...rest } = Astro.props;
+const { label, id, unit = '', variant = 'default', class: className, ...rest } = Astro.props;
+const compact = variant === 'compact';
 const labelId = `${id}-label`;
 ---
 
-<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', className]}>
+<Field label={label} labelId={labelId} labelFor={id} class:list={['dev-field--range', compact && 'dev-field--no-label', className]}>
   <Fragment slot="labelAccessory"><slot name="labelAccessory" /></Fragment>
-  <div class="dev-range-field" data-dev-range-field>
+  <div class:list={['dev-range-field', compact && 'dev-range-field--compact']} data-dev-range-field>
+    {compact && <span class="dev-range-field__label" aria-hidden="true">{label}</span>}
     <output class="dev-range-field__output" for={id} data-range-output>{unit}</output>
     <input
       {...rest}
@@ -108,6 +112,19 @@ const labelId = `${id}-label`;
     z-index: 1;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
+  }
+
+  .dev-range-field__label {
+    position: absolute;
+    inset-inline-start: 14px;
+    z-index: 1;
+    pointer-events: none;
+    font: var(--dev-text-field-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .dev-range-field--compact .dev-range-field__output {
+    inset-inline: auto 14px;
   }
 
   .dev-range-field__input {

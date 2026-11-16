@@ -212,10 +212,23 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     if (fluxActive) frame.contentWindow?.dispatchEvent?.(new Event('vcd:viewport-flux-frame'));
     holdAnchor();
   };
-  const geometry = (): Geometry => custom !== undefined ? { width: custom, height: window.innerHeight, radius: 0, device: 1 }
-    : preset === 'desktop' ? desktop() : {
-    width: presets[preset][0], height: presets[preset][1], radius: preset === 'tablet' ? 20 : 42, device: 1,
+  const presetGeometry = (which: Preset): Geometry => which === 'desktop' ? desktop() : {
+    width: presets[which][0], height: presets[which][1], radius: which === 'tablet' ? 20 : 42, device: 1,
   };
+  // A dragged width takes the frame the preset morphs pass through at that width.
+  const customGeometry = (width: number): Geometry => {
+    const stops = [desktop(), presetGeometry('tablet'), presetGeometry('mobile')].filter((stop, index) => index === 0 || stop.width < window.innerWidth);
+    for (let index = 1; index < stops.length; index += 1) {
+      const wide = stops[index - 1];
+      const narrow = stops[index];
+      if (width < narrow.width) continue;
+      const t = (wide.width - width) / (wide.width - narrow.width);
+      const mix = (key: keyof Geometry) => wide[key] + (narrow[key] - wide[key]) * t;
+      return { width, height: mix('height'), radius: mix('radius'), device: mix('device') };
+    }
+    return { ...stops[stops.length - 1], width };
+  };
+  const geometry = (): Geometry => custom !== undefined ? customGeometry(custom) : presetGeometry(preset);
   const barZone = () => window.innerHeight - controls.getBoundingClientRect().top;
   const finish = (target: Geometry) => {
     render(target, barZone());
