@@ -114,24 +114,58 @@ function Take({ kind }: { kind: string }) {
     const demo = controller.current;
     if (!demo) return;
     a.signal.addEventListener('abort', () => demo.stop(), { once: true });
-    const comparison = kind !== 'playground';
-    await a.wait(500);
-    if (comparison) { await a.click({ at: 'before', x: .85, y: .55 }); demo.choose('before'); }
-    const target = demo.caretTarget(.65);
-    await a.click({ at: 'field', x: target.x, y: .5 });
-    demo.begin(target.offset);
-    await a.wait(150);
-    // Select all explains replacing the sample without a visible rewind.
-    a.mark('keyboard');
-    await a.key('cmd+a', async () => { demo.selectAll(); await a.wait(400); });
-    await a.wait(200);
-    await a.key('backspace', async () => { demo.text(''); await a.wait(120); });
-    await a.wait(250);
-    for (let i = 1; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
-    if (comparison) {
-      await a.key('left');
-      for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
+    const holdLeft = (from: number) => a.key('left', async () => {
+      for (let offset = from - 1; offset >= 0; offset--) { demo.seek(offset); await a.wait(35); }
+    });
+    // Fade is about jumping end to end; the rest scroll by holding left into the edge.
+    const exercise = async (from: number) => {
+      if (kind !== 'fade') return holdLeft(from);
+      await a.key('Home'); demo.seek(0); await a.wait(550);
+      await a.key('End'); demo.seek(example.length);
+    };
+    if (kind !== 'playground') {
+      // Comparisons open on finished text, scrolled to the end, so nothing is typed twice.
+      demo.seek(example.length);
+      await a.wait(500);
+      await a.click({ at: 'before', x: .85, y: .55 }); demo.choose('before');
+      const target = demo.caretTarget(.65);
+      await a.click({ at: 'field', x: target.x, y: .5 });
+      demo.begin(target.offset);
+      await a.wait(150);
+      a.mark('keyboard');
+      await exercise(target.offset);
+      await a.wait(700);
+      a.mark('pointer');
+      await a.click({ at: 'after', x: .85, y: .55 }); demo.choose('after');
+      if (kind === 'caret' || kind === 'jump') {
+        // Restore the end-scrolled field with the switch, then start just right of the left fade.
+        demo.seek(example.length);
+        const near = demo.caretTarget(.16);
+        await a.click({ at: 'field', x: near.x, y: .5 });
+        demo.begin(near.offset);
+        await a.wait(150);
+        a.mark('keyboard');
+        await holdLeft(near.offset);
+      } else {
+        demo.begin();
+        await a.move({ at: 'field', x: .9, y: .5 });
+        a.mark('keyboard');
+        if (kind === 'fade') await exercise(0);
+        else { await a.key('End'); demo.seek(example.length); await holdLeft(example.length); }
+      }
     } else {
+      await a.wait(500);
+      const target = demo.caretTarget(.65);
+      await a.click({ at: 'field', x: target.x, y: .5 });
+      demo.begin(target.offset);
+      await a.wait(150);
+      // Select all explains replacing the sample without a visible rewind.
+      a.mark('keyboard');
+      await a.key('cmd+a', async () => { demo.selectAll(); await a.wait(400); });
+      await a.wait(200);
+      await a.key('backspace', async () => { demo.text(''); await a.wait(120); });
+      await a.wait(250);
+      for (let i = 1; i <= example.length; i++) { demo.text(example.slice(0, i)); await a.wait(40); }
       let firstStop = example.length;
       let previousScroll = demo.seek(example.length);
       let scrollingSteps = 0;
@@ -153,18 +187,7 @@ function Take({ kind }: { kind: string }) {
           await a.wait(180);
         }
       });
-    }
-    if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
-    await a.wait(700);
-    if (comparison) {
-      a.mark('pointer');
-      await a.click({ at: 'after', x: .85, y: .55 }); demo.choose('after'); demo.begin();
-      await a.move({ at: 'field', x: .9, y: .5 });
-      a.mark('keyboard');
-      await a.key('End'); demo.seek(example.length);
-      await a.key('left');
-      for (let offset = example.length - 1; offset >= 5; offset--) { demo.seek(offset); await a.wait(35); }
-      if (kind === 'fade') { await a.key('End'); demo.seek(example.length); await a.wait(550); await a.key('Home'); demo.seek(0); }
+      await a.wait(700);
     }
     await a.move(cursorRest);
     await a.wait(2000);
