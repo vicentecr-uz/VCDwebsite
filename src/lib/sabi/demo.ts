@@ -72,17 +72,17 @@ export function mountSabiDemo(root: HTMLElement) {
     // Leave the fade paint running: it only settles on the current scroll, and cutting it short freezes an edge.
     cancelAnimationFrame(frame);
   };
-  // The fade kind replays the old 150ms lag. It chases its target frame by frame
-  // (95% there in 150ms), so a steady stream of scroll events can't hold it in place.
+  // The fade kind replays the old 150ms transition: each edge moves toward its target
+  // at no more than a full fade per 150ms, so a jump exposes text while it catches up,
+  // and a steady stream of scroll events can't hold it in place.
   let target = { left: 0, right: 0 };
   let lastPaint = 0;
   const paintFade = (now: number) => {
-    const k = 1 - Math.exp(-(lastPaint ? now - lastPaint : 16) / 50);
+    const step = (lastPaint ? now - lastPaint : 16) / 150;
     lastPaint = now;
-    left += (target.left - left) * k;
-    right += (target.right - right) * k;
-    const settled = Math.abs(target.left - left) < .002 && Math.abs(target.right - right) < .002;
-    if (settled) ({ left, right } = target);
+    left += Math.max(-step, Math.min(step, target.left - left));
+    right += Math.max(-step, Math.min(step, target.right - right));
+    const settled = left === target.left && right === target.right;
     const { fadeWidth, solid } = geometry();
     strip.style.maskImage = fadeMask(left, right, false, fadeWidth, solid);
     fadeFrame = settled ? 0 : requestAnimationFrame(paintFade);
