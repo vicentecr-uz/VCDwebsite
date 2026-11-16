@@ -101,7 +101,7 @@ function Scene({ kind, controller, onManual, compact }: {
     </SquircleField> : <SquircleField width={fieldWidth}>
       {/* The input is uncontrolled: the guide yields the same DOM node to the reader. */}
       <sabi-input>
-        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, זה Sabi, רכיב טקסט שמעמעם טקסט שגולש :)' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
+        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, זה Sabi, רכיב טקסט שמעמעם טקסט שגולש מעבר לקצה השדה, כך שתמיד רואים שיש עוד מה לקרוא :)' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
       </sabi-input>
     </SquircleField>}
     {(comparison || handles) && <div className="dev-segmented sabi-choices" data-slide-selection role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
@@ -212,8 +212,7 @@ function Take({ kind }: { kind: string }) {
       script={manual || unscripted.includes(kind) ? undefined : script} play="once" unframed
       palette="mono" fidelity="realistic" keys="bottom" cursor={manual || unscripted.includes(kind) ? undefined : { at: cursorRest, style: 'real' }}
       tokens={{ '--ss-surface': 'var(--sys-color-srf)', '--ss-text-strong': 'var(--sys-color-on-srf)', '--ss-line': 'var(--sys-color-surface-outline)',
-        '--sabi-demo-scale': demoScale, '--sabi-fade-width': `${22 * demoScale}px`, '--sabi-fade-solid': `${8 * demoScale}px`,
-        '--sabi-caret-penetration': `${4 * demoScale}px`, '--sabi-edge-gutter': `${8 * demoScale}px` }}>
+        '--sabi-demo-scale': demoScale }}>
       {(_state, _rect, layout) => <Scene kind={kind} controller={controller} onManual={interrupt} compact={layout === 'compact'} />}
     </Stage>
   </div>;
