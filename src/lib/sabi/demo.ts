@@ -64,7 +64,7 @@ export function mountSabiDemo(root: HTMLElement) {
   let mode = 'after';
   let composing = false;
 
-  const cancelFrames = () => { cancelAnimationFrame(frame); cancelAnimationFrame(fadeFrame); };
+  const cancelFrames = () => { cancelAnimationFrame(frame); cancelAnimationFrame(fadeFrame); fadeFrame = 0; lastPaint = 0; };
   const stop = () => {
     auto = false;
     delete input.dataset.demoSelected;
@@ -72,21 +72,34 @@ export function mountSabiDemo(root: HTMLElement) {
     // Leave the fade paint running: it only settles on the current scroll, and cutting it short freezes an edge.
     cancelAnimationFrame(frame);
   };
+  // The fade kind replays the old 150ms lag. It chases its target frame by frame
+  // (95% there in 150ms), so a steady stream of scroll events can't hold it in place.
+  let target = { left: 0, right: 0 };
+  let lastPaint = 0;
+  const paintFade = (now: number) => {
+    const k = 1 - Math.exp(-(lastPaint ? now - lastPaint : 16) / 50);
+    lastPaint = now;
+    left += (target.left - left) * k;
+    right += (target.right - right) * k;
+    const settled = Math.abs(target.left - left) < .002 && Math.abs(target.right - right) < .002;
+    if (settled) ({ left, right } = target);
+    const { fadeWidth, solid } = geometry();
+    strip.style.maskImage = fadeMask(left, right, false, fadeWidth, solid);
+    fadeFrame = settled ? 0 : requestAnimationFrame(paintFade);
+    if (settled) lastPaint = 0;
+  };
   const fades = () => {
     if (mode !== 'before') return;
     const { fadeWidth, solid } = geometry();
-    const targetLeft = clamp(strip.scrollLeft / fadeWidth);
-    const targetRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
-    cancelAnimationFrame(fadeFrame);
-    const fromLeft = left, fromRight = right, start = performance.now();
-    const paint = (now: number) => {
-      const t = kind === 'fade' ? clamp((now - start) / 150) : 1;
-      left = fromLeft + (targetLeft - fromLeft) * t;
-      right = fromRight + (targetRight - fromRight) * t;
+    const toLeft = clamp(strip.scrollLeft / fadeWidth);
+    const toRight = clamp((strip.scrollWidth - strip.clientWidth - strip.scrollLeft) / fadeWidth);
+    if (kind !== 'fade') {
+      left = toLeft; right = toRight;
       strip.style.maskImage = fadeMask(left, right, kind === 'gradient', fadeWidth, solid);
-      if (t < 1) fadeFrame = requestAnimationFrame(paint);
-    };
-    paint(start);
+      return;
+    }
+    target = { left: toLeft, right: toRight };
+    fadeFrame ||= requestAnimationFrame(paintFade);
   };
   const position = (offset: number, inset: number) => {
     const x = geometry().gutter + width(input.value.slice(0, offset));
