@@ -1,0 +1,225 @@
+---
+/**
+ * Throwaway spike: DialKit's headless store (`dialkit/store`, no React, no Motion, no CSS) drives
+ * a demo element, while the panel is drawn with the site's own editor components. DialKit's config
+ * parser runs here at render time to produce the control tree, and again in the browser to own the
+ * values. See docs/dialkit-gap-analysis.md. Delete with the decision.
+ */
+import Layout from '../../layouts/Layout.astro';
+import DevPanel from '../../components/ui/DevPanel.astro';
+import RangeField from '../../components/ui/RangeField.astro';
+import ToggleRow from '../../components/ui/ToggleRow.astro';
+import EditorSelectField from '../../components/ui/EditorSelectField.astro';
+import TextField from '../../components/ui/TextField.astro';
+import Button from '../../components/ui/Button.astro';
+import PanelActions from '../../components/ui/PanelActions.astro';
+import Hairline from '../../components/ui/Hairline.astro';
+import { DialStore, type ControlMeta, type DialConfig } from 'dialkit/store';
+
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+
+const config = {
+  radius: [16, 0, 64],
+  scale: [1, 0.5, 1.5],
+  rotate: [0, -45, 45],
+  visible: true,
+  shape: { type: 'select', options: ['card', 'pill', 'circle'] },
+  label: 'Dial',
+  fill: '#a78bfa',
+  shadow: { blur: [12, 0, 40], offset: [8, 0, 32] },
+  // Rendered as three sliders: the site has no transition editor (curve preview, mode switch).
+  spring: { type: 'spring', stiffness: 280, damping: 18, mass: 0.3 },
+  replay: { type: 'action' },
+} satisfies DialConfig;
+
+const PANEL_ID = 'dialkit-spike';
+// Render-time parse only: the browser registers its own copy of the panel.
+DialStore.registerPanel(PANEL_ID, 'Demo', config);
+const controls = DialStore.getPanel(PANEL_ID)!.controls;
+const values = DialStore.getValues(PANEL_ID);
+DialStore.unregisterPanel(PANEL_ID);
+
+// Folders flatten to a heading followed by their children: the site has no collapsible group.
+type Row = ControlMeta | { type: 'heading'; label: string; path: string };
+const rows: Row[] = controls.flatMap((control) => control.type === 'folder'
+  ? [{ type: 'heading' as const, label: control.label, path: control.path }, ...(control.children ?? [])]
+  : [control]);
+const optionList = (options: ControlMeta['options'] = []) =>
+  options.map((option) => typeof option === 'string' ? { value: option, label: option } : option);
+const springAxes = [
+  { key: 'stiffness', min: 50, max: 1000, step: 10 },
+  { key: 'damping', min: 1, max: 80, step: 1 },
+  { key: 'mass', min: 0.1, max: 4, step: 0.1 },
+] as const;
+const domId = (path: string) => `dial-${path.replace(/\W/g, '-')}`;
+---
+
+<Layout title="DialKit spike (dev)">
+  <main class="dialkit-spike">
+    <div class="dialkit-spike__stage">
+      <div class="dialkit-spike__demo" data-dialkit-demo><span data-dialkit-demo-label></span></div>
+    </div>
+
+    <DevPanel title="Demo" class="dialkit-spike__panel" draggable data-dialkit-spike={JSON.stringify(config)}>
+      {rows.map((row) => {
+        const value = values[row.path] as any;
+        switch (row.type) {
+          case 'heading':
+            return <><Hairline /><span class="dev-field__label">{row.label}</span></>;
+          case 'slider':
+            return <RangeField label={row.label} id={domId(row.path)} min={row.min} max={row.max} step={row.step} value={value} data-dial-path={row.path} />;
+          case 'toggle':
+            return <ToggleRow label={row.label} checked={value} data-dial-path={row.path} />;
+          case 'select':
+            return <EditorSelectField label={row.label} options={optionList(row.options)} value={value} data-dial-path={row.path} />;
+          case 'text':
+            return <TextField label={row.label} value={value} data-dial-path={row.path} />;
+          case 'color':
+            return <TextField label={row.label} value={value} prefix="#" data-dial-path={row.path} data-dial-color />;
+          case 'transition':
+            return springAxes.map(({ key, min, max, step }) => (
+              <RangeField label={`${row.label} ${key}`} id={domId(`${row.path}.${key}`)} min={min} max={max} step={step} value={value[key]} data-dial-path={row.path} data-dial-key={key} />
+            ));
+          case 'action':
+            return <Button label={row.label} width="fill" data-dial-action={row.path} />;
+          default:
+            return null;
+        }
+      })}
+      <PanelActions>
+        <Button label="Reset" emphasis="ghost" data-dialkit-reset />
+        <Button label="Copy" emphasis="ghost" data-dialkit-copy />
+      </PanelActions>
+    </DevPanel>
+  </main>
+</Layout>
+
+<script>
+  import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
+  import { generateSpringEasing, springDurationMs } from '../../lib/easingDevPresets';
+
+  const PANEL_ID = 'dialkit-spike';
+
+  const dispose = onPageLoad(() => {
+    const panel = document.querySelector<HTMLElement>('[data-dialkit-spike]');
+    const demo = document.querySelector<HTMLElement>('[data-dialkit-demo]');
+    if (!panel || !demo || !import.meta.env.DEV) return;
+    const scope = createPageScope();
+    let disposed = false;
+
+    // Dynamic import behind DEV so a production build drops the package entirely.
+    import('dialkit/store').then(({ DialStore, resolveDialValues, isHexColor }) => {
+      if (disposed) return;
+      const config = JSON.parse(panel.dataset.dialkitSpike!);
+      DialStore.registerPanel(PANEL_ID, 'Demo', config);
+      scope.add(() => DialStore.unregisterPanel(PANEL_ID));
+      const fields = [...panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-dial-path]')];
+      const valueOf = (field: HTMLElement) => {
+        const stored = DialStore.getValue(PANEL_ID, field.dataset.dialPath!) as any;
+        return field.dataset.dialKey ? stored[field.dataset.dialKey] : stored;
+      };
+
+      const render = () => {
+        const v = resolveDialValues(config, DialStore.getValues(PANEL_ID)) as any;
+        const radius = { card: `${v.radius}px`, pill: '999px', circle: '50%' }[v.shape as string];
+        Object.assign(demo.style, {
+          borderRadius: radius,
+          aspectRatio: v.shape === 'circle' ? '1' : '',
+          background: v.fill,
+          boxShadow: `0 ${v.shadow.offset}px ${v.shadow.blur}px rgb(0 0 0 / 0.25)`,
+          opacity: v.visible ? '1' : '0',
+          transform: `scale(${v.scale}) rotate(${v.rotate}deg)`,
+        });
+        demo.querySelector('[data-dialkit-demo-label]')!.textContent = v.label;
+
+        // Store → panel, so Reset and any programmatic write show up in the controls.
+        for (const field of fields) {
+          const value = valueOf(field);
+          if (field instanceof HTMLInputElement && field.type === 'checkbox') field.checked = Boolean(value);
+          else {
+            const shown = field.dataset.dialColor !== undefined ? String(value).replace(/^#/, '') : String(value);
+            if (field.value === shown) continue;
+            field.value = shown;
+            field.dispatchEvent(new Event(field.type === 'range' ? 'vcd:range-refresh' : 'change'));
+          }
+        }
+      };
+
+      // Panel → store.
+      for (const field of fields) {
+        const path = field.dataset.dialPath!;
+        const write = () => {
+          if (field instanceof HTMLInputElement && field.type === 'checkbox') return DialStore.updateValue(PANEL_ID, path, field.checked);
+          if (field.type === 'range') {
+            const next = Number(field.value);
+            const key = field.dataset.dialKey;
+            return DialStore.updateValue(PANEL_ID, path, key ? { ...(DialStore.getValue(PANEL_ID, path) as object), [key]: next } as any : next);
+          }
+          if (field.dataset.dialColor !== undefined) {
+            const hex = `#${field.value.replace(/^#/, '')}`;
+            if (isHexColor(hex)) DialStore.updateValue(PANEL_ID, path, hex);
+            return;
+          }
+          DialStore.updateValue(PANEL_ID, path, field.value);
+        };
+        scope.listen(field, field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input', write);
+      }
+
+      panel.querySelectorAll<HTMLButtonElement>('[data-dial-action]').forEach((button) => {
+        scope.listen(button, 'click', () => DialStore.triggerAction(PANEL_ID, button.dataset.dialAction!));
+      });
+      scope.add(DialStore.subscribeActions(PANEL_ID, (path) => {
+        if (path !== 'replay') return;
+        const spring = { name: 'dial', type: 'spring' as const, ...(DialStore.getValue(PANEL_ID, 'spring') as { stiffness: number; damping: number; mass: number }) };
+        demo.animate([{ translate: '0 48px', opacity: 0 }, { translate: '0 0', opacity: 1 }], {
+          duration: springDurationMs(spring),
+          easing: generateSpringEasing(spring),
+        });
+      }));
+      scope.listen(panel.querySelector('[data-dialkit-reset]')!, 'click', () => DialStore.resetValues(PANEL_ID));
+      scope.listen(panel.querySelector('[data-dialkit-copy]')!, 'click', () => {
+        navigator.clipboard.writeText(JSON.stringify(resolveDialValues(config, DialStore.getValues(PANEL_ID)), null, 2));
+      });
+
+      scope.add(DialStore.subscribe(PANEL_ID, render));
+      render();
+    });
+
+    return () => {
+      disposed = true;
+      scope.destroy();
+    };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>
+
+<style>
+  .dialkit-spike {
+    display: grid;
+    min-height: 100dvh;
+    background: var(--sys-color-srf);
+  }
+
+  .dialkit-spike__stage {
+    display: grid;
+    place-items: center;
+  }
+
+  .dialkit-spike__demo {
+    display: grid;
+    place-items: center;
+    width: 240px;
+    height: 160px;
+    color: #fff;
+    font: 600 20px/1 var(--font-sans);
+    transition: opacity 200ms ease;
+  }
+
+  .dialkit-spike__panel {
+    position: fixed;
+    inset: 1em 1em auto auto;
+    width: 280px;
+    max-height: calc(100dvh - 2em);
+    overflow: auto;
+  }
+</style>
