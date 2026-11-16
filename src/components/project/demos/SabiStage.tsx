@@ -97,7 +97,7 @@ function Scene({ kind, controller, onManual, compact }: {
     </SquircleField> : <SquircleField width={fieldWidth}>
       {/* The input is uncontrolled: the guide yields the same DOM node to the reader. */}
       <sabi-input>
-        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, Sabi 2026 — קצת מקום לכתוב ולערוך' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
+        <input aria-label={kind === 'direction' ? 'Try mixed-direction text' : 'Try Sabi'} defaultValue={kind === 'direction' ? 'שלום, Sabi 2026 — קצת יותר מקום לכתוב ולערוך, גם כשהמילים חורגות מעבר לקצה של השדה' : example} dir={kind === 'direction' ? 'auto' : undefined} autoComplete="off" spellCheck={false} />
       </sabi-input>
     </SquircleField>}
     {(comparison || handles) && <div className="dev-segmented sabi-choices" role="group" aria-label={handles ? 'Selection handle attempt' : 'Compare the fix'}>
