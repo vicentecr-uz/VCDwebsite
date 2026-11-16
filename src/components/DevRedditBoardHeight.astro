@@ -39,9 +39,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
 
   import { boardViewports as breakpoints, resolveRedditBoardHeights, type BoardHeights, type BoardViewport as Breakpoint } from '../lib/redditBoardHeight';
 
-  const handoffKey = 'vcd:reddit-board-height-viewport';
-  type Handoff = { key: string; preset: Breakpoint; authored: BoardHeights; expires: number };
-
   const init = () => {
     const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
     const input = panel?.querySelector<HTMLInputElement>('[data-reddit-board-height-value]');
@@ -332,10 +329,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
       if (!root || !breakpoints.includes(viewport)) return;
       selected = viewport;
       if (viewport !== actualViewport()) {
-        if (window.parent === window) {
-          const handoff: Handoff = { key: identity(root), preset: viewport, authored, expires: Date.now() + 15_000 };
-          sessionStorage.setItem(handoffKey, JSON.stringify(handoff));
-        }
         window.dispatchEvent(new CustomEvent('vcd:edit-viewport-request', { detail: { preset: viewport } }));
       }
       sync();
@@ -355,10 +348,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     scope.listen(window, 'vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => { if (event.detail?.panel === panel) close(); }) as EventListener);
     scope.listen(document, 'pointerdown', (event) => { if (panel.hidden || (event.target instanceof Node && (panel.contains(event.target) || grabber?.contains(event.target)))) return; close(); }, true);
     scope.listen(window, 'keydown', (event) => { if (event.key === 'Escape' && !panel.hidden) { event.preventDefault(); event.stopImmediatePropagation(); close(); } }, true);
-    const flush = () => Promise.all([...handles.keys()].filter((board) => drafts.has(board)).map(persist));
-    scope.listen(window, 'vcd:dev-viewport-prepare', (event) => {
-      (event as CustomEvent<{ waitUntil: (write: Promise<unknown>) => void }>).detail.waitUntil(flush());
-    });
     const syncViewport = () => {
       const viewport = actualViewport();
       if (!root || selected === viewport) return;
@@ -384,31 +373,6 @@ import undoIcon from 'lucide-static/icons/undo-2.svg?raw';
     scope.listen(window, 'scroll', positionPanel, true);
     const boards = [...document.querySelectorAll<HTMLElement>('[data-reddit-board-document]')];
     boards.forEach(mountGrabber);
-    if (window.parent !== window && window.name === 'vcd-edit-viewport-preview') {
-      const raw = sessionStorage.getItem(handoffKey);
-      if (raw) {
-        sessionStorage.removeItem(handoffKey);
-        try {
-          const handoff = JSON.parse(raw) as Handoff;
-          const board = boards.find((candidate) => identity(candidate) === handoff.key);
-          if (board && handoff.expires > Date.now()) {
-            bind(board);
-            authored = handoff.authored;
-            selected = handoff.preset;
-            drafts.set(board, authored);
-            resolveValues();
-            const reopen = () => scope.frame(() => {
-              grabber?.scrollIntoView({ block: 'center', behavior: 'instant' });
-              open();
-            });
-            if (document.documentElement.classList.contains('is-dev-mode')) reopen();
-            else scope.listen(window, 'vcd:dev-mode-change', (event) => {
-              if ((event as CustomEvent<{ active?: boolean }>).detail?.active) reopen();
-            }, { once: true });
-          }
-        } catch { /* Ignore a stale viewport handoff. */ }
-      }
-    }
     return () => {
       if (frame) cancelAnimationFrame(frame);
       for (const timer of saveTimers.values()) window.clearTimeout(timer);

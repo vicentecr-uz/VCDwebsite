@@ -9,7 +9,7 @@ On the dev server every page opens inside the canvas: a full-window shell (`src/
 | This browser | Result |
 | --- | --- |
 | Opened `/dev/canvas/on` (`vcd-canvas=1`) | Canvas, always |
-| Opened `/dev/canvas/off` (`vcd-canvas=0`) | Plain page, always |
+| Opened `/dev/canvas/off` (`vcd-canvas=0`) | Plain page, always; no device preview |
 | No choice made | Canvas, except on a phone or in an automated browser |
 
 Both links take `?to=/page` to choose where to land, and the choice lasts a year in that browser.
@@ -20,12 +20,16 @@ Edit chrome floats outside the frame unless the browser opened `/dev/canvas/chro
 
 ## Working with it
 
+The plain page (`/dev/canvas/off`, phones and automated browsers) has no device preview: ⌥1, ⌥2 and ⌥3 do nothing there.
+
 - **Automated checks** see the plain page by default. A check that is about the canvas must open `/dev/canvas/on?to=/page` first, then look inside the `vcd-canvas` frame.
 - **Browser devtools** open on the shell. Choose the `vcd-canvas` frame as the console's context to inspect the page.
 - **Suspect the canvas?** Open `/dev/canvas/off` and try again. If the problem is gone, it belongs to the canvas.
 - **Lapse and Agentation** run in the page, so they cannot inspect Edit panels or the viewport bar while those float in the shell.
 
 ## Why it is on by default (2026-11-16)
+
+The old second-iframe preview was removed on 2026-11-16 because the canvas replaces it.
 
 It was built and reviewed behind opt-in links ([PR #254](https://github.com/vicentecr-uz/VCDwebsite/pull/254)). Once the owner had signed off every item, leaving it opt-in meant the reviewed behaviour was invisible until someone remembered a link. It became the default with three guards, each answering a named risk:
 
