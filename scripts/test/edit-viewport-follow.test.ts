@@ -109,3 +109,22 @@ test('a hoisted selector receives a detail-one click from its own realm', async 
     await shell.happyDOM.abort();
   }
 });
+
+test('at the Desktop preset a panel follows the layout the window width gives', async () => {
+  const f = fixture();
+  try {
+    const width = (value: number) => Object.defineProperty(f.window, 'innerWidth', { configurable: true, value });
+    width(900);
+    f.window.dispatchEvent(new f.window.Event('vcd:dev-edit-open'));
+    f.step(); f.step();
+    expect(f.clicks).toEqual(['tablet']);
+    width(600);
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    width(1400);
+    f.window.dispatchEvent(new f.window.Event('resize'));
+    expect(f.clicks).toEqual(['tablet', 'mobile', 'desktop']);
+    width(600);
+    f.change('tablet');
+    expect(f.clicks).toEqual(['tablet', 'mobile', 'desktop', 'tablet']);
+  } finally { await f.dispose(); }
+});

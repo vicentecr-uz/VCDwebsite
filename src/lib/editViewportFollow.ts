@@ -1,8 +1,12 @@
 import type { createPageScope } from './pageLifecycle';
 
 export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
+  let canvasPreset = 'desktop';
   let preset = 'desktop';
   let applying = false;
+  // At the Desktop preset the frame is the window itself, which may be narrow enough for another layout.
+  const resolve = () => canvasPreset !== 'desktop' ? canvasPreset
+    : window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
   const viewportOf = (button: Element) => [...button.attributes].find((attribute) => /^data-[a-z-]+-viewport$/.test(attribute.name))?.value;
   const apply = () => {
     document.querySelectorAll<HTMLElement>('.dev-segmented').forEach((group) => {
@@ -22,9 +26,16 @@ export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
   scope.listen(window, 'vcd:edit-viewport-change', ((event: CustomEvent<{ preset?: string }>) => {
     const next = event.detail?.preset;
     if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile') return;
-    preset = next;
+    canvasPreset = next;
+    preset = resolve();
     apply();
   }) as EventListener);
+  scope.listen(window, 'resize', () => {
+    const next = resolve();
+    if (next === preset) return;
+    preset = next;
+    apply();
+  });
   // Choosing a viewport in a panel shows that viewport in the preview.
   scope.listen(document, 'click', (event) => {
     if (applying || !document.documentElement.classList.contains('is-dev-mode')) return;
@@ -33,5 +44,5 @@ export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
     if (next !== 'desktop' && next !== 'tablet' && next !== 'mobile' || next === preset) return;
     window.dispatchEvent(new window.CustomEvent('vcd:edit-viewport-request', { detail: { preset: next } }));
   });
-  scope.listen(window, 'vcd:dev-edit-open', () => scope.frame(() => scope.frame(apply)));
+  scope.listen(window, 'vcd:dev-edit-open', () => scope.frame(() => scope.frame(() => { preset = resolve(); apply(); })));
 }
