@@ -111,11 +111,23 @@ import { sizeIcon } from '../lib/icons';
         from.animate([rest, away(-up)], timing);
         to.animate([away(up), rest], timing);
       };
+      // The canvas reports each width back a frame or two late; while a requested width is still on
+      // its way, an older report must not pull the slider back.
+      let asked: number | undefined;
+      let askedAt = 0;
+      const ask = (width: number, done = false) => {
+        asked = width;
+        askedAt = performance.now();
+        post({ type: 'vcd-canvas-request-width', width, done });
+      };
       const showWidth = (width: number, max: number) => {
         if (!range || !widthPanel || !Number.isFinite(width) || !Number.isFinite(max)) return;
         range.max = String(max);
-        range.value = String(width);
-        range.dispatchEvent(new Event('vcd:range-refresh'));
+        if (asked !== undefined && (width === asked || performance.now() - askedAt > 400)) asked = undefined;
+        if (asked === undefined && range.value !== String(width)) {
+          range.value = String(width);
+          range.dispatchEvent(new Event('vcd:range-refresh'));
+        }
         showDevice(width <= 767 ? 'mobile' : width <= 991 ? 'tablet' : 'desktop');
         const min = Number(range.min);
         widthPanel.querySelectorAll<HTMLElement>('[data-viewport-width-mark]').forEach((mark) => {
@@ -135,21 +147,23 @@ import { sizeIcon } from '../lib/icons';
           const step = (now: number) => {
             const t = Math.min(1, (now - start) / 180);
             const width = Math.round(from + (to - from) * (1 - (1 - t) ** 5));
-            post({ type: 'vcd-canvas-request-width', width, done: t === 1 });
+            range.value = String(width);
+            range.dispatchEvent(new Event('vcd:range-refresh'));
+            ask(width, t === 1);
             easing = t < 1 ? requestAnimationFrame(step) : 0;
           };
           easing = requestAnimationFrame(step);
         };
         scope.add(() => cancelAnimationFrame(easing));
         scope.listen(range, 'pointerdown', () => { byPointer = true; cancelAnimationFrame(easing); easing = 0; });
-        scope.listen(range, 'input', () => post({ type: 'vcd-canvas-request-width', width: Number(range.value) }));
+        scope.listen(range, 'input', () => ask(Number(range.value)));
         scope.listen(range, 'change', () => {
           let width = Number(range.value);
           const perPixel = (Number(range.max) - Number(range.min)) / Math.max(1, range.getBoundingClientRect().width - 16);
           const near = byPointer ? snaps.find((snap) => Math.abs(snap - width) <= 4 * perPixel) : undefined;
           byPointer = false;
           if (near !== undefined && near !== width && !reducedMotion.matches) { easeTo(width, near); return; }
-          post({ type: 'vcd-canvas-request-width', width: near ?? width, done: true });
+          ask(near ?? width, true);
         });
       }
       scope.listen(window, 'message', (event) => {

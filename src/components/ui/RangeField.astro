@@ -38,6 +38,39 @@ const labelId = `${id}-label`;
 <script>
   import { createPageScope, onPageLoad } from '../../lib/pageLifecycle';
 
+  // The thumb and fill follow the value on a slightly underdamped spring, so they carry a little weight.
+  const springs = new WeakMap<HTMLElement, { at: number; speed: number; target: number; frame: number; last: number }>();
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const moveTo = (field: HTMLElement, target: number) => {
+    let spring = springs.get(field);
+    if (!spring || reducedMotion.matches) {
+      if (spring) cancelAnimationFrame(spring.frame);
+      springs.set(field, { at: target, speed: 0, target, frame: 0, last: 0 });
+      field.style.setProperty('--range-progress', String(target));
+      return;
+    }
+    spring.target = target;
+    if (spring.frame) return;
+    const state = spring;
+    state.last = performance.now();
+    const step = (now: number) => {
+      // Small fixed steps keep the spring steady when frames run long.
+      for (let left = Math.min(0.064, (now - state.last) / 1000); left > 0; left -= 0.004) {
+        const dt = Math.min(0.004, left);
+        state.speed += (-900 * (state.at - state.target) - 46 * state.speed) * dt;
+        state.at += state.speed * dt;
+      }
+      state.last = now;
+      if (Math.abs(state.at - state.target) < 0.0004 && Math.abs(state.speed) < 0.004) {
+        state.at = state.target;
+        state.speed = 0;
+        state.frame = 0;
+      } else state.frame = requestAnimationFrame(step);
+      field.style.setProperty('--range-progress', String(state.at));
+    };
+    state.frame = requestAnimationFrame(step);
+  };
+
   const format = (input: HTMLInputElement) => {
     const min = Number(input.min);
     const max = Number(input.max || 100);
@@ -46,7 +79,7 @@ const labelId = `${id}-label`;
     const unit = input.dataset.rangeUnit || '';
     const output = input.parentElement?.querySelector<HTMLOutputElement>('[data-range-output]');
     const valueText = `${input.value}${unit}`;
-    input.parentElement?.style.setProperty('--range-progress', String(progress));
+    if (input.parentElement) moveTo(input.parentElement, progress);
     input.setAttribute('aria-valuetext', valueText);
     if (output) output.textContent = valueText;
     const edit = input.parentElement?.querySelector<HTMLInputElement>('[data-range-edit] input');
@@ -68,6 +101,7 @@ const labelId = `${id}-label`;
       input.setPointerCapture(event.pointerId);
       // Focus taken by the pointer shows no ring; the keyboard still gets one.
       input.parentElement?.setAttribute('data-pointer-focus', '');
+      input.parentElement?.classList.add('is-gripped');
       input.focus({ preventScroll: true });
     });
     const keyboardFocus = () => input.parentElement?.removeAttribute('data-pointer-focus');
@@ -90,6 +124,7 @@ const labelId = `${id}-label`;
       if (!grip || event.pointerId !== grip.id) return;
       const changed = grip.changed;
       grip = undefined;
+      input.parentElement?.classList.remove('is-gripped');
       if (changed) emit('change');
     };
     scope.listen(input, 'pointerup', release);
@@ -200,8 +235,15 @@ const labelId = `${id}-label`;
     width: var(--range-thumb-width);
     height: 20px;
     translate: -50% -50%;
+    transition: height 160ms cubic-bezier(0.23, 1, 0.32, 1), width 160ms cubic-bezier(0.23, 1, 0.32, 1);
     border-radius: 999px;
     background: color-mix(in oklab, var(--sys-color-on-srf-subtle) 70%, var(--range-fill-color));
+  }
+
+  .dev-range-field.is-gripped::after { width: calc(var(--range-thumb-width) + 1px); height: 24px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-range-field::after { transition: none; }
   }
 
   .dev-range-field__output {
