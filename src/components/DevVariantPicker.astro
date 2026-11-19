@@ -44,6 +44,10 @@ const { label, target, variants, position = 'bottom' } = Astro.props;
       const url = new URL(location.href);
       url.searchParams.set('v', String(index + 1));
       history.replaceState(history.state, '', url);
+      // Inside the dev canvas the shell owns the address bar; without this a reload drops the choice.
+      if (window.parent !== window && window.name === 'vcd-canvas') {
+        window.parent.postMessage({ type: 'vcd-canvas-location', href: location.href, title: document.title }, location.origin);
+      }
     };
     // Keys go through the segment's own click, so the selection slides as it does for a pointer.
     const choose = (index: number) => options[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
