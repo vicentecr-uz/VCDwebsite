@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import { WRITEUP_CARD_WIDTH, WRITEUP_CARD_HEIGHT } from '../lib/writeupShareCard';
 import Footer from './Footer.astro';
+import DevVariantPicker from './DevVariantPicker.astro';
 import DocumentationContents from './DocumentationContents.astro';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCarouselTuner from './project/ProjectImageCarouselTuner.astro';
@@ -85,6 +86,15 @@ const backHref = isTapicoResearch ? '/' : indexHref;
 
     <Footer />
   </div>
+  {/* prototype: writeup-pager — remove once a variant is picked */}
+  {showDevTools && (
+    <DevVariantPicker
+      label="Pager"
+      target="[data-writeup-pager]"
+      position="top"
+      variants={[{ id: 'collapse', label: 'Collapse' }, { id: 'index', label: 'Index only' }]}
+    />
+  )}
   {showDevTools && <ProjectImageGridTuner />}
   {showDevTools && <ProjectImageCarouselTuner />}
   {showDevTools && <ProjectImageCaptionTuner />}
@@ -98,8 +108,6 @@ const backHref = isTapicoResearch ? '/' : indexHref;
     const top = document.querySelector('.writeup-masthead .writeup-backlink');
     const pager = document.querySelector<HTMLElement>('[data-writeup-pager]');
     if (!top || !pager) return;
-    // Dev-only A/B: ?pager=index keeps Next visible and reveals only Index.
-    if (import.meta.env.DEV && new URLSearchParams(location.search).get('pager') === 'index') pager.dataset.variant = 'index';
     const observer = new IntersectionObserver(([entry]) => {
       pager.toggleAttribute('data-revealed', !entry.isIntersecting);
     });
