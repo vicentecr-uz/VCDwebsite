@@ -25,6 +25,7 @@ const authoringComponents = new Set([
   'DevTextEditor.astro',
   'DevComponentNotes.astro',
   'DevThemeToggle.astro',
+  'DevVariantPicker.astro',
   'StyleColorTokenEditor.astro',
   'archive/ArchivedDevPanels.astro',
   'archive/DevHeaderSurfaceTuner.astro',
