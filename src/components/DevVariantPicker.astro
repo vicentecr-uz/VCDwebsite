@@ -1,0 +1,72 @@
+---
+import SegmentedControl from './ui/SegmentedControl.astro';
+import Button from './ui/Button.astro';
+
+// Dev tool: flips a prototype between variants (docs/interface/prototyping.md). Render it only in
+// DEV; it writes the chosen id to `data-variant` on `target`, which the variants' CSS reads.
+interface Props {
+  label: string;
+  target: string;
+  variants: Array<{ id: string; label: string }>;
+  /** Top when the variants themselves sit at the bottom of the screen. */
+  position?: 'bottom' | 'top';
+}
+
+const { label, target, variants, position = 'bottom' } = Astro.props;
+---
+
+<div class="dev-picker-bar dev-surface" data-variant-picker={target} data-position={position}>
+  <SegmentedControl data-slide-selection label={label}>
+    {variants.map(({ id, label }, index) => (
+      <Button emphasis="ghost" width="fill" label={label} class={index === 0 ? 'is-active' : undefined} data-variant-option={id} />
+    ))}
+  </SegmentedControl>
+</div>
+
+<script>
+  import { onPageLoad, createPageScope } from '../lib/pageLifecycle';
+
+  onPageLoad(() => {
+    const picker = document.querySelector<HTMLElement>('[data-variant-picker]');
+    const target = picker && document.querySelector<HTMLElement>(picker.dataset.variantPicker!);
+    if (!picker || !target) return;
+    const scope = createPageScope();
+    const options = [...picker.querySelectorAll<HTMLButtonElement>('[data-variant-option]')];
+    let current = 0;
+
+    const apply = (index: number) => {
+      current = index;
+      options.forEach((option, i) => {
+        option.classList.toggle('is-active', i === index);
+        option.setAttribute('aria-pressed', String(i === index));
+      });
+      target.dataset.variant = options[index].dataset.variantOption;
+      const url = new URL(location.href);
+      url.searchParams.set('v', String(index + 1));
+      history.replaceState(history.state, '', url);
+      // Inside the dev canvas the shell owns the address bar; without this a reload drops the choice.
+      if (window.parent !== window && window.name === 'vcd-canvas') {
+        window.parent.postMessage({ type: 'vcd-canvas-location', href: location.href, title: document.title }, location.origin);
+      }
+    };
+    // Keys go through the segment's own click, so the selection slides as it does for a pointer.
+    const choose = (index: number) => options[index]?.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+
+    options.forEach((option, index) => scope.listen(option, 'click', () => apply(index)));
+    scope.listen(document, 'keydown', (event: KeyboardEvent) => {
+      const element = event.target instanceof HTMLElement ? event.target : null;
+      if (element?.isContentEditable || element?.closest('input, textarea, select')) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const number = Number.parseInt(event.key, 10);
+      if (number >= 1 && number <= options.length) choose(number - 1);
+      else if (event.key === 'ArrowRight') choose((current + 1) % options.length);
+      else if (event.key === 'ArrowLeft') choose((current - 1 + options.length) % options.length);
+      else return;
+      event.preventDefault();
+    });
+
+    const requested = Number.parseInt(new URLSearchParams(location.search).get('v') ?? '', 10) - 1;
+    apply(requested >= 0 && requested < options.length ? requested : 0);
+    return () => scope.destroy();
+  });
+</script>

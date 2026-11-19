@@ -663,6 +663,38 @@
   box-shadow: 0 2px currentColor;
 }
 
+/* The floating picker bar: the canvas's Viewport bar and DevVariantPicker share it. */
+.dev-picker-bar {
+  z-index: 2147483647;
+  position: fixed;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: calc((var(--dev-radius-control) + 6px) * var(--continuous-corner-scale, 1));
+  corner-shape: var(--squircle-shape);
+}
+
+.dev-picker-bar[data-position='top'] {
+  bottom: auto;
+  top: max(12px, env(safe-area-inset-top));
+}
+
+.dev-picker-bar .dev-segmented {
+  width: auto;
+  padding: 0;
+  gap: 4px;
+  background: transparent;
+  --dev-segmented-selected-fill: var(--comp-segmentedcontrol-bg);
+}
+
+.dev-picker-bar .dev-segmented[tabindex='-1']:focus {
+  outline: none;
+}
+
 /* Three fill buttons in one row — flex-basis 0 already equalizes; override
    the base .dev-btn--fill width:100% so they don't each claim the pill. */
 .dev-segmented .dev-btn--fill {

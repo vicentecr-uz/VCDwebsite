@@ -27,6 +27,7 @@ Read this before any site or dev-layer UI work. It holds the rules every UI task
 | Menus, dropdowns, listboxes, popovers, tooltips | [menus](interface/menus.md) |
 | Fields, selects, sliders, toggles, segmented controls | [fields](interface/fields.md) |
 | Any animation or transition, page transitions | [motion](interface/motion.md) |
+| Showing the owner options, versions or variations to pick from | [prototyping](interface/prototyping.md) |
 | Page spacing, type, widths, breakpoints, viewport height, overflow | [spacing](interface/spacing.md) |
 | Colour, ink, page ground, links, edit affordances | [colour and ink](interface/colour-and-ink.md) |
 | Choosing or adding components, buttons, hit areas, page blocks, labels | [components](interface/components.md) |
