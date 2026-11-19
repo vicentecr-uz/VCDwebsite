@@ -2,7 +2,6 @@
 import Layout from '../layouts/Layout.astro';
 import { WRITEUP_CARD_WIDTH, WRITEUP_CARD_HEIGHT } from '../lib/writeupShareCard';
 import Footer from './Footer.astro';
-import DevVariantPicker from './DevVariantPicker.astro';
 import DocumentationContents from './DocumentationContents.astro';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCarouselTuner from './project/ProjectImageCarouselTuner.astro';
@@ -27,8 +26,8 @@ const { title, description, ogImage, indexHref = '/digital', backlinkLabel = 'In
 const showDevTools = import.meta.env.DEV;
 const pathname = Astro.url.pathname.replace(/\/$/, '');
 const isTapicoResearch = pathname === '/tapico-research-paper';
-// Next follows the Digital grid's order and wraps; pages outside the grid get only Index.
-const digital = getProjectGridListings('play').filter((item) => item.href?.startsWith('/'));
+// Next follows the Digital grid's published projects in order and wraps; other pages get only Index.
+const digital = getProjectGridListings('play').filter((item) => item.status === 'published' && item.href?.startsWith('/'));
 const digitalIndex = digital.findIndex((item) => item.href === pathname);
 const next = digitalIndex >= 0 && digital.length > 1 ? digital[(digitalIndex + 1) % digital.length] : undefined;
 const backHref = isTapicoResearch ? '/' : indexHref;
@@ -66,10 +65,10 @@ const backHref = isTapicoResearch ? '/' : indexHref;
     <main id="main-content" class="project-page__main flex-1">
       <slot />
     </main>
-    <nav class="writeup-pager" data-writeup-pager data-variant="collapse" aria-label="Write-ups">
+    <nav class="writeup-pager" data-writeup-pager aria-label="Write-ups">
       <div class="writeup-pager__inner">
         <div class="writeup-pager__row">
-          <a href={backHref} class="writeup-backlink writeup-pager__index" data-writeup-index>
+          <a href={backHref} class="writeup-backlink" data-writeup-index>
             <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />
             <span class="writeup-backlink__label">{backlinkLabel}</span>
           </a>
@@ -86,15 +85,6 @@ const backHref = isTapicoResearch ? '/' : indexHref;
 
     <Footer />
   </div>
-  {/* prototype: writeup-pager — remove once a variant is picked */}
-  {showDevTools && (
-    <DevVariantPicker
-      label="Pager"
-      target="[data-writeup-pager]"
-      position="top"
-      variants={[{ id: 'collapse', label: 'Collapse' }, { id: 'index', label: 'Index only' }]}
-    />
-  )}
   {showDevTools && <ProjectImageGridTuner />}
   {showDevTools && <ProjectImageCarouselTuner />}
   {showDevTools && <ProjectImageCaptionTuner />}
@@ -103,7 +93,7 @@ const backHref = isTapicoResearch ? '/' : indexHref;
 <script>
   import { onPageLoad } from '../lib/pageLifecycle';
 
-  // The bottom pager (or just its Index) appears only once the top Index has scrolled out of view.
+  // The bottom pager appears only once the top Index has scrolled out of view.
   onPageLoad(() => {
     const top = document.querySelector('.writeup-masthead .writeup-backlink');
     const pager = document.querySelector<HTMLElement>('[data-writeup-pager]');
@@ -168,6 +158,7 @@ const backHref = isTapicoResearch ? '/' : indexHref;
     min-height: 0;
     overflow: hidden;
     margin-inline: -12px;
+    transition: opacity var(--writeup-pager-motion), visibility var(--writeup-pager-motion);
   }
 
   .writeup-pager__row {
@@ -177,19 +168,13 @@ const backHref = isTapicoResearch ? '/' : indexHref;
     padding: var(--space-group) 12px;
   }
 
-  .writeup-pager__inner,
-  .writeup-pager__index {
-    transition: opacity var(--writeup-pager-motion), visibility var(--writeup-pager-motion);
-  }
-
   /* Without scripting nothing would reveal it, so it stays shown. */
   @media (scripting: enabled) {
-    .writeup-pager[data-variant='collapse']:not([data-revealed]) {
+    .writeup-pager:not([data-revealed]) {
       grid-template-rows: 0fr;
     }
 
-    .writeup-pager[data-variant='collapse']:not([data-revealed]) .writeup-pager__inner,
-    .writeup-pager[data-variant='index']:not([data-revealed]) .writeup-pager__index {
+    .writeup-pager:not([data-revealed]) .writeup-pager__inner {
       opacity: 0;
       visibility: hidden;
     }
