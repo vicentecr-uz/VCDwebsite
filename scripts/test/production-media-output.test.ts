@@ -19,7 +19,7 @@ async function htmlFiles(directory: string): Promise<string[]> {
 async function scriptsFor(html: string): Promise<string> {
   const scripts: Array<{ src?: string; code: string }> = [];
   function visit(node: DefaultTreeAdapterTypes.Node) {
-    if ('tagName' in node && node.tagName === 'script') {
+    if ('tagName' in node && node.tagName === 'script' && !node.attrs.some((attr) => attr.name === 'type' && attr.value === 'application/ld+json')) {
       scripts.push({
         src: node.attrs.find((attr) => attr.name === 'src')?.value,
         code: node.childNodes.filter((child) => child.nodeName === '#text').map((child) => 'value' in child ? child.value : '').join(''),
