@@ -55,7 +55,7 @@ const appendEditTriggers = (target: HTMLElement) => {
 
   const image = document.createElement('button');
   image.type = 'button';
-  image.className = 'dev-image-edit-trigger';
+  image.className = 'dev-block-edit-trigger';
   image.setAttribute('data-dev-edit-trigger', 'image');
   image.setAttribute('data-dev-mode-only', '');
   image.hidden = true;
@@ -115,7 +115,7 @@ const buildInlineImageFigure = (
     hasWidthConstraint && 'project-media--constrained',
     maxVh && 'project-media--max-vh',
     hasCrop && 'project-cropped project-responsive-image',
-    'dev-image-edit-target',
+    'dev-block-edit-target',
     placeholder && 'project-media--placeholder',
   ].filter(Boolean).join(' ');
   figure.style.cssText = joinMediaStyles(
@@ -307,7 +307,7 @@ export function mountImageGridSection(
     figure.className = [
       'project-image-grid__item',
       'project-responsive-image',
-      'dev-image-edit-target',
+      'dev-block-edit-target',
       placeholder && 'project-media--placeholder',
     ].filter(Boolean).join(' ');
     figure.style.cssText = joinMediaStyles(variantStyle, layoutStyle, imageBackgroundStyle(item.background)) ?? '';
@@ -516,7 +516,7 @@ function mountImageCarouselSection(
       'project-image-grid__item',
       'project-responsive-image',
       placeholder && 'project-media--placeholder',
-      'dev-image-edit-target',
+      'dev-block-edit-target',
     ].filter(Boolean).join(' ');
     if (item.audio !== undefined) figure.dataset.videoAudio = JSON.stringify(item.audio);
     figure.style.cssText = joinMediaStyles(variantStyle, maxVhStyle(maxVh), imageBackgroundStyle(item.background)) ?? '';
@@ -585,7 +585,7 @@ function mountImageCarouselSection(
 
     const imageEdit = document.createElement('button');
     imageEdit.type = 'button';
-    imageEdit.className = 'dev-image-edit-trigger';
+    imageEdit.className = 'dev-block-edit-trigger';
     imageEdit.setAttribute('data-dev-edit-trigger', 'image');
     imageEdit.setAttribute('data-dev-mode-only', '');
     imageEdit.hidden = true;

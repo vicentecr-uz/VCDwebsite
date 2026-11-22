@@ -9,8 +9,8 @@ import {
 } from './adaptiveMediaInk';
 import { measureRegionLuma, type RenderedRegionSample } from './coverLuminance';
 
-const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
-const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
+const CHIP_SELECTOR = '.dev-block-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
+const TARGET_SELECTOR = '.dev-block-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
 const FRAME_SELECTOR = '.project-image-grid__frame, .project-crop-clip, .project-media > img, .project-image > img';
 
 function intersectionArea(a: DOMRect, b: DOMRect): number {

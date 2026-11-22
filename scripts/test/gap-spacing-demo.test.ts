@@ -202,7 +202,7 @@ test('Astro lifecycle exposes the image framing link and disconnect cleanup', ()
   expect([...list.querySelectorAll('[data-reorder-demo-block]')][0]).toBe(blocks[0]);
   expect(demo.querySelectorAll('[data-demo-spacing].is-dev-spacing-dirty').length).toBe(0);
   expect(actionBar.hidden).toBe(true);
-  const trigger = demo.querySelector('.dev-image-edit-trigger') as HTMLAnchorElement;
+  const trigger = demo.querySelector('.dev-block-edit-trigger') as HTMLAnchorElement;
   expect(trigger.getAttribute('href')).toBe('/image-framing');
   expect(trigger.target).toBe('_top');
   expect(demo.querySelector('[data-crop-active]')).toBeNull();
@@ -221,7 +221,7 @@ test('Astro lifecycle exposes the image framing link and disconnect cleanup', ()
   expect(demo.querySelector('.block-demo-actions')).toBeTruthy();
   expect(demo.querySelector('.gap-spacing-demo__reset-controls')).toBeTruthy();
   expect(demo.querySelector('[data-block-guide-cursor]')).toBeTruthy();
-  expect(demo.querySelector('.dev-image-edit-trigger')).toBeNull();
+  expect(demo.querySelector('.dev-block-edit-trigger')).toBeNull();
   viewport.append(demo);
   expect(document.querySelectorAll('.block-demo-actions')).toHaveLength(1);
   expect(document.querySelector('.block-demo-actions')?.parentElement).toBe(document.body);

@@ -71,7 +71,7 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
   .gap-spacing-demo__block:has(> .dev-gap-toolbar:focus-within) { z-index: 65; }
   .gap-spacing-demo__block:focus-within > :global(.dev-section-drag-handle) { opacity: 1; pointer-events: auto; }
   .gap-spacing-demo__block :global(.project-image) { margin: 0; }
-  vcd-gap-spacing-demo[data-reordering] :global(.dev-image-edit-trigger) { opacity: 0; pointer-events: none; }
+  vcd-gap-spacing-demo[data-reordering] :global(.dev-block-edit-trigger) { opacity: 0; pointer-events: none; }
   .block-demo-actions { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; }
   .gap-spacing-demo__reset-controls { position: fixed; left: var(--space-unit); right: auto; bottom: var(--space-unit); z-index: 100; }
   .gap-spacing-demo__reset-controls :global(.dev-btn) { --dev-btn-hit-inset: 8px; }
@@ -103,9 +103,9 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
       const trigger = this.ownerDocument.createElement('a');
       trigger.href = '/image-framing';
       trigger.target = '_top';
-      trigger.className = 'dev-image-edit-trigger';
+      trigger.className = 'dev-block-edit-trigger';
       trigger.textContent = 'Edit image';
-      image.classList.add('dev-image-edit-target');
+      image.classList.add('dev-block-edit-target');
       image.append(trigger);
       let guide: ReturnType<typeof createDemoBlockGuide>;
       const reorder = createDemoBlockReorder(this, {
@@ -160,7 +160,7 @@ const pose = { aspect: '4:3', cx: 0.5, cy: 0.5, w: 0.6 };
         this.append(cursor);
         indicators.destroy();
         life.abort(); guide.destroy(); syncBar = () => {}; reorder.destroy(); gaps.destroy(); trigger.remove();
-        image.classList.remove('dev-image-edit-target');
+        image.classList.remove('dev-block-edit-target');
       };
     }
     disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
