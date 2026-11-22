@@ -122,9 +122,11 @@ test('the baseline must match the code, and cannot grow past the target branch',
   expect(check('--against', 'main')).toBe(1);
 });
 
-test('whitespace inside pre and textarea survives a markup comment', async () => {
-  const { out } = await deleteAll('a.astro', '---\n---\n<pre>hello <!-- note -->\nworld\n<!-- alone -->\nend</pre>\n<div>\n  <!-- gone -->\n</div>\n');
-  expect(out).toBe('---\n---\n<pre>hello \nworld\n\nend</pre>\n<div>\n</div>\n');
+test('markup comments that could change rendered whitespace are left for a person', async () => {
+  const source = '---\n---\n<pre>hello <!-- note -->\nworld\n<!-- alone -->\nend</pre>\n<p>hello\n  {/* note */}\n  world</p>\n<Widget title={<div>hello\n  {/* note */}\n  world</div>} />\n';
+  expect((await deleteAll('a.astro', source)).out).toBe(source);
+  const { out } = await deleteAll('a.astro', '---\n---\n<div>\n  <!-- gone -->\n  <p>x</p>\n</div>\n');
+  expect(out).toBe('---\n---\n<div>\n  <p>x</p>\n</div>\n');
 });
 
 test('spread and nested JSX comments in attributes are applied', async () => {
@@ -133,7 +135,7 @@ test('spread and nested JSX comments in attributes are applied', async () => {
 });
 
 test('a JSDoc tag that spans lines is left for a person', async () => {
-  const source = '/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n';
-  const { out } = await deleteAll('a.mjs', source);
-  expect(out).toBe(source);
+  for (const source of ['/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n', '/**\n * Prose.\n * @param {{ name: "}}" }} v\n */\n']) {
+    expect((await deleteAll('a.mjs', source)).out).toBe(source);
+  }
 });

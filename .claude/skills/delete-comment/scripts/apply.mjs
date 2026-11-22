@@ -42,8 +42,8 @@ for (const [file, list] of Object.entries(byFile)) {
     const lineStart = code.lastIndexOf('\n', b.start - 1) + 1;
     const tagLines = raw.split('\n').map((l) => l.replace(/^\s*(\/\*\*|\*\/|\*)?\s?/, '').replace(/\*\/\s*$/, '').trim()).filter((l) => TYPED.test(l) || KEEP.test(l));
     if (raw.startsWith('/**') && tagLines.length) {
-      if (tagLines.some((l) => (l.match(/\{/g) ?? []).length !== (l.match(/\}/g) ?? []).length)) {
-        console.error(`Skipped [${b.id}] ${b.file}:${b.line}: a tag spans lines, edit it by hand.`);
+      if (tagLines.some((l) => /['"`]/.test(l) || (l.match(/\{/g) ?? []).length !== (l.match(/\}/g) ?? []).length)) {
+        console.error(`Skipped [${b.id}] ${b.file}:${b.line}: a type tag is not simple enough to keep safely, edit it by hand.`);
         removed--;
         continue;
       }
@@ -71,7 +71,15 @@ for (const [file, list] of Object.entries(byFile)) {
       const last = (pattern) => Math.max(-1, ...[...before.matchAll(pattern)].map((m) => m.index));
       const verbatim = last(/<(pre|textarea)[\s>]/gi) > last(/<\/(pre|textarea)>/gi);
       const alone = !code.slice(lineFrom, start).trim() && !code.slice(end, lineTo).trim();
-      code = alone && !verbatim ? code.slice(0, lineFrom) + code.slice(Math.min(lineTo + 1, code.length)) : before + code.slice(end);
+      const prev = code.slice(0, lineFrom).trimEnd();
+      const next = code.slice(Math.min(lineTo + 1, code.length)).trimStart();
+      const between = (!prev || /[>{]$/.test(prev) || /(^|\n)---$/.test(prev)) && (!next || /^[<}]/.test(next));
+      if (verbatim || (alone && !between)) {
+        console.error(`Skipped [${b.id}] ${b.file}:${b.line}: removing it could change rendered whitespace, edit it by hand.`);
+        removed--;
+        continue;
+      }
+      code = alone ? code.slice(0, lineFrom) + code.slice(Math.min(lineTo + 1, code.length)) : before + code.slice(end);
       continue;
     }
     const from = code.lastIndexOf('\n', start - 1) + 1;
