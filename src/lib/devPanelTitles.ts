@@ -1,6 +1,7 @@
 export const DEV_PANEL_TITLES = {
   image: 'Image',
   video: 'Video',
+  'video-poster': 'Video page',
   caption: 'Caption',
   grid: 'Grid',
   carousel: 'Carousel',

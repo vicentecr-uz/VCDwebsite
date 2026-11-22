@@ -1,0 +1,275 @@
+---
+// A skateboard that peeks out from under a video once it plays. Picking it tucks it back under
+// and blur-fades a portrait YouTube clip into the top corner of the frame; picking the clip undoes that.
+// Sits beside a ProjectVideo inside a positioned parent that is the video's size.
+interface Props {
+  /** YouTube video id of a 9:16 clip. Nothing loads from YouTube until the board is picked. */
+  youtube: string;
+  label: string;
+  /** Root-relative artwork for the board; the drawn stand-in shows without it. */
+  art?: string;
+}
+
+const { youtube, label, art } = Astro.props;
+---
+
+<div class="side-clip" data-side-clip data-clip-youtube={youtube} data-clip-label={label}>
+  <button type="button" class="side-clip__item" aria-label={`Play ${label} clip`} tabindex="-1">
+    {art ? <img src={art} alt="" /> : (
+      <!-- Original stand-in drawing. -->
+      <svg viewBox="0 0 64 64" aria-hidden="true"><g transform="rotate(-18 32 32)"><rect x="5" y="24" width="54" height="11" rx="5.5" fill="#ff5a3c"/><rect x="9" y="26" width="46" height="3" rx="1.5" fill="#ffd166"/><circle cx="18" cy="41" r="5.5" fill="#1d1d1f"/><circle cx="46" cy="41" r="5.5" fill="#1d1d1f"/><circle cx="18" cy="41" r="2" fill="#fff"/><circle cx="46" cy="41" r="2" fill="#fff"/></g></svg>
+    )}
+  </button>
+</div>
+
+<style is:global>
+  .side-clip {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .side-clip__item {
+    position: absolute;
+    top: 9%;
+    left: 100%;
+    z-index: 0;
+    width: max(44px, 17cqi);
+    height: max(44px, 17cqi);
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    /* Tucked under the video until it plays, and again while its clip is open. */
+    translate: -105% 0;
+    rotate: -6deg;
+    transition: translate 520ms cubic-bezier(0.34, 1.45, 0.64, 1);
+  }
+
+  /* Nothing covers it until the video has painted, so it stays out of sight until play. */
+  .side-clip:not([data-revealed]) .side-clip__item {
+    visibility: hidden;
+    /* Leaving (the video ended): slide under first, then hide. */
+    transition: translate 320ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 320ms;
+  }
+
+  .side-clip[data-revealed]:not([data-open]) .side-clip__item {
+    pointer-events: auto;
+    translate: -52% 0;
+  }
+
+  /* Going back under is a plain ease: an overshoot would poke out the far side. */
+  .side-clip[data-open] .side-clip__item {
+    transition: translate 320ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .side-clip[data-revealed]:not([data-open]) .side-clip__item:hover {
+      translate: -38% 0;
+    }
+  }
+
+  .side-clip__item:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+    border-radius: var(--radius-control);
+  }
+
+  .side-clip__item :is(svg, img) {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  /* The clip: a portrait card in the frame's top corner, on the side the board came from. */
+  .side-clip__card {
+    position: absolute;
+    /* One inset for both edges, measured against the frame's width. */
+    top: 5cqi;
+    right: 5cqi;
+    z-index: 1;
+    width: 34%;
+    aspect-ratio: 9 / 16;
+    padding: 0;
+    border: 0;
+    border-radius: calc(var(--radius-card) * var(--continuous-corner-scale, 1) * 0.75);
+    corner-shape: var(--squircle-shape);
+    overflow: hidden;
+    background: #1d1d1f;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 30%);
+    cursor: pointer;
+    opacity: 0;
+    filter: blur(12px);
+    /* Grows slightly out of the board, and shrinks back toward it: the origin is the board's centre. */
+    scale: 0.92;
+    transform-origin: 115% 32%;
+    transition: opacity 400ms ease, filter 400ms ease, scale 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .side-clip__card[data-open] {
+    opacity: 1;
+    filter: blur(0);
+    scale: 1;
+  }
+
+  .side-clip__card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    corner-shape: inherit;
+    outline: 1px solid rgb(255 255 255 / 12%);
+    outline-offset: -1px;
+    pointer-events: none;
+  }
+
+  /* The player is laid out at phone size and scaled to the card, so YouTube's own chrome keeps its
+     proportions. It is taller than the card by --crop top and bottom: the 9:16 clip then sits between
+     two bars, and the title strip and logo YouTube draws at the edges fall in those bars, out of view. */
+  .side-clip__card iframe {
+    --crop: 80px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 360px;
+    height: calc(640px + 2 * var(--crop));
+    border: 0;
+    translate: -50% -50%;
+    scale: var(--side-clip-scale, 1);
+    pointer-events: none;
+  }
+
+  .side-clip__card:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: -4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .side-clip__item,
+    .side-clip[data-open] .side-clip__item { transition: none; }
+    .side-clip__card { filter: none; scale: 1; transition: opacity 400ms ease; }
+  }
+</style>
+
+<script>
+  import { onPageLoad } from '../lib/pageLifecycle';
+
+  const YOUTUBE = 'https://www.youtube-nocookie.com';
+  // YouTube flashes its own pause button for a few seconds whenever playback starts; the card waits that out.
+  const CHROME_MS = 5000;
+
+  const dispose = onPageLoad(() => {
+    const root = document.querySelector<HTMLElement>('[data-side-clip]');
+    const item = root?.querySelector<HTMLButtonElement>('.side-clip__item');
+    const player = root?.parentElement?.querySelector<HTMLElement>('[data-project-video]');
+    const video = player?.querySelector<HTMLVideoElement>('video[data-project-inline-video]');
+    if (!root || !item || !player || !video) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let card: HTMLButtonElement | undefined;
+    let frame: HTMLIFrameElement | undefined;
+    let clearAt = 0;
+    let wanted = false;
+    let timer = 0;
+
+    const command = (func: string, args: unknown[] = []) =>
+      frame?.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args }), YOUTUBE);
+    const show = () => {
+      window.clearTimeout(timer);
+      if (!card || !wanted) return;
+      // Not playing yet: try again shortly, and give up waiting after a few seconds rather than never showing.
+      const wait = clearAt ? clearAt - performance.now() : 400;
+      if (wait > 0 && performance.now() - askedAt < 10000) { timer = window.setTimeout(show, wait); return; }
+      card.inert = false;
+      card.setAttribute('data-open', '');
+    };
+    let askedAt = 0;
+
+    // The clip starts, out of sight, as soon as the main video plays, so it is already past YouTube's
+    // opening chrome by the time the board is picked. Nothing loads from YouTube before that.
+    const prepare = () => {
+      if (card) return;
+      const id = root.dataset.clipYoutube ?? '';
+      card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'side-clip__card';
+      card.inert = true;
+      // Keeps the card out of the player's own auto-hide.
+      card.setAttribute('noautohide', '');
+      card.setAttribute('aria-label', `Hide ${root.dataset.clipLabel} clip`);
+      frame = document.createElement('iframe');
+      frame.title = `${root.dataset.clipLabel} clip`;
+      frame.tabIndex = -1;
+      frame.allow = 'autoplay; encrypted-media';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin';
+      // Muted, no controls, no keyboard, no annotations. No `playlist`: it adds previous and next buttons.
+      frame.src = `${YOUTUBE}/embed/${id}?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+      frame.addEventListener('load', () => {
+        frame?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YOUTUBE);
+      }, { signal });
+      card.append(frame);
+      card.addEventListener('click', (event) => { event.stopPropagation(); close(); item.focus({ preventScroll: true }); }, { signal });
+      (video.parentElement ?? player).append(card);
+      card.style.setProperty('--side-clip-scale', String(card.offsetWidth / 360));
+    };
+    window.addEventListener('message', (event) => {
+      if (event.origin !== YOUTUBE || !frame || event.source !== frame.contentWindow) return;
+      let state: unknown;
+      try { state = JSON.parse(String(event.data)).info?.playerState; } catch { return; }
+      if (state === 1 && !clearAt) clearAt = performance.now() + CHROME_MS;
+      // Ended: loop by hand, with the card hidden while YouTube shows its chrome again.
+      if (state === 0) {
+        card?.removeAttribute('data-open');
+        clearAt = 0;
+        askedAt = performance.now();
+        command('seekTo', [0, true]);
+        command('playVideo');
+        if (wanted) timer = window.setTimeout(show, 400);
+      }
+    }, { signal });
+
+    const close = () => {
+      wanted = false;
+      window.clearTimeout(timer);
+      root.removeAttribute('data-open');
+      if (!card) return;
+      card.removeAttribute('data-open');
+      card.inert = true;
+    };
+    const open = () => {
+      prepare();
+      wanted = true;
+      askedAt = performance.now();
+      root.setAttribute('data-open', '');
+      show();
+    };
+
+    item.addEventListener('click', open, { signal });
+    // When the video ends, the clip goes and the board stays away until it is played again.
+    video.addEventListener('ended', () => {
+      close();
+      root.removeAttribute('data-revealed');
+      item.tabIndex = -1;
+    }, { signal });
+    // The clip starts loading on play, but the board holds back a moment: that head start covers part
+    // of the wait for YouTube's opening chrome, so a quick click still gets the card promptly.
+    const REVEAL_AT = 2.5;
+    const reveal = () => {
+      if (video.paused || video.ended || video.currentTime < REVEAL_AT || root.hasAttribute('data-revealed')) return;
+      root.setAttribute('data-revealed', '');
+      item.tabIndex = 0;
+    };
+    video.addEventListener('play', () => { prepare(); reveal(); }, { signal });
+    video.addEventListener('timeupdate', reveal, { signal });
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      card?.remove();
+      root.removeAttribute('data-open');
+      root.removeAttribute('data-revealed');
+    };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>

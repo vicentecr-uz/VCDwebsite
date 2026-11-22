@@ -1,0 +1,97 @@
+---
+// A strip of frames with a framed thumb. A native range input carries pointer and keyboard;
+// the caller paints both canvases and sets --filmstrip-frame-ratio (frame width / height).
+import '../../styles/dev-chrome.css';
+
+interface Props {
+  label: string;
+  [key: string]: any;
+}
+
+const { label, class: className, ...rest } = Astro.props;
+---
+
+<div class:list={['dev-filmstrip', className]} data-dev-filmstrip>
+  <canvas class="dev-filmstrip__frames" aria-hidden="true" data-filmstrip-frames></canvas>
+  <canvas class="dev-filmstrip__thumb" aria-hidden="true" data-filmstrip-thumb></canvas>
+  <input min="0" max="1" step="any" value="0" {...rest} class="dev-filmstrip__input" type="range" aria-label={label} />
+</div>
+
+<script>
+  // Delegated, so it survives page swaps; a caller that sets the value dispatches `input` itself.
+  document.addEventListener('input', (event) => {
+    const input = event.target instanceof HTMLInputElement && event.target.matches('.dev-filmstrip__input') ? event.target : null;
+    if (!input) return;
+    const min = Number(input.min) || 0;
+    const span = (Number(input.max) || 1) - min;
+    input.parentElement?.style.setProperty('--filmstrip-progress', String(span > 0 ? (Number(input.value) - min) / span : 0));
+  });
+</script>
+
+<style>
+  .dev-filmstrip {
+    --filmstrip-height: 64px;
+    /* The thumb stands this far proud of the strip, inside the component's own height. */
+    --filmstrip-thumb-rise: 4px;
+    --filmstrip-thumb-width: calc(var(--filmstrip-height) * var(--filmstrip-frame-ratio, 1));
+    position: relative;
+    width: 100%;
+    height: var(--filmstrip-height);
+    border-radius: var(--dev-radius-control);
+  }
+
+  .dev-filmstrip__frames {
+    position: absolute;
+    inset: var(--filmstrip-thumb-rise) 0;
+    display: block;
+    width: 100%;
+    height: calc(100% - 2 * var(--filmstrip-thumb-rise));
+    border-radius: var(--dev-radius-checkbox);
+    background: var(--sys-color-srf-container-high);
+  }
+
+  .dev-filmstrip__thumb {
+    position: absolute;
+    top: 0;
+    left: calc((100% - var(--filmstrip-thumb-width)) * var(--filmstrip-progress, 0));
+    display: block;
+    width: var(--filmstrip-thumb-width);
+    height: 100%;
+    border-radius: var(--dev-radius-checkbox);
+    background: var(--sys-color-srf-container-high);
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+    box-shadow: 0 0 0 1px var(--sys-color-srf);
+    pointer-events: none;
+  }
+
+  /* The native thumb matches the drawn one, so pointer position and value agree. */
+  .dev-filmstrip__input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    opacity: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: ew-resize;
+  }
+
+  .dev-filmstrip__input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: var(--filmstrip-thumb-width);
+    height: var(--filmstrip-height);
+  }
+
+  .dev-filmstrip__input::-moz-range-thumb {
+    width: var(--filmstrip-thumb-width);
+    height: var(--filmstrip-height);
+    border: 0;
+  }
+
+  .dev-filmstrip:has(.dev-filmstrip__input:focus-visible) {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+  }
+</style>

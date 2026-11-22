@@ -24,6 +24,7 @@ type PreviewKey =
   | 'ui-dev-panel'
   | 'ui-dev-panel-title'
   | 'ui-field'
+  | 'ui-filmstrip'
   | 'ui-text-field'
   | 'ui-text-area'
   | 'ui-select-field'
@@ -311,6 +312,17 @@ export function stylesComponents(examples: NonNullable<ReturnType<typeof loadPag
     props: 'label, ...rest (value content via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     preview: 'ui-field',
+  },
+  {
+    id: 'component-ui-filmstrip',
+    name: 'Filmstrip',
+    category: 'ui-primitives',
+    purpose: 'Scrubber over a strip of video frames; the framed thumb shows the frame at the chosen time.',
+    classRef: '.dev-filmstrip',
+    source: 'src/components/ui/Filmstrip.astro',
+    props: 'label, ...rest (range input attributes; the caller paints the canvases)',
+    usedOn: ['Video page dev panel'],
+    preview: 'ui-filmstrip',
   },
   {
     id: 'component-ui-text-field',

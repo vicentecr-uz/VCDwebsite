@@ -1,0 +1,89 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ProjectVideo from '../components/project/ProjectVideo.astro';
+import WriteupBacklink from '../components/WriteupBacklink.astro';
+import DevVideoPoster from '../components/DevVideoPoster.astro';
+import '../styles/project.css';
+import maxHeight from '../lib/videoPageMaxHeight.json';
+import VideoSideClip from '../components/VideoSideClip.astro';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+// The side clip is an official 9:16 gameplay upload, embedded from YouTube.
+const sideClipYoutube = 'QPW3XwBoQlw';
+const sideClipArtFile = 'the-bridge-side-clip-board.png';
+const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile)) ? `/images/${sideClipArtFile}` : undefined;
+---
+<Layout title="The Bridge Residency — Vicente Cruz" noindex>
+  <main id="main-content" class="application-video">
+    <div class="application-video__column" style={`--saved-max-vh-desktop: ${maxHeight.desktop}; --saved-max-vh-tablet: ${maxHeight.tablet}; --saved-max-vh-mobile: ${maxHeight.mobile};`}>
+      <header class="application-video__masthead">
+        <WriteupBacklink href="/" label="Home" />
+        <h1 class="sr-only">Vicente Cruz — The Bridge Residency application video</h1>
+      </header>
+      <div class="application-video__stage">
+        <ProjectVideo
+          src="the-bridge-1min-video-nov2026-application.mp4"
+          poster="the-bridge-1min-video-nov2026-application-poster.jpg"
+          alt="Vicente Cruz introduces himself"
+          aspectRatio="9:16"
+          spacing="none"
+          rounded
+        />
+        <VideoSideClip youtube={sideClipYoutube} label="skateboard" art={sideClipArt} />
+      </div>
+    </div>
+  </main>
+  {import.meta.env.DEV && <DevVideoPoster />}
+</Layout>
+
+<style>
+  .application-video {
+    display: grid;
+    place-items: center;
+    min-height: 100dvh;
+    padding: var(--space-unit);
+  }
+
+  /* The video alone is centred: the Home row hangs above the column without taking part in its height.
+     Never taller than the viewport: the column is as wide as the 9:16 frame that fits with that row's
+     height kept clear above and, to stay centred, below. */
+  .application-video__column {
+    --masthead-height: calc(var(--text-body-size) * var(--text-body-leading) + var(--space-unit));
+    /* Saved caps come from videoPageMaxHeight.json; the dev panel overrides them live while tuning. */
+    --max-vh: var(--video-page-max-vh-desktop, var(--saved-max-vh-desktop));
+    position: relative;
+    width: min(100%, calc(min(100dvh - 2 * var(--space-unit) - 2 * var(--masthead-height), var(--max-vh) * 1dvh) * 9 / 16));
+  }
+
+  @media (max-width: 991px) {
+    .application-video__column { --max-vh: var(--video-page-max-vh-tablet, var(--saved-max-vh-tablet)); }
+  }
+
+  @media (max-width: 767px) {
+    .application-video__column { --max-vh: var(--video-page-max-vh-mobile, var(--saved-max-vh-mobile)); }
+  }
+
+  /* The video's own box: the side clip tucks under it. */
+  .application-video__stage {
+    position: relative;
+    isolation: isolate;
+    container-type: inline-size;
+  }
+
+  .application-video__stage > :global(.project-block) {
+    position: relative;
+    z-index: 1;
+  }
+
+  .application-video__masthead {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    display: flex;
+    height: calc(var(--text-body-size) * var(--text-body-leading));
+    margin-bottom: var(--space-unit);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+  }
+</style>
