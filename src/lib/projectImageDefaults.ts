@@ -1,6 +1,5 @@
 import type { ImageVariants } from './responsiveImage';
 
-/** Centred, full-width content in a natural-ratio frame — i.e. an uncropped image. */
 export const DEFAULT_IMAGE_VARIANTS: ImageVariants = {
   desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
 };

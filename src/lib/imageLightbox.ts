@@ -1,4 +1,3 @@
-// V0 caps zoom at 4×; raise this with higher-resolution source handling if needed.
 export const IMAGE_LIGHTBOX_MAX_SCALE = 4;
 
 export interface Point {

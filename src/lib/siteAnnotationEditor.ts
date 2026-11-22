@@ -63,12 +63,12 @@ const readLauncherPosition = () => {
   try {
     const stored = window.localStorage.getItem(launcherPositionKey);
     if (stored !== null && /^(?:[0-7])$/.test(stored)) launcherPosition = Number(stored);
-  } catch { /* Keep the default when browser storage is unavailable. */ }
+  } catch {}
 };
 
 const saveLauncherPosition = () => {
   try { window.localStorage.setItem(launcherPositionKey, String(launcherPosition)); }
-  catch { /* Keep the position in memory when browser storage is unavailable. */ }
+  catch {}
 };
 
 const safeArea = (side: 'left' | 'right' | 'top' | 'bottom') => {
@@ -462,7 +462,6 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   const layoutAtOpen = layoutSnapshot(target.section);
   const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
   const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
-  // Strokes have one pen width; exact anisotropic nib scaling would require transformed SVG paths.
   let latest: Stroke[] = textStrokes ?? (existing && existingRect ? existing.strokes.map((stroke) => ({
     ...stroke,
     size: stroke.size * Math.sqrt(scaleX * scaleY),
@@ -483,7 +482,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
     onPreferencesChange: (preferences: DrawingPreferences) => {
       drawingPreferences = preferences;
       try { window.localStorage.setItem(preferenceKey, JSON.stringify(preferences)); }
-      catch { /* Keep preferences in memory when browser storage is unavailable. */ }
+      catch {}
     },
     onChange: (strokes: Stroke[]) => { latest = strokes; },
     placement: narrow ? 'left' : 'bottom',
@@ -616,7 +615,6 @@ const positionDrawingMenu = (menu: HTMLElement, button: HTMLElement) => {
     })
     .map((image) => {
       const rect = annotationVisibleRect(image);
-      // Renderer-owned pixel inset shorthand; keep this ceiling aligned with positionSiteAnnotations.
       const clip = image.style.clipPath.match(/^inset\((-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\)$/);
       if (!clip) return rect;
       const values = clip.slice(1).filter((value): value is string => value !== undefined).map(Number);
@@ -758,7 +756,7 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
       menu.showPopover();
       nativePopover = true;
     }
-  } catch { /* Native popovers are unavailable in older browsers. */ }
+  } catch {}
   if (!nativePopover) menu.classList.add('is-open');
   positionDrawingMenu(menu, button);
   menu.querySelector<HTMLButtonElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus();

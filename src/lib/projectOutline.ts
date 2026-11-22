@@ -1,22 +1,9 @@
-/**
- * Project page outline — Obsidian-style flat markers.
- *
- * Naming (sidebar / outline — not page JSON `sections[]` blocks):
- * - `group`  = section group (Intro / Research / Development)
- * - `section` = section inside a group (Overview / Public Reception / …)
- *
- * A section owns the page from its start anchor until the next section or
- * group marker. Multiple page blocks can fall in one section’s range without
- * each needing its own marker.
- */
 
 export type OutlineGroup = {
   kind: 'group';
   id: string;
   label: string;
-  /** When true, group starts expanded in the sidebar. Default true. */
   defaultOpen?: boolean;
-  /** Optional start-boundary block id (for ordering / ranges). */
   anchor?: string;
 };
 
@@ -24,21 +11,17 @@ export type OutlineSection = {
   kind: 'section';
   id: string;
   label: string;
-  /** DOM / JSON sectionId used as scrollspy + hash target. Defaults to `id`. */
   anchor?: string;
 };
 
 export type OutlineEntry = OutlineGroup | OutlineSection;
 
-/** @deprecated Use OutlineGroup — kept for migration typing */
 export type OutlineSectionLegacy = OutlineGroup;
-/** @deprecated Use OutlineSection — old name was subsection */
 export type OutlineSubsection = OutlineSection;
 
 export type SectionNavLink = {
   id: string;
   label: string;
-  /** Stable outline marker id; `id` remains the DOM / scroll target. */
   outlineId?: string;
 };
 
@@ -46,7 +29,6 @@ export type SectionNavGroup = {
   label: string;
   children: SectionNavLink[];
   defaultOpen?: boolean;
-  /** Stable outline marker id and optional page-boundary anchor. */
   id?: string;
   anchor?: string;
 };
@@ -62,7 +44,6 @@ export const isOutlineSection = (entry: OutlineEntry): entry is OutlineSection =
 export const isSectionNavGroup = (item: SectionNavItem): item is SectionNavGroup =>
   Boolean(item && typeof item === 'object' && 'children' in item);
 
-/** Normalize legacy kinds: `section`+defaultOpen → group, `subsection` → section. */
 export function normalizeOutline(raw: unknown): OutlineEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: OutlineEntry[] = [];
@@ -98,7 +79,6 @@ export function normalizeOutline(raw: unknown): OutlineEntry[] {
       continue;
     }
     if (kind === 'section') {
-      // Legacy outline used `section` for groups (had defaultOpen).
       if (Object.prototype.hasOwnProperty.call(item, 'defaultOpen')) {
         out.push({
           kind: 'group',
@@ -115,15 +95,10 @@ export function normalizeOutline(raw: unknown): OutlineEntry[] {
   return out;
 }
 
-/** Resolve scroll / boundary target id for any outline entry. */
 export function outlineAnchorId(entry: OutlineEntry): string {
   return entry.anchor?.trim() || entry.id;
 }
 
-/**
- * Best page-position id for sorting: explicit anchor, else first following
- * section for a group boundary.
- */
 export function outlineSortAnchor(
   entry: OutlineEntry,
   outline: OutlineEntry[],
@@ -141,11 +116,6 @@ export function outlineSortAnchor(
   return null;
 }
 
-/**
- * Re-order outline markers to match page block order. Groups are page
- * boundaries, so they sort by their explicit anchor or their legacy inferred
- * position without changing explicit anchors or section identity.
- */
 export function reorderOutlinePreservingGroups(
   outline: OutlineEntry[],
   pageIndexForId: (id: string) => number,
@@ -178,10 +148,6 @@ export function reorderOutlinePreservingGroups(
     .map(({ entry }) => entry);
 }
 
-/**
- * Page index lookup from project `sections[]` (`sectionId` then `id`).
- * Unknown ids sort after known blocks (same as DOM helpers).
- */
 export function pageIndexFromSections(
   sections: Array<{ sectionId?: string; id?: string } | null | undefined> | null | undefined,
 ): (id: string) => number {
@@ -200,12 +166,6 @@ export function pageIndexFromSections(
   };
 }
 
-/**
- * Insert outline markers at this block’s page position — never only push to
- * the end. Pushing made new sectionTitles appear last in the sidebar while
- * the DOM block sat at the top (and re-added markers could inherit the wrong
- * group).
- */
 export function insertOutlineEntriesAtPagePosition(
   outline: OutlineEntry[],
   blockAnchorId: string,
@@ -227,11 +187,6 @@ export function insertOutlineEntriesAtPagePosition(
   return next;
 }
 
-/**
- * Derive the sidebar tree from a flat outline.
- * Sections attach to the nearest preceding group; leading sections
- * before any group become top-level links.
- */
 export function deriveNavFromOutline(outline: OutlineEntry[] | undefined | null): SectionNavItem[] {
   const normalized = normalizeOutline(outline ?? []);
   if (!normalized.length) return [];
@@ -269,9 +224,6 @@ export function deriveNavFromOutline(outline: OutlineEntry[] | undefined | null)
   return nav;
 }
 
-/**
- * Convert legacy nested `nav` into a flat outline.
- */
 export function outlineFromNav(nav: SectionNavItem[] | undefined | null): OutlineEntry[] {
   if (!Array.isArray(nav) || nav.length === 0) return [];
 
@@ -326,10 +278,6 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
   return outline;
 }
 
-/** Prefer `outline`; fall back to deriving from legacy `nav`.
- * When `sections` is provided, reorder to page order so a pushed insert
- * cannot leave sidebar markers below blocks that sit higher on the page.
- */
 export function resolveProjectOutline(data: {
   outline?: OutlineEntry[] | null;
   nav?: SectionNavItem[] | null;
@@ -387,11 +335,6 @@ export function outlineEntriesForAnchor(
   return normalized.filter((entry) => outlineAnchorId(entry) === anchorId);
 }
 
-/**
- * Find which outline section (and group) owns a page block, given ordered
- * block ids on the page. Ownership = from a section’s start until the next
- * section or group marker.
- */
 export function owningOutlineSection(
   outline: OutlineEntry[],
   blockAnchorId: string,
@@ -434,9 +377,6 @@ export function owningOutlineSection(
   return { group, section };
 }
 
-/**
- * Block ids that fall in a section’s range [start, next section/group).
- */
 export function blockIdsInSectionRange(
   outline: OutlineEntry[],
   sectionEntry: OutlineSection,

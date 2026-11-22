@@ -1,13 +1,3 @@
-/**
- * Site drawing owns the page while it is not idle: every hover- or
- * proximity-revealed editor control stands down so it never lands under the pen.
- *
- *   idle ──menu-open──▶ menu ──menu-close──▶ idle
- *   idle | menu ──stage-open──▶ drawing ──stage-close──▶ idle
- *
- * `drawing` ignores menu events, so closing the manage menu while the stage
- * opens can't drop the page back to idle mid-stroke.
- */
 export type SiteDrawMode = 'idle' | 'menu' | 'drawing';
 export type SiteDrawEvent = 'menu-open' | 'menu-close' | 'stage-open' | 'stage-close';
 

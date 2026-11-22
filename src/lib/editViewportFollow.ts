@@ -4,7 +4,6 @@ export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
   let canvasPreset = 'desktop';
   let preset = 'desktop';
   let applying = false;
-  // At the Desktop preset the frame is the window itself, which may be narrow enough for another layout.
   const resolve = () => canvasPreset !== 'desktop' ? canvasPreset
     : window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
   const viewportOf = (button: Element) => [...button.attributes].find((attribute) => /^data-[a-z-]+-viewport$/.test(attribute.name))?.value;
@@ -36,7 +35,6 @@ export function followEditViewport(scope: ReturnType<typeof createPageScope>) {
     preset = next;
     apply();
   });
-  // Choosing a viewport in a panel shows that viewport in the preview.
   scope.listen(document, 'click', (event) => {
     if (applying || !document.documentElement.classList.contains('is-dev-mode')) return;
     const button = (event.target as Element | null)?.closest?.('.dev-segmented > button');

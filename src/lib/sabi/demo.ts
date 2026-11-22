@@ -75,12 +75,8 @@ export function mountSabiDemo(root: HTMLElement) {
     auto = false;
     delete input.dataset.demoSelected;
     caret.hidden = true;
-    // Leave the fade paint running: it only settles on the current scroll, and cutting it short freezes an edge.
     cancelAnimationFrame(frame);
   };
-  // The fade kind replays the old 150ms transition: each edge moves toward its target
-  // at no more than a full fade per 150ms, so a jump exposes text while it catches up,
-  // and a steady stream of scroll events can't hold it in place.
   let target = { left: 0, right: 0 };
   let lastPaint = 0;
   const paintFade = (now: number) => {
@@ -94,13 +90,11 @@ export function mountSabiDemo(root: HTMLElement) {
     fadeFrame = settled ? 0 : requestAnimationFrame(paintFade);
     if (settled) lastPaint = 0;
   };
-  // `snap` paints the settled fade at once: switching modes isn't a scroll the lag should replay.
   const fades = (snap = false) => {
     if (mode !== 'before') return;
     const { fadeWidth, solid } = geometry();
     const hiddenLeft = strip.scrollLeft;
     const hiddenRight = strip.scrollWidth - strip.clientWidth - strip.scrollLeft;
-    // The old fade was simply on or off; following how much is hidden is the fix this demo leads to.
     const toLeft = kind === 'fade' ? Number(hiddenLeft > .5) : clamp(hiddenLeft / fadeWidth);
     const toRight = kind === 'fade' ? Number(hiddenRight > .5) : clamp(hiddenRight / fadeWidth);
     if (kind !== 'fade' || snap) {

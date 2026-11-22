@@ -1,7 +1,6 @@
 import type { ImageViewport } from './responsiveImage';
 import { IMAGE_VIEWPORTS } from './responsiveImage';
 
-/** Caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
   { id: 'white', label: 'On image' },
   { id: 'below', label: 'Below' },
@@ -9,7 +8,6 @@ export const IMAGE_CAPTION_STYLES = [
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
 
-/** Below-image captions are in-flow body text; overlays use corner + reveal. */
 export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
   return style === 'below';
 }
@@ -34,7 +32,6 @@ export type ImageCaptionPositionId = ImageCaptionOverlayPositionId | ImageCaptio
 export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionOverlayPositionId = 'bottom-left';
 export const DEFAULT_IMAGE_CAPTION_BELOW_ALIGN: ImageCaptionBelowAlignId = 'left';
 
-/** How the caption appears at a breakpoint. */
 export const IMAGE_CAPTION_REVEALS = [
   { id: 'hover', label: 'On hover' },
   { id: 'always', label: 'Always visible' },
@@ -59,14 +56,12 @@ export type ImageCaptionRevealInput =
 
 const VIEWPORTS = IMAGE_VIEWPORTS;
 
-/** Defaults when content has no reveal setting: hover on desktop, always on touch-first sizes. */
 export const DEFAULT_IMAGE_CAPTION_REVEALS: ImageCaptionReveals = {
   desktop: 'hover',
   tablet: 'always',
   mobile: 'always',
 };
 
-/** Forced reveal map for below-image captions (always visible, no hover). */
 export const BELOW_IMAGE_CAPTION_REVEALS: ImageCaptionReveals = {
   desktop: 'always',
   tablet: 'always',
@@ -77,7 +72,6 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
   return IMAGE_CAPTION_STYLES.some((style) => style.id === value);
 }
 
-/** Resolve style id; legacy `default` / `black` map to overlay (`white`). */
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
   if (value === 'below') return 'below';
   if (value === 'default' || value === 'black') return 'white';
@@ -91,7 +85,6 @@ export function isImageCaptionPositionId(value: unknown): value is ImageCaptionP
   );
 }
 
-/** Resolve position vocabulary for overlay corners or below align, depending on style. */
 export function resolveImageCaptionPosition(
   value: unknown,
   style?: ImageCaptionStyleId,
@@ -130,7 +123,6 @@ export function resolveImageCaptionPosition(
   }
 }
 
-/** On-image overlay uses base `.project-caption`; below adds a modifier class. */
 export function imageCaptionStyleClass(style: ImageCaptionStyleId): string {
   return style === 'below' ? 'project-caption--below' : '';
 }
@@ -139,7 +131,6 @@ export function isImageCaptionReveal(value: unknown): value is ImageCaptionRevea
   return IMAGE_CAPTION_REVEALS.some((reveal) => reveal.id === value);
 }
 
-/** Expand legacy / partial reveal into a full per-breakpoint map. */
 export function resolveImageCaptionReveals(
   input: ImageCaptionRevealInput,
 ): ImageCaptionReveals {
@@ -157,10 +148,6 @@ export function resolveImageCaptionReveals(
   return { ...DEFAULT_IMAGE_CAPTION_REVEALS };
 }
 
-/**
- * Write reveal mode at `viewport`, cascading down to smaller breakpoints
- * (same rule as caption text).
- */
 export function setImageCaptionRevealAtViewport(
   reveals: ImageCaptionReveals,
   viewport: ImageViewport,
@@ -180,7 +167,6 @@ export function setImageCaptionRevealAtViewport(
   return next;
 }
 
-/** Expand legacy `caption` string or partial `captions` into a full per-breakpoint map. */
 export function resolveImageCaptions(input: {
   caption?: ImageCaptionInput;
   captions?: ImageCaptionInput;
@@ -203,10 +189,6 @@ export function imageCaptionsHaveText(captions: ImageCaptions): boolean {
   return VIEWPORTS.some((viewport) => captions[viewport].length > 0);
 }
 
-/**
- * Write caption text at `viewport`, cascading down to smaller breakpoints.
- * Desktop → tablet + mobile; tablet → mobile; mobile → mobile only.
- */
 export function setImageCaptionAtViewport(
   captions: ImageCaptions,
   viewport: ImageViewport,

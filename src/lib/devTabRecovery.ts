@@ -35,7 +35,6 @@ export function installDevTabRecovery() {
       window.dispatchEvent(new CustomEvent('vcd:dev-tab-stale', { detail }));
       await detail.recover?.();
     } catch {
-      // A restarting server is retried on focus or the next visible poll.
     } finally {
       checking = false;
     }

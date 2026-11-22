@@ -1,4 +1,3 @@
-/** Single selection for a SegmentedControl (or any button group) in a report prototype. */
 export function choiceGroup(group: Element | null, onChange: (value: string, button: HTMLButtonElement) => void) {
   const buttons = () => [...(group?.querySelectorAll<HTMLButtonElement>('button[data-value]') ?? [])];
   const select = (value: string, notify = true) => {

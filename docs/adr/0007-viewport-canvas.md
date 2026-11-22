@@ -17,8 +17,12 @@ See `docs/dev-canvas.md` for what the canvas is and when it is on. This records 
 
 **Timing.** The morph uses the page's clock, so an inspector that slows time in the page (Lapse) slows the morph too. A dragged width is laid out at most once a frame, and a slow page reflows only every second to fourth frame, so the slider keeps frames of its own in between.
 
-**Page boot.** Layout readiness stays independent of the heavier transition and editor graph. Dev styles arrive as module scripts while production links are render-blocking, so readiness waits on both forms. An inline white background covers the first paint because bundled CSS can arrive after the page is visible. On the transition overlay, setting `startTime` cancels pending playback, so it resets only after the renderer is ready.
+At the Desktop preset the frame is the window itself, which may still be narrow enough for another layout, so the effective viewport is measured rather than assumed.
+
+**Page boot.** Layout readiness stays independent of the heavier transition and editor graph. Dev styles arrive as module scripts while production links are render-blocking, so readiness waits on both forms. An inline white background covers the first paint because bundled CSS can arrive after the page is visible. On the transition overlay, setting `startTime` cancels pending playback, so it resets only after the renderer is ready. Page swaps keep the shell and every ancestor in place, because moving them restarts CSS animations in Safari.
+
+**Stable viewport height.** `--vh-safe` is 1% of the inner height, set once on load and recomputed on desktop resizes but frozen through mobile toolbar show/hide, because raw `vh`/`svh` drift mid-scroll on iOS and Edge; CSS keeps `svh` as the fallback (`calc(var(--vh-safe, 1svh) * N)`). Intro air is recomputed only on its own sync event, not by observing the body: preview clones and readouts mutate during scroll, and recalculating then disrupts native momentum. It is skipped while a reorder drag runs FLIP transforms, which would read visual rather than layout positions. Gaps are committed before reading `scrollY`, since near the page bottom the browser clamps it.
 
 ## Where
 
-`src/pages/dev/canvas-shell.astro` → `anchor`, `settleAnchor`, `customGeometry`, `clock`; `src/layouts/Layout.astro` → `data-canvas-resize-observer` script, layout readiness script, `revealPage`
+`src/pages/dev/canvas-shell.astro` → `anchor`, `settleAnchor`, `customGeometry`, `clock`; `src/layouts/Layout.astro` → `data-canvas-resize-observer` script, layout readiness script, `revealPage`; `src/lib/editViewportFollow.ts`; `src/lib/persistentPageSwap.ts`; `src/lib/safeVh.ts`

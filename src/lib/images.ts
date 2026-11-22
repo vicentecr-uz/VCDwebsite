@@ -1,6 +1,5 @@
 import { isVideoSrc } from './imageUpload.mjs';
 
-/** Public /images path with encoded filename segments. Source lives in `media/`. */
 export function projectImage(filename: string): string {
   if (filename === 'placeholder.svg' || filename === '/images/placeholder.svg') return '/demo-fixtures/placeholder.svg';
   if (filename.startsWith('/')) {
@@ -10,7 +9,6 @@ export function projectImage(filename: string): string {
   return `/images/${filename.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-/** Generated first-frame poster for a media-backed video, when available. */
 export function projectVideoPoster(filename: string): string | undefined {
   const value = String(filename || '');
   if (value.startsWith('//') || /^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
@@ -41,7 +39,6 @@ function shouldUseOriginalTier(filename: string): boolean {
   return !isRasterImage(filename);
 }
 
-/** Display-sized derivative URL; JSON `src` stays the original filename. */
 export function projectImageTier(filename: string, tier: ImageDisplayTier): string {
   if (filename.startsWith('/')) {
     return filename;

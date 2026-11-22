@@ -101,8 +101,6 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         const visualOpacityOnly = opacityOnly(unit, reduce);
         if (visualOpacityOnly && unit.kind === 'header') { unit.element!.style.transform = ''; unit.element!.style.filter = ''; }
         const keyframes = visualOpacityOnly ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: `blur(${config.entrance.blurPx}px)`, transform: `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})` }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
-        // Reduced motion keeps the spatial opacity wave; only movement and
-        // blur are removed from its visual variant.
         animations.push(unit.element!.animate(keyframes, { duration: config.entrance.durationMs, delay: row.delay, easing: config.entrance.easing, fill: 'both' }));
       }));
       Promise.all(animations.map((animation) => animation.finished ?? Promise.resolve())).then(() => { if (!disposed) cleanup(); }).catch(cancel);
@@ -129,11 +127,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         const clone = source.cloneNode(true) as HTMLElement;
         clone.setAttribute('aria-hidden', 'true'); clone.setAttribute('inert', '');
         const rect = source.getBoundingClientRect();
-        // cloneNode carries the source's pre-hide visibility. The clone must
-        // stay visible so opacity/WAAPI can reveal it while the semantic source
-        // remains hidden until cleanup.
         makeHomeRevealCloneVisible(clone);
-        // The intro resets scroll on dismissal; anchor clones to the page, not the viewport.
         const homeRect = home.getBoundingClientRect();
         Object.assign(clone.style, { position: 'absolute', margin: '0', left: `${rect.left - homeRect.left}px`, top: `${rect.top - homeRect.top}px`, width: `${rect.width}px`, pointerEvents: 'none' });
         home.append(clone); clones.push(clone);

@@ -26,7 +26,6 @@ export const applyInlineMark = (range: Range, change: { tone?: EmphasisTone; cod
     ? range.endContainer
     : range.endContainer.parentElement;
   const paragraph = startElement?.closest<HTMLElement>('p, div');
-  // One paragraph per operation; cross-paragraph marks need a per-paragraph range pass.
   if (!paragraph || paragraph !== endElement?.closest('p, div')) return null;
   const paragraphWrap = explicitParagraphTextWrap(paragraph);
 

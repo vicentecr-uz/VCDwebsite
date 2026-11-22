@@ -15,6 +15,7 @@ Vite and Astro default to "when in doubt, full-reload". In this site a full relo
 - After writes whose result the editor already shows (colour-token Saves to `global.css`), `suppressContentHmr` skips HMR invalidation briefly. Writers leave unchanged files alone so a save that changes nothing does not reload (`videoPageMaxHeight.json`).
 - Staged edits are written in one batch per document (`contentBatchDevWriter`) so an HMR update from the first write cannot wipe later ones.
 - HTML is served `no-store` from a pre-middleware so Back after Create is a real GET rather than a bfcache copy of the old Home (seen in Zen/Firefox). It must be a pre-middleware because Vite ends the HTML response itself.
+- Dev SSR reads project and page JSON from disk instead of the eager JSON glob, which the gate leaves stale after API writes (`loadProjectFromDisk`, `loadAllProjectsFromDisk`, `loadPageFromDisk`).
 - New project routes: static output makes `prerender = false` a no-op in dev, so a new slug is routable only once Astro's `getStaticPaths` RouteCache is cleared. The create/settings/rename APIs call `invalidateAstroRouteCache`, and `projectRouteWatcher` watches the projects folder itself (Vite ignores it) to bust the cache when a file appears or disappears another way (an agent, a pull, a content Update).
 
 ## Consequences
@@ -23,4 +24,4 @@ New content needs a manual refresh. That is the intended trade.
 
 ## Where
 
-`scripts/content-hmr-gate.mjs` → `contentHmrGate`, `suppressContentHmr`, `MEDIA_ROOT`; `astro.config.mjs` → `optimizeDeps`, `server.watch.ignored`, `contentBatchDevWriter`, `styleTokenDevWriter`; `scripts/dev-api-plugins.mjs` → `invalidateAstroRouteCache`, `projectRouteWatcher`; `src/pages/[slug].astro` → `prerender`
+`scripts/content-hmr-gate.mjs` → `contentHmrGate`, `suppressContentHmr`, `MEDIA_ROOT`; `astro.config.mjs` → `optimizeDeps`, `server.watch.ignored`, `contentBatchDevWriter`, `styleTokenDevWriter`; `scripts/dev-api-plugins.mjs` → `invalidateAstroRouteCache`, `projectRouteWatcher`; `src/pages/[slug].astro` → `prerender`; `src/lib/projects.ts`

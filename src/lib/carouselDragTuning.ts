@@ -28,6 +28,5 @@ export function normalizeCarouselDragTuning(value: unknown): CarouselDragTuning 
 export function carouselRubberbandGive(overflow: number, tuning: CarouselDragTuning): number {
   const distance = Math.max(0, Math.abs(overflow) - tuning.dragThreshold);
   if (!distance) return 0;
-  // 2.5px is the fixed visual ceiling; tension controls diminishing marginal give.
   return Math.sign(overflow) * 2.5 * distance / (tuning.tension + distance);
 }

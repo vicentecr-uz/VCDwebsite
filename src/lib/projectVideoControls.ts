@@ -114,7 +114,6 @@ function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement, s
   if (typeof IntersectionObserver === 'undefined' || video.dataset.videoVisibilityBound === 'true') return;
   video.dataset.videoVisibilityBound = 'true';
   let fade: { volume: number; start: number; frame: number } | undefined;
-  // Ambient autoplay loops resume on return; a video the viewer started stays paused.
   const autoplay = video.dataset.autoplay === 'true';
   let pausedByVisibility = false;
   const pauseForVisibility = () => { pausedByVisibility = autoplay; video.pause(); };
@@ -214,7 +213,7 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
       video.preload = 'none';
       if (!resetting) {
         resetting = true;
-        try { video.load(); } catch { /* media may be detached during teardown */ }
+        try { video.load(); } catch {}
         resetting = false;
       }
     }
@@ -267,7 +266,6 @@ function bindVideoPoster(video: HTMLVideoElement, controller: HTMLElement, scope
       const token = generation;
       video.preload = 'auto';
       showBuffering();
-      // Synchronous play/pause preserves the user gesture for delayed playback.
       let result: Promise<void> | undefined;
       try { result = video.play(); } catch { restore(); return; }
       video.pause();
@@ -377,7 +375,6 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
       progress.style.setProperty('--project-video-buffered-ranges', mask);
     }
   };
-  // Show all buffered sections, including those away from the playhead.
   ['progress', 'loadeddata', 'durationchange', 'timeupdate', 'seeked', 'emptied']
     .forEach((eventName) => video.addEventListener(eventName, syncBuffered));
 
@@ -396,7 +393,6 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
       const target = event.composedPath()[0];
       control.toggleAttribute('data-video-keyboard-focus', target instanceof Element && target.matches(':focus-visible'));
     };
-    // Shadow range inputs cannot expose :focus-visible to selectors outside their host.
     control.addEventListener('focusin', syncKeyboardFocus);
     control.addEventListener('focusout', () => control.removeAttribute('data-video-keyboard-focus'));
     control.addEventListener('pointerdown', () => control.removeAttribute('data-video-keyboard-focus'), { capture: true });

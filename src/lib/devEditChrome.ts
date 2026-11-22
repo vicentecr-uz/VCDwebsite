@@ -1,10 +1,5 @@
 import type { ImageCaptionPositionId } from './imageCaptions';
 
-/**
- * Corner tokens for Dev Mode chrome buttons (Edit grid, etc.).
- * Keep `data-dev-corner` on a trigger in sync with its CSS inset corner —
- * collision logic keys off the token, not hard-coded top-left checks.
- */
 export type DevEditCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export function isDevEditCorner(value: unknown): value is DevEditCorner {
@@ -23,10 +18,6 @@ function captionPositionToChromeCorner(
   return null;
 }
 
-/**
- * True when a same-corner chrome control (e.g. Edit grid) sits over this image.
- * Ignores the caption trigger itself.
- */
 export function captionCornerConflictsWithChrome(
   imageTarget: HTMLElement,
   captionPosition: ImageCaptionPositionId,
@@ -34,7 +25,6 @@ export function captionCornerConflictsWithChrome(
   const chromeCorner = captionPositionToChromeCorner(captionPosition);
   if (!chromeCorner) return false;
 
-  // Prefer the visible crop/image frame — carousel slides are full track width.
   const frame = imageTarget.querySelector<HTMLElement>(
     '.project-image-grid__frame, .project-crop-clip',
   );
@@ -65,7 +55,6 @@ export function captionCornerConflictsWithChrome(
   return false;
 }
 
-/** Keep a nested carousel's edit button below a colliding grid button. */
 export function syncNestedCarouselChrome(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.dev-carousel-edit-target').forEach((carousel) => {
     const nestedTrigger = carousel.querySelector<HTMLElement>(':scope > [data-dev-edit-trigger="carousel"]');

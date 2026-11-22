@@ -1,20 +1,12 @@
-// The editor segmented control's sliding selection, shared with controls that change selection from script.
 export const selected = ':scope > .dev-btn:is(.is-active, .is-selected, [aria-pressed="true"])';
 const motion = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: no-preference)') : null;
 
-// Each edge of the pill rides its own spring, after Motion's time-defined springs
-// (motion-dom generators/spring.ts): stiffness (2π / (visualDuration × 1.2))², damping ratio
-// 1 − bounce, unit mass, starting at rest. The leading edge is quicker and lands without
-// overshoot; the trailing edge follows, so the pill stretches toward the target and then catches
-// up. The animation runs until both edges rest instead of for a fixed time, so it never cuts a
-// moving spring short. Tuned live on a throwaway prototype.
 const LEAD = { visualDuration: 250, bounce: 0 };
 const TRAIL = { visualDuration: 400, bounce: 0.2 };
-const STEP = 10; // ms between samples, as Motion's linear() easing
-const REST_DELTA = 0.1; // px; Motion's default 0.5 left a visible last-frame jump
-const REST_SPEED = 2; // px/s, Motion's default
+const STEP = 10;
+const REST_DELTA = 0.1;
+const REST_SPEED = 2;
 
-// Position and velocity (px, px/s) t seconds into an edge's move of delta px.
 const spring = ({ visualDuration, bounce }: typeof LEAD) => {
   const w = (2 * Math.PI) / ((visualDuration / 1000) * 1.2);
   const z = Math.max(1 - bounce, 0.05);
@@ -40,10 +32,6 @@ const resting = (edge: typeof lead, delta: number, ms: number) => {
   return Math.abs(delta - x) <= REST_DELTA && Math.abs(v) <= REST_SPEED;
 };
 
-// Fractional layout box within the group: offset* round to whole pixels, so the pill would land
-// off the button and snap when removed. Size comes from computed style and position from the
-// rect's center, so a pressed button's centered scale doesn't shrink the box.
-// Rects are divided by the group's drawn scale, so a group inside a CSS-scaled stage measures in its own px.
 const box = (el: Element, group: HTMLElement) => {
   const r = el.getBoundingClientRect();
   const g = group.getBoundingClientRect();
@@ -60,10 +48,8 @@ const box = (el: Element, group: HTMLElement) => {
 };
 
 const pending = new WeakMap<Element, number>();
-// The sampled [left, right] edges of a pill in flight, so a click mid-flight starts from them.
 const flights = new WeakMap<Element, { edges: Array<[number, number]>; animation: Animation }>();
 
-/** Slide the pill off `previous` to whatever is selected once the caller's own handlers have run. */
 export function slideSelection(group: HTMLElement, previous: HTMLElement) {
   if (pending.has(group) || !motion?.matches) return;
   const oldPill = group.querySelector<HTMLElement>(':scope > .dev-segmented__indicator');
@@ -76,7 +62,6 @@ export function slideSelection(group: HTMLElement, previous: HTMLElement) {
     from = { left, right };
   }
 
-  // Existing click handlers own selection. Read their result before paint.
   pending.set(group, requestAnimationFrame(() => {
     pending.delete(group);
     const [next, extra] = group.querySelectorAll<HTMLButtonElement>(selected);
@@ -86,11 +71,6 @@ export function slideSelection(group: HTMLElement, previous: HTMLElement) {
     oldPill?.remove();
     group.querySelector(':scope > [data-segment-target]')?.removeAttribute('data-segment-target');
 
-    // Move each edge independently without scaling the corners, using transforms only so the
-    // slide stays smooth while the page is busy (a viewport preview morph reflows it every frame).
-    // The pill is a clip whose right edge is the selection's right edge; its fill is a same-size
-    // box whose left edge is the selection's left edge. What shows is the overlap, with the
-    // clip's corners on the right and the fill's own on the left.
     const target = box(next, group);
     const span = group.clientWidth;
     const pill = document.createElement('span');
@@ -125,7 +105,6 @@ export function slideSelection(group: HTMLElement, previous: HTMLElement) {
   }));
 }
 
-/** Drop a slide that hasn't started, as a keyboard-driven change does. */
 export function cancelSlide(group: HTMLElement) {
   const frame = pending.get(group);
   if (frame !== undefined) cancelAnimationFrame(frame);

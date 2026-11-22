@@ -16,6 +16,10 @@ Each record names files and symbols, never line numbers, so `rg` finds the code.
 | [0008](0008-dev-tooling.md) | Dev tooling must degrade cleanly where it cannot run |
 | [0009](0009-public-routes.md) | Public routing: Sabi subdomain, tracked short links, absolute metadata |
 | [0010](0010-interface-ownership.md) | Components own their spacing; floating layers use the top layer |
+| [0011](0011-media-rendering.md) | Image and video upgrades never move the page |
+| [0012](0012-image-carousel.md) | Carousels scroll natively and follow fractional progress |
+| [0013](0013-motion.md) | Chosen motion models and the rejected alternatives |
+| [0014](0014-untrusted-input.md) | Links, colours, client IPs and the teaser gate |
 
 ## Template
 

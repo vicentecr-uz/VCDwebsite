@@ -7,7 +7,6 @@ export function inspectorWantsShellViewport(stack: string): boolean {
 
 export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   const cookies = document.cookie.split(';').map((cookie) => cookie.trim());
-  // On wherever the page runs in the canvas, unless this browser turned the chrome off.
   if (cookies.includes('vcd-canvas-chrome=0') || window.name !== 'vcd-canvas' || window.parent === window) return;
   const host = window.parent.document;
   const layer = host.querySelector<HTMLElement>('[data-canvas-chrome]');
@@ -35,7 +34,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   let stopped = false;
 
   const mirrorStyles = () => {
-    // Body styles count too: Astro emits `astro-island { display: contents }` beside the first island.
     const sources = new Set(queryAll('style, link[rel="stylesheet"]'));
     for (const [source, clone] of styles) {
       if (!sources.has(source)) { clone.remove(); styles.delete(source); }
@@ -63,8 +61,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     for (const attr of root.attributes) if (isState(attr.name)) hostRoot.setAttribute(attr.name, attr.value);
   };
   const notifyMoved = () => window.dispatchEvent(new window.CustomEvent('vcd:canvas-chrome-moved'));
-  // Nodes React creates inside hoisted chrome belong to the shell's realm, and hoisted nodes to the
-  // frame's. Let each window's DOM classes accept the other's instances while chrome is hoisted.
   const hostWindow = host.defaultView as unknown as Record<string, unknown>;
   const frameWindow = window as unknown as Record<string, unknown>;
   const realmNames = Object.getOwnPropertyNames(window).filter((name) =>
@@ -115,9 +111,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     if (viewportPatched) return;
     if (viewportProperties.some(({ own }) => own && !own.configurable)) return;
     viewportPatched = true;
-    // Deliberate dev-only corner-cut: package function names identify inspector reads.
-    // Renamed functions fail safe to today's viewport. Upgrade to an upstream custom
-    // viewport option or bun patch when these packages support a sturdier integration.
     try {
       for (const { target, name, shell, read } of viewportProperties) {
         Object.defineProperty(target, name, { configurable: true, get: () =>
@@ -141,7 +134,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
         ?? [...layer.querySelectorAll('[id]')].find((node) => node.id === id) ?? null },
       querySelectorAll: { configurable: true, value: (selector: string) => {
         const nodes = [...queryAll(selector), ...layer.querySelectorAll(selector)];
-        // A static NodeList-shaped collection retains item() as well as indexed/iterable callers.
         const list = Object.assign(Object.create(null), nodes, {
           length: nodes.length,
           item: (index: number) => nodes[index] ?? null,
@@ -189,7 +181,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
   for (const type of eventTypes) layer.addEventListener(type, onLayerEvent);
   const rememberPointer = (event: PointerEvent) => {
     lastPointerTarget = event.target as Node | null;
-    // Lapse stops pointerdown at its host, before the layer's bubbling listener.
     if (owns(event.target)) {
       pointers.add(event.pointerId);
       if (!event.pointerType || event.pointerType === 'mouse') mousePressed = true;
@@ -303,7 +294,6 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
       if (record.target !== document.body || !fromChrome) continue;
       for (const node of record.addedNodes) {
         if (!(node instanceof window.Element) || node.parentNode !== document.body) continue;
-        // Base UI's React-owned portal cannot be reparented safely: React removes it from body on unmount.
         if (node.matches('[popover]:popover-open')) move(node);
       }
     }

@@ -1,6 +1,5 @@
 import tlds from 'tlds';
 
-/** Env bindings for listmonk (Pages `env` or Node process/.dev.vars). */
 export type SignupEnv = {
   LISTMONK_URL?: string;
   LISTMONK_API_USER?: string;
@@ -9,7 +8,6 @@ export type SignupEnv = {
 };
 
 export type SignupHandlerOptions = {
-  /** Allow localhost / LAN origins (astro-dev only). */
   isDev?: boolean;
 };
 
@@ -21,7 +19,6 @@ const PROD_ORIGINS = new Set([
   'https://vicentecr.uz',
 ]);
 
-// Match ProjectSignup.astro: HTML email type + tlds package (via URL hostname).
 const HTML_EMAIL =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 const VALID_TLDS = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
@@ -37,7 +34,6 @@ const json = (status: number, body: Record<string, unknown>) =>
 const unavailable = () => json(503, { error: 'Signup is not available yet.' });
 const badGateway = () => json(502, { error: 'Signup is not available yet.' });
 
-// Cloudflare sets cf-connecting-ip itself; a client can prefix X-Forwarded-For, so it is only a non-Cloudflare fallback.
 function clientIp(request: Request): string {
   return (
     request.headers.get('cf-connecting-ip')
@@ -85,7 +81,6 @@ function isAllowedOrigin(request: Request, isDev: boolean): boolean {
   }
 }
 
-/** Same copy as ProjectSignup.astro client validation. */
 export function validateSignupEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return 'Enter a valid email address.';
   const email = raw.trim();
@@ -113,7 +108,6 @@ function getCache(): Cache | null {
   try {
     const stores = (globalThis as typeof globalThis & { caches?: CacheStorage }).caches;
     if (!stores) return null;
-    // Cloudflare Workers expose caches.default; browsers use caches.open.
     const def = (stores as CacheStorage & { default?: Cache }).default;
     return def ?? null;
   } catch {
@@ -217,9 +211,6 @@ async function readJsonBody(request: Request): Promise<{ ok: true; value: unknow
   }
 }
 
-/**
- * Shared signup POST handler for Cloudflare Pages Functions and local Vite middleware.
- */
 export async function handleSignupRequest(
   request: Request,
   env: SignupEnv | null | undefined,
@@ -286,6 +277,5 @@ export async function handleSignupRequest(
     return badGateway();
   }
 
-  // Unexpected 4xx from listmonk — do not leak internals.
   return badGateway();
 }

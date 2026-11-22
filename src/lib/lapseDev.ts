@@ -1,6 +1,4 @@
 import gsap from 'gsap';
-// getSharedEngine from /panel (not the React entry) — this project has no react/react-dom,
-// and Vite fails optional peer resolution on `@aiforui/lapse` with a hard error.
 import { getSharedEngine, mountLapse } from '@aiforui/lapse/panel';
 
 if (!document.documentElement.hasAttribute('data-canvas-shell')) {
@@ -8,8 +6,6 @@ if (!document.documentElement.hasAttribute('data-canvas-shell')) {
   getSharedEngine().registerGSAP(gsap);
   mountLapse();
 
-  // Visibility only — do not unmount. Unmount resets speed to 1× and drops take state.
-  // Panel host is created asynchronously (React root after mountLapse), so hide when it appears.
   const panelHost = (): HTMLElement | null =>
     document.querySelector<HTMLElement>('[data-lapse-slot]');
 

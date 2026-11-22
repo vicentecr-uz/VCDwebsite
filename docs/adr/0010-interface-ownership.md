@@ -12,6 +12,12 @@ Details live in `docs/interface/`; this records the decisions the guard tests en
 
 **Floating layers use the top layer.** Every `.project-block` is a stacking context (`isolation: isolate`) and the containing block for `position: fixed` (`container-type: inline-size`), so a menu, listbox or tooltip inside one paints under the next block whatever its z-index. Floating layers open as native popovers. Menus and listboxes are built from the Menu component, which owns their padding, gap, radius and separators.
 
+**Site drawing owns the page.** While not idle (`menu` or `drawing`), every hover- or proximity-revealed editor control stands down so it never lands under the pen. `drawing` ignores menu events, so closing the manage menu while the stage opens cannot drop the page back to idle mid-stroke.
+
+**Code and icons.** Code surfaces use one Shiki theme of three greys (after sonner.emilkowal.ski) drawn from the `sys.color.code-*` tokens: names carry the ink; keywords, strings and attributes recede; punctuation and comments recede further. Lucide icons are resized by width and height only: stroke 2 on a 24 viewBox already matches the hand-drawn dev icons at 14 px.
+
+**Report exhibits** are served outside `/preview`, so the craft-demo contract (`craft-demo-build.test.mjs`) stays about signed-off demos.
+
 **Touch.** Inputs are at least 16 px so iOS Safari does not zoom the page on focus.
 
 **Block reordering.** Renumbering after a drop reads the full item list: `getItems()` excludes the drag item, which is still set while the drop resolves, and numbering from it skipped the dropped card. Edge-scroll speed eases cubically so target speed is G²-continuous at the dead-zone edge.
@@ -22,4 +28,4 @@ Details live in `docs/interface/`; this records the decisions the guard tests en
 
 ## Where
 
-`scripts/test/dev-chrome-ownership.test.ts`; `scripts/test/top-layer-floating.test.ts`; `src/lib/floatingLayer.ts`; `src/pages/flat-iron-ranker.astro` → `syncOrderFromDom`; `src/pages/dev/scroll-hold.astro`; `src/pages/dev/home-reveal.astro`; `src/pages/the-bridge-1min-video-nov2026-application.astro`
+`scripts/test/dev-chrome-ownership.test.ts`; `scripts/test/top-layer-floating.test.ts`; `src/lib/floatingLayer.ts`; `src/pages/flat-iron-ranker.astro` → `syncOrderFromDom`; `src/pages/dev/scroll-hold.astro`; `src/pages/dev/home-reveal.astro`; `src/pages/the-bridge-1min-video-nov2026-application.astro`; `src/lib/siteDrawMode.ts`; `src/lib/codeTheme.ts`; `src/lib/icons.ts`; `src/lib/craftDemos.ts`

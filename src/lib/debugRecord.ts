@@ -1,6 +1,3 @@
-// Dev-only debug recorder (server half: scripts/dev-debug-record.mjs). The production
-// boundary replaces this module with an empty `debugRecord`, so nothing here ships.
-// Calls are temporary: add them to chase a bug, remove them before committing.
 
 type Entry = { t: number; data: unknown };
 
@@ -22,14 +19,12 @@ function flush() {
   const topic = activeTopic();
   if (!entries.length || !topic) { entries = []; return; }
   let body = '';
-  // Unserialisable data (a cycle, a DOM node) must not break the page being debugged.
   try { body = JSON.stringify({ topic, path: batchPath, width: window.innerWidth, height: window.innerHeight, entries }); }
   catch { body = JSON.stringify({ topic, path: batchPath, width: window.innerWidth, height: window.innerHeight, entries: [{ t: Date.now(), data: 'unserialisable entry' }] }); }
   entries = [];
   navigator.sendBeacon('/api/dev-record', body);
 }
 
-/** Record `data` under `topic`. Does nothing unless `/dev/record/on?topic=<topic>` set the cookie. */
 export function debugRecord(topic: string, data: unknown) {
   if (typeof document === 'undefined' || activeTopic() !== topic) return;
   const path = `${location.pathname}${location.search}`;

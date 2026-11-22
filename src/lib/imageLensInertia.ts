@@ -1,10 +1,6 @@
 export type Vec = { x: number; y: number };
 export type Bounds = { min: number; x: number; y: number };
 
-/** Lens release — decided from /proto/lens-momentum
- *  Direction: cubic ease-out coast, bumper wall (spring foam + slap at the stops)
- *  friction 10/s, threshold 150 px/s, stiffness 240, restitution 0.4
- *  Rejected: exponential cutoff (kinked at 0); linear slide; clamp wall (dumped leftover speed); spring-only (no slap) */
 export const LENS_INERTIA = {
   friction: 10,
   threshold: 150,

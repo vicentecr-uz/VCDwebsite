@@ -27,7 +27,6 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
   const panelRadius = ({ width, height }: DOMRect, minimized: boolean) => {
     const radius = win.getComputedStyle(panel).borderRadius;
     if (!minimized || !panel.classList.contains('dev-overlay')) return radius;
-    // CSS clamps the oversized resting radius to the bar's dimensions.
     const pixels = Number.parseFloat(radius);
     return Number.isFinite(pixels) ? `${Math.min(pixels, width / 2, height / 2)}px` : radius;
   };
@@ -101,8 +100,6 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       const bodyTop = bodyRect.top - panelRect.top;
       const paddingBottom = Number.parseFloat(win.getComputedStyle(panel).paddingBottom) || 0;
       const bodyStyles = win.getComputedStyle(body);
-      // The native body already clips to its shaped corners. The moving inset
-      // only limits how much of the body is revealed above the panel padding.
       const corners = bodyStyles.getPropertyValue('corner-shape') === 'superellipse(1.33)'
         ? ''
         : ` round 0 0 ${bodyStyles.borderBottomLeftRadius} ${bodyStyles.borderBottomRightRadius}`;
@@ -113,13 +110,11 @@ export function createDevPanelCollapse(panel: HTMLElement, options: PanelCollaps
       ];
     }
     if (!reduced) {
-      // Only this bounded panel changes size; animating its box avoids scaling text and controls.
       animations.push(panel.animate([
         { height: `${fromHeight}px`, borderRadius: fromRadius },
         { height: `${toHeight}px`, borderRadius: toRadius },
       ], timing));
     } else {
-      // Keep the final geometry while the body fades, including the header-only collapsed size.
       animations.push(panel.animate([{ height: `${toHeight}px` }, { height: `${toHeight}px` }], { duration, fill: 'both' }));
     }
     animations.push(body.animate([{ opacity: fromOpacity }, { opacity: minimized ? 0 : 1 }], { duration, easing: 'ease', fill: 'both' }));

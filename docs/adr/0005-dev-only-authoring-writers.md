@@ -20,8 +20,17 @@ In-page Edit writes content JSON from the browser. The live site is static and m
 - `styles` starts from a generated catalog, so an authored empty outline is marked `outlineConfigured`.
 - Storage holds bare asset tokens; responses resolve them to ready-to-use URLs for live preview, and writers normalise incoming URLs back to tokens rather than trusting the client.
 
+**Editor model.**
+
+- The project outline is a flat list of markers: a `group` (Intro, Research, …) and a `section` inside one. A section owns the page from its start anchor to the next section or group marker, so several page blocks can share one marker. New markers are inserted at their block's page position, never pushed to the end, which left new titles last in the sidebar and let re-added markers inherit the wrong group.
+- Captions, caption reveals and other per-breakpoint values cascade down when written: desktop writes tablet and mobile, tablet writes mobile, mobile writes only itself.
+- The first block on a page defaults to flush spacing; an explicit `section` there means 8em at the page top.
+- Image-frame fills are opaque RGB; an alpha of `00` is the canonical "no fill".
+- Unregistered text controls keep native undo; authored page text uses the page history stack.
+- Placeholder labels are measured with a non-editable probe, because focusing a contenteditable node inflates `scrollWidth` and made the label jump smaller.
+
 **Public output.** A public project page always ships at its URL; one navigation does not reach is kept but not traversed, so it never publishes what it links to, and it is marked `noindex`.
 
 ## Where
 
-`astro.config.mjs` → `imageCropDevWriter`, `applyCarouselChange`, `contentSectionDevWriter`, `contentNavDevWriter`; `scripts/dev-api-plugins.mjs` → listing and gallery-membership writers; `scripts/dev-assets.mjs` → `removeMediaItemFromDocument`, `stripAssetRefsFromDocument`; `scripts/production-boundary.mjs`; `scripts/public-site-output.mjs`; `scripts/dev-publish.mjs` → `publishDevWriter`
+`astro.config.mjs` → `imageCropDevWriter`, `applyCarouselChange`, `contentSectionDevWriter`, `contentNavDevWriter`; `scripts/dev-api-plugins.mjs` → listing and gallery-membership writers; `scripts/dev-assets.mjs` → `removeMediaItemFromDocument`, `stripAssetRefsFromDocument`; `scripts/production-boundary.mjs`; `scripts/public-site-output.mjs`; `scripts/dev-publish.mjs` → `publishDevWriter`; `src/lib/projectOutline.ts` → `insertOutlineEntriesAtPagePosition`; `src/lib/imageCaptions.ts`; `src/lib/projectStack.ts` → `resolveStackSpacingForIndex`; `src/lib/imageBackground.mjs`; `src/lib/devHistory.ts`; `src/lib/placeholderLabel.ts`

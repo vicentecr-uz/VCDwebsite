@@ -9,7 +9,7 @@ export function bindImageReplaceControls(root: HTMLElement, options: { onFile: (
   const isControl = (event: Event) => event.target instanceof Element && Boolean(event.target.closest('button, input'));
   const openPicker = () => {
     if (typeof input.showPicker === 'function') {
-      try { input.showPicker(); return; } catch { /* fall through when native picker rejects activation */ }
+      try { input.showPicker(); return; } catch {}
     }
     input.click();
   };

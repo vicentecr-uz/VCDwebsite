@@ -63,8 +63,6 @@ const PENS = new Set<SiteAnnotation["strokes"][number]["pen"]>([
   "fountain",
 ]);
 
-// Drawesome stores CSS colors. Keep the accepted subset serializable and free of CSS functions
-// that could introduce external resources or declarations when the value is rendered.
 const COLOR = /^(?:#[\da-f]{3,8}|rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)|hsla?\(\s*\d+(?:\.\d+)?\s*,\s*\d+(?:\.\d+)?%\s*,\s*\d+(?:\.\d+)?%(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\))$/i;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

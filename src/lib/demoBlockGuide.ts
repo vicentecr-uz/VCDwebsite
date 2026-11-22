@@ -54,7 +54,6 @@ export function createDemoBlockGuide({ root, cursor, imageBlock, textBlock, gaps
   });
   const center = (element: Element): Point => {
     const rect = element.getBoundingClientRect();
-    // Controls handed to the host frame report host coordinates; shift them back into the demo's.
     const origin = element.ownerDocument === document ? null : demoHostFrame(win)?.getBoundingClientRect();
     return { x: rect.left + rect.width / 2 - (origin?.left ?? 0), y: rect.top + rect.height / 2 - (origin?.top ?? 0) };
   };

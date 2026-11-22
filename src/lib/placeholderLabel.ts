@@ -7,20 +7,13 @@ const MIN_FONT_PX = 10;
 const MAX_FONT_PX = 20;
 const MAX_WIDTH_RATIO = 0.4;
 const MAX_HEIGHT_RATIO = 0.6;
-/** Subpixel slack so a fitting size is not rejected. */
 const FIT_SLACK_PX = 1;
 
 const boundCleanups = new WeakMap<HTMLElement, () => void>();
 
-/**
- * Measure with a non-contenteditable probe. Focusing a contenteditable node
- * inflates scrollWidth (caret / internal layout), which made the page label
- * (and its edit dash) jump smaller while the panel preview stayed stable.
- */
 function fitFontSize(el: HTMLElement, box: HTMLElement): void {
   const boxW = box.clientWidth;
   const boxH = box.clientHeight;
-  // Degenerate while crop chrome mounts — keep the current size, refit next frame.
   if (boxW < 8 || boxH < 8) return;
 
   const maxW = boxW * MAX_WIDTH_RATIO;
@@ -81,7 +74,6 @@ export function bindFitPlaceholderLabel(el: HTMLElement): () => void {
     if (raf) cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       raf = 0;
-      // Second frame: crop-stage layout often settles one paint later.
       raf = requestAnimationFrame(() => { raf = 0; fit(); });
     });
   };

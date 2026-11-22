@@ -144,7 +144,6 @@ export function installHistoryShortcuts(signal: AbortSignal) {
     const target = previous && !closedLayer ? previous : keyboardTarget;
     const scope = activeScopes().find((entry) => entry === selectedScope) ?? scopeFor(target);
     const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
-    // Unregistered text controls keep native undo; authored page text belongs to the page stack.
     if (!scope && nativeField && !nativeField.hasAttribute('data-dev-text-document')
       && !nativeField.hasAttribute('data-dev-history-text')) return;
     event.preventDefault();

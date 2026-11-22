@@ -31,7 +31,6 @@ export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 }
 
-/** Keep live media chrome in sync when an editor changes the source in place. */
 export function syncPlaceholderState(
   target: HTMLElement,
   src: string,
@@ -55,7 +54,6 @@ export function syncPlaceholderState(
   return placeholder;
 }
 
-/** Replace source dimensions without allowing metadata from the previous image to linger. */
 export function syncImageSourceDims(
   target: HTMLElement,
   dims?: { srcWidth?: number; srcHeight?: number },
@@ -97,7 +95,6 @@ export function suppliedImageVariants(
   return undefined;
 }
 
-/** Read `srcWidth`/`srcHeight` off an image node, if the migration stamped them. */
 export function imageSourceDims(node: {
   srcWidth?: unknown;
   srcHeight?: unknown;
@@ -156,13 +153,11 @@ export function resolveGridItemCrop(
   };
 }
 
-/** Allowed max view-height caps (% of `--vh-safe`). Matches grid width steps. */
 export const MAX_VH_PERCENTS = [90, 80, 70, 60, 50, 40, 30] as const;
 export type MaxVhPercent = (typeof MAX_VH_PERCENTS)[number];
 
 const MAX_VH_SET = new Set<number>(MAX_VH_PERCENTS);
 
-/** Resolve `maxVh` from content; `max80: true` still maps to 80. */
 export function resolveMaxVh(source: {
   maxVh?: unknown;
   max80?: unknown;
@@ -192,7 +187,6 @@ export interface ImageDevEditContext {
   path: Array<string | number>;
   cropId: string;
   variants: ImageVariants | undefined;
-  /** Sparse authored variants, kept separate from the resolved render map. */
   authoredVariants?: ImageVariants;
   src?: string;
   srcWidth?: number;
@@ -204,21 +198,15 @@ export interface ImageDevEditContext {
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   gridDefaultAspect?: string;
   hasOwnVariants?: boolean;
-  /** Standalone image block width constraint (per-breakpoint % or legacy boolean). */
   constrained?: ImageGridConstrained;
-  /** Original sparse width constraint authoring, separate from resolved CSS values. */
   authoredConstrained?: ImageGridConstrained;
-  /** Centre the constrained block in its stack column. */
   centered?: boolean;
-  /** Cap rendered height at N% of the viewport (`maxVh`). */
   maxVh?: MaxVhPercent;
-  /** Opt a full-width mobile image back into the page gutter. */
   mobileInset?: boolean;
   background?: string;
   videoAudio?: VideoAudioSetting;
 }
 
-/** Per-viewport default frame aspects for gallery listing covers (seed only). */
 export function listingCoverDefaultAspects(
   grid: 'home' | 'play',
 ): Record<ImageViewport, string> {
@@ -247,7 +235,6 @@ function seedHoverVariants(
   }, {} as Record<ImageViewport, ImageVariant>);
 }
 
-/** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
 export function listingCoverDevEditAttrs(
   slug: string,
   grid: 'home' | 'play',

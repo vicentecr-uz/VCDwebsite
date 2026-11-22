@@ -1,13 +1,10 @@
-/** The site's project-page iframe hosting this demo window, if any. */
 export function demoHostFrame(win: Window): HTMLIFrameElement | null {
   try {
-    // Only the site's same-origin demo embeds can project onto their parent page.
     const candidate = win.frameElement as HTMLIFrameElement | null;
     return candidate?.closest('project-demo-content') ? candidate : null;
-  } catch { return null; /* A foreign embed keeps its chrome in its own document. */ }
+  } catch { return null; }
 }
 
-/** Keep presentation-only input indicators outside demo content and its iframe. */
 export function createDemoIndicatorLayer(anchor: HTMLElement, coordinates: 'element' | 'viewport' = 'viewport') {
   const source = anchor.ownerDocument;
   const win = source.defaultView!;

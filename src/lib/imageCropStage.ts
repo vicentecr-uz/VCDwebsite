@@ -9,7 +9,6 @@ export interface CropStageParts {
 
 const RESIZE_DIRECTIONS: CropResizeDirection[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 
-/** Build the dynamic on-page crop surface shared by the editor and demos. */
 export function createImageCropStage(options: {
   src: string;
   background?: string;

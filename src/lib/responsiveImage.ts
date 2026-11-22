@@ -1,26 +1,12 @@
 export type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
-/**
- * Frame + content, kept deliberately separate.
- *
- * `aspect` is the *frame*: the shape of the box on the page. `cx`/`cy`/`w`
- * describe the *content*: which part of the source bitmap sits in that box,
- * anchored to the source image rather than to the rendered frame. That anchoring
- * is the whole point — the same values pick the same slice at any frame size,
- * so a crop no longer drifts when the breakpoint, caption or height cap changes.
- */
 export interface ImageVariant {
-  /** Frame shape, `"W:H"` or `"original"` (natural ratio). */
   aspect: string;
-  /** Source point at the frame centre, 0–1 of natural width. */
   cx: number;
-  /** Source point at the frame centre, 0–1 of natural height. */
   cy: number;
-  /** Fraction of source width spanned by the frame. Values above 1 scale unlocked images below fit. */
   w: number;
 }
 
-/** Pre-migration shape. Read-only support; see scripts/migrate-crop-rects.mjs. */
 export interface LegacyImageVariant {
   aspectRatio: string;
   x: number;
@@ -32,32 +18,22 @@ export type ImageVariants = Partial<
   Record<ImageViewport, Partial<ImageVariant> & Partial<LegacyImageVariant>>
 >;
 
-/** Natural pixel dimensions, stored on the image node as `srcWidth`/`srcHeight`. */
 export interface ImageSourceDims {
   width: number;
   height: number;
 }
 
-/** Legacy single count, or per-breakpoint column counts. */
 export type ImageGridColumns = number | Partial<Record<ImageViewport, number>>;
 
-/**
- * Grid width constraint as a percent (30–90), 'text' (match the text column),
- * or 100 / false / omitted for full width. Legacy boolean `true` maps to 80.
- * Per-breakpoint object inherits smaller widths from the next larger
- * breakpoint when omitted.
- */
 export type ImageGridConstrainedValue = number | boolean | 'text';
 export type ImageGridConstrained =
   | ImageGridConstrainedValue
   | Partial<Record<ImageViewport, ImageGridConstrainedValue>>;
 
-/** Allowed constrain dropdown values (100 = None / full width). */
 export const IMAGE_GRID_CONSTRAIN_PERCENTS = [30, 40, 50, 60, 70, 80, 90, 100] as const;
 
 export type ImageGridConstrainPercent = (typeof IMAGE_GRID_CONSTRAIN_PERCENTS)[number] | 'text';
 
-/** Visible item ids for one breakpoint. Omitted breakpoints inherit from the next larger one. */
 export interface ImageGridLayout {
   visible: string[];
 }
@@ -67,7 +43,6 @@ export type ImageGridLayouts = Partial<Record<ImageViewport, ImageGridLayout>>;
 export interface ResolvedImageGridLayout {
   visible: string[];
   hidden: string[];
-  /** True when this viewport uses its own saved layout rather than inheriting. */
   overridden: boolean;
 }
 
@@ -131,14 +106,6 @@ export function resolveImageGridConstrained(
   return { desktop: 100, tablet: 100, mobile: 100 };
 }
 
-/**
- * Percentages measure against the media column cap (`--page-media-max-width`),
- * not the containing block, so a constrained block's width no longer chases a
- * page column that later shrinks to fit its content. `min(100%, …)` is not
- * optional: `calc(50em * 0.8)` is an absolute length (~40em) that would
- * overflow a narrow phone, where the old `80%` was always safe — every
- * non-100 branch must stay wrapped in it. Do not "simplify" this away.
- */
 export function imageGridConstrainedStyle(
   constrained: Record<ImageViewport, ImageGridConstrainPercent>,
 ): string {
@@ -156,7 +123,6 @@ export function imageGridConstrainedStyle(
     .join(';');
 }
 
-/** True when any breakpoint uses less than full column width. */
 export function imageHasWidthConstraint(
   constrained: Record<ImageViewport, ImageGridConstrainPercent>,
 ): boolean {
@@ -175,11 +141,6 @@ const sanitizeVisibleIds = (itemIds: string[], visible: string[] | undefined): s
   return next;
 };
 
-/**
- * Resolve per-breakpoint visible/hidden lists. Desktop starts from the items
- * array order; tablet inherits desktop; mobile inherits tablet — unless that
- * viewport has its own `layouts[viewport]` override.
- */
 export function resolveImageGridLayouts(
   itemIds: string[],
   layouts: ImageGridLayouts | undefined,
@@ -223,12 +184,6 @@ const hasRectFields = (
   variant: (Partial<ImageVariant> & Partial<LegacyImageVariant>) | undefined,
 ): boolean => !!variant && (variant.w !== undefined || variant.cx !== undefined || variant.cy !== undefined);
 
-/**
- * Convert a pre-migration variant. Closed form and frame-independent — the same
- * maths as scripts/migrate-crop-rects.mjs, kept here so content the CMS writes in
- * the old shape still renders. Needs the natural ratio; without it we can only
- * carry the frame aspect across and centre the content.
- */
 const fromLegacy = (
   variant: Partial<LegacyImageVariant>,
   fallbackAspect: string,
@@ -251,12 +206,6 @@ const fromLegacy = (
   };
 };
 
-/**
- * Largest `w` that still covers the frame. Wider-than-frame sources must show
- * less than their full width or the frame is left short vertically — this is the
- * implicit default for content that has never been positioned (e.g. grid cells
- * inheriting the grid's aspect), matching the old cover-fit behaviour.
- */
 export function coverWidthFraction(aspect: string, srcAspect: number | null): number {
   if (!srcAspect) return 1;
   const frameAspect = aspect === 'original'
@@ -278,17 +227,10 @@ const normalizeVariant = (
     aspect,
     cx: variant?.cx ?? fallback.cx,
     cy: variant?.cy ?? fallback.cy,
-    // Width is an authored property. An inherited unlocked width must survive
-    // a frame change; clamping it here would silently turn inheritance into a
-    // new local cover-fit value.
     w: variant?.w ?? fallback.w,
   };
 };
 
-/**
- * Resolve per-breakpoint variants. Tablet inherits desktop and mobile inherits
- * tablet unless overridden — unchanged from before, only the fields differ.
- */
 export function normalizeImageVariants(
   variants: ImageVariants | undefined,
   fallbackAspect: string | Record<ImageViewport, string>,
@@ -334,7 +276,6 @@ export function normalizeImageVariants(
   return normalized;
 }
 
-/** Unitless width÷height for `calc()` (e.g. max-height width caps). */
 export function aspectRatioNumber(aspectRatio: string): number | null {
   if (!aspectRatio || aspectRatio === 'original') return null;
   const [widthRaw, heightRaw] = aspectRatio.split(':').map(Number);
@@ -342,13 +283,6 @@ export function aspectRatioNumber(aspectRatio: string): number | null {
   return widthRaw / heightRaw;
 }
 
-/**
- * Emit the per-breakpoint custom properties the frame and content read.
- *
- * With `srcDims` known, `aspect: "original"` resolves to a literal ratio here,
- * so the frame is correct in the first paint. Without it we fall back to the
- * JS-written var, which costs a layout pass once the bitmap decodes.
- */
 export function responsiveImageStyle(
   variants: Record<ImageViewport, ImageVariant>,
   srcDims?: ImageSourceDims | null,
@@ -380,7 +314,6 @@ export function responsiveImageStyle(
   }).join(';');
 }
 
-/** Hover bitmap pan/zoom — frame aspect stays on cover `responsiveImageStyle`. */
 export function hoverCropStyle(
   variants: Record<ImageViewport, ImageVariant>,
 ): string {

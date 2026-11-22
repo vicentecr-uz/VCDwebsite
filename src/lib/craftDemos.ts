@@ -1,5 +1,3 @@
-// Exhibits for the /reports design explorations. They are served outside /preview, so the
-// craft-demo contract (scripts/test/craft-demo-build.test.mjs) stays about signed-off demos.
 const prototype = (id: string, title: string, height: number, narrowHeight = height) =>
   ({ id: `future-${id}`, title, height, narrowHeight, route: `/reports/prototypes/${id}` });
 
@@ -19,7 +17,6 @@ export const CRAFT_DEMOS = [
   { id: 'gap-spacing', title: 'Draggable block system', height: 42 },
   { id: 'block-reorder', title: 'Block reorder', height: 46 },
   { id: 'proximity', title: 'Proximity reveal', height: 36 },
-  // Inline and content-sized: height is unused, data comes from the block's `sample`.
   { id: 'bar-chart', title: 'Bar chart', height: 0 },
   prototype('inline-bar', 'On-canvas image bar', 36, 34),
   prototype('inherited-values', 'Inherited values', 24),
