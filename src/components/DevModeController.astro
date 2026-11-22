@@ -115,9 +115,6 @@ import '../styles/site-annotation-editor.css';
       }));
     };
 
-    const launcherVariant = () =>
-      document.querySelector<HTMLElement>('[data-dev-launcher-variant]')?.dataset.variant ?? 'menu';
-
     const panelTitle = (panel: HTMLElement) =>
       panel.querySelector('.dev-overlay__title')?.textContent?.trim() || panel.dataset.devPanelKey || '';
 
@@ -126,86 +123,58 @@ import '../styles/site-annotation-editor.css';
         removeLauncher();
         return;
       }
-      const variant = launcherVariant();
-      let panels = devPanels();
+      const panels = devPanels();
       if (!panels.length) return;
-      if (variant === 'open') panels = [...panels.filter((panel) => !panel.hidden), ...panels.filter((panel) => panel.hidden)];
 
       const menu = document.createElement('div');
       menu.className = 'dev-launcher dev-menu';
       menu.popover = 'manual';
-      menu.dataset.variant = variant;
       menu.setAttribute('role', 'menu');
       menu.setAttribute('aria-label', 'Panels');
 
-      let search: HTMLInputElement | undefined;
-      if (variant === 'search') {
-        const field = document.createElement('div');
-        field.className = 'dev-field dev-field--no-label';
-        const value = document.createElement('div');
-        value.className = 'dev-field__value';
-        search = document.createElement('input');
-        search.type = 'search';
-        search.className = 'dev-field__input';
-        search.placeholder = 'Panel';
-        search.setAttribute('aria-label', 'Panel');
-        search.autocomplete = 'off';
-        search.spellcheck = false;
-        value.append(search);
-        field.append(value);
-        menu.append(field);
-      }
+      const field = document.createElement('div');
+      field.className = 'dev-field dev-field--no-label';
+      const value = document.createElement('div');
+      value.className = 'dev-field__value';
+      const search = document.createElement('input');
+      search.type = 'search';
+      search.className = 'dev-field__input';
+      search.placeholder = 'Panel';
+      search.setAttribute('aria-label', 'Panel');
+      search.autocomplete = 'off';
+      search.spellcheck = false;
+      value.append(search);
+      field.append(value);
+      menu.append(field);
 
-      const items = panels.map((panel, index) => {
+      const items = panels.map((panel) => {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item';
         item.setAttribute('role', 'menuitem');
         item.textContent = panelTitle(panel);
-        if (variant === 'open' && !panel.hidden) {
-          item.classList.add('is-selected');
-          item.setAttribute('aria-current', 'true');
-        }
-        pageScope.listen(item, 'click', () => {
-          if (variant === 'open' && !panel.hidden) {
-            removeLauncher();
-            panel.hidden = true;
-            window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
-            syncTunerOpenClass();
-            return;
-          }
-          openLauncherPanel(panel);
-        });
-        if (variant === 'open' && index > 0 && !panels[index - 1].hidden && panel.hidden) {
-          const rule = document.createElement('span');
-          rule.className = 'dev-hairline';
-          rule.setAttribute('role', 'presentation');
-          menu.append(rule);
-        }
+        pageScope.listen(item, 'click', () => openLauncherPanel(panel));
         menu.append(item);
         return item;
       });
 
       const shown = () => items.filter((item) => !item.hidden);
-      if (search) {
-        const input = search;
-        pageScope.listen(input, 'input', () => {
-          const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-          items.forEach((item) => {
-            const text = item.textContent!.toLowerCase();
-            item.hidden = !words.every((word) => text.includes(word));
-          });
+      pageScope.listen(search, 'input', () => {
+        const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+        items.forEach((item) => {
+          const text = item.textContent!.toLowerCase();
+          item.hidden = !words.every((word) => text.includes(word));
         });
-        pageScope.listen(input, 'keydown', (event: KeyboardEvent) => {
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            shown()[0]?.click();
-          } else if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            shown()[0]?.focus();
-          }
-        });
-      }
+      });
+      pageScope.listen(search, 'keydown', (event: KeyboardEvent) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          shown()[0]?.click();
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          shown()[0]?.focus();
+        }
+      });
 
       pageScope.listen(menu, 'keydown', (event: KeyboardEvent) => {
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -214,7 +183,7 @@ import '../styles/site-annotation-editor.css';
         const enabled = shown();
         if (!enabled.length) return;
         const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
-        if (search && current === 0 && event.key === 'ArrowUp') {
+        if (current === 0 && event.key === 'ArrowUp') {
           search.focus();
           return;
         }
@@ -227,19 +196,8 @@ import '../styles/site-annotation-editor.css';
       document.body.appendChild(menu);
       menu.showPopover();
       launcher = menu;
-      (search ?? items[0])?.focus();
+      search.focus();
     };
-
-    const variantSource = document.querySelector('[data-dev-launcher-variant]');
-    if (variantSource) {
-      const observer = new MutationObserver(() => {
-        if (!launcher) return;
-        removeLauncher();
-        toggleLauncher();
-      });
-      observer.observe(variantSource, { attributeFilter: ['data-variant'] });
-      pageScope.add(() => observer.disconnect());
-    }
 
     /*
       Not reduced-motion-gated. Entering and exiting dev mode is entirely
