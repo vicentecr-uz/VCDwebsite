@@ -289,6 +289,18 @@ const initialThemeColor = resolveToken('sys.color.srf');
     <link rel="canonical" href={canonical.href} />
     {noindex && <meta name="robots" content="noindex" />}
     <title>{title}</title>
+    {canonical.pathname === '/' && (
+      <script
+        type="application/ld+json"
+        set:html={JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          name: 'Vicente Cruz',
+          alternateName: 'vicentecr.uz',
+          url: canonical.origin + '/',
+        })}
+      />
+    )}
 
     <meta property="og:type" content={ogType} />
     <meta property="og:site_name" content="Vicente Cruz" />
