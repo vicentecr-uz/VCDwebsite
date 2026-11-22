@@ -254,18 +254,6 @@ test('EditorSelect islands navigate persistently while unsupported islands remai
   expect(supportsPersistentPage(shellDoc as any)).toBe(false);
 });
 
-test('dev readiness marker stays attached to the retained transition controller across pages', () => {
-  const win = fixture(); const doc = win.document;
-  doc.write(html('About'));
-  const marker = doc.createElement('output'); marker.id = 'transition-readiness-marker'; doc.body.prepend(marker);
-  const incoming = new win.DOMParser().parseFromString(html('Home'), 'text/html');
-  const nextMarker = incoming.createElement('output'); nextMarker.id = marker.id; incoming.body.prepend(nextMarker);
-  swapPageContent(doc as any, incoming as any);
-  expect(doc.getElementById(marker.id)).toBe(marker);
-  expect(marker.isConnected).toBe(true);
-});
-
-
 test('unseen Home navigation covers the retained header with the outgoing veil before swapping', () => {
   const win = fixture(); const doc = win.document;
   doc.head.innerHTML = '<meta name="astro-view-transitions-enabled" content="true">';
@@ -546,7 +534,7 @@ test('silent reveal invalidates old work and opens preview upgrades without rais
   const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(source.indexOf('      const revealWithoutVeil ='), source.indexOf('      installPersistentNavigation({')) + '\nreturn revealWithoutVeil;');
   const overlay = { style: { animation: '', opacity: '0' }, hidden: true, dataset: { loading: 'true' } };
   let invalidated = 0, bound = 0, opened = 0, completed = 0;
-  const reveal = new Function('invalidate', 'readinessMarker', 'overlay', 'bindImagePreviewUpgrade', 'emitTransitionMilestone', 'openImagePreviewUpgrade', 'window', 'Event', script)(() => invalidated++, null, overlay, () => bound++, () => {}, () => opened++, { dispatchEvent() { completed++; } }, Event);
+  const reveal = new Function('invalidate', 'overlay', 'bindImagePreviewUpgrade', 'emitTransitionMilestone', 'openImagePreviewUpgrade', 'window', 'Event', script)(() => invalidated++, overlay, () => bound++, () => {}, () => opened++, { dispatchEvent() { completed++; } }, Event);
   reveal();
   expect(overlay.hidden).toBe(true); expect(overlay.style.opacity).toBe('0');
   expect(overlay.dataset.loading).toBeUndefined();

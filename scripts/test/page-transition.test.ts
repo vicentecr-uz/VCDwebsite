@@ -166,7 +166,7 @@ class ReadinessRoot extends Target {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessRoot[]; fonts?: Promise<void>; fontSetReady?: Promise<void>; fontFaces?: Array<{ status: string; loaded: Promise<void> }>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessRoot[]; fonts?: Promise<void>; fontSetReady?: Promise<void>; fontFaces?: Array<{ status: string; loaded: Promise<void> }>; noOverlay?: boolean; initialController?: boolean; intro?: boolean; layoutPending?: boolean; deferNavigationModule?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean; deferAnimationReady?: boolean; failAnimation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   let bodyReads = 0;
@@ -218,7 +218,6 @@ function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessR
       return animation;
     },
   });
-  const readinessMarker = { hidden: true };
   const homeIntro = options.homeIntro ? Object.assign(new ContainerFixture(), { hidden: options.homeIntro.state === 'dismissed', dataset: { state: options.homeIntro.state ?? 'active' } }) : null;
   for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
@@ -237,9 +236,7 @@ function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessR
       },
       removeAttribute(name: string) { if (name === 'data-header-navigation') delete (this.dataset as any).headerNavigation; },
     },
-    getElementById: (id: string) => id === 'transition-readiness-marker'
-      ? (options.noReadinessMarker ? null : readinessMarker)
-      : (options.noOverlay ? null : overlay),
+    getElementById: () => (options.noOverlay ? null : overlay),
     querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {}
       : selector === '[data-home-intro-surface]' ? homeIntro : null,
     querySelectorAll: (selector: string) => selector === '[data-page-reveal-ready]'
@@ -322,7 +319,7 @@ function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessR
   if ((options as any).initialController) runInNewContext(earlyCompiled, context);
   if (!options.deferNavigationModule) runInNewContext(compiled, context);
   return {
-    overlay, readinessMarker, anchors, window, document, destinations, tweens, animations, frames, timers, marks, readinessRoots: options.readinessRoots ?? [],
+    overlay, anchors, window, document, destinations, tweens, animations, frames, timers, marks, readinessRoots: options.readinessRoots ?? [],
     get persistentHooks() { return persistentHooks; },
     get upgrades() { return upgrades; }, get bound() { return bound; }, get bodyReads() { return bodyReads; },
     click(index = 0, properties: Record<string, unknown> = {}) {
@@ -516,7 +513,6 @@ test('cached content uses the native incoming fade and approved GSAP outgoing co
   assert.equal(f.upgrades, 0);
   await f.frame();
   assert.equal(f.upgrades, 1);
-  assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.animations.length, 1);
   await f.finishReveal();
   assert.equal(f.overlay.hidden, true);
@@ -814,7 +810,7 @@ test('visible transition diagnostics never activate the activity indicator', asy
   assert.equal(f.overlay.dataset.loading, undefined);
 });
 
-for (const options of [{ noReadinessMarker: true }, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
+for (const options of [{}, { visible: true }, { failTween: true }, { failUpgrade: true }]) {
   test(`menu reveal notification starts with unveiling, after readiness: ${JSON.stringify(options)}`, async () => {
     const image = new ImageFixture();
     const f = fixture({ ...options, images: [image] });
@@ -996,8 +992,8 @@ test('active Home intro reveals after layout and two paints without underlying i
   assert.equal(image.decodeCalls, 0);
 });
 
-test('browser trace marks are emitted without the DEV readiness marker', async () => {
-  const f = fixture({ noReadinessMarker: true });
+test('browser trace marks are emitted', async () => {
+  const f = fixture();
   await f.paint();
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:transition-script-start'));
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:fonts-ready'));
@@ -1022,18 +1018,15 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   const f = fixture({ visible: true, images: [image] });
   await f.paint();
   assert.equal(Number(f.overlay.style.opacity), 0);
-  assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.upgrades, 0);
   assert.equal(f.tweens.length, 0);
   image.load();
   image.decoded.resolve();
   await f.paint();
   await f.paint();
-  assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
   await f.paint();
-  assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
 });
 
@@ -1042,11 +1035,9 @@ test('visible mode remains gated beyond four seconds until media is ready', asyn
   const f = fixture({ visible: true, images: [image] });
   await f.paint();
   await f.advance(4001);
-  assert.equal(f.readinessMarker.hidden, true);
   image.load();
   image.decoded.resolve();
   await f.paint();
-  assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
   assert.equal(f.tweens.length, 0);
 });
@@ -1061,19 +1052,16 @@ test('visible internal navigation skips outgoing tween and carries the diagnosti
 test('visible BFCache restore hides and re-shows the readiness marker once', async () => {
   const f = fixture({ visible: true });
   await f.paint();
-  assert.equal(f.readinessMarker.hidden, false);
   f.window.emit('pagehide', { persisted: true });
   f.window.emit('pageshow', { persisted: true });
-  assert.equal(f.readinessMarker.hidden, true);
   await f.paint();
-  assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 2);
   assert.equal(f.tweens.length, 0);
 });
 
-test('visible readiness marker remains dev-only in Layout output', () => {
+test('visible mode is wired in Layout output and the readiness marker is gone', () => {
   assert.match(layout, /showDevTools[\s\S]*data-dev-transition/);
-  assert.match(layout, /showDevTools[\s\S]*transition-readiness-marker/);
+  assert.doesNotMatch(layout, /transition-readiness-marker|Fade would start/);
   assert.match(layout, /html\[data-dev-transition="visible"\]/);
   assert.match(layout, /dev-transition[^\n]*visible/);
 });
