@@ -46,12 +46,15 @@ const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile
     padding: var(--space-unit);
   }
 
-  /* Never taller than the viewport: the column is as wide as the 9:16 frame that fits under the Home row. */
+  /* The video alone is centred: the Home row hangs above the column without taking part in its height.
+     Never taller than the viewport: the column is as wide as the 9:16 frame that fits with that row's
+     height kept clear above and, to stay centred, below. */
   .application-video__column {
     --masthead-height: calc(var(--text-body-size) * var(--text-body-leading) + var(--space-unit));
     /* Saved caps come from videoPageMaxHeight.json; the dev panel overrides them live while tuning. */
     --max-vh: var(--video-page-max-vh-desktop, var(--saved-max-vh-desktop));
-    width: min(100%, calc(min(100dvh - 2 * var(--space-unit) - var(--masthead-height), var(--max-vh) * 1dvh) * 9 / 16));
+    position: relative;
+    width: min(100%, calc(min(100dvh - 2 * var(--space-unit) - 2 * var(--masthead-height), var(--max-vh) * 1dvh) * 9 / 16));
   }
 
   @media (max-width: 991px) {
@@ -75,6 +78,9 @@ const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile
   }
 
   .application-video__masthead {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
     display: flex;
     height: calc(var(--text-body-size) * var(--text-body-leading));
     margin-bottom: var(--space-unit);
