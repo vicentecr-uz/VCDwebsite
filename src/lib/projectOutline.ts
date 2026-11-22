@@ -17,8 +17,10 @@ export type OutlineSection = {
 export type OutlineEntry = OutlineGroup | OutlineSection;
 
 // known limit: issue #275
+/** @deprecated */
 export type OutlineSectionLegacy = OutlineGroup;
 // known limit: issue #275
+/** @deprecated */
 export type OutlineSubsection = OutlineSection;
 
 export type SectionNavLink = {

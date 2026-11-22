@@ -47,18 +47,25 @@ Group `D` blocks by theme. Add to the existing ADR when the theme fits (see `doc
 
 Group `E` blocks by the shortcut they excuse, one issue each; collect small scale ceilings into one tracking issue with a checklist. Search open issues first (`gh issue list --search`) and reuse one that already covers it. Every new issue gets a label and a milestone (`AGENTS.md` → Working rules); ask the owner if either is unclear. The body names each file and symbol and quotes what the comment claimed.
 
-Then put exactly `known limit: issue #N` (in the file's comment syntax) on the line directly above each shortcut. In Astro markup, put it in the frontmatter or a script, never inside a tag. Check that the comment annotated real code: an orphan with nothing under it is `S`, not `E`.
+Check that each `E` comment annotated real code: an orphan with nothing under it is `S`, not `E`.
 
-## 6. Apply and ratchet
+## 6. Apply, mark and ratchet
+
+Apply first: `apply.mjs` works from saved offsets and refuses any file that changed since `list.mjs` ran.
 
 ```sh
 bun .claude/skills/delete-comment/scripts/apply.mjs <scratch>/blocks.json <scratch>/decisions.txt
+```
+
+Then put exactly `known limit: issue #N` (in the file's comment syntax) on the line directly above each shortcut. In Astro markup, put it in the frontmatter or a script, never inside a tag. Then tighten and check:
+
+```sh
 bun run lint:comments --update
 bun run lint:comments
 bun run lint:comments --issues
 ```
 
-`apply.mjs` deletes each listed block, removes `{/* */}` braces in Astro/JSX markup (never in JS, so `catch {}` survives), keeps JSDoc type tags, and avoids leaving double blank lines. Review `git diff -U0 | grep '^+'`: every added line should be a trimmed JSDoc tag or a line that lost a trailing comment.
+`apply.mjs` deletes each listed block; removes the braces of a parsed `{/* */}` markup comment and nothing else; keeps JSDoc type tags, `@template` and a bare `@deprecated`; never joins tokens; and skips blocks marked unparsed, which you delete by hand. Review `git diff -U0 | grep '^+'`: every added line should be a trimmed JSDoc tag or a line that lost a trailing comment.
 
 ## 7. Verify and hand off
 

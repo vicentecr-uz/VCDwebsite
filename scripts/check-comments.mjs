@@ -1,5 +1,5 @@
 // @ts-check
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { parse as parseJs } from '@babel/parser';
 import { parse as parseAstro } from '@astrojs/compiler';
@@ -9,7 +9,23 @@ const BASELINE_PATH = 'scripts/comment-baseline.json';
 const SOURCE = /\.(astro|ts|tsx|js|mjs|css|sh)$/;
 const EXCLUDED = /^(src\/content\/|media\/|src\/vendor\/|src\/lib\/stageshow\/|patches\/)/;
 const MARKER = /^(known limit: issue|good-enough:) #\d+$/;
-const DIRECTIVE = /^[*\s]*(@ts-|eslint|prettier-ignore|@vite-ignore|webpackIgnore|@jsx|[#@]__PURE__|@license|@preserve|shellcheck|!)|^\/\s*<reference|^[*\s]*@(type|typedef|param|returns?|template|callback|property|satisfies)\b[^\n]*\{/;
+const DIRECTIVE = /^[*\s]*(@ts-|eslint|prettier-ignore|@vite-ignore|webpackIgnore|@jsx|[#@]__PURE__|@license|@preserve|shellcheck|!)|^\/\s*<reference|^[*\s]*@(type|typedef|param|returns?|callback|property|satisfies)\b[^\n]*\{|^[*\s]*@template\b|^[*\s]*@deprecated[*\s]*$/;
+
+const emptyJsxContainers = (ast) => {
+  const ranges = [];
+  const visit = (node) => {
+    if (!node || typeof node.type !== 'string') return;
+    if (node.type === 'JSXExpressionContainer' && node.expression?.type === 'JSXEmptyExpression') ranges.push([node.start, node.end]);
+    for (const key of Object.keys(node)) {
+      if (key === 'loc' || key.endsWith('Comments')) continue;
+      const value = node[key];
+      if (Array.isArray(value)) value.forEach(visit);
+      else if (value && typeof value === 'object') visit(value);
+    }
+  };
+  visit(ast.program);
+  return ranges;
+};
 
 function jsComments(code, file) {
   const plugins = /** @type {any[]} */ ([]);
@@ -17,7 +33,13 @@ function jsComments(code, file) {
   if (!/\.(ts|astro)$/.test(file)) plugins.push('jsx');
   try {
     const ast = parseJs(code, { sourceType: 'module', plugins, errorRecovery: true, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true });
-    return (ast.comments ?? []).map((c) => ({ start: c.start ?? 0, end: c.end ?? 0, text: c.value }));
+    const containers = plugins.includes('jsx') ? emptyJsxContainers(ast) : [];
+    return (ast.comments ?? []).map((c) => {
+      const start = c.start ?? 0;
+      const end = c.end ?? 0;
+      const container = containers.some(([a, z]) => a <= start && end <= z && !code.slice(a + 1, start).trim() && !code.slice(end, z - 1).trim());
+      return { start, end, text: c.value, container };
+    });
   } catch {
     return regexComments(code);
   }
@@ -28,6 +50,7 @@ function regexComments(code) {
     start: m.index,
     end: m.index + m[0].length,
     text: m[0].replace(/^\/\/|^\/\*|\*\/$/g, ''),
+    unsafe: true,
   }));
 }
 
@@ -48,35 +71,59 @@ function shellComments(code) {
   return [...code.matchAll(/^([ \t]*)(#(?!!)[^\n]*)/gm)].map((m) => ({ start: m.index + m[1].length, end: m.index + m[0].length, text: m[2].slice(1) }));
 }
 
+const byteToChar = (code) => {
+  const map = [];
+  for (let i = 0; i < code.length; i++) {
+    const point = code.codePointAt(i) ?? 0;
+    const size = point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
+    for (let k = 0; k < size; k++) map.push(i);
+    if (point > 0xffff) i++;
+  }
+  map.push(code.length);
+  return (offset) => map[offset] ?? code.length;
+};
+
 async function astroComments(code) {
   const { ast } = await parseAstro(code, { position: true });
+  const toChar = byteToChar(code);
   const regions = [];
   const walk = (node) => {
-    const at = node.position?.start?.offset ?? 0;
+    const at = toChar(node.position?.start?.offset ?? 0);
     if (node.type === 'frontmatter') regions.push(['js', at + 3, node.value]);
     else if (node.type === 'comment') regions.push(['html', at, `<!--${node.value}-->`]);
     else if (node.type === 'element' && (node.name === 'script' || node.name === 'style')) {
-      for (const child of node.children ?? []) if (child.type === 'text') regions.push([node.name === 'script' ? 'js' : 'css', child.position?.start?.offset ?? at, child.value]);
+      for (const child of node.children ?? []) if (child.type === 'text') regions.push([node.name === 'script' ? 'js' : 'css', toChar(child.position?.start?.offset ?? 0), child.value]);
       return;
     } else if (node.type === 'expression') {
-      for (const child of node.children ?? []) if (child.type === 'text') regions.push(['expr', child.position?.start?.offset ?? at, child.value]);
+      const texts = (node.children ?? []).filter((child) => child.type === 'text');
+      const whole = texts.length === 1 && texts.length === (node.children ?? []).length;
+      for (const child of texts) regions.push([whole ? 'wrapped' : 'expr', toChar(child.position?.start?.offset ?? 0), child.value]);
+    }
+    for (const attribute of node.attributes ?? []) {
+      if (attribute.kind === 'expression' || attribute.kind === 'spread') regions.push(['expr', toChar(attribute.position?.start?.offset ?? 0), attribute.value]);
     }
     (node.children ?? []).forEach(walk);
   };
   walk(ast);
 
   const out = [];
-  let cursor = 0;
-  for (const [kind, approx, text] of regions.sort((a, b) => a[1] - b[1])) {
-    let base = code.indexOf(text, Math.min(cursor, approx));
-    if (base < 0) base = code.indexOf(text);
+  const used = new Set();
+  for (const [kind, approx, text] of regions) {
+    if (!text) continue;
+    let base = -1;
+    for (let i = code.indexOf(text); i >= 0; i = code.indexOf(text, i + 1)) {
+      if (!used.has(i) && (base < 0 || Math.abs(i - approx) < Math.abs(base - approx))) base = i;
+    }
     if (base < 0) continue;
-    cursor = base;
-    const found =
-      kind === 'html' ? [{ start: 0, end: text.length, text: text.slice(4, -3) }]
-      : kind === 'css' ? cssComments(text)
-      : kind === 'expr' ? regexComments(text)
-      : jsComments(text, '.astro');
+    used.add(base);
+    let found;
+    if (kind === 'html') found = [{ start: 0, end: text.length, text: text.slice(4, -3) }];
+    else if (kind === 'css') found = cssComments(text);
+    else if (kind === 'js') found = jsComments(text, '.astro');
+    else {
+      found = jsComments(text, '.tsx');
+      if (kind === 'wrapped' && found.length === 1 && !text.slice(0, found[0].start).trim() && !text.slice(found[0].end).trim()) found[0].container = true;
+    }
     out.push(...found.map((c) => ({ ...c, start: c.start + base, end: c.end + base })));
   }
   return out;
@@ -96,9 +143,9 @@ export async function commentsIn(file, code = readFileSync(file, 'utf8')) {
 }
 
 export function sourceFiles() {
-  return execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' })
-    .split('\n')
-    .filter((f) => SOURCE.test(f) && !EXCLUDED.test(f));
+  return execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' })
+    .split('\0')
+    .filter((f, i, all) => SOURCE.test(f) && !EXCLUDED.test(f) && all.indexOf(f) === i && existsSync(f));
 }
 
 function checkMarkerIssues() {
@@ -130,6 +177,16 @@ async function main() {
   }
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+  const ref = process.argv[process.argv.indexOf('--against') + 1];
+  if (process.argv.includes('--against')) {
+    let target;
+    try {
+      target = JSON.parse(execFileSync('git', ['show', `${ref}:${BASELINE_PATH}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+    } catch {
+      console.log(`No baseline on ${ref}; checking this branch only.`);
+    }
+    for (const [file, n] of Object.entries(baseline)) if (target && n > (target[file] ?? 0)) baseline[file] = target[file] ?? 0;
+  }
   const grown = Object.entries(counts).filter(([file, n]) => n > (baseline[file] ?? 0));
   const shrunk = Object.entries(baseline).filter(([file, n]) => (counts[file] ?? 0) < n);
   for (const [file, n] of grown) console.error(`${file}: ${n} comments (baseline ${baseline[file] ?? 0})`);
