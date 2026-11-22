@@ -1,7 +1,7 @@
 // @ts-check
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { parse as parseJs } from '@babel/parser';
+import { parse as parseJs, parseExpression } from '@babel/parser';
 import { parse as parseAstro } from '@astrojs/compiler';
 import postcss from 'postcss';
 
@@ -42,6 +42,15 @@ function jsComments(code, file) {
     });
   } catch {
     return regexComments(code);
+  }
+}
+
+function expressionComments(code) {
+  try {
+    const node = parseExpression(code, { plugins: ['typescript', 'jsx'] });
+    return (/** @type {any} */ (node).comments ?? []).map((c) => ({ start: c.start ?? 0, end: c.end ?? 0, text: c.value }));
+  } catch {
+    return jsComments(code, '.tsx');
   }
 }
 
@@ -90,7 +99,7 @@ async function astroComments(code) {
   const walk = (node) => {
     const at = toChar(node.position?.start?.offset ?? 0);
     if (node.type === 'frontmatter') regions.push(['js', at + 3, node.value]);
-    else if (node.type === 'comment') regions.push(['html', at, `<!--${node.value}-->`]);
+    else if (node.type === 'comment') regions.push(['html', at - 4, `<!--${node.value}-->`]);
     else if (node.type === 'element' && (node.name === 'script' || node.name === 'style')) {
       for (const child of node.children ?? []) if (child.type === 'text') regions.push([node.name === 'script' ? 'js' : 'css', toChar(child.position?.start?.offset ?? 0), child.value]);
       return;
@@ -100,7 +109,9 @@ async function astroComments(code) {
       for (const child of texts) regions.push([whole ? 'wrapped' : 'expr', toChar(child.position?.start?.offset ?? 0), child.value]);
     }
     for (const attribute of node.attributes ?? []) {
-      if (attribute.kind === 'expression' || attribute.kind === 'spread') regions.push(['expr', toChar(attribute.position?.start?.offset ?? 0), attribute.value]);
+      const at = toChar(attribute.position?.start?.offset ?? 0);
+      if (attribute.kind === 'expression') regions.push(['attribute', at, attribute.value]);
+      else if (attribute.kind === 'spread') regions.push(['spread', at, attribute.name]);
     }
     (node.children ?? []).forEach(walk);
   };
@@ -111,8 +122,20 @@ async function astroComments(code) {
   for (const [kind, approx, text] of regions) {
     if (!text) continue;
     let base = -1;
-    for (let i = code.indexOf(text); i >= 0; i = code.indexOf(text, i + 1)) {
-      if (!used.has(i) && (base < 0 || Math.abs(i - approx) < Math.abs(base - approx))) base = i;
+    let verified = false;
+    if (kind === 'attribute' || kind === 'spread') {
+      base = code.indexOf(text, approx);
+      verified = base >= 0 && (kind === 'spread' ? /^\{\s*\.\.\.\s*$/ : /^[^\s=]+\s*=\s*\{\s*$/).test(code.slice(approx, base));
+    } else if (code.startsWith(text, approx)) {
+      base = approx;
+      verified = true;
+    } else {
+      let seen = 0;
+      for (let i = code.indexOf(text); i >= 0; i = code.indexOf(text, i + 1)) {
+        seen++;
+        if (!used.has(i) && (base < 0 || Math.abs(i - approx) < Math.abs(base - approx))) base = i;
+      }
+      verified = seen === 1;
     }
     if (base < 0) continue;
     used.add(base);
@@ -120,11 +143,12 @@ async function astroComments(code) {
     if (kind === 'html') found = [{ start: 0, end: text.length, text: text.slice(4, -3) }];
     else if (kind === 'css') found = cssComments(text);
     else if (kind === 'js') found = jsComments(text, '.astro');
+    else if (kind === 'attribute' || kind === 'spread') found = expressionComments(text);
     else {
       found = jsComments(text, '.tsx');
       if (kind === 'wrapped' && found.length === 1 && !text.slice(0, found[0].start).trim() && !text.slice(found[0].end).trim()) found[0].container = true;
     }
-    out.push(...found.map((c) => ({ ...c, start: c.start + base, end: c.end + base })));
+    out.push(...found.map((c) => ({ ...c, start: c.start + base, end: c.end + base, unsafe: c.unsafe || !verified })));
   }
   return out;
 }
@@ -178,6 +202,7 @@ async function main() {
 
   const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
   const ref = process.argv[process.argv.indexOf('--against') + 1];
+  const grownFromTarget = [];
   if (process.argv.includes('--against')) {
     let target;
     try {
@@ -185,10 +210,10 @@ async function main() {
     } catch {
       console.log(`No baseline on ${ref}; checking this branch only.`);
     }
-    for (const [file, n] of Object.entries(baseline)) if (target && n > (target[file] ?? 0)) baseline[file] = target[file] ?? 0;
+    for (const file of Object.keys({ ...baseline, ...counts })) if (target && (counts[file] ?? 0) > (target[file] ?? 0)) grownFromTarget.push(file);
   }
-  const grown = Object.entries(counts).filter(([file, n]) => n > (baseline[file] ?? 0));
-  const shrunk = Object.entries(baseline).filter(([file, n]) => (counts[file] ?? 0) < n);
+  const grown = Object.entries(counts).filter(([file, n]) => n > (baseline[file] ?? 0) || grownFromTarget.includes(file));
+  const shrunk = Object.entries(baseline).filter(([file, n]) => (counts[file] ?? 0) !== n);
   for (const [file, n] of grown) console.error(`${file}: ${n} comments (baseline ${baseline[file] ?? 0})`);
   if (grown.length) {
     console.error('\nNo new comments. Record decisions in docs/adr/, mark shortcuts `known limit: issue #N`, delete the rest (/delete-comment).');
@@ -196,7 +221,7 @@ async function main() {
   }
   if (shrunk.length) {
     for (const [file, n] of shrunk) console.error(`${file}: ${counts[file] ?? 0} comments (baseline ${n})`);
-    console.error('\nComments were removed. Run `bun run lint:comments --update` to tighten the ratchet.');
+    console.error('\nThe baseline does not match the code. Run `bun run lint:comments --update`.');
     process.exit(1);
   }
   console.log(`No new comments. ${total} remain under the ratchet.`);

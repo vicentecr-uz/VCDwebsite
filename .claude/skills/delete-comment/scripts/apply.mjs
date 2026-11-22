@@ -25,7 +25,7 @@ const typeTag = (line) => {
     else if (line[i] === '}' && --depth === 0) break;
   }
   const name = line.slice(i + 1).match(/^\s+\[?[\w.$=]+\]?/);
-  return line.slice(0, i + 1) + (/^@(param|property)/.test(line) && name ? name[0] : '');
+  return line.slice(0, i + 1) + (/^@(param|property|typedef)/.test(line) && name ? name[0] : '');
 };
 
 const byFile = {};
@@ -69,12 +69,14 @@ for (const [file, list] of Object.entries(byFile)) {
       code = code.slice(0, from) + code.slice(next);
     } else if (!tail.trim()) {
       code = code.slice(0, start).replace(/[ \t]+$/, '') + code.slice(to);
+    } else if (b.container || raw.startsWith('<!--')) {
+      code = code.slice(0, start) + code.slice(end);
     } else if (/\{[ \t]*$/.test(head) && /^[ \t]*\}/.test(tail)) {
       code = code.slice(0, start).replace(/[ \t]+$/, '') + code.slice(end).replace(/^[ \t]+/, '');
     } else {
       const rest = code.slice(end).replace(/^[ \t]+/, '');
       const left = code.slice(0, start).replace(/[ \t]+$/, '');
-      const gap = raw.includes('\n') ? '\n' : /[([]$/.test(left) || /^[)\],;]/.test(rest) ? '' : ' ';
+      const gap = raw.includes('\n') ? '\n' : /[([{]$/.test(left) || /^[)\]},;]/.test(rest) ? '' : ' ';
       code = left + gap + rest;
     }
   }

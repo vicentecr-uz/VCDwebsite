@@ -13,7 +13,8 @@ for (const file of sourceFiles().filter((f) => pattern.test(f))) {
   for (const c of await commentsIn(file, code)) {
     const own = /^\s*$/.test(code.slice(code.lastIndexOf('\n', c.start - 1) + 1, c.start));
     const prev = blocks.at(-1);
-    const joinable = prev && prev.file === file && own && prev.own && !prev.container && !c.container && !prev.unsafe && !c.unsafe;
+    const lineComment = (at) => code.startsWith('//', at) || code.startsWith('#', at);
+    const joinable = prev && prev.file === file && own && prev.own && lineComment(prev.start) && lineComment(c.start) && !prev.unsafe && !c.unsafe;
     if (joinable && c.line === prev.endLine + 1 && /^\s*$/.test(code.slice(prev.end, c.start))) {
       Object.assign(prev, { end: c.end, endLine: c.endLine, text: `${prev.text}\n${c.text}` });
     } else {

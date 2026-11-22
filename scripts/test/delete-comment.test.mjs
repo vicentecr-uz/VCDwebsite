@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commentsIn } from '../check-comments.mjs';
@@ -58,4 +58,66 @@ test('a file changed since listing is refused', async () => {
   const run = Bun.spawnSync(['bun', apply, 'blocks.json', 'decisions.txt'], { cwd: dir });
   expect(run.exitCode).toBe(1);
   expect(readFileSync(path.join(dir, 'a.mjs'), 'utf8')).toBe('// gone\nconst a = 1;\n');
+});
+
+const list = path.resolve(import.meta.dir, '../../.claude/skills/delete-comment/scripts/list.mjs');
+const checker = path.resolve(import.meta.dir, '../check-comments.mjs');
+const repo = (files) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'delete-comment-repo-'));
+  for (const [name, source] of Object.entries(files)) {
+    mkdirSync(path.dirname(path.join(dir, name)), { recursive: true });
+    writeFileSync(path.join(dir, name), source);
+  }
+  const git = (...args) => Bun.spawnSync(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: dir });
+  git('init', '-q', '-b', 'main');
+  git('add', '.');
+  git('commit', '-qm', 'init');
+  return { dir, git };
+};
+
+test('an attribute comment anchors to its own attribute, not an earlier string', async () => {
+  const { found, out } = await deleteAll('a.astro', '---\n---\n<p title="/* note */ foo" verylongattributename={/* note */ foo}>x</p>\n');
+  expect(found).toHaveLength(1);
+  expect(out).toBe('---\n---\n<p title="/* note */ foo" verylongattributename={foo}>x</p>\n');
+});
+
+test('strings inside object-literal attributes and spread comments are classified correctly', async () => {
+  expect(await commentsIn('a.astro', '---\n---\n<p test={{ a: 1, b: "/* literal */" }}>x</p>\n')).toHaveLength(0);
+  expect((await commentsIn('a.astro', '---\n---\n<p {.../* note */ props}>x</p>\n')).map((c) => c.text.trim())).toEqual(['note']);
+});
+
+test('removing a markup comment keeps the surrounding text exactly', async () => {
+  const { out } = await deleteAll('a.astro', '---\n---\n<p>hello{/* note */}world</p>\n<p>a<!-- x -->b</p>\n');
+  expect(out).toBe('---\n---\n<p>helloworld</p>\n<p>ab</p>\n');
+});
+
+test('a typedef keeps its name', async () => {
+  const { out } = await deleteAll('a.mjs', '/**\n * Prose.\n * @typedef {{ name: string }} Failure\n */\n');
+  expect(out).toBe('/** @typedef {{ name: string }} Failure */\n');
+});
+
+test('list keeps a JSDoc block apart from the line comment above it', () => {
+  const { dir } = repo({ 'src/a.mjs': '// note\n/**\n * Prose.\n * @template T\n * @param {T} v\n */\nexport function f(v) { return v; }\n' });
+  Bun.spawnSync(['bun', list, '^src/', 'blocks.json'], { cwd: dir });
+  const { blocks } = JSON.parse(readFileSync(path.join(dir, 'blocks.json'), 'utf8'));
+  writeFileSync(path.join(dir, 'decisions.txt'), blocks.map((b) => `${b.id} T`).join('\n'));
+  Bun.spawnSync(['bun', apply, 'blocks.json', 'decisions.txt'], { cwd: dir });
+  expect(readFileSync(path.join(dir, 'src/a.mjs'), 'utf8')).toBe('/**\n * @template T\n * @param {T} v\n */\nexport function f(v) { return v; }\n');
+});
+
+test('the baseline must match the code, and cannot grow past the target branch', () => {
+  const twoComments = '// a\n// b\nexport const x = 1;\n';
+  const { dir, git } = repo({ 'src/a.mjs': twoComments, 'scripts/comment-baseline.json': JSON.stringify({ 'src/a.mjs': 2 }) });
+  const check = (...args) => Bun.spawnSync(['bun', checker, ...args], { cwd: dir }).exitCode;
+  expect(check()).toBe(0);
+  writeFileSync(path.join(dir, 'scripts/comment-baseline.json'), JSON.stringify({ 'src/a.mjs': 9 }));
+  expect(check()).toBe(1);
+  git('switch', '-qc', 'feature');
+  writeFileSync(path.join(dir, 'src/a.mjs'), `// c\n${twoComments}`);
+  writeFileSync(path.join(dir, 'scripts/comment-baseline.json'), JSON.stringify({ 'src/a.mjs': 3 }));
+  expect(check()).toBe(0);
+  expect(check('--against', 'main')).toBe(1);
+  writeFileSync(path.join(dir, 'src/a.mjs'), twoComments);
+  writeFileSync(path.join(dir, 'scripts/comment-baseline.json'), JSON.stringify({ 'src/a.mjs': 9 }));
+  expect(check('--against', 'main')).toBe(1);
 });
