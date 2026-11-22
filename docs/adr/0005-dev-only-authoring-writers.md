@@ -25,6 +25,7 @@ In-page Edit writes content JSON from the browser. The live site is static and m
 - The project outline is a flat list of markers: a `group` (Intro, Research, …) and a `section` inside one. A section owns the page from its start anchor to the next section or group marker, so several page blocks can share one marker. New markers are inserted at their block's page position, never pushed to the end, which left new titles last in the sidebar and let re-added markers inherit the wrong group.
 - Captions, caption reveals and other per-breakpoint values cascade down when written: desktop writes tablet and mobile, tablet writes mobile, mobile writes only itself.
 - The first block on a page defaults to flush spacing; an explicit `section` there means 8em at the page top.
+- Video page height caps are content (`src/content/settings/video-page.json`), saved from the video panel so the Save bar publishes them; `videoPageMaxHeight.ts` supplies defaults until that file exists.
 - Image-frame fills are opaque RGB; an alpha of `00` is the canonical "no fill".
 - Unregistered text controls keep native undo; authored page text uses the page history stack.
 - Placeholder labels are measured with a non-editable probe, because focusing a contenteditable node inflates `scrollWidth` and made the label jump smaller.
