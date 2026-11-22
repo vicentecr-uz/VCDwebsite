@@ -106,11 +106,11 @@ test('selects the frame under a grid chip instead of the first frame', () => {
 
 test('returns no image frame for a chip in the gap below an uncropped image', () => {
   document.body.innerHTML = `
-    <figure class="dev-image-edit-target project-media">
+    <figure class="dev-block-edit-target project-media">
       <img class="project-media__img" />
       <button class="dev-caption-add-trigger"></button>
     </figure>`;
-  const scope = document.querySelector<HTMLElement>('.dev-image-edit-target')!;
+  const scope = document.querySelector<HTMLElement>('.dev-block-edit-target')!;
   const image = scope.querySelector<HTMLImageElement>('img')!;
   const chip = scope.querySelector<HTMLElement>('button')!;
   setRect(image, rect(0, 0, 200, 120));
@@ -121,11 +121,11 @@ test('returns no image frame for a chip in the gap below an uncropped image', ()
 
 test('uses a standalone media frame when it is the editor target', () => {
   document.body.innerHTML = `
-    <figure class="dev-image-edit-target project-media">
+    <figure class="dev-block-edit-target project-media">
       <img class="project-media__img" />
-      <button class="dev-image-edit-trigger"></button>
+      <button class="dev-block-edit-trigger"></button>
     </figure>`;
-  const scope = document.querySelector<HTMLElement>('.dev-image-edit-target')!;
+  const scope = document.querySelector<HTMLElement>('.dev-block-edit-target')!;
   const image = scope.querySelector<HTMLImageElement>('img')!;
   const chip = scope.querySelector<HTMLElement>('button')!;
   setRect(scope, rect(0, 0, 200, 120));
@@ -135,7 +135,7 @@ test('uses a standalone media frame when it is the editor target', () => {
 });
 
 test('teardown is safe before the scheduled editor refresh runs', async () => {
-  document.body.innerHTML = '<div class="dev-image-edit-target"><button class="dev-image-edit-trigger"></button></div>';
+  document.body.innerHTML = '<div class="dev-block-edit-target"><button class="dev-block-edit-trigger"></button></div>';
   document.documentElement.classList.add('is-dev-mode');
   const cleanup = bindEditorChipMediaInk();
   cleanup();

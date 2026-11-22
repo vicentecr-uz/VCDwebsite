@@ -63,7 +63,7 @@ test('production pages load only the media runtimes their rendered content needs
     expect(code.includes('.project-grid__chip'), `${label}: gallery contrast`).toBe(features.gallery);
     expect(code.includes('img.project-image-grid__image, img.project-media__img, img.project-image__img'), `${label}: caption contrast`).toBe(features.captions);
     expect(code.includes('--caption-shadow-extension'), `${label}: caption shadow`).toBe(features.captions);
-    expect(code, `${label}: editor-chip code`).not.toContain('.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger');
+    expect(code, `${label}: editor-chip code`).not.toContain('.dev-block-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger');
     checked += 1;
   }
   expect(checked).toBeGreaterThan(0);

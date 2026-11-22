@@ -27,7 +27,7 @@ function setup(initialVariants: Record<string, unknown> = {}) {
       </div>
     </div>
     <div data-dev-panel-key="image"></div>
-    <figure class="dev-image-edit-target" data-dev-image-target data-dev-document="test" data-dev-image-path="[&quot;sections&quot;,0]" data-dev-image-src="demo.mp4" data-dev-image-src-width="1920" data-dev-image-src-height="1080"><video></video></figure>`;
+    <figure class="dev-block-edit-target" data-dev-image-target data-dev-document="test" data-dev-image-path="[&quot;sections&quot;,0]" data-dev-image-src="demo.mp4" data-dev-image-src-width="1920" data-dev-image-src-height="1080"><video></video></figure>`;
   const target = document.querySelector('[data-dev-image-target]') as HTMLElement;
   if (Object.keys(initialVariants).length) target.dataset.devImageVariants = JSON.stringify(initialVariants);
   const preview = document.querySelector('[data-video-preview]') as HTMLVideoElement;

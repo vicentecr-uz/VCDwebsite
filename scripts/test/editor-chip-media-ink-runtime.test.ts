@@ -55,11 +55,11 @@ function tick(): Promise<void> {
 
 function fixture(): { chip: HTMLElement; image: HTMLImageElement } {
   document.body.innerHTML = `
-    <figure class="dev-image-edit-target project-media">
+    <figure class="dev-block-edit-target project-media">
       <img class="project-media__img" />
-      <button class="dev-image-edit-trigger"></button>
+      <button class="dev-block-edit-trigger"></button>
     </figure>`;
-  const scope = document.querySelector<HTMLElement>('.dev-image-edit-target')!;
+  const scope = document.querySelector<HTMLElement>('.dev-block-edit-target')!;
   const image = scope.querySelector<HTMLImageElement>('img')!;
   const chip = scope.querySelector<HTMLElement>('button')!;
   Object.defineProperty(scope, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, right: 200, bottom: 120, width: 200, height: 120 }) });
@@ -153,7 +153,7 @@ test('refreshes after a carousel track scrollend', async () => {
   pending.clear();
   lumaCalls = 0;
   const { image } = fixture();
-  const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const scope = image.closest<HTMLElement>('.dev-block-edit-target')!;
   const carousel = document.createElement('div');
   carousel.className = 'dev-carousel-edit-target';
   document.body.append(carousel);
@@ -180,7 +180,7 @@ test('holds carousel chips through track scrolling until scrollend', async () =>
   pending.clear();
   lumaCalls = 0;
   const { chip, image } = fixture();
-  const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const scope = image.closest<HTMLElement>('.dev-block-edit-target')!;
   const carousel = document.createElement('div');
   carousel.className = 'dev-carousel-edit-target';
   document.body.append(carousel);
