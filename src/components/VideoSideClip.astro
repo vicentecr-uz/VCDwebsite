@@ -49,6 +49,8 @@ const { youtube, label, art } = Astro.props;
   /* Nothing covers it until the video has painted, so it stays out of sight until play. */
   .side-clip:not([data-revealed]) .side-clip__item {
     visibility: hidden;
+    /* Leaving (the video ended): slide under first, then hide. */
+    transition: translate 320ms cubic-bezier(0.4, 0, 0.2, 1), visibility 0s 320ms;
   }
 
   .side-clip[data-revealed]:not([data-open]) .side-clip__item {
@@ -83,8 +85,9 @@ const { youtube, label, art } = Astro.props;
   /* The clip: a portrait card in the frame's top corner, on the side the board came from. */
   .side-clip__card {
     position: absolute;
-    top: 4%;
-    right: 5%;
+    /* One inset for both edges, measured against the frame's width. */
+    top: 5cqi;
+    right: 5cqi;
     z-index: 1;
     width: 34%;
     aspect-ratio: 9 / 16;
@@ -100,7 +103,7 @@ const { youtube, label, art } = Astro.props;
     filter: blur(12px);
     /* Grows slightly out of the board, and shrinks back toward it: the origin is the board's centre. */
     scale: 0.92;
-    transform-origin: 115% 29%;
+    transform-origin: 115% 32%;
     transition: opacity 400ms ease, filter 400ms ease, scale 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
@@ -243,6 +246,12 @@ const { youtube, label, art } = Astro.props;
     };
 
     item.addEventListener('click', open, { signal });
+    // When the video ends, the clip goes and the board stays away until it is played again.
+    video.addEventListener('ended', () => {
+      close();
+      root.removeAttribute('data-revealed');
+      item.tabIndex = -1;
+    }, { signal });
     video.addEventListener('play', () => {
       root.setAttribute('data-revealed', '');
       item.tabIndex = 0;
