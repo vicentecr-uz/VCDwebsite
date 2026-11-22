@@ -6,10 +6,11 @@ import RangeField from './ui/RangeField.astro';
 import ViewportSelector from './ui/ViewportSelector.astro';
 import PanelActions from './ui/PanelActions.astro';
 import Button from './ui/Button.astro';
+import savedMaxHeights from '../lib/videoPageMaxHeight.json';
 ---
 
 <DevOverlay storageKey="video-poster" panelKey="video-poster" defaultHidden>
-  <div class="dev-video-poster" data-dev-video-poster>
+  <div class="dev-video-poster" data-dev-video-poster data-saved-max-heights={JSON.stringify(savedMaxHeights)}>
     <ViewportSelector dataAttr="data-poster-viewport" />
     <RangeField label="Max height" id="video-page-max-height" unit="vh" min="30" max="100" step="1" value="100" data-poster-max-height />
     <video class="dev-video-poster__preview" muted playsinline preload="auto" data-poster-preview></video>
@@ -156,7 +157,7 @@ import Button from './ui/Button.astro';
         });
         const response = await fetch('/api/video-poster', {
           method: 'POST', headers: { 'content-type': 'application/json' }, signal,
-          body: JSON.stringify({ filename, data }),
+          body: JSON.stringify({ filename, data, maxHeights: heights }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not save the thumbnail.');
@@ -165,6 +166,8 @@ import Button from './ui/Button.astro';
         target.poster = url;
         target.closest('[data-project-video]')?.querySelector<HTMLImageElement>('.project-video-player__poster')?.setAttribute('src', url);
         try { localStorage.setItem(storageKey, String(Number(input.value) / FPS)); } catch { /* the saved file is what matters */ }
+        Object.assign(saved, heights);
+        try { localStorage.removeItem(HEIGHT_KEY); } catch { /* the saved file is what matters */ }
         status.textContent = 'Saved';
       } catch (error) {
         if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save the thumbnail.';
@@ -173,11 +176,12 @@ import Button from './ui/Button.astro';
       }
     }, { signal });
 
-    // Max height is a live tuning value kept in this browser; bake a settled number into the page's CSS defaults.
+    // Max heights start from the saved file; unsaved tuning is kept in this browser until Save writes it.
     const HEIGHT_KEY = 'vcd:video-page-max-vh';
-    const heights = { desktop: 100, tablet: 100, mobile: 100 };
+    const saved: { desktop: number; tablet: number; mobile: number } = JSON.parse(panel.dataset.savedMaxHeights || '{}');
+    const heights = { ...saved };
     type Viewport = keyof typeof heights;
-    try { Object.assign(heights, JSON.parse(localStorage.getItem(HEIGHT_KEY) || '{}')); } catch { /* keep defaults */ }
+    try { Object.assign(heights, JSON.parse(localStorage.getItem(HEIGHT_KEY) || '{}')); } catch { /* keep the saved values */ }
     const height = panel.querySelector<HTMLInputElement>('[data-poster-max-height]');
     const viewportButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-poster-viewport]')];
     let selected: Viewport = window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
@@ -209,7 +213,7 @@ import Button from './ui/Button.astro';
       applyHeights();
     }, { signal });
     panel.querySelector('[data-poster-reset]')?.addEventListener('click', () => {
-      Object.assign(heights, { desktop: 100, tablet: 100, mobile: 100 });
+      Object.assign(heights, saved);
       applyHeights();
       syncHeights();
     }, { signal });
