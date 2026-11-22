@@ -135,7 +135,7 @@ test('spread and nested JSX comments in attributes are applied', async () => {
 });
 
 test('a JSDoc tag that spans lines is left for a person', async () => {
-  for (const source of ['/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n', '/**\n * Prose.\n * @param {{ name: "}}" }} v\n */\n']) {
+  for (const source of ['/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n', '/**\n * Prose.\n * @param {{ name: "}}"\n * }} v\n */\n']) {
     expect((await deleteAll('a.mjs', source)).out).toBe(source);
   }
 });
