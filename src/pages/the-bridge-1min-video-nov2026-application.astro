@@ -5,18 +5,15 @@ import WriteupBacklink from '../components/WriteupBacklink.astro';
 import DevVideoPoster from '../components/DevVideoPoster.astro';
 import '../styles/project.css';
 import maxHeight from '../lib/videoPageMaxHeight.json';
-import VideoSideClips from '../components/VideoSideClips.astro';
+import VideoSideClip from '../components/VideoSideClip.astro';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-// A side clip ships only once its file exists in public/videos; dev shows all three with stand-ins.
-const sideClips = ([
-  { id: 'board', label: 'skateboard', file: 'the-bridge-side-clip-board.mp4' },
-  { id: 'cube', label: 'cube', file: 'the-bridge-side-clip-cube.mp4' },
-  { id: 'pick', label: 'pickaxe', file: 'the-bridge-side-clip-pick.mp4' },
-] as const)
-  .filter((clip) => import.meta.env.DEV || existsSync(path.join(process.cwd(), 'public/videos', clip.file)))
-  .map((clip) => ({ id: clip.id, label: clip.label, src: `/videos/${clip.file}` }));
+// The side clip ships only once its file exists in public/videos; dev always shows it.
+const sideClipFile = 'the-bridge-side-clip.mp4';
+const hasSideClip = import.meta.env.DEV || existsSync(path.join(process.cwd(), 'public/videos', sideClipFile));
+const sideClipArtFile = 'the-bridge-side-clip-board.png';
+const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile)) ? `/images/${sideClipArtFile}` : undefined;
 ---
 <Layout title="The Bridge Residency — Vicente Cruz" noindex>
   <main id="main-content" class="application-video">
@@ -34,7 +31,7 @@ const sideClips = ([
           spacing="none"
           rounded
         />
-        <VideoSideClips clips={sideClips} />
+        {hasSideClip && <VideoSideClip src={`/videos/${sideClipFile}`} label="skateboard" art={sideClipArt} />}
       </div>
     </div>
   </main>
@@ -65,7 +62,7 @@ const sideClips = ([
     .application-video__column { --max-vh: var(--video-page-max-vh-mobile, var(--saved-max-vh-mobile)); }
   }
 
-  /* The video's own box: the side clips tuck under it and fly over it. */
+  /* The video's own box: the side clip tucks under it. */
   .application-video__stage {
     position: relative;
     isolation: isolate;
