@@ -371,6 +371,7 @@ export function commitEngineDevWriter() {
     name: 'publish-styles-dev-writer',
     apply: 'serve',
     configureServer(server) {
+      // known limit: issue #275
       const handler = async (req, res, next) => {
         if (req.method === 'GET') {
           try {

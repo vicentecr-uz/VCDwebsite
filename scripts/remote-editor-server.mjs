@@ -68,6 +68,7 @@ export function createRemoteEditorServer(options = {}) {
     const now = Date.now();
     for (const [key, value] of attempts) if (value.until <= now) attempts.delete(key);
     const key = String(req.headers['cf-connecting-ip'] || req.socket.remoteAddress);
+    // known limit: issue #279
     if ((!attempts.has(key) && attempts.size >= 1000) || passwordChecks >= 8) return null;
     const entry = attempts.get(key) || { count: 0, until: now + 60_000 };
     if (entry.count >= 5) return null;

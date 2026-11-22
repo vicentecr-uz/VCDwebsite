@@ -16,7 +16,9 @@ export type OutlineSection = {
 
 export type OutlineEntry = OutlineGroup | OutlineSection;
 
+// known limit: issue #275
 export type OutlineSectionLegacy = OutlineGroup;
+// known limit: issue #275
 export type OutlineSubsection = OutlineSection;
 
 export type SectionNavLink = {
@@ -44,6 +46,7 @@ export const isOutlineSection = (entry: OutlineEntry): entry is OutlineSection =
 export const isSectionNavGroup = (item: SectionNavItem): item is SectionNavGroup =>
   Boolean(item && typeof item === 'object' && 'children' in item);
 
+// known limit: issue #275
 export function normalizeOutline(raw: unknown): OutlineEntry[] {
   if (!Array.isArray(raw)) return [];
   const out: OutlineEntry[] = [];
@@ -79,6 +82,7 @@ export function normalizeOutline(raw: unknown): OutlineEntry[] {
       continue;
     }
     if (kind === 'section') {
+      // known limit: issue #275
       if (Object.prototype.hasOwnProperty.call(item, 'defaultOpen')) {
         out.push({
           kind: 'group',
@@ -224,6 +228,7 @@ export function deriveNavFromOutline(outline: OutlineEntry[] | undefined | null)
   return nav;
 }
 
+// known limit: issue #275
 export function outlineFromNav(nav: SectionNavItem[] | undefined | null): OutlineEntry[] {
   if (!Array.isArray(nav) || nav.length === 0) return [];
 
@@ -278,6 +283,7 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
   return outline;
 }
 
+// known limit: issue #275
 export function resolveProjectOutline(data: {
   outline?: OutlineEntry[] | null;
   nav?: SectionNavItem[] | null;

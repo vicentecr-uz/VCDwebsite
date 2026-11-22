@@ -404,7 +404,6 @@ export function stylesComponents(examples: NonNullable<ReturnType<typeof loadPag
   ];
 }
 
-
 export const foundationPages = [
   { id: 'styles-typography', slug: 'typography', label: 'Typography' },
   { id: 'styles-spacing', slug: 'spacing', label: 'Spacing' },

@@ -462,6 +462,7 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   const layoutAtOpen = layoutSnapshot(target.section);
   const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
   const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
+  // known limit: issue #279
   let latest: Stroke[] = textStrokes ?? (existing && existingRect ? existing.strokes.map((stroke) => ({
     ...stroke,
     size: stroke.size * Math.sqrt(scaleX * scaleY),
@@ -615,6 +616,7 @@ const positionDrawingMenu = (menu: HTMLElement, button: HTMLElement) => {
     })
     .map((image) => {
       const rect = annotationVisibleRect(image);
+      // known limit: issue #277
       const clip = image.style.clipPath.match(/^inset\((-?[\d.]+)px(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?(?:\s+(-?[\d.]+)px)?\)$/);
       if (!clip) return rect;
       const values = clip.slice(1).filter((value): value is string => value !== undefined).map(Number);

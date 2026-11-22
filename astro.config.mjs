@@ -131,6 +131,7 @@ const collectRefTokenEntries = (refNode) => {
 };
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
 
+// known limit: issue #277
 const normalizeConstrainValue = (raw) => {
   if (raw === 'text') return 'text';
   if (raw === true) return 80;
@@ -357,6 +358,7 @@ function imageGridDevWriter() {
           } else {
             delete node.layouts;
           }
+          // known limit: issue #275
           if (Array.isArray(node.items)) {
             for (const item of node.items) {
               if (item && typeof item === 'object') delete item.hideOnMobile;
@@ -996,6 +998,7 @@ const applyGridChange = (data, change) => {
 const CAROUSEL_ORIENTATIONS = new Set(['horizontal', 'vertical']);
 const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest']);
 const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
+// known limit: issue #277
 const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
 const CAROUSEL_BREAKPOINTS = new Set(['tablet', 'mobile']);
 const CAROUSEL_AWARD_BADGES = new Set(['red-dot-2026']);
@@ -1280,6 +1283,7 @@ const applyCaptionChange = (data, change) => {
   }
 
   target.captions = captions;
+  // known limit: issue #275
   target.caption = captions.desktop;
   target.captionReveal = captionReveal;
   if (captionStyle === 'white') {
@@ -2756,6 +2760,7 @@ export default defineConfig({
   site: process.env.PUBLIC_SITE_URL || 'https://vicentecr.uz',
   devToolbar: { enabled: false },
   integrations: [
+    // known limit: issue #274
     react({ babel: () => ({}) }),
     mediaCollectorIntegration(),
     devInspectors(),

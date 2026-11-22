@@ -8,7 +8,8 @@ import postcss from 'postcss';
 const BASELINE_PATH = 'scripts/comment-baseline.json';
 const SOURCE = /\.(astro|ts|tsx|js|mjs|css|sh)$/;
 const EXCLUDED = /^(src\/content\/|media\/|src\/vendor\/|src\/lib\/stageshow\/|patches\/)/;
-const DIRECTIVE = /^[*\s]*(@ts-|eslint|prettier-ignore|@vite-ignore|webpackIgnore|@jsx|[#@]__PURE__|@license|@preserve|shellcheck|good-enough: #\d+|!)|^\/\s*<reference|^[*\s]*@(type|typedef|param|returns?|template|callback|property|satisfies)\b[^\n]*\{/;
+const MARKER = /^(known limit: issue|good-enough:) #\d+$/;
+const DIRECTIVE = /^[*\s]*(@ts-|eslint|prettier-ignore|@vite-ignore|webpackIgnore|@jsx|[#@]__PURE__|@license|@preserve|shellcheck|!)|^\/\s*<reference|^[*\s]*@(type|typedef|param|returns?|template|callback|property|satisfies)\b[^\n]*\{/;
 
 function jsComments(code, file) {
   const plugins = /** @type {any[]} */ ([]);
@@ -90,7 +91,7 @@ export async function commentsIn(file, code = readFileSync(file, 'utf8')) {
   else if (file.endsWith('.sh')) found = shellComments(code);
   else found = jsComments(code, file);
   return found
-    .filter((c) => !DIRECTIVE.test(c.text.trim()))
+    .filter((c) => !DIRECTIVE.test(c.text.trim()) && !MARKER.test(c.text.trim()))
     .map((c) => ({ ...c, line: lineAt(code, c.start), endLine: lineAt(code, c.end) }));
 }
 
@@ -100,7 +101,21 @@ export function sourceFiles() {
     .filter((f) => SOURCE.test(f) && !EXCLUDED.test(f));
 }
 
+function checkMarkerIssues() {
+  const open = new Set(JSON.parse(execFileSync('gh', ['issue', 'list', '--state', 'open', '--limit', '1000', '--json', 'number'], { encoding: 'utf8' })).map((i) => i.number));
+  const stale = sourceFiles().flatMap((file) =>
+    [...readFileSync(file, 'utf8').matchAll(/known limit: issue #(\d+)/g)].filter((m) => !open.has(Number(m[1]))).map((m) => `${file}: issue #${m[1]} is not open`),
+  );
+  for (const line of stale) console.error(line);
+  if (stale.length) {
+    console.error('\nA shortcut whose issue closed must be fixed or re-filed; remove or update its marker.');
+    process.exit(1);
+  }
+  console.log('Every known-limit marker points at an open issue.');
+}
+
 async function main() {
+  if (process.argv.includes('--issues')) return checkMarkerIssues();
   const counts = {};
   for (const file of sourceFiles()) {
     const n = (await commentsIn(file)).length;
@@ -119,7 +134,7 @@ async function main() {
   const shrunk = Object.entries(baseline).filter(([file, n]) => (counts[file] ?? 0) < n);
   for (const [file, n] of grown) console.error(`${file}: ${n} comments (baseline ${baseline[file] ?? 0})`);
   if (grown.length) {
-    console.error('\nNo new comments. Record non-obvious decisions in docs/adr/ and delete the rest (/delete-comment).');
+    console.error('\nNo new comments. Record decisions in docs/adr/, mark shortcuts `known limit: issue #N`, delete the rest (/delete-comment).');
     process.exit(1);
   }
   if (shrunk.length) {

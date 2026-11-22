@@ -16,6 +16,7 @@ const findUniqueId = (list, id, label) => {
 
 export function resolveContentTarget(data, path, target) {
   if (!isSafeContentPath(path) || (path.length === 0 && target !== undefined)) throw new Error('Invalid content path.');
+  // known limit: issue #275
   if (target === undefined) return [...path];
   if (!target || typeof target !== 'object' || Array.isArray(target)) throw new Error('Invalid content target.');
   if (Object.keys(target).some((key) => !['sectionId', 'itemId', 'itemIds'].includes(key))) throw new Error('Invalid content target.');

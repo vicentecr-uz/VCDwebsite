@@ -194,6 +194,7 @@ stop_pid_file() {
 cmd_stop() {
   echo "Stopping dev session..."
   stop_pid_file "Astro" "$ASTRO_LABEL" "$ASTRO_PID"
+  # known limit: issue #275
   stop_pid_file "Decap" "" "$SESSION_DIR/decap.pid"
   stop_pid_file "Sync" "$SYNC_LABEL" "$SYNC_PID"
   echo "Done."

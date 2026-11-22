@@ -72,6 +72,7 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
   return IMAGE_CAPTION_STYLES.some((style) => style.id === value);
 }
 
+// known limit: issue #275
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
   if (value === 'below') return 'below';
   if (value === 'default' || value === 'black') return 'white';
@@ -167,6 +168,7 @@ export function setImageCaptionRevealAtViewport(
   return next;
 }
 
+// known limit: issue #275
 export function resolveImageCaptions(input: {
   caption?: ImageCaptionInput;
   captions?: ImageCaptionInput;

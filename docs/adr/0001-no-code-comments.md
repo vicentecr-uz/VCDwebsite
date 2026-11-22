@@ -13,19 +13,21 @@ An audit of the engine found 2,844 comments (4,817 lines) across 285 files. They
 
 ## Decision
 
-- Source files carry no comments. A non-obvious decision goes in an ADR in this folder; a shortcut becomes a GitHub issue that names the file and symbol; everything else is deleted.
-- Machine-read directives are not comments and stay: `@ts-check`/`@ts-expect-error`, JSDoc type tags that type plain JavaScript (`@type`, `@param {…}`, `@returns {…}`, `@typedef`), `/// <reference>`, lint/format pragmas, `/*! license */` banners, shebangs, and the design-system marker `good-enough: #<issue>` (see `docs/interface/components.md`).
+- Source files carry no comments. A non-obvious decision goes in an ADR in this folder; everything else is deleted.
+- A deliberate shortcut becomes a GitHub issue that names the file and symbol, and the code gets exactly one line directly above the shortcut: `known limit: issue #N` (in the file's comment syntax). Agents read the code they edit, not the issue tracker, so the marker is the warning at the point of use; the issue is the single place the explanation lives. The marker is fixed wording in plain English so any agent understands it without reading this record, and it carries no prose so it cannot drift.
+- Machine-read directives are not comments and stay: `@ts-check`/`@ts-expect-error`, JSDoc type tags that type plain JavaScript (`@type`, `@param {…}`, `@returns {…}`, `@typedef`), `/// <reference>`, lint/format pragmas, `/*! license */` banners, shebangs. The two markers `known limit: issue #N` and `good-enough: #N` (see `docs/interface/components.md`) are allowed only in exactly that form; any extra word makes them ordinary comments.
 - Vendored code (`src/vendor/`, `src/lib/stageshow/`), patches and the private content surface are out of scope.
-- `bun run lint:comments` enforces this as a ratchet. `scripts/comment-baseline.json` records how many comments each file had when the rule landed. A file may not exceed its baseline and a new file starts at zero. When a file drops below its baseline the check fails until `bun run lint:comments --update` locks the lower number in, so the ratchet only turns one way. CI runs it in *Engine validation*.
+- `bun run lint:comments` enforces this as a ratchet. `scripts/comment-baseline.json` records how many comments each file had when the rule landed. A file may not exceed its baseline and a new file starts at zero. When a file drops below its baseline the check fails until `bun run lint:comments --update` locks the lower number in, so the ratchet only turns one way. CI runs it in *Engine validation*. `bun run lint:comments --issues` fails when a marker points at an issue that is not open: fix the shortcut, or re-file it and update the marker. It needs `gh`, so it runs in `/delete-comment` and on demand rather than in CI.
 - The `/delete-comment` skill (`.claude/skills/delete-comment/`) repeats the audit on a slice of the codebase.
 
 ## Consequences
 
 - Code has to explain itself through names, small functions, tests and types. When it cannot, the explanation belongs in an ADR, which is reviewed like code.
-- This supersedes the Atlas standard that asks for a one-line comment naming a deliberate corner-cut's ceiling and upgrade path. In this repository that ceiling goes in an issue.
+- This replaces the Atlas standard of a one-line comment naming a corner-cut's ceiling and upgrade path: here the ceiling and upgrade path go in the issue, and the code keeps only `known limit: issue #N`.
+- An agent that touches marked code reads the issue before changing it, never extends the shortcut, and removes the marker in the same PR that closes the issue.
 - Explanations for trivia are lost by design. If deleting a comment would lose something a future reader needs, that is a decision record; move it, do not keep it.
 - The checker parses each language rather than grepping, so `//` inside strings and URLs is not a comment: Babel for JS/TS, PostCSS for CSS, `@astrojs/compiler` for Astro (frontmatter, `<script>`, `<style>`, HTML comments and `{/* … */}` expressions), and full-line `#` for shell. The Astro compiler reports byte offsets, so `astroComments` re-anchors each region by searching for its text.
 
 ## Where
 
-`scripts/check-comments.mjs` → `commentsIn`, `sourceFiles`; `scripts/comment-baseline.json`; `.github/workflows/engine-validation.yml` → *Ban new code comments*
+`scripts/check-comments.mjs` → `commentsIn`, `sourceFiles`, `MARKER`, `checkMarkerIssues`; `scripts/comment-baseline.json`; `.github/workflows/engine-validation.yml` → *Ban new code comments*

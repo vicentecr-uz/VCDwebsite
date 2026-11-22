@@ -141,6 +141,7 @@ export function projectStackClass(
   return classes.join(' ');
 }
 
+// known limit: issue #275
 export function resolveProjectSpacing(
   spacing?: ProjectStackSpacing,
   tightTop?: boolean,

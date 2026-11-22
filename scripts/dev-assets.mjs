@@ -25,6 +25,7 @@ async function writeProjectJson(relativeFile, data) {
 }
 
 /** @param {string} value */
+// known limit: issue #275
 export function normalizeAssetSrc(value) {
   const raw = String(value || '').trim();
   if (!raw || raw === 'placeholder.svg' || raw.endsWith('/placeholder.svg')) return '';
@@ -166,6 +167,7 @@ export async function listDevAssets(filterProject = '') {
     });
   };
 
+  // known limit: issue #279
   try {
     for (const filename of readdirSync(mediaDir)) {
       if (!isImageFilename(filename)) continue;

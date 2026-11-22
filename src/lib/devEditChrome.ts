@@ -1,5 +1,6 @@
 import type { ImageCaptionPositionId } from './imageCaptions';
 
+// known limit: issue #277
 export type DevEditCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export function isDevEditCorner(value: unknown): value is DevEditCorner {

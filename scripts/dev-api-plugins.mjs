@@ -170,12 +170,14 @@ export function listingCardForGrid(grid, listing, previous = {}) {
   };
   if (hoverImage) {
     base.hoverImage = hoverImage;
+    // known limit: issue #276
     const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : previous.hoverDark;
     if (typeof hoverDark === 'boolean') base.hoverDark = hoverDark;
   }
   const href = String(listing.href ?? previous.href ?? '').trim();
   if (href) base.href = href;
   if ((listing.mobileInset ?? previous.mobileInset) === true) base.mobileInset = true;
+  // known limit: issue #276
   const variants = listing.variants ?? previous.variants;
   if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
     base.variants = structuredClone(variants);
@@ -363,6 +365,7 @@ export async function convertHeicUpload(data, options = {}) {
   const output = path.join(temporaryDirectory, 'output.jpg');
   try {
     await writeFile(input, data);
+    // known limit: issue #278
     await run('/usr/bin/sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '90', input, '--out', output]);
     return await readFile(output);
   } catch {
@@ -829,6 +832,7 @@ export function uploadDevWriter() {
             return;
           }
           const directory = path.join(process.cwd(), 'media');
+          // known limit: issue #279
           suppressContentHmr();
           await mkdir(directory, { recursive: true });
           const filenames = [];
@@ -1023,6 +1027,7 @@ export function projectSettingsDevWriter() {
               description: data.description ?? '',
               status: data.status ?? 'draft',
               stack: data.stack === 'legacy' ? 'legacy' : 'modern',
+              // known limit: issue #277
               layout: data.stack !== 'legacy' && (data.layout === 'writeup' || (data.layout !== 'case-study' && Boolean(data.listings?.play)))
                 ? 'writeup'
                 : 'case-study',

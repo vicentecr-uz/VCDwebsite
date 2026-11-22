@@ -71,6 +71,7 @@ export function createDemoCropBitmap({ image, ghostImage, previewImage }: DemoCr
         if (token !== generation) return false;
         const width = image.naturalWidth;
         const height = image.naturalHeight;
+        // known limit: issue #279
         if (!width || !height || width * height > MAX_PIXELS) return false;
         const mainCanvas = image.ownerDocument.createElement('canvas');
         mainCanvas.width = width;

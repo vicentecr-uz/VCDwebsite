@@ -94,6 +94,7 @@ function buildDeclarations(json) {
   return { refDecls, sysLightDecls, sysDarkDecls, compDecls };
 }
 
+// known limit: issue #68
 function assembleTokenCss(startMarker, endMarker, rootDecls, sysDarkDecls, { includeOsMedia = false } = {}) {
   const body = [];
   if (rootDecls.length) {

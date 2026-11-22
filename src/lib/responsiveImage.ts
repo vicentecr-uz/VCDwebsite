@@ -7,6 +7,7 @@ export interface ImageVariant {
   w: number;
 }
 
+// known limit: issue #275
 export interface LegacyImageVariant {
   aspectRatio: string;
   x: number;
@@ -23,8 +24,10 @@ export interface ImageSourceDims {
   height: number;
 }
 
+// known limit: issue #275
 export type ImageGridColumns = number | Partial<Record<ImageViewport, number>>;
 
+// known limit: issue #275
 export type ImageGridConstrainedValue = number | boolean | 'text';
 export type ImageGridConstrained =
   | ImageGridConstrainedValue
@@ -184,6 +187,7 @@ const hasRectFields = (
   variant: (Partial<ImageVariant> & Partial<LegacyImageVariant>) | undefined,
 ): boolean => !!variant && (variant.w !== undefined || variant.cx !== undefined || variant.cy !== undefined);
 
+// known limit: issue #275
 const fromLegacy = (
   variant: Partial<LegacyImageVariant>,
   fallbackAspect: string,

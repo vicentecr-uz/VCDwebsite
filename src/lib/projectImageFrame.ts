@@ -158,6 +158,7 @@ export type MaxVhPercent = (typeof MAX_VH_PERCENTS)[number];
 
 const MAX_VH_SET = new Set<number>(MAX_VH_PERCENTS);
 
+// known limit: issue #275
 export function resolveMaxVh(source: {
   maxVh?: unknown;
   max80?: unknown;

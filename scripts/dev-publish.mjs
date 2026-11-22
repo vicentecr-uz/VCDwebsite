@@ -11,6 +11,7 @@ import { contentGitArgs, hasContentRepository, isReviewPreview } from './content
 
 const execFile = promisify(execFileCb);
 
+// known limit: issue #277
 export const CONTENT_PATHS = ['src/content', 'media'];
 const PUBLISH_BRANCH = 'main';
 
@@ -254,6 +255,7 @@ async function unpublishedDetails(base, file) {
     const sectionKey = (section) => section.id || section.sectionId;
     const oldKeys = before.map(sectionKey);
     const newKeys = after.map(sectionKey);
+    // known limit: issue #275
     const stableKeys = (keys) => keys.every(Boolean) && new Set(keys).size === keys.length;
     if (!stableKeys(oldKeys) || !stableKeys(newKeys)) {
       const moved = before.some((section, index) => !isDeepStrictEqual(section, after[index])

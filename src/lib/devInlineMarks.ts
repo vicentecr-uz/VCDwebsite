@@ -26,6 +26,7 @@ export const applyInlineMark = (range: Range, change: { tone?: EmphasisTone; cod
     ? range.endContainer
     : range.endContainer.parentElement;
   const paragraph = startElement?.closest<HTMLElement>('p, div');
+  // known limit: issue #279
   if (!paragraph || paragraph !== endElement?.closest('p, div')) return null;
   const paragraphWrap = explicitParagraphTextWrap(paragraph);
 

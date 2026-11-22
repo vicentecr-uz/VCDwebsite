@@ -97,6 +97,7 @@ function stableIds(data, nodePath, node) {
   return ids;
 }
 
+// known limit: issue #279
 function sourceNodes(document, data) {
   const result = [];
   walkJson(data, [], (node, nodePath) => {

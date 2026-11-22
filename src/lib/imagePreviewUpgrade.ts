@@ -457,6 +457,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         attemptState.exhausted = true;
         return;
       }
+      // known limit: issue #279
       const delay = attemptState.attempts === 1 ? 1000 : 2000;
       attemptState.retryTimer = later(() => {
         attemptState.retryTimer = undefined;

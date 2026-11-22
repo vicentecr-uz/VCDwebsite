@@ -1,3 +1,4 @@
+// known limit: issue #279
 export const IMAGE_LIGHTBOX_MAX_SCALE = 4;
 
 export interface Point {

@@ -1,12 +1,12 @@
 # Architecture decision records
 
-Source code carries no explanatory comments ([ADR 0001](0001-no-code-comments.md)). A decision that is important and not obvious from the code is recorded here instead; anything else is deleted, and a known shortcut becomes a GitHub issue.
+Source code carries no explanatory comments ([ADR 0001](0001-no-code-comments.md)). A decision that is important and not obvious from the code is recorded here instead; anything else is deleted, and a known shortcut becomes a GitHub issue plus a one-line `known limit: issue #N` marker at the code.
 
 Each record names files and symbols, never line numbers, so `rg` finds the code. Update the record in the same PR when the decision changes; mark a reversed one **Superseded by NNNN** rather than deleting it.
 
 | ADR | Decision |
 | --- | --- |
-| [0001](0001-no-code-comments.md) | No code comments; decisions live here, shortcuts live in issues |
+| [0001](0001-no-code-comments.md) | No code comments; decisions live here, shortcuts are issues marked `known limit: issue #N` |
 | [0002](0002-content-publishes-separately-from-engine.md) | Content publishes to main on its own lane, guarded against reverting others |
 | [0003](0003-calm-dev-hmr.md) | The dev server never full-reloads on its own |
 | [0004](0004-design-token-pipeline.md) | `tokens/design-tokens.json` is the single source of colour tokens |

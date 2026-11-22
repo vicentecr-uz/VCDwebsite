@@ -111,6 +111,7 @@ export function hoistCanvasChrome(scope: ReturnType<typeof createPageScope>) {
     if (viewportPatched) return;
     if (viewportProperties.some(({ own }) => own && !own.configurable)) return;
     viewportPatched = true;
+    // known limit: issue #279
     try {
       for (const { target, name, shell, read } of viewportProperties) {
         Object.defineProperty(target, name, { configurable: true, get: () =>

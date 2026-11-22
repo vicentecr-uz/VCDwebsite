@@ -19,6 +19,7 @@ const PROD_ORIGINS = new Set([
   'https://vicentecr.uz',
 ]);
 
+// known limit: issue #277
 const HTML_EMAIL =
   /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 const VALID_TLDS = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
@@ -81,6 +82,7 @@ function isAllowedOrigin(request: Request, isDev: boolean): boolean {
   }
 }
 
+// known limit: issue #277
 export function validateSignupEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return 'Enter a valid email address.';
   const email = raw.trim();

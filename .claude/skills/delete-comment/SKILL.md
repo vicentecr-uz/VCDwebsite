@@ -5,7 +5,7 @@ description: Audit and delete code comments in VCDwebsite, one slice at a time. 
 
 # /delete-comment
 
-Policy: [`docs/adr/0001-no-code-comments.md`](../../../docs/adr/0001-no-code-comments.md). Source carries no comments; decisions live in `docs/adr/`, shortcuts in GitHub issues. `bun run lint:comments` is the ratchet.
+Policy: [`docs/adr/0001-no-code-comments.md`](../../../docs/adr/0001-no-code-comments.md). Source carries no comments; decisions live in `docs/adr/`, shortcuts in GitHub issues with a `known limit: issue #N` marker at the code. `bun run lint:comments` is the ratchet.
 
 Read root `AGENTS.md` first. This is engine work: a dedicated worktree from latest `origin/main`, a `chore/` or `refactor/` branch, and the full PR lifecycle.
 
@@ -29,7 +29,7 @@ Write `<scratch>/decisions.txt`, one line per block: `<id> <T|S|E|D> [theme-or-i
 | --- | --- | --- | --- |
 | `T` | Tautology | The code, a name, a type or an existing doc already says it | Delete |
 | `S` | Stale | Describes removed code, old behaviour, or an issue number that no longer matches (check with `gh issue view N`; issue numbers were re-imported) | Delete |
-| `E` | Excuse | Licenses a shortcut: "for now", "legacy … kept for", "keep in sync with", "mirrors", "belt-and-suspenders", "Ceiling:", "workaround", "drop once …", a TODO | Delete, then file or reuse an issue |
+| `E` | Excuse | Licenses a shortcut: "for now", "legacy … kept for", "keep in sync with", "mirrors", "belt-and-suspenders", "Ceiling:", "workaround", "drop once …", a TODO | Delete, file or reuse an issue, then add `known limit: issue #N` |
 | `D` | Decision record | Important and not obvious from code: a browser quirk, a rejected alternative, an invariant whose breach is silent | Move into an ADR, then delete |
 
 Judgement calls:
@@ -47,12 +47,15 @@ Group `D` blocks by theme. Add to the existing ADR when the theme fits (see `doc
 
 Group `E` blocks by the shortcut they excuse, one issue each; collect small scale ceilings into one tracking issue with a checklist. Search open issues first (`gh issue list --search`) and reuse one that already covers it. Every new issue gets a label and a milestone (`AGENTS.md` → Working rules); ask the owner if either is unclear. The body names each file and symbol and quotes what the comment claimed.
 
+Then put exactly `known limit: issue #N` (in the file's comment syntax) on the line directly above each shortcut. In Astro markup, put it in the frontmatter or a script, never inside a tag. Check that the comment annotated real code: an orphan with nothing under it is `S`, not `E`.
+
 ## 6. Apply and ratchet
 
 ```sh
 bun .claude/skills/delete-comment/scripts/apply.mjs <scratch>/blocks.json <scratch>/decisions.txt
 bun run lint:comments --update
 bun run lint:comments
+bun run lint:comments --issues
 ```
 
 `apply.mjs` deletes each listed block, removes `{/* */}` braces in Astro/JSX markup (never in JS, so `catch {}` survives), keeps JSDoc type tags, and avoids leaving double blank lines. Review `git diff -U0 | grep '^+'`: every added line should be a trimmed JSDoc tag or a line that lost a trailing comment.

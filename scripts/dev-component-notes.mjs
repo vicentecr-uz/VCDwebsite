@@ -22,6 +22,7 @@ function validateStored(stored) {
 export function createComponentNotesStore({ directory, readDocument }) {
   const root = path.resolve(directory);
   let tail = Promise.resolve();
+  // known limit: issue #279
   const enqueue = (fn) => {
     const run = tail.then(fn);
     tail = run.catch(() => {});

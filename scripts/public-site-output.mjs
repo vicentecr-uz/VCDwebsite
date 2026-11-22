@@ -257,6 +257,7 @@ export async function prunePublicOutput(distDir, options = {}) {
   }
 
   const retainedAssets = new Set();
+  // known limit: issue #279
   const assetRoot = path.resolve(distDir, assetsDir);
   const shareCardRoot = path.resolve(distDir, 'share-cards');
   const isGeneratedAsset = (file) => file.startsWith(assetRoot + path.sep)
