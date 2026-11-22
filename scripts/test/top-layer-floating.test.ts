@@ -10,7 +10,6 @@ const EXEMPT: Array<{ file: string; marker: string; reason: string }> = [
   { file: 'src/components/reports/CommandMenu.astro', marker: 'command__list', reason: 'inline inside the command surface, which is a native popover in Edit and an embedded demonstration otherwise' },
   { file: 'src/components/DevTextEditor.astro', marker: 'dev-gap-toolbar__menu', reason: 'inline row inside the gap toolbar pill, not a popup' },
   { file: 'src/components/DevImageDrop.astro', marker: 'dev-image-drop-choice', reason: 'page-level sibling of the drop zone, or mounted inline in the gap toolbar' },
-  { file: 'src/components/DevModeController.astro', marker: "menu.className = 'dev-launcher'", reason: 'created on demand and appended to <body>' },
   { file: 'src/components/project/demos/ProgressiveImageDemo.astro', marker: 'progressive-image-lens-tooltip', reason: 'portaled to <body> on mount' },
   { file: 'src/components/project/ProjectImageCropTuner.astro', marker: 'tapico-crop-tuner__linked-aspect-tooltip', reason: 'inside the Layout-level crop tuner panel' },
 ];

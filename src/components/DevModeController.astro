@@ -115,6 +115,9 @@ import '../styles/site-annotation-editor.css';
       }));
     };
 
+    const panelTitle = (panel: HTMLElement) =>
+      panel.querySelector('.dev-overlay__title')?.textContent?.trim() || panel.dataset.devPanelKey || '';
+
     const toggleLauncher = () => {
       if (launcher) {
         removeLauncher();
@@ -124,28 +127,66 @@ import '../styles/site-annotation-editor.css';
       if (!panels.length) return;
 
       const menu = document.createElement('div');
-      menu.className = 'dev-launcher';
+      menu.className = 'dev-launcher dev-menu';
+      menu.popover = 'manual';
       menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', 'Panels');
 
-      panels.forEach((panel, index) => {
-        const key = panel.dataset.devPanelKey || '';
-        const title = panel.querySelector('.dev-overlay__title')?.textContent?.trim() || key;
+      const field = document.createElement('div');
+      field.className = 'dev-field dev-field--no-label';
+      const value = document.createElement('div');
+      value.className = 'dev-field__value';
+      const search = document.createElement('input');
+      search.type = 'search';
+      search.className = 'dev-field__input';
+      search.placeholder = 'Panel';
+      search.setAttribute('aria-label', 'Panel');
+      search.autocomplete = 'off';
+      search.spellcheck = false;
+      value.append(search);
+      field.append(value);
+      menu.append(field);
+
+      const items = panels.map((panel) => {
         const item = document.createElement('button');
         item.type = 'button';
-        item.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-surface';
+        item.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-menu__item';
         item.setAttribute('role', 'menuitem');
-        item.textContent = title;
+        item.textContent = panelTitle(panel);
         pageScope.listen(item, 'click', () => openLauncherPanel(panel));
-        if (index === 0) item.tabIndex = 0;
-        menu.appendChild(item);
+        menu.append(item);
+        return item;
       });
 
-      const enabled = [...menu.querySelectorAll<HTMLButtonElement>('button')];
-      pageScope.listen(menu, 'keydown', (event) => {
+      const shown = () => items.filter((item) => !item.hidden);
+      pageScope.listen(search, 'input', () => {
+        const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+        items.forEach((item) => {
+          const text = item.textContent!.toLowerCase();
+          item.hidden = !words.every((word) => text.includes(word));
+        });
+      });
+      pageScope.listen(search, 'keydown', (event: KeyboardEvent) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          shown()[0]?.click();
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          shown()[0]?.focus();
+        }
+      });
+
+      pageScope.listen(menu, 'keydown', (event: KeyboardEvent) => {
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        if (event.target === search) return;
         event.preventDefault();
+        const enabled = shown();
         if (!enabled.length) return;
         const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
+        if (current === 0 && event.key === 'ArrowUp') {
+          search.focus();
+          return;
+        }
         const next = event.key === 'ArrowDown'
           ? (current + 1) % enabled.length
           : (current - 1 + enabled.length) % enabled.length;
@@ -153,8 +194,9 @@ import '../styles/site-annotation-editor.css';
       });
 
       document.body.appendChild(menu);
+      menu.showPopover();
       launcher = menu;
-      (enabled[0] ?? menu.querySelector('button'))?.focus();
+      search.focus();
     };
 
     /*
