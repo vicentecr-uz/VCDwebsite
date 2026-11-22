@@ -252,11 +252,16 @@ const { youtube, label, art } = Astro.props;
       root.removeAttribute('data-revealed');
       item.tabIndex = -1;
     }, { signal });
-    video.addEventListener('play', () => {
+    // The clip starts loading on play, but the board holds back a moment: that head start covers part
+    // of the wait for YouTube's opening chrome, so a quick click still gets the card promptly.
+    const REVEAL_AT = 2.5;
+    const reveal = () => {
+      if (video.paused || video.ended || video.currentTime < REVEAL_AT || root.hasAttribute('data-revealed')) return;
       root.setAttribute('data-revealed', '');
       item.tabIndex = 0;
-      prepare();
-    }, { signal });
+    };
+    video.addEventListener('play', () => { prepare(); reveal(); }, { signal });
+    video.addEventListener('timeupdate', reveal, { signal });
 
     return () => {
       controller.abort();
