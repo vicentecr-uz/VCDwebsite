@@ -48,9 +48,6 @@ export function swapPageContent(current: Document, incoming: Document) {
   for (const [property, value] of timing) if (value) old.wrapper.style.setProperty(property, value);
   copyAttributes(old.page, next.page);
   const bodyRetained = new Map<Element, Element>([[old.wrapper, next.wrapper], [old.overlay, next.overlay]]);
-  const marker = current.getElementById('transition-readiness-marker');
-  const nextMarker = incoming.getElementById('transition-readiness-marker');
-  if (marker && nextMarker) bodyRetained.set(marker, nextMarker);
   replaceAround(current.body, incoming.body, bodyRetained);
   replaceAround(old.wrapper, next.wrapper, new Map([[old.page, next.page]]));
   const pageRetained = new Map<Element, Element>();

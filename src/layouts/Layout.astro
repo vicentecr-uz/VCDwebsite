@@ -253,22 +253,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
     {showDevTools && (
       <style is:inline>
         html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; visibility: hidden !important; animation: none !important; }
-        #transition-readiness-marker {
-          position: fixed;
-          top: max(24px, env(safe-area-inset-top));
-          left: max(24px, env(safe-area-inset-left));
-          z-index: 101;
-          pointer-events: none;
-          padding: 0.3em 0.42em;
-          background: #ff1493;
-          color: #19000d;
-          font-family: inherit;
-          font-size: clamp(2.5rem, 7vw, 6rem);
-          font-weight: 900;
-          line-height: 0.9;
-          letter-spacing: -0.055em;
-          text-transform: uppercase;
-        }
       </style>
     )}
     {!showDevTools && (
@@ -333,7 +317,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         <Fragment set:html={spinnerMarkup} />
       </div>
     </div>
-    {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
 
@@ -549,7 +532,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
       bindExternalLinks();
 
       const overlay = document.getElementById('transition-overlay');
-      const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
       const visibleTransition = document.documentElement.dataset.devTransition === 'visible';
       const initialRevealState = overlay?.dataset.vcdInitialReveal;
       bindImagePreviewUpgrade();
@@ -577,11 +559,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         } catch {
           // Performance marks are diagnostic only and must never affect reveal.
         }
-        if (!readinessMarker) return;
-        const eventDetail = { name, time: performance.now(), ...detail };
-        const win = window as Window & { __vcdTransitionMilestones?: Array<Record<string, unknown>> };
-        (win.__vcdTransitionMilestones ??= []).push(eventDetail);
-        window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: eventDetail }));
       };
       emitTransitionMilestone('transition-script-start');
 
@@ -772,7 +749,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
       const revealPage = async () => {
         if (!overlay || suspended) return;
         invalidate();
-        if (readinessMarker) readinessMarker.hidden = true;
         const current = generation;
         const controller = new AbortController();
         let revealAnnounced = false;
@@ -806,7 +782,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
           if (current !== generation || suspended) return;
           emitTransitionMilestone('opaque-paint');
           emitTransitionMilestone('fade-authorized');
-          if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
           if (visibleTransition) delete overlay.dataset.loading;
           revealAnnounced = true;
           document.dispatchEvent(new Event('header:navigation-reveal'));
@@ -870,7 +845,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
 
       const revealWithoutVeil = () => {
         invalidate();
-        if (readinessMarker) readinessMarker.hidden = true;
         overlay.style.animation = 'none';
         overlay.style.opacity = '0';
         overlay.hidden = true;
