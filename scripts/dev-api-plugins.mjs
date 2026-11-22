@@ -931,7 +931,7 @@ export function videoPosterDevWriter() {
           // Re-encoding rejects anything that is not an image.
           const poster = await sharp(Buffer.from(String(body.data || ''), 'base64')).jpeg({ quality: 90 }).toBuffer();
           // Max heights ride along with the thumbnail; validate before anything is written.
-          const maxHeightFile = path.join(process.cwd(), 'src/lib/videoPageMaxHeight.json');
+          const maxHeightFile = path.join(process.cwd(), 'src/content/settings/video-page.json');
           let maxHeights = null;
           if (body.maxHeights !== undefined) {
             const keys = ['desktop', 'tablet', 'mobile'];
@@ -945,9 +945,10 @@ export function videoPosterDevWriter() {
           }
           suppressContentHmr();
           await writeFile(file, poster);
-          // Unchanged heights leave the file alone, so a thumbnail-only save does not reload the page.
-          if (maxHeights && JSON.stringify(maxHeights) !== JSON.stringify(JSON.parse(await readFile(maxHeightFile, 'utf8')))) {
-            await writeAtomicJson(maxHeightFile, maxHeights);
+          // Unchanged heights leave the file alone, so a thumbnail-only save stays out of the publish list.
+          const savedHeights = await readFile(maxHeightFile, 'utf8').then((text) => JSON.parse(text).maxHeights, () => null);
+          if (maxHeights && JSON.stringify(maxHeights) !== JSON.stringify(savedHeights)) {
+            await writeAtomicJson(maxHeightFile, { maxHeights });
           }
           send(200, { ok: true });
         } catch {

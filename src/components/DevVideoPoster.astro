@@ -6,7 +6,9 @@ import RangeField from './ui/RangeField.astro';
 import ViewportSelector from './ui/ViewportSelector.astro';
 import PanelActions from './ui/PanelActions.astro';
 import Button from './ui/Button.astro';
-import savedMaxHeights from '../lib/videoPageMaxHeight.json';
+import { loadVideoPageMaxHeights } from '../lib/videoPageMaxHeight';
+
+const savedMaxHeights = loadVideoPageMaxHeights();
 ---
 
 <DevOverlay storageKey="video-poster" panelKey="video-poster" defaultHidden>
@@ -170,6 +172,7 @@ import savedMaxHeights from '../lib/videoPageMaxHeight.json';
         try { localStorage.setItem(storageKey, String(Number(input.value) / FPS)); } catch { /* the saved file is what matters */ }
         Object.assign(saved, heights);
         try { localStorage.removeItem(HEIGHT_KEY); } catch { /* the saved file is what matters */ }
+        window.dispatchEvent(new Event('vcd:dev-content-written'));
         toast('Saved', 'success');
       } catch (error) {
         if (!signal.aborted) toast(error instanceof Error ? error.message : 'Could not save the thumbnail.', 'warning');
