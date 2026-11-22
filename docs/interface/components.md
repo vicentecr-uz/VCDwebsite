@@ -24,7 +24,7 @@ When creating a page, compose its headings, text, and media from the existing co
 
 Any new kind of block Anto asks for (a footnote, a label, a toggle line) ships editable without being asked: its words and settings live in content, carry in-page Edit wiring, and get whatever Edit-mode control the block needs to change them. Hardcoding the first version and waiting to be asked for controls is not done.
 
-Those controls open from where the thing lives: an Edit button on the page or the block in Edit mode, not a new entry in the ⌥M panel list. ⌥M is a meta tool for reaching panels side by side to compare and align them, not the way in. A panel that has its own entry point opts out of ⌥M with `data-dev-launcher-skip`.
+Those controls open from where the thing lives: an Edit button on the page or the block in Edit mode. The ⌥M panel list is not a substitute for that entry point. It stays a shortcut that reaches every panel, for comparing and aligning panels side by side or skipping the hunt for an on-page button.
 
 Treat difficulty expressing a page through blocks as evidence of an editor capability gap. Identify the missing capability and address it within the agreed task scope, or explicitly report the remaining gap. Do not silently bypass the editor with page-specific markup. Functional controls may still need engine code; keep that boundary explicit.
 
