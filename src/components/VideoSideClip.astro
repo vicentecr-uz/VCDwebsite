@@ -1,19 +1,19 @@
 ---
 // A skateboard that peeks out from under a video once it plays. Picking it tucks it back under
-// and blur-fades a portrait clip into the top corner of the frame; picking the clip undoes that.
+// and blur-fades a portrait YouTube clip into the top corner of the frame; picking the clip undoes that.
 // Sits beside a ProjectVideo inside a positioned parent that is the video's size.
 interface Props {
-  /** Root-relative clip URL. */
-  src: string;
+  /** YouTube video id of a 9:16 clip. Nothing loads from YouTube until the board is picked. */
+  youtube: string;
   label: string;
   /** Root-relative artwork for the board; the drawn stand-in shows without it. */
   art?: string;
 }
 
-const { src, label, art } = Astro.props;
+const { youtube, label, art } = Astro.props;
 ---
 
-<div class="side-clip" data-side-clip data-clip-src={src} data-clip-label={label}>
+<div class="side-clip" data-side-clip data-clip-youtube={youtube} data-clip-label={label}>
   <button type="button" class="side-clip__item" aria-label={`Play ${label} clip`} tabindex="-1">
     {art ? <img src={art} alt="" /> : (
       <!-- Original stand-in drawing. -->
@@ -98,12 +98,16 @@ const { src, label, art } = Astro.props;
     cursor: pointer;
     opacity: 0;
     filter: blur(12px);
-    transition: opacity 400ms ease, filter 400ms ease;
+    /* Grows slightly out of the board, and shrinks back toward it: the origin is the board's centre. */
+    scale: 0.92;
+    transform-origin: 115% 29%;
+    transition: opacity 400ms ease, filter 400ms ease, scale 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .side-clip__card[data-open] {
     opacity: 1;
     filter: blur(0);
+    scale: 1;
   }
 
   .side-clip__card::after {
@@ -117,12 +121,20 @@ const { src, label, art } = Astro.props;
     pointer-events: none;
   }
 
-  .side-clip__card video {
+  /* The player is laid out at phone size and scaled to the card, so YouTube's own chrome keeps its
+     proportions. It is taller than the card by --crop top and bottom: the 9:16 clip then sits between
+     two bars, and the title strip and logo YouTube draws at the edges fall in those bars, out of view. */
+  .side-clip__card iframe {
+    --crop: 80px;
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    top: 50%;
+    left: 50%;
+    width: 360px;
+    height: calc(640px + 2 * var(--crop));
+    border: 0;
+    translate: -50% -50%;
+    scale: var(--side-clip-scale, 1);
+    pointer-events: none;
   }
 
   .side-clip__card:focus-visible {
@@ -133,7 +145,7 @@ const { src, label, art } = Astro.props;
   @media (prefers-reduced-motion: reduce) {
     .side-clip__item,
     .side-clip[data-open] .side-clip__item { transition: none; }
-    .side-clip__card { filter: none; transition: opacity 400ms ease; }
+    .side-clip__card { filter: none; scale: 1; transition: opacity 400ms ease; }
   }
 </style>
 
@@ -149,6 +161,7 @@ const { src, label, art } = Astro.props;
     const controller = new AbortController();
     const { signal } = controller;
     let card: HTMLButtonElement | undefined;
+    const YOUTUBE = 'https://www.youtube-nocookie.com';
 
     const close = () => {
       const closing = card;
@@ -156,7 +169,6 @@ const { src, label, art } = Astro.props;
       root.removeAttribute('data-open');
       if (!closing) return;
       closing.removeAttribute('data-open');
-      closing.querySelector('video')?.pause();
       setTimeout(() => closing.remove(), 400);
     };
     const open = () => {
@@ -167,28 +179,41 @@ const { src, label, art } = Astro.props;
       // Keeps the card out of the player's own auto-hide.
       next.setAttribute('noautohide', '');
       next.setAttribute('aria-label', `Hide ${root.dataset.clipLabel} clip`);
-      const clip = document.createElement('video');
-      clip.muted = true;
-      clip.loop = true;
-      clip.playsInline = true;
-      clip.preload = 'auto';
-      clip.src = root.dataset.clipSrc ?? '';
-      next.append(clip);
+      const id = root.dataset.clipYoutube ?? '';
+      const frame = document.createElement('iframe');
+      frame.title = `${root.dataset.clipLabel} clip`;
+      frame.tabIndex = -1;
+      frame.allow = 'autoplay; encrypted-media';
+      frame.referrerPolicy = 'strict-origin-when-cross-origin';
+      // Muted, looping, no controls, no keyboard, no annotations; `playlist` is what makes `loop` work for one video.
+      frame.src = `${YOUTUBE}/embed/${id}?autoplay=1&mute=1&controls=0&loop=1&playlist=${id}&playsinline=1&rel=0&disablekb=1&fs=0&iv_load_policy=3&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+      next.append(frame);
+      // The card stays out of sight until YouTube says the clip is playing, so its poster and big play button never show.
+      const reveal = () => { if (card === next) next.setAttribute('data-open', ''); };
+      frame.addEventListener('load', () => {
+        frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YOUTUBE);
+      }, { signal });
+      window.addEventListener('message', (event) => {
+        if (event.origin !== YOUTUBE || event.source !== frame.contentWindow) return;
+        try {
+          const message = JSON.parse(String(event.data));
+          if (message.info?.playerState === 1) reveal();
+        } catch { /* not a player message */ }
+      }, { signal });
+      // If no state ever arrives (blocked scripts, a changed player), show it anyway.
+      setTimeout(reveal, 4000);
       next.addEventListener('click', (event) => { event.stopPropagation(); close(); item.focus({ preventScroll: true }); }, { signal });
       (video.parentElement ?? player).append(next);
       card = next;
       root.setAttribute('data-open', '');
-      requestAnimationFrame(() => next.setAttribute('data-open', ''));
-      if (!video.paused) clip.play().catch(() => {});
+      next.style.setProperty('--side-clip-scale', String(next.offsetWidth / 360));
     };
 
     item.addEventListener('click', open, { signal });
     video.addEventListener('play', () => {
       root.setAttribute('data-revealed', '');
       item.tabIndex = 0;
-      card?.querySelector('video')?.play().catch(() => {});
     }, { signal });
-    video.addEventListener('pause', () => card?.querySelector('video')?.pause(), { signal });
 
     return () => {
       controller.abort();

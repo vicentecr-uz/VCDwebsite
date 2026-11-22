@@ -9,9 +9,8 @@ import VideoSideClip from '../components/VideoSideClip.astro';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-// The side clip ships only once its file exists in public/videos; dev always shows it.
-const sideClipFile = 'the-bridge-side-clip.mp4';
-const hasSideClip = import.meta.env.DEV || existsSync(path.join(process.cwd(), 'public/videos', sideClipFile));
+// The side clip is an official 9:16 gameplay upload, embedded from YouTube.
+const sideClipYoutube = 'QPW3XwBoQlw';
 const sideClipArtFile = 'the-bridge-side-clip-board.png';
 const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile)) ? `/images/${sideClipArtFile}` : undefined;
 ---
@@ -31,7 +30,7 @@ const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile
           spacing="none"
           rounded
         />
-        {hasSideClip && <VideoSideClip src={`/videos/${sideClipFile}`} label="skateboard" art={sideClipArt} />}
+        <VideoSideClip youtube={sideClipYoutube} label="skateboard" art={sideClipArt} />
       </div>
     </div>
   </main>
