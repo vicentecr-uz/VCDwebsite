@@ -14,6 +14,15 @@ A floating panel is `DevOverlay` (`src/components/DevOverlay.astro`, rendering `
 - Never re-set `.dev-overlay`, `.dev-overlay__head` or `.dev-overlay__body` padding, gap or radius at a call site; change `devOverlayFrame.css`.
 - Texts that share a row share a baseline. Align rows with `align-items: baseline` or by composing a component that already does, not with nudged margins.
 
+## Saving, feedback and revert
+
+- **An action bar is optional.** Add `PanelActions` only when the panel has something to commit; a panel whose controls apply as you use them has none.
+- **Save feedback is a toast.** Dispatch `vcd:edit-toast` on `window` with `{ message: 'Saved', icon: 'success' }`; a failure is the same event with `icon: 'warning'` and the error as the message. Never add a status line under the actions.
+- **Inline feedback, when asked for, lives in the button.** The Save button's label blur-fades to `Saved` and back (the icon-swap tokens in `global.css`); the panel's height does not change.
+- **A panel that saves has Revert.** A ghost `Revert` button beside Save returns every control in the panel, and whatever it previews on the page, to the last save. Unsaved tuning may sit in browser storage until then; Save clears it.
+- **Panel and page move together.** A preview in the panel and the thing it edits on the page update in the same gesture, before Save, as the image crop panel does.
+- **Text beside a label matches the label.** A readout in a field's label row uses the label's type and sits at the row's trailing edge; `Field` styles an `<output slot="labelAccessory">` this way, so do not size or place it at the call site.
+
 ## Check it
 
 Open the panel in a worktree preview and run `(await import('/scripts/dev-measure.ts')).report('.dev-overlay[data-dev-panel-key="<key>"]')`. All four `box` insets must read equal and every row `aligned`. Paste the output into the handoff.
