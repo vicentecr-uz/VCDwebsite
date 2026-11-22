@@ -19,8 +19,9 @@ const deleteAll = async (name, source) => {
 };
 
 test('identical Astro comments each resolve to their own position', async () => {
-  const { out } = await deleteAll('a.astro', '---\n---\n<!-- same -->\n<p>keep</p>\n<!-- same -->\n');
-  expect(out).toBe('---\n---\n<p>keep</p>\n');
+  const source = '---\n---\n<!-- same -->\n<p>keep</p>\n<!-- same -->\n';
+  const found = await commentsIn('a.astro', source);
+  expect(found.map((c) => [c.start, source.slice(c.start, c.end)])).toEqual([[8, '<!-- same -->'], [34, '<!-- same -->']]);
 });
 
 test('comment-like strings in Astro expressions are not comments', async () => {
@@ -33,9 +34,7 @@ test('Astro expression attributes are scanned', async () => {
   expect(found.map((c) => c.text.trim())).toEqual(['note']);
 });
 
-test('a JSX comment container goes, a catch block keeps its braces', async () => {
-  const astro = await deleteAll('a.astro', '---\n---\n<div>\n  {/* note */}\n  <p>x</p>\n</div>\n');
-  expect(astro.out).toBe('---\n---\n<div>\n  <p>x</p>\n</div>\n');
+test('a catch block keeps its braces and strings are untouched', async () => {
   const js = await deleteAll('a.mjs', "try { f(); } catch\n{ /* ignore */ }\nconst s = 'catch { }';\n");
   expect(js.out).toBe("try { f(); } catch\n{}\nconst s = 'catch { }';\n");
 });
@@ -86,9 +85,12 @@ test('strings inside object-literal attributes and spread comments are classifie
   expect((await commentsIn('a.astro', '---\n---\n<p {.../* note */ props}>x</p>\n')).map((c) => c.text.trim())).toEqual(['note']);
 });
 
-test('removing a markup comment keeps the surrounding text exactly', async () => {
-  const { out } = await deleteAll('a.astro', '---\n---\n<p>hello{/* note */}world</p>\n<p>a<!-- x -->b</p>\n');
-  expect(out).toBe('---\n---\n<p>helloworld</p>\n<p>ab</p>\n');
+test('markup comments are listed but left for a person', async () => {
+  const source = '---\n---\n<p>hello{/* note */}world</p>\n<p>a<!-- x -->b</p>\n<div>\n  <!-- between tags -->\n  <p>x</p>\n</div>\n<pre>hello\n<!-- note -->\nworld</pre>\n<Widget title={<div>{/* nested */}</div>} />\n';
+  const { found, out } = await deleteAll('a.astro', source);
+  expect(found).toHaveLength(5);
+  expect(found.filter((c) => c.container).map((c) => c.text.trim())).toEqual(['note', 'nested']);
+  expect(out).toBe(source);
 });
 
 test('a typedef keeps its name', async () => {
@@ -122,20 +124,14 @@ test('the baseline must match the code, and cannot grow past the target branch',
   expect(check('--against', 'main')).toBe(1);
 });
 
-test('markup comments that could change rendered whitespace are left for a person', async () => {
-  const source = '---\n---\n<pre>hello <!-- note -->\nworld\n<!-- alone -->\nend</pre>\n<p>hello\n  {/* note */}\n  world</p>\n<Widget title={<div>hello\n  {/* note */}\n  world</div>} />\n';
-  expect((await deleteAll('a.astro', source)).out).toBe(source);
-  const { out } = await deleteAll('a.astro', '---\n---\n<div>\n  <!-- gone -->\n  <p>x</p>\n</div>\n');
-  expect(out).toBe('---\n---\n<div>\n  <p>x</p>\n</div>\n');
-});
 
-test('spread and nested JSX comments in attributes are applied', async () => {
-  const { out } = await deleteAll('a.astro', '---\n---\n<p {.../* note */ props}>x</p>\n<Widget title={<div>{/* note */}</div>} />\n');
-  expect(out).toBe('---\n---\n<p {...props}>x</p>\n<Widget title={<div></div>} />\n');
+test('a spread attribute comment is applied', async () => {
+  const { out } = await deleteAll('a.astro', '---\n---\n<p {.../* note */ props}>x</p>\n');
+  expect(out).toBe('---\n---\n<p {...props}>x</p>\n');
 });
 
 test('a JSDoc tag that spans lines is left for a person', async () => {
-  for (const source of ['/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n', '/**\n * Prose.\n * @param {{ name: "}}"\n * }} v\n */\n']) {
+  for (const source of ['/**\n * Prose.\n * @param {number}\n *   count\n */\n', '/**\n * Prose.\n * @param {string[]} [keys=[]] keys\n */\n', '/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n', '/**\n * Prose.\n * @param {{ name: "}}"\n * }} v\n */\n']) {
     expect((await deleteAll('a.mjs', source)).out).toBe(source);
   }
 });

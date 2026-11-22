@@ -65,7 +65,7 @@ bun run lint:comments
 bun run lint:comments --issues
 ```
 
-`apply.mjs` deletes each listed block; removes the braces of a parsed `{/* */}` markup comment and nothing else; keeps JSDoc type tags, `@template` and a bare `@deprecated`; never joins tokens; and skips blocks marked unparsed, which you delete by hand. Review `git diff -U0 | grep '^+'`: every added line should be a trimmed JSDoc tag or a line that lost a trailing comment.
+`apply.mjs` deletes JS, CSS and shell comments, keeps JSDoc type tags, `@template` and a bare `@deprecated`, and never joins tokens. It refuses and lists three kinds for you to edit by hand: markup comments (`<!-- -->` and `{/* */}`), because removing one can change rendered whitespace (`<pre>`, `pre-wrap`, JSX text); JSDoc whose type tags it cannot keep whole; and blocks marked unparsed. Check the rendered page for each markup comment you remove. Review `git diff -U0 | grep '^+'`: every added line should be a trimmed JSDoc tag or a line that lost a trailing comment.
 
 ## 7. Verify and hand off
 
