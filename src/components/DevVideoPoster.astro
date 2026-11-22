@@ -27,7 +27,17 @@ import Button from './ui/Button.astro';
 
 <style>
   .dev-video-poster { display: grid; gap: var(--space-unit); }
-  .dev-video-poster__preview { display: block; height: 280px; max-width: 100%; justify-self: center; object-fit: contain; }
+  /* Same edge as the page's video: rounded, with a hairline on the outermost pixels. */
+  .dev-video-poster__preview {
+    display: block;
+    height: 280px;
+    max-width: 100%;
+    justify-self: center;
+    object-fit: contain;
+    border-radius: var(--dev-radius-control);
+    outline: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 10%, transparent);
+    outline-offset: -1px;
+  }
   .dev-video-poster__status { margin: 0; font: var(--dev-text-status); }
   .dev-video-poster__status:empty { display: none; }
 </style>
@@ -66,7 +76,26 @@ import Button from './ui/Button.astro';
       canvas.height = Math.round(box.height * devicePixelRatio);
       return canvas.getContext('2d');
     };
-    const drawThumb = () => { size(thumb)?.drawImage(preview, 0, 0, thumb.width, thumb.height); };
+    // While scrubbing, the page shows the chosen frame on a canvas laid over its poster, so panel and page move together.
+    const player = target.closest<HTMLElement>('[data-project-video]');
+    let live: HTMLCanvasElement | undefined;
+    let scrubbed = false;
+    const drawLive = () => {
+      const poster = player?.querySelector<HTMLImageElement>('img.project-video-player__poster');
+      if (!scrubbed || !poster || poster.hidden || !preview.videoWidth) return;
+      if (!live) {
+        live = document.createElement('canvas');
+        live.className = 'project-video-player__poster';
+        live.setAttribute('aria-hidden', 'true');
+        live.setAttribute('noautohide', '');
+        live.width = preview.videoWidth;
+        live.height = preview.videoHeight;
+      }
+      if (!live.isConnected) poster.after(live);
+      live.getContext('2d')?.drawImage(preview, 0, 0);
+    };
+    target.addEventListener('play', () => live?.remove(), { signal });
+    const drawThumb = () => { size(thumb)?.drawImage(preview, 0, 0, thumb.width, thumb.height); drawLive(); };
     const seek = (video: HTMLVideoElement, at: number) => new Promise<void>((resolve) => {
       video.addEventListener('seeked', () => resolve(), { once: true, signal });
       video.currentTime = at;
@@ -98,7 +127,8 @@ import Button from './ui/Button.astro';
     preview.addEventListener('seeked', drawThumb, { signal });
     preview.addEventListener('loadeddata', drawThumb, { signal });
     sampler.addEventListener('loadedmetadata', () => { void buildFrames(); }, { signal });
-    input.addEventListener('input', () => {
+    input.addEventListener('input', (event) => {
+      if (event.isTrusted) scrubbed = true;
       const at = Number(input.value);
       preview.currentTime = at;
       time.textContent = `${Math.floor(at / 60)}:${(at % 60).toFixed(1).padStart(4, '0')}`;
@@ -186,7 +216,7 @@ import Button from './ui/Button.astro';
 
     preview.src = src;
     sampler.src = src;
-    return () => { controller.abort(); resize.disconnect(); };
+    return () => { controller.abort(); resize.disconnect(); live?.remove(); };
   });
   import.meta.hot?.dispose(dispose);
 </script>
