@@ -69,6 +69,7 @@ import Button from './ui/Button.astro';
     sampler.muted = true;
     sampler.preload = 'auto';
     let built = 0;
+    const FPS = 30;
 
     const size = (canvas: HTMLCanvasElement) => {
       const box = canvas.getBoundingClientRect();
@@ -117,11 +118,12 @@ import Button from './ui/Button.astro';
 
     preview.addEventListener('loadedmetadata', () => {
       strip.style.setProperty('--filmstrip-frame-ratio', String(preview.videoWidth / preview.videoHeight));
-      input.max = String(preview.duration);
-      input.step = String(1 / 30);
+      // Whole frames, so every position is a valid step (a fractional step leaves values the browser flags as invalid).
+      input.max = String(Math.floor(preview.duration * FPS));
+      input.step = '1';
       let stored = 0;
       try { stored = Number(localStorage.getItem(storageKey)) || 0; } catch { /* start at the first frame */ }
-      input.value = String(Math.min(stored, preview.duration));
+      input.value = String(Math.round(Math.min(stored, preview.duration) * FPS));
       input.dispatchEvent(new Event('input', { bubbles: true }));
     }, { signal });
     preview.addEventListener('seeked', drawThumb, { signal });
@@ -129,7 +131,7 @@ import Button from './ui/Button.astro';
     sampler.addEventListener('loadedmetadata', () => { void buildFrames(); }, { signal });
     input.addEventListener('input', (event) => {
       if (event.isTrusted) scrubbed = true;
-      const at = Number(input.value);
+      const at = Number(input.value) / FPS;
       preview.currentTime = at;
       time.textContent = `${Math.floor(at / 60)}:${(at % 60).toFixed(1).padStart(4, '0')}`;
       status.textContent = '';
@@ -162,7 +164,7 @@ import Button from './ui/Button.astro';
         const url = URL.createObjectURL(blob);
         target.poster = url;
         target.closest('[data-project-video]')?.querySelector<HTMLImageElement>('.project-video-player__poster')?.setAttribute('src', url);
-        try { localStorage.setItem(storageKey, input.value); } catch { /* the saved file is what matters */ }
+        try { localStorage.setItem(storageKey, String(Number(input.value) / FPS)); } catch { /* the saved file is what matters */ }
         status.textContent = 'Saved';
       } catch (error) {
         if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save the thumbnail.';
