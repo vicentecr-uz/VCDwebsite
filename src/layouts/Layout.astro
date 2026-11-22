@@ -9,6 +9,7 @@ import '../styles/dev-chrome.css';
 import loadingSpinnerStyles from '../styles/loading-spinner.css?raw';
 import spinnerMarkup from '../components/ui/LoadingSpinner.svg?raw';
 import DevModeController from '../components/DevModeController.astro';
+import DevVariantPicker from '../components/DevVariantPicker.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
 import ToastStack from '../components/ui/ToastStack.astro';
 import CommandMenu from '../components/reports/CommandMenu.astro';
@@ -448,6 +449,8 @@ const initialThemeColor = resolveToken('sys.color.srf');
     {showDevTools && <DevComponentNotes />}
     {showDevTools && <script is:inline type="module" src="/src/lib/siteAnnotationEditor.ts"></script>}
     {showDevTools && <DevVideoEditor />}
+    {showDevTools && <div data-dev-launcher-variant data-variant="menu" hidden />}
+    {showDevTools && <DevVariantPicker label="Panels" target="[data-dev-launcher-variant]" variants={[{ id: 'menu', label: 'Menu' }, { id: 'search', label: 'Search' }, { id: 'open', label: 'Open first' }]} />}
     {showDevTools && <DevModeController />}
     {showDevTools && <DevProjectGridEditor />}
     {showDevTools && <DevGalleryReorder />}
