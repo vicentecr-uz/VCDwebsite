@@ -67,6 +67,8 @@ interface Props {
   ogImageDetails?: { alt: string; width: number; height: number };
   /** Absolute canonical URL, when the page is served somewhere other than its path on `site`. */
   canonicalUrl?: string;
+  /** Unlisted page: keep it out of search indexes. */
+  noindex?: boolean;
   /**
    * Candidate inline style for #site-wrapper. ADAPTIVE_PAGE_COLUMNS_ENABLED
    * controls whether Layout applies it and mounts the dev/HMR synchronizer.
@@ -85,6 +87,7 @@ const {
   ogImageDetails,
   favicon,
   canonicalUrl,
+  noindex = false,
   columnStyle,
 } = Astro.props;
 
@@ -300,6 +303,7 @@ const initialThemeColor = resolveToken('sys.color.srf');
     )}
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="canonical" href={canonical.href} />
+    {noindex && <meta name="robots" content="noindex" />}
     <title>{title}</title>
 
     <meta property="og:type" content={ogType} />

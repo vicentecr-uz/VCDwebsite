@@ -9,6 +9,7 @@ interface Props {
   alt?: string;
   autoplay?: boolean;
   aspectRatio?: string;
+  rounded?: boolean;
   spacing?: ProjectStackSpacing;
   documentKey?: string;
   contentId?: string;
@@ -23,6 +24,7 @@ const {
   alt = '',
   autoplay = false,
   aspectRatio = '16:9',
+  rounded = false,
   spacing = 'group',
   documentKey,
   contentId,
@@ -63,7 +65,7 @@ if (!resolvedSrc) {
 
 <div id={sectionId} class:list={['project-block', stackClass, sectionId && 'section-block']} data-site-annotation-section-id={contentId} data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}>
   {resolvedSrc ? (
-    <div class="project-video-player" data-project-video style={containerStyle}>
+    <div class:list={['project-video-player', rounded && 'project-video-player--rounded']} data-project-video style={containerStyle}>
       <media-controller
         class="project-video-player__controller"
         novolumepref
