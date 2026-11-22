@@ -11,7 +11,7 @@ const EXCLUDED = /^(src\/content\/|media\/|src\/vendor\/|src\/lib\/stageshow\/|p
 const MARKER = /^(known limit: issue|good-enough:) #\d+$/;
 const DIRECTIVE = /^[*\s]*(@ts-|eslint|prettier-ignore|@vite-ignore|webpackIgnore|@jsx|[#@]__PURE__|@license|@preserve|shellcheck|!)|^\/\s*<reference|^[*\s]*@(type|typedef|param|returns?|callback|property|satisfies)\b[^\n]*\{|^[*\s]*@template\b|^[*\s]*@deprecated[*\s]*$/;
 
-const emptyJsxContainers = (ast) => {
+const emptyJsxContainers = (root) => {
   const ranges = [];
   const visit = (node) => {
     if (!node || typeof node.type !== 'string') return;
@@ -23,9 +23,16 @@ const emptyJsxContainers = (ast) => {
       else if (value && typeof value === 'object') visit(value);
     }
   };
-  visit(ast.program);
+  visit(root);
   return ranges;
 };
+
+const withContainers = (code, comments, containers) => (comments ?? []).map((c) => {
+  const start = c.start ?? 0;
+  const end = c.end ?? 0;
+  const container = containers.some(([a, z]) => a <= start && end <= z && !code.slice(a + 1, start).trim() && !code.slice(end, z - 1).trim());
+  return { start, end, text: c.value, container };
+});
 
 function jsComments(code, file) {
   const plugins = /** @type {any[]} */ ([]);
@@ -33,13 +40,7 @@ function jsComments(code, file) {
   if (!/\.(ts|astro)$/.test(file)) plugins.push('jsx');
   try {
     const ast = parseJs(code, { sourceType: 'module', plugins, errorRecovery: true, allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true });
-    const containers = plugins.includes('jsx') ? emptyJsxContainers(ast) : [];
-    return (ast.comments ?? []).map((c) => {
-      const start = c.start ?? 0;
-      const end = c.end ?? 0;
-      const container = containers.some(([a, z]) => a <= start && end <= z && !code.slice(a + 1, start).trim() && !code.slice(end, z - 1).trim());
-      return { start, end, text: c.value, container };
-    });
+    return withContainers(code, ast.comments, plugins.includes('jsx') ? emptyJsxContainers(ast.program) : []);
   } catch {
     return regexComments(code);
   }
@@ -48,7 +49,7 @@ function jsComments(code, file) {
 function expressionComments(code) {
   try {
     const node = parseExpression(code, { plugins: ['typescript', 'jsx'] });
-    return (/** @type {any} */ (node).comments ?? []).map((c) => ({ start: c.start ?? 0, end: c.end ?? 0, text: c.value }));
+    return withContainers(code, /** @type {any} */ (node).comments, emptyJsxContainers(node));
   } catch {
     return jsComments(code, '.tsx');
   }
@@ -125,7 +126,7 @@ async function astroComments(code) {
     let verified = false;
     if (kind === 'attribute' || kind === 'spread') {
       base = code.indexOf(text, approx);
-      verified = base >= 0 && (kind === 'spread' ? /^\{\s*\.\.\.\s*$/ : /^[^\s=]+\s*=\s*\{\s*$/).test(code.slice(approx, base));
+      verified = base >= 0 && (kind === 'spread' ? /^(\{\s*\.\.\.)?\s*$/ : /^[^\s=]+\s*=\s*\{\s*$/).test(code.slice(approx, base));
     } else if (code.startsWith(text, approx)) {
       base = approx;
       verified = true;

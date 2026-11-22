@@ -42,6 +42,11 @@ for (const [file, list] of Object.entries(byFile)) {
     const lineStart = code.lastIndexOf('\n', b.start - 1) + 1;
     const tagLines = raw.split('\n').map((l) => l.replace(/^\s*(\/\*\*|\*\/|\*)?\s?/, '').replace(/\*\/\s*$/, '').trim()).filter((l) => TYPED.test(l) || KEEP.test(l));
     if (raw.startsWith('/**') && tagLines.length) {
+      if (tagLines.some((l) => (l.match(/\{/g) ?? []).length !== (l.match(/\}/g) ?? []).length)) {
+        console.error(`Skipped [${b.id}] ${b.file}:${b.line}: a tag spans lines, edit it by hand.`);
+        removed--;
+        continue;
+      }
       const kept = tagLines.map(typeTag);
       const indent = code.slice(lineStart, b.start).match(/^\s*/)[0];
       const doc = kept.length === 1 ? `/** ${kept[0]} */` : ['/**', ...kept.map((t) => `${indent} * ${t}`), `${indent} */`].join('\n');
@@ -58,6 +63,17 @@ for (const [file, list] of Object.entries(byFile)) {
         end += close[0].length;
       }
     }
+    if (b.container || raw.startsWith('<!--')) {
+      const before = code.slice(0, start);
+      const lineFrom = before.lastIndexOf('\n') + 1;
+      let lineTo = code.indexOf('\n', end);
+      if (lineTo < 0) lineTo = code.length;
+      const last = (pattern) => Math.max(-1, ...[...before.matchAll(pattern)].map((m) => m.index));
+      const verbatim = last(/<(pre|textarea)[\s>]/gi) > last(/<\/(pre|textarea)>/gi);
+      const alone = !code.slice(lineFrom, start).trim() && !code.slice(end, lineTo).trim();
+      code = alone && !verbatim ? code.slice(0, lineFrom) + code.slice(Math.min(lineTo + 1, code.length)) : before + code.slice(end);
+      continue;
+    }
     const from = code.lastIndexOf('\n', start - 1) + 1;
     let to = code.indexOf('\n', end);
     if (to < 0) to = code.length;
@@ -69,14 +85,12 @@ for (const [file, list] of Object.entries(byFile)) {
       code = code.slice(0, from) + code.slice(next);
     } else if (!tail.trim()) {
       code = code.slice(0, start).replace(/[ \t]+$/, '') + code.slice(to);
-    } else if (b.container || raw.startsWith('<!--')) {
-      code = code.slice(0, start) + code.slice(end);
     } else if (/\{[ \t]*$/.test(head) && /^[ \t]*\}/.test(tail)) {
       code = code.slice(0, start).replace(/[ \t]+$/, '') + code.slice(end).replace(/^[ \t]+/, '');
     } else {
       const rest = code.slice(end).replace(/^[ \t]+/, '');
       const left = code.slice(0, start).replace(/[ \t]+$/, '');
-      const gap = raw.includes('\n') ? '\n' : /[([{]$/.test(left) || /^[)\]},;]/.test(rest) ? '' : ' ';
+      const gap = raw.includes('\n') ? '\n' : /([([{]|\.\.\.)$/.test(left) || /^[)\]},;]/.test(rest) ? '' : ' ';
       code = left + gap + rest;
     }
   }

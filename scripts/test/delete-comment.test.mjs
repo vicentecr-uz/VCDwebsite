@@ -121,3 +121,19 @@ test('the baseline must match the code, and cannot grow past the target branch',
   writeFileSync(path.join(dir, 'scripts/comment-baseline.json'), JSON.stringify({ 'src/a.mjs': 9 }));
   expect(check('--against', 'main')).toBe(1);
 });
+
+test('whitespace inside pre and textarea survives a markup comment', async () => {
+  const { out } = await deleteAll('a.astro', '---\n---\n<pre>hello <!-- note -->\nworld\n<!-- alone -->\nend</pre>\n<div>\n  <!-- gone -->\n</div>\n');
+  expect(out).toBe('---\n---\n<pre>hello \nworld\n\nend</pre>\n<div>\n</div>\n');
+});
+
+test('spread and nested JSX comments in attributes are applied', async () => {
+  const { out } = await deleteAll('a.astro', '---\n---\n<p {.../* note */ props}>x</p>\n<Widget title={<div>{/* note */}</div>} />\n');
+  expect(out).toBe('---\n---\n<p {...props}>x</p>\n<Widget title={<div></div>} />\n');
+});
+
+test('a JSDoc tag that spans lines is left for a person', async () => {
+  const source = '/**\n * Prose.\n * @typedef {{\n *   name: string\n * }} Failure\n */\n';
+  const { out } = await deleteAll('a.mjs', source);
+  expect(out).toBe(source);
+});
