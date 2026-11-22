@@ -249,7 +249,6 @@ const STATIC_EDITABLE_DOCUMENTS = new Map([
   ['conic-collection', 'src/content/projects/conic-collection.json'],
   ['styles', 'src/content/pages/styles.json'],
   ['header-settings', 'src/content/settings/header.json'],
-  ['video-page', 'src/content/settings/video-page.json'],
 ]);
 
 export function resolveEditableDocument(documentKey) {

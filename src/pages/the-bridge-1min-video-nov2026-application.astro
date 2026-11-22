@@ -4,7 +4,7 @@ import ProjectVideo from '../components/project/ProjectVideo.astro';
 import WriteupBacklink from '../components/WriteupBacklink.astro';
 import DevVideoPoster from '../components/DevVideoPoster.astro';
 import '../styles/project.css';
-import { loadVideoPageFootnote, loadVideoPageMaxHeights } from '../lib/videoPageMaxHeight';
+import { loadVideoPageMaxHeights } from '../lib/videoPageMaxHeight';
 import VideoSideClip from '../components/VideoSideClip.astro';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -13,10 +13,6 @@ const sideClipYoutube = 'QPW3XwBoQlw';
 const sideClipArtFile = 'the-bridge-side-clip-board.png';
 const sideClipArt = existsSync(path.join(process.cwd(), 'media', sideClipArtFile)) ? `/images/${sideClipArtFile}` : undefined;
 const maxHeight = loadVideoPageMaxHeights();
-const footnote = loadVideoPageFootnote();
-const edit = (...field: string[]) => import.meta.env.DEV
-  ? { 'data-dev-text-document': 'video-page', 'data-dev-text-path': JSON.stringify(['footnote', ...field]), 'data-dev-text-kind': 'text' }
-  : {};
 ---
 <Layout title="The Bridge Residency — Vicente Cruz" noindex>
   <main id="main-content" class="application-video">
@@ -25,43 +21,18 @@ const edit = (...field: string[]) => import.meta.env.DEV
         <WriteupBacklink href="/" label="Home" />
         <h1 class="sr-only">Vicente Cruz — The Bridge Residency application video</h1>
       </header>
-      <div class="application-video__stage" data-video-swap data-showing="new">
-        <div class:list={['application-video__card', import.meta.env.DEV && 'dev-block-edit-target']} data-video-card="new">
-          <ProjectVideo
-            src="the-bridge-1min-video-nov2026-application-v2.mp4"
-            poster="the-bridge-1min-video-nov2026-application-v2-poster.jpg"
-            alt="Vicente Cruz introduces himself"
-            aspectRatio="9:16"
-            spacing="none"
-            rounded
-          />
-          <VideoSideClip youtube={sideClipYoutube} label="skateboard" art={sideClipArt} />
-          {import.meta.env.DEV && <button type="button" class="dev-block-edit-trigger" data-dev-edit-trigger="video-poster" data-dev-mode-only hidden>Edit video</button>}
-        </div>
-        {footnote && (
-          <div class="application-video__card" data-video-card="old" inert>
-            <ProjectVideo
-              src="the-bridge-1min-video-nov2026-application.mp4"
-              poster="the-bridge-1min-video-nov2026-application-poster.jpg"
-              alt="Vicente Cruz introduces himself, first upload"
-              aspectRatio="9:16"
-              spacing="none"
-              rounded
-            />
-          </div>
-        )}
+      <div class:list={['application-video__stage', import.meta.env.DEV && 'dev-block-edit-target']}>
+        <ProjectVideo
+          src="the-bridge-1min-video-nov2026-application-v2.mp4"
+          poster="the-bridge-1min-video-nov2026-application-v2-poster.jpg"
+          alt="Vicente Cruz introduces himself"
+          aspectRatio="9:16"
+          spacing="none"
+          rounded
+        />
+        <VideoSideClip youtube={sideClipYoutube} label="skateboard" art={sideClipArt} />
+        {import.meta.env.DEV && <button type="button" class="dev-block-edit-trigger" data-dev-edit-trigger="video-poster" data-dev-mode-only hidden>Edit video</button>}
       </div>
-      {footnote && (
-        <p class="application-video__footnote">
-          <span {...edit('note')}>{footnote.note}</span>
-          {(['old', 'new'] as const).map((side) => (
-            <Fragment>{' '}<span class="application-video__swap-label" data-swap-label={side}>
-              <span {...edit(side, 'lead')}>{footnote[side].lead}</span>{' '}
-              <button type="button" class="text-link" data-video-swap-toggle={side}><span {...edit(side, 'link')}>{footnote[side].link}</span></button>
-            </span></Fragment>
-          ))}
-        </p>
-      )}
     </div>
   </main>
   {import.meta.env.DEV && <DevVideoPoster />}
@@ -73,10 +44,6 @@ const edit = (...field: string[]) => import.meta.env.DEV
     place-items: center;
     min-height: 100dvh;
     padding: var(--space-unit);
-  }
-
-  :global(#site-wrapper):has(> .application-video) {
-    overflow-x: clip;
   }
 
   .application-video__column {
@@ -95,118 +62,14 @@ const edit = (...field: string[]) => import.meta.env.DEV
   }
 
   .application-video__stage {
-    display: grid;
-  }
-
-  .application-video__card {
-    grid-area: 1 / 1;
     position: relative;
     isolation: isolate;
     container-type: inline-size;
-    z-index: 1;
-    scale: 0.94;
   }
 
-  .application-video__card > :global(.project-block) {
+  .application-video__stage > :global(.project-block) {
     position: relative;
     z-index: 1;
-  }
-
-  [data-showing='new'] > [data-video-card='new'],
-  [data-showing='old'] > [data-video-card='old'] {
-    z-index: 2;
-    scale: 1;
-  }
-
-  [data-showing='old'] :global(.side-clip) {
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 200ms ease, visibility 0s 200ms;
-  }
-
-  [data-swapping] > .application-video__card {
-    animation: 760ms cubic-bezier(0.65, 0, 0.35, 1) both;
-  }
-
-  [data-swapping='old'] > [data-video-card='old'] { animation-name: video-card-front-left; }
-  [data-swapping='old'] > [data-video-card='new'] { animation-name: video-card-back-right; }
-  [data-swapping='new'] > [data-video-card='new'] { animation-name: video-card-front-right; }
-  [data-swapping='new'] > [data-video-card='old'] { animation-name: video-card-back-left; }
-
-  @keyframes video-card-front-left {
-    0% { z-index: 1; translate: 0 0; rotate: 0deg; scale: 0.94; }
-    49.9% { z-index: 1; }
-    50% { z-index: 2; translate: -62% 2%; rotate: -7deg; scale: 0.97; }
-    100% { z-index: 2; translate: 0 0; rotate: 0deg; scale: 1; }
-  }
-
-  @keyframes video-card-back-right {
-    0% { z-index: 2; translate: 0 0; rotate: 0deg; scale: 1; }
-    49.9% { z-index: 2; }
-    50% { z-index: 1; translate: 62% 2%; rotate: 7deg; scale: 0.97; }
-    100% { z-index: 1; translate: 0 0; rotate: 0deg; scale: 0.94; }
-  }
-
-  @keyframes video-card-front-right {
-    0% { z-index: 1; translate: 0 0; rotate: 0deg; scale: 0.94; }
-    49.9% { z-index: 1; }
-    50% { z-index: 2; translate: 62% 2%; rotate: 7deg; scale: 0.97; }
-    100% { z-index: 2; translate: 0 0; rotate: 0deg; scale: 1; }
-  }
-
-  @keyframes video-card-back-left {
-    0% { z-index: 2; translate: 0 0; rotate: 0deg; scale: 1; }
-    49.9% { z-index: 2; }
-    50% { z-index: 1; translate: -62% 2%; rotate: -7deg; scale: 0.97; }
-    100% { z-index: 1; translate: 0 0; rotate: 0deg; scale: 0.94; }
-  }
-
-  @keyframes video-card-fade-in {
-    0%, 49.9% { z-index: 1; opacity: 0; }
-    50%, 100% { z-index: 2; }
-    100% { opacity: 1; }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    [data-swapping] > .application-video__card { animation-duration: 400ms; }
-    [data-swapping='old'] > [data-video-card='old'],
-    [data-swapping='new'] > [data-video-card='new'] { animation-name: video-card-fade-in; }
-    [data-swapping='old'] > [data-video-card='new'],
-    [data-swapping='new'] > [data-video-card='old'] { animation-name: none; }
-  }
-
-  .application-video__footnote {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    margin-top: var(--space-unit);
-    font-size: var(--text-body-size);
-    line-height: var(--text-body-leading);
-    color: var(--sys-color-on-srf-subtle);
-  }
-
-  .application-video__footnote button {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .application-video:has([data-showing='new']) [data-swap-label='new'],
-  .application-video:has([data-showing='old']) [data-swap-label='old'] {
-    display: none;
-  }
-
-  :global(html.is-dev-mode) .application-video [data-swap-label] {
-    display: inline;
-  }
-
-  :global(html.is-dev-mode) .application-video:has([data-showing='new']) [data-swap-label='new'],
-  :global(html.is-dev-mode) .application-video:has([data-showing='old']) [data-swap-label='old'] {
-    opacity: 0.4;
   }
 
   .application-video__masthead {
@@ -220,35 +83,3 @@ const edit = (...field: string[]) => import.meta.env.DEV
     line-height: var(--text-body-leading);
   }
 </style>
-
-<script>
-  import { onPageLoad } from '../lib/pageLifecycle';
-
-  const dispose = onPageLoad(() => {
-    const stage = document.querySelector<HTMLElement>('[data-video-swap]');
-    const toggles = document.querySelectorAll<HTMLButtonElement>('[data-video-swap-toggle]');
-    if (!stage || !toggles.length) return;
-    const controller = new AbortController();
-    const cards = stage.querySelectorAll<HTMLElement>('[data-video-card]');
-
-    const swap = (showing: string) => {
-      if (stage.dataset.showing === showing || stage.dataset.swapping) return;
-      stage.querySelectorAll('video').forEach((video) => video.pause());
-      stage.dataset.showing = showing;
-      stage.dataset.swapping = showing;
-      cards.forEach((card) => { card.inert = card.dataset.videoCard !== showing; });
-      document.querySelector<HTMLButtonElement>(`[data-video-swap-toggle="${showing === 'new' ? 'old' : 'new'}"]`)?.focus({ preventScroll: true });
-    };
-
-    toggles.forEach((toggle) => toggle.addEventListener('click', () => {
-      if (document.documentElement.classList.contains('is-dev-mode')) return;
-      swap(toggle.dataset.videoSwapToggle!);
-    }, { signal: controller.signal }));
-    stage.addEventListener('animationend', (event) => {
-      if (/front|fade-in/.test(event.animationName)) delete stage.dataset.swapping;
-    }, { signal: controller.signal });
-
-    return () => controller.abort();
-  });
-  import.meta.hot?.dispose(dispose);
-</script>
