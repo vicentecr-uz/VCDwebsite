@@ -114,12 +114,6 @@ const normalizeCanonicalIntroHeight = (data, value) => {
   return height;
 };
 
-/**
- * Only `ref` tokens hold literal hex — `sys` and `comp` are aliases that
- * inherit whatever their referenced `ref` token resolves to. Walk the `ref`
- * branch of the token tree to build the editable set fresh on every request,
- * so a hand-edit to the JSON is picked up without restarting the dev server.
- */
 const collectRefTokenEntries = (refNode) => {
   /** @type {Map<string, Array<string | number>>} */
   const entries = new Map();
@@ -137,20 +131,6 @@ const collectRefTokenEntries = (refNode) => {
 };
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
 
-/**
- * Normalize one viewport's constrain value, mirroring the client's
- * `normalizeConstrainPercent` in src/lib/responsiveImage.ts.
- *
- * Returns a stepped percent 30–90, 100 (full width), the string 'text'
- * (match the text column), or null when the value is out of range — the
- * caller decides whether that is a 400 or a silent clamp.
- *
- * ONE copy on purpose. This lived as four hand-duplicated numeric-only
- * parsers, and every one of them ran Number('text') → NaN → 100, so a
- * "Match text" width saved silently as "Full" with no error anywhere. The
- * read side and the write side have to agree about the value space, and
- * four copies is how they stopped agreeing.
- */
 const normalizeConstrainValue = (raw) => {
   if (raw === 'text') return 'text';
   if (raw === true) return 80;
@@ -161,7 +141,6 @@ const normalizeConstrainValue = (raw) => {
   if (stepped < 30 || stepped > 90) return null;
   return stepped;
 };
-/** Presets plus freeform `W:H` from the crop-frame handles. */
 const isAllowedAspectRatio = (value) => {
   if (value === 'original') return true;
   const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(String(value));
@@ -177,16 +156,7 @@ const clampRound = (value, min, max, decimals) => {
   return Math.round(bounded * factor) / factor;
 };
 
-/**
- * Dev-only writer for project image crops. `apply: 'serve'` means this plugin
- * is active only under `astro dev` — it is never part of the static production
- * build, so nothing is emitted to `dist/` and the live site has no such route.
- * The crop tuner POSTs a document key, a JSON path to the image node, and a
- * set of viewport crops; we persist `variants` onto that node so committing
- * the project file publishes the crop.
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 function imageCropDevWriter() {
   return {
     name: 'image-crop-dev-writer',
@@ -254,13 +224,7 @@ function imageCropDevWriter() {
   };
 }
 
-/**
- * Dev-only writer for image-grid settings (per-breakpoint columns,
- * constrained width, default aspect, match-height, and visible/parking
- * layouts with waterfall inheritance).
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 function imageGridDevWriter() {
   return {
     name: 'image-grid-dev-writer',
@@ -393,7 +357,6 @@ function imageGridDevWriter() {
           } else {
             delete node.layouts;
           }
-          // Prefer layouts over legacy per-item hide flags.
           if (Array.isArray(node.items)) {
             for (const item of node.items) {
               if (item && typeof item === 'object') delete item.hideOnMobile;
@@ -417,13 +380,7 @@ function imageGridDevWriter() {
   };
 }
 
-/**
- * Dev-only writer for literal (ref-tier) colour tokens. Writes the new hex
- * into tokens/design-tokens.json at the token's path, then regenerates
- * global.css from it — the JSON stays the single source of truth.
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 function styleTokenDevWriter() {
   return {
     name: 'style-token-dev-writer',
@@ -478,8 +435,6 @@ function styleTokenDevWriter() {
           const block = generateTokenBlock(tokensJson);
           const { next: nextCss } = applyTokenBlock(cssSource, block);
 
-          // Live preview already applied the colour — skip CSS HMR invalidation
-          // so is-dev-mode and the save bar stay up (full-reload is always blocked).
           suppressContentHmr();
           await writeAtomicJson(tokensFile, tokensJson);
           await writeFile(cssFile, nextCss, 'utf8');
@@ -492,11 +447,7 @@ function styleTokenDevWriter() {
   };
 }
 
-/**
- * Dev-only writer for text fields explicitly exposed by page components.
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 function contentTextDevWriter() {
   return {
     name: 'content-text-dev-writer',
@@ -636,7 +587,6 @@ function contentTextDevWriter() {
 
 
 /**
- * Resolve a JSON path against a document root. Returns null when missing.
  * @param {unknown} data
  * @param {Array<string | number>} fieldPath
  */
@@ -656,7 +606,6 @@ const resolvePathTarget = (data, fieldPath) => {
 };
 
 /**
- * Apply standalone image width/centering flags onto a crop target node.
  * @param {Record<string, unknown>} target
  * @param {Record<string, unknown>} change
  */
@@ -712,10 +661,7 @@ export async function applyCropChangeFromSource(data, change) {
   return applyCropChange(data, { ...change, ...dims });
 }
 
-/**
- * Apply one image-crop mutation onto an in-memory document node.
- * @returns {{ ok: true } | { ok: false, error: string }}
- */
+/** @returns {{ ok: true } | { ok: false, error: string }} */
 export const applyCropChange = (data, change) => {
   const fieldPath = change.path;
   if (!isSafeContentPath(fieldPath)) {
@@ -957,10 +903,7 @@ export const applyCropChange = (data, change) => {
   return { ok: true };
 };
 
-/**
- * Apply one image-grid mutation onto an in-memory document node.
- * @returns {{ ok: true } | { ok: false, error: string }}
- */
+/** @returns {{ ok: true } | { ok: false, error: string }} */
 const applyGridChange = (data, change) => {
   const fieldPath = change.path;
   if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
@@ -1053,7 +996,6 @@ const applyGridChange = (data, change) => {
 const CAROUSEL_ORIENTATIONS = new Set(['horizontal', 'vertical']);
 const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest']);
 const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
-/** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
 const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
 const CAROUSEL_BREAKPOINTS = new Set(['tablet', 'mobile']);
 const CAROUSEL_AWARD_BADGES = new Set(['red-dot-2026']);
@@ -1108,12 +1050,7 @@ const parseCarouselBreakpointOverride = (raw, itemIds) => {
   return { ok: true, value: out };
 };
 
-/**
- * Apply one image-carousel settings mutation onto an in-memory document node.
- * Items are left alone — only block-level settings are written here.
- * Desktop values stay on top-level fields; tablet/mobile land in `breakpoints`.
- * @returns {{ ok: true } | { ok: false, error: string }}
- */
+/** @returns {{ ok: true } | { ok: false, error: string }} */
 const applyCarouselChange = (data, change) => {
   const fieldPath = change.path;
   if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
@@ -1165,7 +1102,6 @@ const applyCarouselChange = (data, change) => {
   if (change.scrollPinned === true) target.scrollPinned = true;
   else delete target.scrollPinned;
 
-  // Desktop visible order — items themselves stay put so crop paths remain stable.
   if (Object.prototype.hasOwnProperty.call(change, 'visible')) {
     const visible = sanitizeCarouselVisibleIds(itemIds, change.visible);
     const isDefault = visible.length === itemIds.length
@@ -1174,7 +1110,6 @@ const applyCarouselChange = (data, change) => {
     else target.visible = visible;
   }
 
-  // Sparse tablet/mobile overrides (settings below orientation).
   if (Object.prototype.hasOwnProperty.call(change, 'breakpoints')) {
     const rawBreakpoints = change.breakpoints;
     if (rawBreakpoints == null) {
@@ -1196,9 +1131,6 @@ const applyCarouselChange = (data, change) => {
     }
   }
 
-  // Block-wide width cap, same value space as applyGridChange's `constrained`.
-  // Only touched when the change actually carries it — an unconditional write
-  // would stamp a redundant all-100 object into every carousel save.
   if (change.constrained !== undefined) {
     const requestedConstrained = change.constrained && typeof change.constrained === 'object'
       ? change.constrained
@@ -1222,10 +1154,7 @@ const applyCarouselChange = (data, change) => {
   return { ok: true };
 };
 
-/**
- * Apply one image-caption mutation onto an in-memory document node.
- * @returns {{ ok: true } | { ok: false, error: string }}
- */
+/** @returns {{ ok: true } | { ok: false, error: string }} */
 const applyCaptionChange = (data, change) => {
   const fieldPath = change.path;
   if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
@@ -1351,7 +1280,6 @@ const applyCaptionChange = (data, change) => {
   }
 
   target.captions = captions;
-  // Keep legacy single caption in sync with desktop for older readers.
   target.caption = captions.desktop;
   target.captionReveal = captionReveal;
   if (captionStyle === 'white') {
@@ -1368,12 +1296,7 @@ const applyCaptionChange = (data, change) => {
   return { ok: true };
 };
 
-/**
- * Dev-only batch writer so staged image/grid/text/layout edits hit disk in one
- * write per document (avoids mid-save HMR wiping later changes).
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 function contentBatchDevWriter() {
   return {
     name: 'content-batch-dev-writer',
@@ -1425,9 +1348,6 @@ function contentBatchDevWriter() {
           /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath, stableTarget) => {
-            // resolveDevFieldTarget throws on an unknown document or an invalid
-            // path (empty path is only valid for play:* roots); swallow it so
-            // the caller's specific message wins over the catch-all below.
             let target;
             try {
               target = resolveDevFieldTarget(documentKey, '', fieldPath);
@@ -1520,7 +1440,6 @@ function contentBatchDevWriter() {
               && Number.isInteger(value)
               && value >= 1
               && value <= 100;
-            // Code block line cap from Edit mode's base grabber; 0 clears it.
             const validMaxLines = field === 'maxLines'
               && Number.isInteger(value)
               && value >= 0
@@ -1691,12 +1610,7 @@ function contentBatchDevWriter() {
   };
 }
 
-/**
- * Dev-only writer for project section layout fields. Same document allowlist
- * as text edits; creates `spacing` or `introHeight` on the section when missing.
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 const INSERTABLE_SECTION_TYPES = new Set([
   'bodyText',
   'sectionTitle',
@@ -1712,8 +1626,6 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'placeholderImageGrid',
   'placeholderImageCarousel',
 ]);
-// Insert stays allowlisted (construction needs a known shape). Delete is
-// default-on: any section at a valid index can go — no type registration.
 
 const outlineAnchorId = (entry) => {
   if (!entry || typeof entry !== 'object') return '';
@@ -1722,7 +1634,6 @@ const outlineAnchorId = (entry) => {
   return typeof entry.id === 'string' ? entry.id : '';
 };
 
-/** Keep project outline in sync with sectionTitle insert/delete in one write. */
 export const syncOutlineForSectionMutation = (data, { action, section, index }) => {
   if (!data || typeof data !== 'object') return;
   if (!Array.isArray(data.outline)) data.outline = [];
@@ -1738,7 +1649,6 @@ export const syncOutlineForSectionMutation = (data, { action, section, index }) 
       return isLegacyGroup || outlineAnchorId(entry) !== anchor;
     });
 
-    // Page order from sections[] (caller already spliced the new section in).
     const pageIndexForId = (id) => {
       if (!id || !Array.isArray(data.sections)) return Number.POSITIVE_INFINITY;
       const idx = data.sections.findIndex((entry) => {
@@ -1781,15 +1691,9 @@ const writeContentJson = async (file, data) => {
   await writeAtomicJson(file, data);
 };
 
-/**
- * Dev-only writer that inserts or deletes sections in a project document's
- * `sections` array (used by the on-page “+” / delete controls).
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 export function contentSectionDevWriter() {
   const restoreStore = createSectionRestoreStore();
-  // Undo tokens last for this dev server and retain at most the 128 most recent conversions.
   const carouselUndoStore = new Map();
   const rememberCarouselUndo = (entry) => {
     const token = randomUUID();
@@ -1884,7 +1788,6 @@ export function contentSectionDevWriter() {
             }
             const section = data.sections[index];
             const rows = body.rows;
-            // Up to 100 plain-text rows; extend this shape when richer credit fields are needed.
             const validRows = Array.isArray(rows)
               && rows.length >= 1 && rows.length <= 100
               && rows.every((row) => row && typeof row === 'object' && !Array.isArray(row)
@@ -2645,11 +2548,7 @@ function contentSpacingDevWriter() {
   };
 }
 
-/**
- * Dev-only writer for project section nav trees + sectionId / showTitle patches.
- *
- * @returns {import('vite').Plugin}
- */
+/** @returns {import('vite').Plugin} */
 export function contentNavDevWriter() {
 
   const isValidNavLink = (item) => (
@@ -2753,7 +2652,6 @@ export function contentNavDevWriter() {
           }
 
           data.outline = outline;
-          // Styles starts from a generated catalog; distinguish an authored empty override.
           if (documentKey === 'styles') data.outlineConfigured = true;
           delete data.nav;
 
@@ -2819,28 +2717,6 @@ export function contentNavDevWriter() {
   };
 }
 
-// https://astro.build/config
-/**
- * Lapse (the dev-only animation inspector) resolves from a private registry that
- * needs a token in a machine-local ~/.npmrc. Machines without that token (CI,
- * cloud agents, a fresh contributor) have no way to install it, so the package
- * is declared `optional` and is simply absent there.
- *
- * Astro still walks every `<script>` it finds — the `{showDevTools && ...}` guard
- * in Layout.astro gates *rendering*, not bundling — so Vite/Rollup tries to
- * resolve `@aiforui/lapse/*` and hard-fails when it is missing. In a production
- * build that fails `astro build`; under `astro dev` it throws a resolve error
- * overlay on *every* page, which is what makes the dev server unusable wherever
- * the private package is absent.
- *
- * So: in a production build always stub — Lapse is dev-only and never rendered
- * in prod, and stubbing also drops the ~800KB Lapse+React orphan chunk that was
- * emitted into every deploy and referenced by nothing. Under `astro dev` stub
- * only when the package is genuinely absent, so a machine that *does* have it
- * (Anto's local, with the token) keeps the real inspector.
- *
- * @returns {import('vite').Plugin}
- */
 export function stubLapseWhenUnavailable() {
   const PREFIX = '\0vcd-lapse-stub:';
   const stubbed = new Set(['@aiforui/lapse/install', '@aiforui/lapse/panel']);
@@ -2857,8 +2733,6 @@ export function stubLapseWhenUnavailable() {
     },
     load(id) {
       if (!id.startsWith(PREFIX)) return null;
-      // Same shape lapseDev.ts imports, so the module still type-checks and the
-      // (never-rendered) script is inert rather than throwing.
       return 'export const getSharedEngine = () => ({ registerGSAP() {} });\n'
         + 'export const mountLapse = () => {};\n';
     },
@@ -2879,26 +2753,16 @@ const isolatedViteCommandCache = () => ({
 });
 
 export default defineConfig({
-  // Absolute base for canonical links and og:image URLs. Social scrapers and
-  // search engines both reject relative ones, so this has to be a real origin.
   site: process.env.PUBLIC_SITE_URL || 'https://vicentecr.uz',
   devToolbar: { enabled: false },
   integrations: [
-    // A dev restart reruns Astro's content sync on a temp hmr:false server that
-    // shares these plugin objects; with static babel options @vitejs/plugin-react 5
-    // then deletes its `transform` while the live server still has it cached
-    // ("Cannot read properties of undefined (reading 'call')"). A babel function
-    // skips that branch. Drop once off @vitejs/plugin-react 5 (Astro 7 upgrade).
     react({ babel: () => ({}) }),
     mediaCollectorIntegration(),
     devInspectors(),
     isolatedViteCommandCache(),
   ],
-  // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
-  // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {
     host: true,
-    // Vite/Astro block unknown Host headers by default; allow LAN IPs / mDNS names.
     allowedHosts: true,
   },
   vite: {
@@ -2946,9 +2810,6 @@ export default defineConfig({
       signupDevApi(),
       ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter()]),
     ],
-    // Every client dep must be listed: a dep discovered on first load makes Vite
-    // re-optimise and send full-reload, which contentHmrGate drops, so the open tab
-    // keeps stale dep URLs and its next navigation 504s under a stuck veil.
     optimizeDeps: {
       include: [
         'gsap', 'gsap/SplitText', 'gsap/CustomEase', 'color-dialog-box', 'drawesome', 'media-chrome', '@ybouane/liquidglass',
@@ -2960,14 +2821,7 @@ export default defineConfig({
     },
     server: {
       watch: {
-        // Content + media are not Vite modules. Watching them fires
-        // full-reloads on Save / branch-sync pulls — calm HMR (contentHmrGate)
-        // also drops full-reload WS, but ignoring here keeps the watcher quiet.
-        // Manual refresh when you want new content.
         ignored: [
-          // Agent worktrees nest inside the primary checkout: their astro.config.mjs
-          // and tsconfig.json would restart / full-reload this server. Anchored to
-          // this root so a worktree's own server still watches itself.
           fileURLToPath(new URL('./.claude/worktrees/', import.meta.url)) + '**',
           '**/ROADMAP.md',
           '**/sitemap/**',

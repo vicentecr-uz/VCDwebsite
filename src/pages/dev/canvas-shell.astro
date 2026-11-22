@@ -17,7 +17,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Page</title>
     <script is:inline>
-      // With no choice made, a phone-sized screen or an automated browser gets the plain page (docs/dev-canvas.md).
       if (!/(?:^|; )vcd-canvas=1(?:;|$)/.test(document.cookie) && (navigator.webdriver || Math.min(screen.width, screen.height) <= 640)) {
         document.documentElement.setAttribute('data-canvas-skip', '');
         document.cookie = 'vcd-canvas-skip=1; Path=/; SameSite=Lax';
@@ -51,7 +50,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   type Preset = 'desktop' | keyof typeof presets;
   const isPreset = (value: unknown): value is Preset => value === 'desktop' || value === 'tablet' || value === 'mobile';
   let preset: Preset = 'desktop';
-  // A width dragged in the page's Viewport Width panel, shown instead of the preset's own size.
   let custom: number | undefined;
   let shownWidth = '';
   const showWidth = (width: number) => {
@@ -80,8 +78,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     fluxActive = active;
     frame.contentWindow?.postMessage({ type: 'vcd-canvas-flux', active }, location.origin);
   };
-  // Keep what is under the middle of the viewport where it is while the page reflows around it:
-  // the image or text there, and the same point within it.
   let anchor: { element: Element; within: number; ratio: number } | undefined;
   const pickAnchor = () => {
     const win = frame.contentWindow;
@@ -90,9 +86,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     const middle = win.innerHeight / 2;
     let element: Element | undefined;
     let nearest = Infinity;
-    // Hold what is actually shown. A cropped or sliding image is larger than the box that shows it, and
-    // content inside a scroller (a carousel, the comment board's loop) extends unseen past that box and
-    // moves on its own: the box stands in for both.
     const clips = new Map<Element, boolean>();
     const clipping = (box: Element) => {
       let known = clips.get(box);
@@ -110,14 +103,13 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       for (let parent = media.parentElement; parent && parent !== main && parent !== doc.body; parent = parent.parentElement) {
         if (!clipping(parent)) continue;
         const box = parent.getBoundingClientRect();
-        if (box.height > win.innerHeight * 2) continue; // a page-level wrapper, not a frame around this piece
+        if (box.height > win.innerHeight * 2) continue;
         const scrolls = parent.scrollHeight > parent.clientHeight + 1 || parent.scrollWidth > parent.clientWidth + 1;
         const inside = rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1 && rect.left >= box.left - 1 && rect.right <= box.right + 1;
         if (scrolls || !inside) { candidate = parent; rect = box; }
       }
       return candidate;
     };
-    // Prefer the finest piece of content; a block can be several screens tall.
     for (const selector of ['main :is(img, video, p, h2, h3, figcaption, li)', '.project-block']) {
       for (const media of doc.querySelectorAll(selector)) {
         const raw = media.getBoundingClientRect();
@@ -125,7 +117,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
         const candidate = shown(media);
         const rect = candidate.getBoundingClientRect();
         if (!rect.height || !rect.width || rect.bottom < 0 || rect.top > win.innerHeight || rect.right < 0 || rect.left > win.innerWidth) continue;
-        // Several pieces can span the middle; take the one centred nearest to it, not the first in the page.
         const distance = (rect.top > middle ? rect.top - middle : rect.bottom < middle ? middle - rect.bottom : 0) * 1000
           + Math.abs(rect.top + rect.height / 2 - middle);
         if (distance < nearest) { nearest = distance; element = candidate; }
@@ -140,7 +131,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
   const holdAnchor = () => {
     const win = frame.contentWindow;
     if (!anchor || !win || !anchor.element.isConnected) return false;
-    // A piece that one viewport hides has no box; its nearest rendered ancestor stands in for it.
     let element: Element | null = anchor.element;
     while (element && !element.getClientRects().length) element = element.parentElement;
     if (!element) return false;
@@ -150,12 +140,8 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     win.scrollBy({ top: delta, behavior: 'instant' });
     return true;
   };
-  // While this holds the anchor, the browser's own scroll anchoring must stand down: the two
-  // correct the same shift in turn and the page jumps (seen in Firefox).
   const releaseKeys = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
   let held: Window | null = null;
-  // The page resizes blocks from its own frame callbacks and observers, which run after this shell's
-  // tick. Correct again once layout has settled for the frame, before it is painted.
   let watcher: ResizeObserver | undefined;
   const releaseAnchor = () => {
     anchor = undefined;
@@ -163,7 +149,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     watcher = undefined;
     if (!held) return;
     for (const type of releaseKeys) held.removeEventListener(type, releaseAnchor, true);
-    try { held.document.documentElement.style.overflowAnchor = ''; } catch { /* the page navigated away */ }
+    try { held.document.documentElement.style.overflowAnchor = ''; } catch {}
     held = null;
   };
   const takeAnchor = () => {
@@ -179,8 +165,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       }
     } catch { held = null; }
   };
-  // The page's deferred resize work lands over the frames after a morph. Keep holding until it has
-  // been still for a while, or the reader does something.
   const settleAnchor = (token: number) => {
     const win = held;
     if (!win) return;
@@ -216,14 +200,12 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     frame.style.height = `${height}px`;
     frame.style.transform = `scale(${scale})`;
     showWidth(value.width);
-    // The page's own resize event arrives a frame late; the fixed header must size with this frame.
     if (fluxActive) frame.contentWindow?.dispatchEvent?.(new Event('vcd:viewport-flux-frame'));
     holdAnchor();
   };
   const presetGeometry = (which: Preset): Geometry => which === 'desktop' ? desktop() : {
     width: presets[which][0], height: presets[which][1], radius: which === 'tablet' ? 20 : 42, device: 1,
   };
-  // A dragged width takes the frame the preset morphs pass through at that width.
   const customGeometry = (width: number): Geometry => {
     const stops = [desktop(), presetGeometry('tablet'), presetGeometry('mobile')].filter((stop, index) => index === 0 || stop.width < window.innerWidth);
     for (let index = 1; index < stops.length; index += 1) {
@@ -267,7 +249,6 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     }
     if (!fluxActive) takeAnchor();
     postFlux(true);
-    // The page's clock, so an inspector that slows time in the page (Lapse) slows the morph with it.
     const clock = () => { try { return frame.contentWindow?.performance.now() ?? performance.now(); } catch { return performance.now(); } };
     const start = clock();
     const omega = 2 * Math.PI / (0.35 * 1.2);
@@ -275,7 +256,7 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
       if (token !== revision || scope.signal.aborted) return;
       const target = geometry();
       const elapsed = clock() - start;
-      const t = (elapsed < 0 ? 10000 : elapsed) / 1000; // the page reloaded mid-morph: land now
+      const t = (elapsed < 0 ? 10000 : elapsed) / 1000;
       const x = 1 - Math.exp(-omega * t) * (1 + omega * t);
       if (1 - x <= 0.004) {
         finish(target);
@@ -294,14 +275,11 @@ if (!import.meta.env.DEV) return Astro.redirect('/404');
     };
     raf = window.requestAnimationFrame(tick);
   };
-  // Every change goes through the bar's own segment, so its selection slides as it does for a click.
   const choose = (next: Preset) => {
     const button = controls.querySelector<HTMLElement>(`[data-viewport-preset="${next}"]`);
     if (button) button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     else transition(next);
   };
-  // A dragged width is laid out at most once a frame, and a page that is slow to reflow only every
-  // second to fourth frame, so the slider that asks for it keeps frames of its own in between.
   let widthFrame = 0;
   let widthDone = false;
   let widthSkip = 0;

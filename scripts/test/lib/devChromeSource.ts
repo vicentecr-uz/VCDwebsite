@@ -1,6 +1,3 @@
-// Source scanners for the dev-chrome ownership tests. Regex-level, not a full
-// Astro/CSS parser: good enough to find rules and tags in this codebase, and
-// each test has a "guard catches a sample" case so a parser regression shows.
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -18,7 +15,6 @@ export const rel = (absolute: string) => path.relative(root, absolute);
 export const read = (absolute: string) => readFileSync(absolute, 'utf8');
 const lineOf = (source: string, index: number) => source.slice(0, index).split('\n').length;
 
-// Split at top-level occurrences of `sep` (outside parentheses/brackets).
 const splitTop = (text: string, sep: RegExp) => {
   const parts: string[] = [];
   let depth = 0;
@@ -35,7 +31,6 @@ const splitTop = (text: string, sep: RegExp) => {
 
 const unwrapGlobal = (selector: string) => selector.replace(/:global\(((?:[^()]|\([^()]*\))*)\)/g, '$1');
 
-// The compound selector a rule styles: the last one in each comma-separated selector.
 export const subjects = (selectorList: string) =>
   splitTop(unwrapGlobal(selectorList), /,/).map((selector) => {
     const compounds = splitTop(selector.replace(/\s*[>+~]\s*/g, ' '), /\s/);
@@ -47,7 +42,6 @@ export const hasClass = (compound: string, name: string) =>
 
 export type Rule = { file: string; line: number; selectors: string; declarations: Array<[string, string]> };
 
-// Innermost `selector { declarations }` blocks, from .css files and Astro <style> blocks.
 export const cssRules = (absolute: string): Rule[] => {
   const file = rel(absolute);
   const source = read(absolute);
@@ -68,7 +62,6 @@ export const cssRules = (absolute: string): Rule[] => {
   });
 };
 
-// Opening tag starting at `start` (a `<`), skipping `>` inside {expressions} and quotes.
 export const tagAt = (source: string, start: number) => {
   let depth = 0;
   let quote = '';
@@ -87,13 +80,12 @@ const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input'
 
 export type Tag = { file: string; line: number; name: string; text: string };
 
-// Elements whose parent is a `<parent>` component tag, e.g. what a DevOverlay wraps.
 export const childrenOf = (absolute: string, parent: string): Tag[] => {
   const file = rel(absolute);
   const source = read(absolute).replace(/<script\b[\s\S]*?<\/script>|<style\b[\s\S]*?<\/style>/g, (block) => block.replace(/[^\n]/g, ' '));
   const tags = [...source.matchAll(/<(\/?)([A-Za-z][\w.:-]*)/g)];
   const children: Tag[] = [];
-  let depth = -1; // -1: outside any <parent>
+  let depth = -1;
   for (const match of tags) {
     const [, closing, name] = match;
     if (depth === -1) {
@@ -111,7 +103,6 @@ export const childrenOf = (absolute: string, parent: string): Tag[] => {
   return children;
 };
 
-// Class tokens written literally on a tag: class="a b" and quoted entries in class:list / class={…}.
 export const classTokens = (tagText: string) => {
   const tokens = new Set<string>();
   for (const m of tagText.matchAll(/\bclass(?::list)?=(?:"([^"]*)"|'([^']*)'|\{((?:[^{}]|\{[^{}]*\})*)\})/g)) {

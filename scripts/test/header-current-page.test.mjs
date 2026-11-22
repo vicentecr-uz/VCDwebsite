@@ -145,7 +145,7 @@ function createHarness({
   );
   const executeController = () => {
     // eslint-disable-next-line no-new-func
-    new Function(transformed)(/* no args */);
+    new Function(transformed)();
   };
   // eslint-disable-next-line no-new-func
   executeController();

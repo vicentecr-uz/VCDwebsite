@@ -1,6 +1,5 @@
 import type { APIRoute } from 'astro';
 
-/** `/dev/` are build-time probes — keep them out of the index. */
 const DISALLOW = ['/dev/'];
 
 export const GET: APIRoute = () => {

@@ -8,7 +8,6 @@ test('selected select option is highlighted on the first open frame, not faded i
   const rule = css.match(/\.base-ui-select-popup\[data-starting-style\] \.base-ui-select-item \{([^}]*)\}/);
   assert.ok(rule, 'opening popup must suspend item transitions');
   assert.match(rule[1], /transition:\s*none/);
-  // The suspension must come after the item's own transition so it wins regardless of specificity changes.
   assert.ok(css.indexOf('.base-ui-select-item { transition:') < rule.index);
 });
 
@@ -32,7 +31,6 @@ test('pointer-opened selects mark themselves until the pointer moves', () => {
 });
 
 test('select popup portals into an enclosing modal dialog', () => {
-  // A body portal paints under a modal <dialog>'s top layer (the image lightbox's input mode).
   assert.match(editorSelect, /trigger\?\.closest\('dialog'\) \?\?/);
   assert.match(editorSelect, /setPortalContainer\(resolvePortalContainer\(/);
   assert.match(editorSelect, /<Select\.Portal container=\{portalContainer\}>/);

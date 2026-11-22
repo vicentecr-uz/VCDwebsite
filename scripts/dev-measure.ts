@@ -1,14 +1,3 @@
-// Measure a dev panel in a running preview so "equal insets" and "same
-// baseline" are numbers. Browser-only and never imported by the site; the dev
-// server serves it by path. In the preview's JS console (or a browser tool):
-//
-//   const m = await import('/scripts/dev-measure.ts');
-//   m.report('.dev-overlay[data-dev-panel-key="log-issue"]');
-//
-// Insets are measured from the panel's inner border edge to painted boxes
-// (controls, images, fills) and to text. `box` takes text at its block's line
-// boxes, which is what component padding sets; `ink` takes text from cap line
-// to baseline, as docs/interface/spacing.md measures text gaps.
 
 type Box = { top: number; right: number; bottom: number; left: number };
 type Fragment = Box & { text: string; baseline: number; capTop: number; block: Box; node: Element };
@@ -27,7 +16,7 @@ const visible = (el: Element) => {
 };
 
 const hasPaint = (el: Element) => {
-  if (/^(IMG|svg|CANVAS|VIDEO)$/.test(el.tagName)) return true; // a ghost button or bare input counts by its text, not its box
+  if (/^(IMG|svg|CANVAS|VIDEO)$/.test(el.tagName)) return true;
   const style = getComputedStyle(el);
   const bg = style.backgroundColor;
   return (bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg)) || style.backgroundImage !== 'none'
@@ -42,7 +31,6 @@ const blockOf = (el: Element): Box => {
   return { top, right, bottom, left };
 };
 
-// One fragment per rendered line of each text node: its horizontal extent and ink from cap line to baseline.
 export const textFragments = (container: Element): Fragment[] => {
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const fragments: Fragment[] = [];
@@ -82,7 +70,7 @@ export const insets = (panel: Element, mode: 'box' | 'ink' = 'box') => {
   const sides = { top: Infinity, right: Infinity, bottom: Infinity, left: Infinity };
   const by: Record<keyof typeof sides, string> = { top: '', right: '', bottom: '', left: '' };
   const add = (box: Box, el: Element) => {
-    if (!overlaps(box, inner)) return; // scrolled out of the panel
+    if (!overlaps(box, inner)) return;
     const distances = { top: box.top - inner.top, right: inner.right - box.right, bottom: inner.bottom - box.bottom, left: box.left - inner.left };
     for (const side of Object.keys(sides) as Array<keyof typeof sides>) {
       const d = Math.max(0, distances[side]);
@@ -100,7 +88,6 @@ export const insets = (panel: Element, mode: 'box' | 'ink' = 'box') => {
   return { ...rounded, by, equal: Math.max(...values) - Math.min(...values) <= 0.5 };
 };
 
-// Texts whose ink overlaps vertically share a row; report each row's baselines.
 export const rows = (container: Element) => {
   const inner = innerBox(container);
   const fragments = textFragments(container).filter((f) => overlaps(f, inner)).sort((a, b) => a.capTop - b.capTop);

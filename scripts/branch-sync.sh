@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Poll origin and pull the currently checked-out branch (pull-only — no auto-commit).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -127,7 +126,6 @@ sync_once() (
       write_update_status failed "Another Edit tab is active or the editor is unavailable. Try again after closing Edit mode."
       return 0
     fi
-    # Lease checks precede shutdown; stopping Astro prevents writes during draft restoration.
     if ! bash "$SESSION_SCRIPT" stop-astro; then
       write_update_status failed "Could not stop the dev server. Your files are unchanged."
       return 1

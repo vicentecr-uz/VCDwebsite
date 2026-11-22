@@ -1,8 +1,4 @@
 ---
-/**
- * Dev-only probe: uniform section blocks + drop indicator insert preview.
- * Isolates lift, indicator fade/collapse, and neighbouring-block shift from Tapico.
- */
 import Layout from '../../layouts/Layout.astro';
 
 if (!import.meta.env.DEV) {
@@ -90,10 +86,6 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
         return { top: liftGaps.top, bottom: liftGaps.bottom };
       }
 
-      // Probe blocks use margin-bottom only. Transfer the above block's
-      // margin into --gap-top (and suppress it via is-drop-preview-above).
-      // --gap-bottom keeps the lifted block's bottom gap so the dashed body
-      // does not butt the neighbor below.
       const blocks = getBlocks();
       let top = '0px';
       if (insertIndex > 0) {
@@ -162,7 +154,6 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
       try {
         handle.setPointerCapture(event.pointerId);
       } catch {
-        // Document listeners still work.
       }
     });
   });
@@ -237,12 +228,10 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
   .probe-block.is-lifted {
     transform: scale(1);
     transition: transform 200ms ease-out, box-shadow 200ms ease-out;
-    /* Shadow fades in from 0 when is-lifted-raised lands on the next frame. */
     box-shadow: none;
   }
 
   .probe-block.is-lifted.is-dropping {
-    /* Position settle is easeOutElastic via WAAPI in sectionReorder.ts. */
     transition: box-shadow 200ms ease-out;
     transform: scale(1);
     box-shadow: none;

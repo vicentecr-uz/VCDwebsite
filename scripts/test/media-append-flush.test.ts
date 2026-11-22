@@ -61,7 +61,6 @@ test('flush persists replacement, crop, and caption before an append remount', a
     if (crop) crop.payload.variants = { desktop: { cx: 0.25 } };
   });
   await h.flush('project');
-  // The append caller remounts only after the flush promise resolves.
   const remounted = structuredClone(h.savedSection);
   remounted.items.push({ src: 'placeholder.svg' });
   expect(h.pendingMedia.size).toBe(0);

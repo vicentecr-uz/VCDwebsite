@@ -81,6 +81,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 - Only stage and commit files changed in the current chat session for this task. Never sweep in another person's dirty work; always pass explicit paths to `commit:engine`.
 - Fix root causes and inspect other callers before changing shared behavior.
 - First ask whether a change is needed at all. If it is, stop at the first adequate solution: existing project pattern, standard library, native platform feature, installed dependency, one line, then the minimum new code.
+- Write no code comments ([ADR 0001](docs/adr/0001-no-code-comments.md)). Record a non-obvious decision in [`docs/adr/`](docs/adr/README.md) and a known shortcut as a GitHub issue; `bun run lint:comments` ratchets the remaining count down, and `/delete-comment` audits a slice.
 - Prefer deletion and existing files over new abstractions or dependencies. Do not trade away validation, error handling, security, or accessibility for a smaller diff.
 - The owner sets product intent and UI feel; the responsible agent owns implementation shape and should explain a material tradeoff before locking it in.
 - If work moves to another session, leave a builder-ready handoff: done condition, required worker capability, branch/issue, first reads, settled root cause and approach, exact change list, landmines, cleanup, verification, out of scope, and pickup instruction. Include pseudo-code for timing loops, observers, or state machines. Use the handoff mechanism supported by the active harness.

@@ -47,7 +47,7 @@ assert.equal(run(['rev-parse', 'HEAD']), initialHead);
 assert.ok(run(['diff', '--cached', '--name-only', '-z']).includes('src/content/private\nname.json\0'));
 run(['reset', '-q']);
 
-for (const path of ['.content.git/config', '.claude/settings.json', '.codex/config.toml', '.env', '.env.production', '.dev.vars']) {
+for (const path of ['.content.git/config', '.claude/settings.json', '.claude/skills/../settings.json', '.codex/config.toml', '.env', '.env.production', '.dev.vars']) {
   assert.throws(() => helperRun(['message', path]), /private content or operations/);
 }
 
@@ -58,4 +58,8 @@ assert.ok(run(['status', '--porcelain']).includes('other.txt'));
 await writeFile(join(root, '.env.example'), 'PUBLIC_SITE_URL=https://example.com\n');
 helperRun(['document environment', '.env.example']);
 assert.equal(run(['show', '--format=', '--name-only', 'HEAD']).trim(), '.env.example');
+await mkdir(join(root, '.claude/skills/example'), { recursive: true });
+await writeFile(join(root, '.claude/skills/example/SKILL.md'), '# example\n');
+helperRun(['add skill', '.claude/skills/example/SKILL.md']);
+assert.equal(run(['show', '--format=', '--name-only', 'HEAD']).trim(), '.claude/skills/example/SKILL.md');
 console.log('commit-engine helper tests passed');

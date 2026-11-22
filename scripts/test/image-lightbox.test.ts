@@ -330,14 +330,11 @@ test('input mode select keeps native pointer, keyboard and wheel interaction', (
 for (const targetName of ['viewer', 'image', 'dialog'] as const) {
   test(`click-away on ${targetName} closes the popup without dismissing the lightbox`, () => {
     const f = fixture(); f.click();
-    // EditorSelect portals its popup into the dialog so it paints in the top layer.
     const popup = f.document.createElement('div');
     popup.setAttribute('data-editor-select-popup', '');
     popup.setAttribute('data-open', '');
     f.dialog.append(popup);
 
-    // Base UI's outside-press handler closes the popup during this press;
-    // the lightbox must remember it was open for the click that follows.
     f.pointer('pointerdown', 1, 500, 400, 0, false, f[targetName]);
     expect(f.viewer.classList.contains('is-dragging')).toBe(false);
     popup.removeAttribute('data-open');
@@ -345,7 +342,6 @@ for (const targetName of ['viewer', 'image', 'dialog'] as const) {
     f.click(f[targetName]);
     expect(f.dialog.open).toBe(true);
 
-    // A later click, after the popup sequence has been consumed, dismisses.
     f.click(f.dialog); f.tick(150);
     expect(f.dialog.open).toBe(false);
   });

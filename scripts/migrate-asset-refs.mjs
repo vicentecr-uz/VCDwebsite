@@ -1,21 +1,4 @@
 #!/usr/bin/env node
-/**
- * One-shot migration: collapse every asset ref in content JSON onto one form —
- * decoded, relative to `media/`, no prefix, no leading slash.
- *
- *   draft:hero.jpg                    -> hero.jpg
- *   /draft-media/hero.jpg             -> hero.jpg
- *   /images/press-logos/yanko.png     -> press-logos/yanko.png
- *   /images/1Q1A6418%20(Custom).jpg   -> 1Q1A6418 (Custom).jpg
- *   https://youtube.com/...           -> unchanged
- *
- * Walks every field named src, image, hoverImage, coverImage, avatarSrc,
- * logoSrc, poster — at any depth (this also covers `photo.src`, since that is
- * just a `src` key one level down). Idempotent: running it again on already
- * -normalized content is a no-op.
- *
- *   node scripts/migrate-asset-refs.mjs [--dry]
- */
 
 import { readFile, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -61,8 +44,6 @@ function normalizeRef(value) {
   if (raw.startsWith(IMAGES_PREFIX)) {
     return decodeURIComponent(raw.slice(IMAGES_PREFIX.length));
   }
-  // Any other absolute path (unlikely for these fields) or an already-bare
-  // relative token — leave as-is other than decoding stray percent-escapes.
   if (raw.startsWith('/')) return raw;
   try {
     return decodeURIComponent(raw);

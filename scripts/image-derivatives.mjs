@@ -65,7 +65,6 @@ export async function findOriginal(mediaDir, token) {
       await stat(full);
       return full;
     } catch {
-      // try next extension
     }
   }
   return null;
@@ -79,7 +78,6 @@ export async function findOriginal(mediaDir, token) {
 export async function generateDerivativeBuffer(originalPath, kind) {
   if (kind === 'poster') return generatePosterBuffer(originalPath);
   const size = kind === 'thumb' ? THUMB_SIZE : PREVIEW_SIZE;
-  // `inside` = long edge, matching Immich `size` (width-only would oversize portraits).
   return sharp(originalPath)
     .rotate()
     .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
@@ -88,8 +86,6 @@ export async function generateDerivativeBuffer(originalPath, kind) {
 }
 
 /**
- * Decode only the first video frame, then use the same bounded preview sizing
- * as images. FFmpeg is bundled so builds do not depend on a host executable.
  * @param {string} originalPath
  * @returns {Promise<Buffer>}
  */

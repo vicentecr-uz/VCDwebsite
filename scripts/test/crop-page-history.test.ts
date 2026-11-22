@@ -4,7 +4,6 @@ import { normalizeImageBackground } from '../../src/lib/imageBackground.mjs';
 import { projectImage } from '../../src/lib/images';
 import { imageDevEditAttrs, listingCoverDevEditAttrs } from '../../src/lib/projectImageFrame';
 
-// Exercise the actual target restoration used by panel close and page undo.
 const source = readFileSync(new URL('../../src/components/project/ProjectImageCropTuner.astro', import.meta.url), 'utf8');
 const body = source.slice(source.indexOf('    const applyPageCrop ='), source.indexOf('    const recordPageCrop ='));
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(body);

@@ -12,7 +12,6 @@ const dist = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, '
 const allNodes = (node) => [node, ...(node.childNodes ?? []).flatMap(allNodes)];
 const attr = (node, name) => node?.attrs?.find((item) => item.name === name)?.value;
 const text = (node) => node.nodeName === '#text' ? node.value : (node.childNodes ?? []).map(text).join('');
-// Public page blocks also listen for these layout refreshes when used by the editor.
 const withoutRendererEvents = (source) => source.replace(/vcd:dev-(?:section-inserted|section-structure-changed|frame-changed)/g, '');
 const scriptGraph = async (source, seen = new Set()) => {
   const [imports] = parseImports(source);
@@ -25,7 +24,6 @@ const scriptGraph = async (source, seen = new Set()) => {
     seen.add(file);
     const child = await readFile(file, 'utf8');
     assert.doesNotMatch(withoutRendererEvents(child), /\/api\/|localStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
-    // The existing magnifier keeps session presets; the other demos remain storage-free.
     if (!path.basename(file).startsWith('ProgressiveImageDemo.')) assert.doesNotMatch(child, /sessionStorage/, file);
     await scriptGraph(child, seen);
   }

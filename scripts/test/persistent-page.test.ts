@@ -264,7 +264,6 @@ test('unseen Home navigation covers the retained header with the outgoing veil b
   let stored: string | null = null;
   let storageThrows = false;
   const covered: boolean[] = [];
-  // The actual title controller also raises the retained header when navigation starts.
   doc.addEventListener('header:navigation-start', () => { doc.documentElement.dataset.headerNavigation = ''; });
   new Function('document', 'sessionStorage', 'CustomEvent', 'hooks', `${script}; installPersistentNavigation(hooks);`)(
     doc, { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return stored; } }, win.CustomEvent,
@@ -383,7 +382,6 @@ test('Astro opting out of routing to a write-up still waits for the white cover 
   const event = f.prepare('/tapico-research-paper', undefined, async event => {
     await Promise.resolve();
     event.newDocument = next;
-    // The real Astro loader prevents routing when the fetched page has no ClientRouter marker.
     event.preventDefault();
   });
   let finished = false;

@@ -99,7 +99,6 @@ test('HTTP contract: flag links, same-origin posts, validation and limits', () =
   expect((await post(JSON.stringify(batch({ topic: '../secret' })))).status).toBe(400);
   expect((await post(JSON.stringify(batch({ entries: [{ t: 1, data: 'x'.repeat(300 * 1024) }] })))).status).toBe(413);
 
-  // sendBeacon posts a string as text/plain.
   const saved = await post(JSON.stringify(batch()), { origin, 'content-type': 'text/plain;charset=UTF-8', 'user-agent': 'Zen/1.0' });
   expect([saved.status, await saved.json()]).toEqual([200, { ok: true }]);
   expect(await lines(path.join(directory, 'drag-jump.jsonl'))).toMatchObject([{ userAgent: 'Zen/1.0', path: '/tapico?x=1', entries: [{ t: 1 }] }]);

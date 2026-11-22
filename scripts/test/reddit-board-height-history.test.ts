@@ -67,7 +67,6 @@ function setup(initial = { desktop: 20, tablet: null, mobile: 26 }) {
     const callbacks = [...timers.values()];
     timers.clear();
     callbacks.forEach((callback) => callback());
-    // persist serializes writes and then awaits the response body.
     for (let i = 0; i < 8; i++) await Promise.resolve();
   };
   const close = async () => { dispose(); await win.happyDOM.close(); };

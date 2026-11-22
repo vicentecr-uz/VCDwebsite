@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Detached Astro preview for a git worktree (QA rotation). Survives the
-# calling agent exiting — unlike `astro dev` in a worker's process group.
-# Does not touch port 4321 (that's `bun run dev:session`).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -205,7 +202,6 @@ cmd_start() {
     exit 1
   fi
 
-  # Non-macOS fallback for environments without a per-user launchd session.
   nohup env VCD_REVIEW_PREVIEW=1 bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host >>"$LOG_FILE" 2>&1 &
   pid=$!
   echo "$pid" >"$PID_FILE"

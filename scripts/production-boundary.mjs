@@ -1,8 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 
-// These are authoring entrypoints. DevOverlay and ui/* also serve public /styles demos.
-// Keep new writers here; check-production-output catches emitted authoring endpoints.
 const authoringComponents = new Set([
   'DevAssetManager.astro',
   'DevAwardBlockSize.astro',
@@ -48,11 +46,9 @@ export function productionBoundary() {
     apply: 'build',
     enforce: 'pre',
     load(id) {
-      // Remove the component before Astro discovers its scripts, styles, or imports.
       if (authoringComponents.has(id.split('?')[0])
         || id.split('?')[0] === canvasShellPage) return '';
       if (id.split('?')[0] === canvasChrome) return 'export function hoistCanvasChrome() {}';
-      // A recorder call left in by mistake must do nothing in production.
       if (id.split('?')[0] === debugRecord) return 'export function debugRecord() {}';
       if (id === pageLayout) {
         return readFileSync(pageLayout, 'utf8').replace(

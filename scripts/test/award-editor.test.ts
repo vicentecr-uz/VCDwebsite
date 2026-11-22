@@ -16,7 +16,6 @@ test('new awards apply, clear and restore links; cancel and teardown leave the s
   const setup = new Function('window', 'document', 'Element', 'HTMLElement', 'HTMLInputElement', 'HTMLFormElement', 'MutationObserver', 'Event', 'CustomEvent', 'normalizeHref', 'pageHistory', 'isDevContentEditing', `${code}; return bindProjectAwardEditors;`);
   const bind = setup(dom, doc, dom.Element, dom.HTMLElement, dom.HTMLInputElement, dom.HTMLFormElement, dom.MutationObserver, dom.Event, dom.CustomEvent, normalizeHref, { breakGroup() {} }, () => doc.documentElement.classList.contains('is-dev-mode'));
   bind(controller.signal);
-  // Mount after binding: the first award on a page must work without a reload.
   doc.body.innerHTML = `<section data-project-award><span class="project-award__proxy" hidden></span><a class="project-award__hit"><img alt="Award"></a><button data-award-edit>Edit award</button><form data-award-editor hidden><button type="button" data-award-remove>Remove</button><input data-award-input></form></section>`;
   const root = doc.querySelector('[data-project-award]')!;
   const proxy = root.querySelector('.project-award__proxy')!;
@@ -53,7 +52,6 @@ test('new awards apply, clear and restore links; cancel and teardown leave the s
     assert.equal(hit.hasAttribute('href'), false);
     assert.equal(proxy.textContent, '');
 
-    // The shared page history restores the proxy; the badge must follow it.
     proxy.textContent = '/restored';
     await dom.happyDOM.whenAsyncComplete();
     assert.equal(hit.getAttribute('href'), '/restored');

@@ -1,11 +1,4 @@
 // @ts-check
-/**
- * Dev-only GitHub issue filing from the page (issue #107).
- *
- * POST /api/dev-issue — create an issue via `gh`, optionally pushing attachments
- * to the orphan `issue-assets` branch first (private-repo-safe clickable links).
- * GET  /api/dev-issue — labels + milestones + current branch for the form.
- */
 import { execFile as execFileCb } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
@@ -17,10 +10,6 @@ const execFile = promisify(execFileCb);
 
 const REPO = 'vicentecr-uz/VCDwebsite';
 const ASSETS_BRANCH = 'issue-assets';
-// No hardcoded label list: listMeta() pulls every label straight from the
-// repo on each load, so a label created on GitHub shows up here without a
-// code change. The only split kept is "page" labels (name contains "page")
-// vs everything else, purely to keep the form's two dropdowns meaningful.
 
 const git = async (...args) => {
   const { stdout } = await execFile('git', args, { cwd: process.cwd(), maxBuffer: 32 * 1024 * 1024 });
@@ -64,16 +53,12 @@ const send = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 
-/** Safe filename: keep extension, drop path tricks. */
 function sanitizeFilename(name) {
   const base = path.basename(String(name || 'attachment')).replace(/[^\w.\-()+ ]+/g, '_');
   return base.slice(0, 120) || 'attachment';
 }
 
 /**
- * Commit files onto the orphan `issue-assets` branch without touching the
- * working tree / index (scratch GIT_INDEX_FILE, same idea as cross-branch publish).
- *
  * @param {Array<{ filename: string, data: string, mimeType?: string }>} files
  * @returns {Promise<Array<{ filename: string, path: string, url: string }>>}
  */
@@ -96,8 +81,6 @@ async function pushIssueAssets(files) {
       parent = await git('rev-parse', `origin/${ASSETS_BRANCH}`);
       await gitWithEnv(env, 'read-tree', parent);
     } catch {
-      // First upload: scratch GIT_INDEX_FILE starts empty — do not touch
-      // the real index (never run read-tree without GIT_INDEX_FILE).
       parent = null;
     }
 
@@ -198,7 +181,6 @@ async function createIssue(payload) {
     fullBody += `\n\n### Attachments\n${lines.join('\n')}`;
   }
 
-  // Write body to a temp file so newlines / quotes survive the shell.
   const bodyFile = path.join(os.tmpdir(), `vcd-issue-body-${randomUUID()}.md`);
   await fs.writeFile(bodyFile, fullBody, 'utf8');
 

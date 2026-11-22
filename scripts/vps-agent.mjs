@@ -4,7 +4,6 @@ const VPS_HOST = 'atlas';
 const VPS_AGENT = '~/bin/vcd-agent';
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 
-/** Send one bounded JSON request to the VPS agent without invoking a shell. */
 export function requestVpsAgent(payload, { timeout = 20_000 } = {}) {
   const input = JSON.stringify(payload);
   if (Buffer.byteLength(input) > MAX_REQUEST_BYTES) {

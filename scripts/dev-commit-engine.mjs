@@ -1,12 +1,4 @@
 // @ts-check
-/**
- * Dev-only: publish colour-token CSS (`src/styles/global.css`) to main from the
- * save bar (issue #109). Content still publishes via /api/publish; this path is
- * for the one engine file editors are allowed to push straight to main.
- *
- * Same scratch-index / push pattern as content publish — works from any branch
- * without switching checkout or staging engine work into a feature commit.
- */
 import { execFile as execFileCb } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
@@ -18,7 +10,6 @@ import { isReviewPreview } from './content-repository.mjs';
 
 const execFile = promisify(execFileCb);
 
-/** The only engine paths the save bar may publish to main. */
 export const STYLE_TOKEN_PATHS = ['src/styles/global.css', 'tokens/design-tokens.json'];
 const PUBLISH_BRANCH = 'main';
 const DEFAULT_MESSAGE = 'styles: update colour tokens';
@@ -86,7 +77,6 @@ async function writePublishRecord(entries) {
     const record = { ...await readPublishRecord(), ...entries };
     await writeFile(await publishRecordPath(), `${JSON.stringify(record, null, 2)}\n`);
   } catch {
-    // Bookkeeping only — never fail a publish that already landed.
   }
 }
 
@@ -104,7 +94,6 @@ async function publishBaseRef() {
       await execFile('git', ['rev-parse', '--verify', '--quiet', ref], { cwd: process.cwd() });
       return ref;
     } catch {
-      // try next
     }
   }
   return null;
@@ -121,10 +110,6 @@ async function staleFiles(files, target, mergeBase) {
   return stale;
 }
 
-/**
- * Ahead of main = we edited it; behind = main moved and we have not.
- * Same split as content publish — only ahead is publishable.
- */
 async function splitAheadBehind(files, target) {
   if (!files.length) return { files: [], behind: [] };
 
@@ -133,7 +118,6 @@ async function splitAheadBehind(files, target) {
   try {
     mergeBase = await git('merge-base', 'HEAD', target);
   } catch {
-    // No shared history — treat differences as ours.
   }
 
   const ahead = [];
@@ -324,12 +308,7 @@ async function publishStylesFromBranch(files, message) {
   }
 }
 
-/**
- * Commit saved colour-token CSS on the current branch so disk, HEAD, and
- * Publish styles stay aligned. Publish still ships the same file to main.
- *
- * @param {{ tokens?: string[], message?: string }} [payload]
- */
+/** @param {{ tokens?: string[], message?: string }} [payload] */
 export async function commitStyleTokensOnBranch(payload = {}) {
   const branch = await git('branch', '--show-current');
   if (!branch) {
@@ -392,7 +371,6 @@ export function commitEngineDevWriter() {
     name: 'publish-styles-dev-writer',
     apply: 'serve',
     configureServer(server) {
-      // Keep the old path as an alias so a mid-session reload still works.
       const handler = async (req, res, next) => {
         if (req.method === 'GET') {
           try {

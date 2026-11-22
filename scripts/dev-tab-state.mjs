@@ -14,7 +14,6 @@ export function devTabState(root = process.cwd()) {
       else if (entry.isFile()) hash.update(file).update(readFileSync(path.join(root, file)));
     }
   };
-  // Whole-content matching is conservative; document-scoped snapshots can relax unrelated conflicts later.
   visit('src/content');
   for (const file of ['src/styles/global.css', 'tokens/design-tokens.json']) {
     if (existsSync(path.join(root, file))) hash.update(file).update(readFileSync(path.join(root, file)));

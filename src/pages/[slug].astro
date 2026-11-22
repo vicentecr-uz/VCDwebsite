@@ -16,9 +16,6 @@ import {
   shouldIncludeProjectInBuild,
 } from '../lib/projects';
 
-// Static output makes `prerender = false` a no-op in DEV; new slugs become routable when
-// `astro:content-changed` clears RouteCache: sent by the create/settings/rename APIs, and by
-// projectRouteWatcher whenever a project file is added or removed on disk.
 export const prerender = import.meta.env.PROD;
 
 export function getStaticPaths() {
@@ -36,7 +33,6 @@ const sections = project.sections;
 const outline = resolveProjectOutline(project);
 const sectionLinks = resolveProjectSectionLinks(project);
 
-// Case studies use the lightweight preview of their gallery cover.
 const listingCover = Object.values(project.listings ?? {})
   .map((listing) => listing?.image)
   .find((image): image is string => Boolean(image));

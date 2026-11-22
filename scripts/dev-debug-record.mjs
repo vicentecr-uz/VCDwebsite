@@ -1,14 +1,4 @@
 // @ts-check
-/**
- * Dev-only debug recorder: a bug that reproduces only in the owner's browser is
- * recorded to a file an agent can read, with no console work for the owner.
- *
- * GET  /dev/record/on?to=/page&topic=slug — set the `vcd-record` cookie, go to the page.
- * GET  /dev/record/off                    — clear it.
- * POST /api/dev-record                    — append one batch to .debug-records/<topic>.jsonl.
- *
- * The client half is src/lib/debugRecord.ts.
- */
 import { appendFile, mkdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -20,19 +10,16 @@ const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 export const isRecordTopic = (topic) => typeof topic === 'string' && TOPIC.test(topic);
 
-/** After a flag toggle, go back to the page the link was clicked on (same host only). */
 export function recordFlagReturnPath(headers, url = '') {
-  // A link from outside the site has no referer: `?to=/page` names where to land.
   const to = new URL(url || '/', 'http://localhost').searchParams.get('to');
   if (to && to.startsWith('/') && !to.startsWith('//') && !to.startsWith('/dev/record/')) return to;
   try {
     const referer = new URL(String(headers.referer ?? ''));
     if (referer.host === headers.host && !referer.pathname.startsWith('/dev/record/')) return `${referer.pathname}${referer.search}${referer.hash}`;
-  } catch { /* no usable referer */ }
+  } catch {}
   return '/';
 }
 
-/** A page on this dev server posting to itself; another site's page (or a no-origin client) is refused. */
 export function isSameOriginRequest(headers) {
   const site = headers['sec-fetch-site'];
   if (site && site !== 'same-origin') return false;
@@ -67,7 +54,6 @@ export function createDebugRecordStore({ directory = path.join(process.cwd(), '.
     return file;
   };
   return {
-    // Serialised so two batches cannot both pass the size check and overrun the cap.
     append: (body, userAgent) => (queue = queue.then(() => append(body, userAgent), () => append(body, userAgent))),
   };
 }

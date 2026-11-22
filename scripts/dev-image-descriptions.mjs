@@ -97,7 +97,6 @@ function stableIds(data, nodePath, node) {
   return ids;
 }
 
-// Ceiling: known raster image/grid/carousel nodes only; extend this allowlist when new authored media shapes gain public image semantics.
 function sourceNodes(document, data) {
   const result = [];
   walkJson(data, [], (node, nodePath) => {

@@ -22,7 +22,6 @@ function validateStored(stored) {
 export function createComponentNotesStore({ directory, readDocument }) {
   const root = path.resolve(directory);
   let tail = Promise.resolve();
-  // One dev server owns this directory; use a shared transactional store before scaling writers.
   const enqueue = (fn) => {
     const run = tail.then(fn);
     tail = run.catch(() => {});

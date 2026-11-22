@@ -190,7 +190,6 @@ function fixture(options: { images?: ImageFixture[]; readinessRoots?: ReadinessR
         get startTime() { return startTime; },
         set startTime(value: number | null) {
           startTime = value;
-          // WAAPI resolves pending readiness when an explicit start time takes over.
           if (this.pending) { this.pending = false; ready.resolve(); }
         },
         get currentTime() { return this.playState === 'running' && this.startTime !== null ? now - this.startTime : heldTime; },

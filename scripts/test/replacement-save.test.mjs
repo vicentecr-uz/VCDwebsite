@@ -29,7 +29,6 @@ for (const type of ['image', 'imageGrid', 'imageCarousel', 'listing']) {
     assert.equal(target.srcWidth, 40);
     assert.equal(target.srcHeight, 26);
     assert.equal(target[type === 'listing' ? 'image' : 'src'], src);
-    // A later crop save from an old editor must not reinstate its stale dimensions.
     assert.deepEqual(await applyCropChangeFromSource(data, change), { ok: true });
     assert.equal(target.srcWidth, 40);
   });
