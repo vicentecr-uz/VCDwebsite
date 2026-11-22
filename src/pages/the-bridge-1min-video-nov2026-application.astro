@@ -1,20 +1,28 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ProjectVideo from '../components/project/ProjectVideo.astro';
+import WriteupBacklink from '../components/WriteupBacklink.astro';
+import DevVideoPoster from '../components/DevVideoPoster.astro';
 import '../styles/project.css';
 ---
 <Layout title="The Bridge Residency — Vicente Cruz" noindex>
   <main id="main-content" class="application-video">
-    <h1 class="sr-only">Vicente Cruz — The Bridge Residency application video</h1>
-    <ProjectVideo
-      src="the-bridge-1min-video-nov2026-application.mp4"
-      poster="the-bridge-1min-video-nov2026-application-poster.jpg"
-      alt="Vicente Cruz introduces himself"
-      aspectRatio="9:16"
-      spacing="none"
-      rounded
-    />
+    <div class="application-video__column">
+      <header class="application-video__masthead">
+        <WriteupBacklink href="/" label="Home" />
+        <h1 class="sr-only">Vicente Cruz — The Bridge Residency application video</h1>
+      </header>
+      <ProjectVideo
+        src="the-bridge-1min-video-nov2026-application.mp4"
+        poster="the-bridge-1min-video-nov2026-application-poster.jpg"
+        alt="Vicente Cruz introduces himself"
+        aspectRatio="9:16"
+        spacing="none"
+        rounded
+      />
+    </div>
   </main>
+  {import.meta.env.DEV && <DevVideoPoster />}
 </Layout>
 
 <style>
@@ -25,9 +33,27 @@ import '../styles/project.css';
     padding: var(--space-unit);
   }
 
-  /* Never taller than the viewport: cap the width by the height the 9:16 frame can take. */
-  .application-video > :global(.project-block) {
-    width: min(100%, calc((100dvh - 2 * var(--space-unit)) * 9 / 16));
-    margin-inline: auto;
+  /* Never taller than the viewport: the column is as wide as the 9:16 frame that fits under the Home row. */
+  .application-video__column {
+    --masthead-height: calc(var(--text-body-size) * var(--text-body-leading) + var(--space-unit));
+    /* The dev panel tunes the cap per viewport; settled values belong here as the defaults. */
+    --max-vh: var(--video-page-max-vh-desktop, 100);
+    width: min(100%, calc(min(100dvh - 2 * var(--space-unit) - var(--masthead-height), var(--max-vh) * 1dvh) * 9 / 16));
+  }
+
+  @media (max-width: 991px) {
+    .application-video__column { --max-vh: var(--video-page-max-vh-tablet, 100); }
+  }
+
+  @media (max-width: 767px) {
+    .application-video__column { --max-vh: var(--video-page-max-vh-mobile, 100); }
+  }
+
+  .application-video__masthead {
+    display: flex;
+    height: calc(var(--text-body-size) * var(--text-body-leading));
+    margin-bottom: var(--space-unit);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
   }
 </style>

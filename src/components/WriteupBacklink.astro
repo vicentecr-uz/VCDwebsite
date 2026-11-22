@@ -1,0 +1,59 @@
+---
+import cornerUpLeftIcon from 'lucide-static/icons/corner-up-left.svg?raw';
+import arrowRightIcon from 'lucide-static/icons/arrow-right.svg?raw';
+
+interface Props {
+  href: string;
+  label: string;
+  /** `back` leads with the return arrow; `next` trails a forward arrow. */
+  direction?: 'back' | 'next';
+  [key: string]: any;
+}
+
+const { href, label, direction = 'back', ...rest } = Astro.props;
+---
+
+<a href={href} class="writeup-backlink" {...rest}>
+  {direction === 'back' && <span class="writeup-backlink__icon" aria-hidden="true" set:html={cornerUpLeftIcon} />}
+  <span class="writeup-backlink__label">{label}</span>
+  {direction === 'next' && <span class="writeup-backlink__icon" aria-hidden="true" set:html={arrowRightIcon} />}
+</a>
+
+<style>
+  .writeup-backlink {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--space-unit) * 0.5);
+    color: var(--sys-color-on-srf-subtle);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+
+  .writeup-backlink::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .writeup-backlink__icon {
+    display: inline-flex;
+  }
+
+  :global(.writeup-backlink__icon svg) {
+    width: 1em;
+    height: 1em;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .writeup-backlink:hover {
+      color: var(--sys-color-on-srf);
+    }
+  }
+
+  .writeup-backlink:focus-visible {
+    color: var(--sys-color-on-srf);
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 4px;
+  }
+</style>

@@ -1,0 +1,193 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import Field from './ui/Field.astro';
+import Filmstrip from './ui/Filmstrip.astro';
+import RangeField from './ui/RangeField.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
+import PanelActions from './ui/PanelActions.astro';
+import Button from './ui/Button.astro';
+---
+
+<DevOverlay storageKey="video-poster" panelKey="video-poster" defaultHidden>
+  <div class="dev-video-poster" data-dev-video-poster>
+    <ViewportSelector dataAttr="data-poster-viewport" />
+    <RangeField label="Max height" id="video-page-max-height" unit="vh" min="30" max="100" step="1" value="100" data-poster-max-height />
+    <video class="dev-video-poster__preview" muted playsinline preload="auto" data-poster-preview></video>
+    <Field label="Frame">
+      <output slot="labelAccessory" data-poster-time>0:00.0</output>
+      <Filmstrip label="Frame" data-poster-scrub />
+    </Field>
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" data-poster-reset />
+      <Button emphasis="filled" label="Save" data-poster-save />
+    </PanelActions>
+    <p class="dev-video-poster__status" data-poster-status aria-live="polite"></p>
+  </div>
+</DevOverlay>
+
+<style>
+  .dev-video-poster { display: grid; gap: var(--space-unit); }
+  .dev-video-poster__preview { display: block; height: 280px; max-width: 100%; justify-self: center; object-fit: contain; }
+  .dev-video-poster :global([data-poster-time]) { font: var(--dev-text-field-label); font-variant-numeric: tabular-nums; }
+  .dev-video-poster__status { margin: 0; font: var(--dev-text-status); }
+  .dev-video-poster__status:empty { display: none; }
+</style>
+
+<script>
+  import { onPageLoad } from '../lib/pageLifecycle';
+
+  // Overwrites the poster file the page's first video already points at (ceiling: one video per page,
+  // and it must already have a poster; lift by reading the target from the edit trigger, as DevVideoEditor does).
+  const dispose = onPageLoad(() => {
+    const panel = document.querySelector<HTMLElement>('[data-dev-video-poster]');
+    const target = document.querySelector<HTMLVideoElement>('[data-project-video] video[poster]');
+    const preview = panel?.querySelector<HTMLVideoElement>('[data-poster-preview]');
+    const input = panel?.querySelector<HTMLInputElement>('[data-poster-scrub]');
+    const strip = input?.closest<HTMLElement>('[data-dev-filmstrip]');
+    const frames = strip?.querySelector<HTMLCanvasElement>('[data-filmstrip-frames]');
+    const thumb = strip?.querySelector<HTMLCanvasElement>('[data-filmstrip-thumb]');
+    const time = panel?.querySelector<HTMLOutputElement>('[data-poster-time]');
+    const save = panel?.querySelector<HTMLButtonElement>('[data-poster-save]');
+    const status = panel?.querySelector<HTMLElement>('[data-poster-status]');
+    if (!panel || !target || !preview || !input || !strip || !frames || !thumb || !time || !save || !status) return;
+
+    const controller = new AbortController();
+    const { signal } = controller;
+    const src = target.currentSrc || target.src;
+    const filename = decodeURIComponent(new URL(target.poster, location.href).pathname.split('/').pop() ?? '');
+    const storageKey = `vcd:video-poster-time:${filename}`;
+    const sampler = document.createElement('video');
+    sampler.muted = true;
+    sampler.preload = 'auto';
+    let built = 0;
+
+    const size = (canvas: HTMLCanvasElement) => {
+      const box = canvas.getBoundingClientRect();
+      canvas.width = Math.round(box.width * devicePixelRatio);
+      canvas.height = Math.round(box.height * devicePixelRatio);
+      return canvas.getContext('2d');
+    };
+    const drawThumb = () => { size(thumb)?.drawImage(preview, 0, 0, thumb.width, thumb.height); };
+    const seek = (video: HTMLVideoElement, at: number) => new Promise<void>((resolve) => {
+      video.addEventListener('seeked', () => resolve(), { once: true, signal });
+      video.currentTime = at;
+    });
+    const buildFrames = async () => {
+      const width = frames.getBoundingClientRect().width;
+      if (!width || !sampler.videoWidth || built === width) return;
+      built = width;
+      const context = size(frames);
+      if (!context) return;
+      const cell = frames.height * sampler.videoWidth / sampler.videoHeight;
+      const count = Math.ceil(frames.width / cell);
+      for (let index = 0; index < count; index++) {
+        await seek(sampler, (index + 0.5) / count * sampler.duration);
+        if (signal.aborted || built !== width) return;
+        context.drawImage(sampler, index * cell, 0, cell, frames.height);
+      }
+    };
+
+    preview.addEventListener('loadedmetadata', () => {
+      strip.style.setProperty('--filmstrip-frame-ratio', String(preview.videoWidth / preview.videoHeight));
+      input.max = String(preview.duration);
+      input.step = String(1 / 30);
+      let stored = 0;
+      try { stored = Number(localStorage.getItem(storageKey)) || 0; } catch { /* start at the first frame */ }
+      input.value = String(Math.min(stored, preview.duration));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }, { signal });
+    preview.addEventListener('seeked', drawThumb, { signal });
+    preview.addEventListener('loadeddata', drawThumb, { signal });
+    sampler.addEventListener('loadedmetadata', () => { void buildFrames(); }, { signal });
+    input.addEventListener('input', () => {
+      const at = Number(input.value);
+      preview.currentTime = at;
+      time.textContent = `${Math.floor(at / 60)}:${(at % 60).toFixed(1).padStart(4, '0')}`;
+      status.textContent = '';
+    }, { signal });
+    const resize = new ResizeObserver(() => { void buildFrames(); drawThumb(); });
+    resize.observe(strip);
+
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = preview.videoWidth;
+        canvas.height = preview.videoHeight;
+        canvas.getContext('2d')?.drawImage(preview, 0, 0);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+        if (!blob) throw new Error('Could not read that frame.');
+        const data = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(',', 2)[1]);
+          reader.onerror = () => reject(new Error('Could not read that frame.'));
+          reader.readAsDataURL(blob);
+        });
+        const response = await fetch('/api/video-poster', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, signal,
+          body: JSON.stringify({ filename, data }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not save the thumbnail.');
+        // The file keeps its name, so show the new frame from memory rather than the cached URL.
+        const url = URL.createObjectURL(blob);
+        target.poster = url;
+        target.closest('[data-project-video]')?.querySelector<HTMLImageElement>('.project-video-player__poster')?.setAttribute('src', url);
+        try { localStorage.setItem(storageKey, input.value); } catch { /* the saved file is what matters */ }
+        status.textContent = 'Saved';
+      } catch (error) {
+        if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save the thumbnail.';
+      } finally {
+        save.disabled = false;
+      }
+    }, { signal });
+
+    // Max height is a live tuning value kept in this browser; bake a settled number into the page's CSS defaults.
+    const HEIGHT_KEY = 'vcd:video-page-max-vh';
+    const heights = { desktop: 100, tablet: 100, mobile: 100 };
+    type Viewport = keyof typeof heights;
+    try { Object.assign(heights, JSON.parse(localStorage.getItem(HEIGHT_KEY) || '{}')); } catch { /* keep defaults */ }
+    const height = panel.querySelector<HTMLInputElement>('[data-poster-max-height]');
+    const viewportButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-poster-viewport]')];
+    let selected: Viewport = window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+    const applyHeights = () => {
+      for (const viewport of Object.keys(heights) as Viewport[]) {
+        document.documentElement.style.setProperty(`--video-page-max-vh-${viewport}`, String(heights[viewport]));
+      }
+      try { localStorage.setItem(HEIGHT_KEY, JSON.stringify(heights)); } catch { /* live sizing still works */ }
+    };
+    const syncHeights = () => {
+      if (height) {
+        height.value = String(heights[selected]);
+        height.dispatchEvent(new Event('vcd:range-refresh'));
+        height.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.posterViewport === selected;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    };
+    viewportButtons.forEach((button) => button.addEventListener('click', () => {
+      selected = button.dataset.posterViewport as Viewport;
+      syncHeights();
+    }, { signal }));
+    height?.addEventListener('input', () => {
+      if (!Number.isFinite(height.valueAsNumber)) return;
+      heights[selected] = height.valueAsNumber;
+      applyHeights();
+    }, { signal });
+    panel.querySelector('[data-poster-reset]')?.addEventListener('click', () => {
+      Object.assign(heights, { desktop: 100, tablet: 100, mobile: 100 });
+      applyHeights();
+      syncHeights();
+    }, { signal });
+    applyHeights();
+    syncHeights();
+
+    preview.src = src;
+    sampler.src = src;
+    return () => { controller.abort(); resize.disconnect(); };
+  });
+  import.meta.hot?.dispose(dispose);
+</script>

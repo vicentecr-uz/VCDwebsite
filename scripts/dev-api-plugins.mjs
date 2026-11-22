@@ -891,6 +891,56 @@ export function uploadDevWriter() {
   };
 }
 
+export function videoPosterDevWriter() {
+  return {
+    name: 'video-poster-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/video-poster', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 50_000_000) {
+              send(413, { error: 'Upload is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const filename = String(body.filename || '');
+          const file = path.join(process.cwd(), 'media', filename);
+          // Replaces an existing JPEG poster only, so this route can never create a file.
+          const existing = filename === path.basename(filename) && /\.jpe?g$/i.test(filename)
+            ? await stat(file).catch(() => null)
+            : null;
+          if (!existing?.isFile()) {
+            send(400, { error: 'That thumbnail cannot be replaced.' });
+            return;
+          }
+          // Re-encoding rejects anything that is not an image.
+          const poster = await sharp(Buffer.from(String(body.data || ''), 'base64')).jpeg({ quality: 90 }).toBuffer();
+          suppressContentHmr();
+          await writeFile(file, poster);
+          send(200, { ok: true });
+        } catch {
+          send(400, { error: 'Could not save the thumbnail.' });
+        }
+      });
+    },
+  };
+}
+
 export function projectCreateDevWriter() {
   return {
     name: 'project-create-dev-writer',
