@@ -94,6 +94,7 @@ Never merge another feature branch into a task branch merely to test them togeth
 - Navigation lifecycle, header menu, veil and other runtime state machines: [`docs/state-machines.md`](docs/state-machines.md)
 - Figma architecture and source alignment: [`docs/figma-design-system.md`](docs/figma-design-system.md), [`docs/figma-source-alignment.md`](docs/figma-source-alignment.md)
 - QA rotation: [`docs/workflow-qa-rotation.md`](docs/workflow-qa-rotation.md)
+- Adding a repository skill: put it in `.agents/skills/<name>/` (read by Codex and Cursor) and commit `.claude/skills/<name>` as a relative symlink to `../../.agents/skills/<name>` (read by Claude Code). Skills that are not specific to this repository live outside it.
 - Product direction: [`docs/product-vision.md`](docs/product-vision.md)
 
 ## Hosted task override
