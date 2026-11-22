@@ -1,9 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
-// src/lib/canvasChrome.ts floats the Lapse and Agentation bars above the Edit canvas by relying on
-// names inside those packages. If an update renames one, this fails here instead of the bars
-// quietly going back to being confined to the device preview.
 const read = (path: string) => readFileSync(new URL(`../../node_modules/${path}`, import.meta.url), 'utf8');
 
 test('Lapse still has the bar host, the picker host and the drag functions the canvas relies on', () => {

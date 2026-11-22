@@ -80,7 +80,7 @@ export const captureTextParts = (section: HTMLElement, strokes: Stroke[], crop: 
       slice.clip.h = bottom - top;
     }
   }
-  // Larger drawings retain block positioning; upgrading this ceiling needs a larger save payload budget.
+  // known limit: issue #279
   return parts.length && parts.length <= 400 && parts.every((part) => part.anchor.exact.length <= 2000)
     && parts.reduce((sum, part) => sum + part.slices.length, 0) <= 2000 ? parts : undefined;
 };
@@ -109,7 +109,7 @@ export const editableTextStrokes = (section: HTMLElement, annotation: SiteAnnota
       || Math.abs(free.width - annotation.board.w * transform.scale) > .5
       || Math.abs(free.height - annotation.board.h * transform.scale) > .5) return null;
   }
-  // Reflow edits need clipped brush geometry support in Drawesome; keep raw strokes and erasers exact until then.
+  // known limit: issue #279
   const { x, y, scale } = transform;
   return annotation.strokes.map((stroke) => ({ ...stroke, size: stroke.size * scale,
     points: stroke.points.map(([px, py, pressure]) => [parent.left + x + px * scale, parent.top + y + py * scale, pressure]) }));

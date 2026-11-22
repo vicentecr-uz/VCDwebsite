@@ -16,7 +16,6 @@ function place({ mobile = true, link = false, reveal = false, caretTop = 170, vi
   const surface = bar.firstElementChild as HTMLElement;
   const buttons = surface.firstElementChild as HTMLElement;
   Object.defineProperty(window, 'visualViewport', { value: viewport });
-  // Layout measurements are supplied; these tests exercise placement, not browser rendering.
   buttons.getBoundingClientRect = () => ({ width: mobile ? 365 : 600, height: mobile ? 44 : 32 }) as DOMRect;
   const rect = { left: 32, width: 0, top: caretTop, bottom: caretTop + 20, height: 20 };
   const scrolls: number[] = [];

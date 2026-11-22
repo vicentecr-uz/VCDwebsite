@@ -1,7 +1,3 @@
-// Shiki theme for every code surface: three greys after sonner.emilkowal.ski,
-// drawn from the sys.color.code-* tokens so light/dark and /styles edits follow.
-// Names carry the ink; keywords, strings and attributes recede; punctuation
-// and comments recede further.
 export const codeTheme = {
   name: 'vcd-code',
   type: 'light',

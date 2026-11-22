@@ -8,17 +8,14 @@ const HEIGHT_MODES = new Set<CarouselHeightMode>(['dynamic', 'tallest']);
 const DOTS = new Set<CarouselDotsPlacement>(['outside', 'over', 'hidden']);
 const MAX_VH_STEPS = new Set([90, 80, 70, 60, 50, 40, 30]);
 
-/** Sparse per-breakpoint overrides (tablet/mobile). Desktop uses top-level fields. */
 export interface CarouselBreakpointOverride {
   heightMode?: CarouselHeightMode;
-  /** `null` / `0` = explicit off. Omit to inherit. */
   maxHeightVh?: number | null;
   scrollPinned?: boolean;
   dotsPlacement?: CarouselDotsPlacement;
   visible?: string[];
 }
 
-/** Shape stored on the content section (legacy scalars + optional overrides). */
 export interface CarouselSettingsSource {
   orientation?: CarouselOrientation;
   heightMode?: CarouselHeightMode;
@@ -35,7 +32,6 @@ export interface ResolvedCarouselBreakpoint {
   scrollPinned: boolean;
   dotsPlacement: CarouselDotsPlacement;
   visible: string[];
-  /** True when this viewport has a saved override (not pure inheritance). */
   overridden: boolean;
 }
 
@@ -119,7 +115,6 @@ function applyOverride(
   return next;
 }
 
-/** Resolve legacy top-level fields + sparse breakpoint overrides (waterfall). */
 export function resolveCarouselSettings(
   source: CarouselSettingsSource | null | undefined,
   itemIds: string[],
@@ -131,7 +126,6 @@ export function resolveCarouselSettings(
     scrollPinned: source?.scrollPinned === true,
     dotsPlacement: asDots(source?.dotsPlacement, 'outside'),
     visible: sanitizeCarouselVisible(itemIds, source?.visible),
-    // Desktop is the root — always "owned", never shows the inherit banner.
     overridden: true,
   };
 
@@ -144,7 +138,6 @@ export function resolveCarouselSettings(
   };
 }
 
-/** Diff a child viewport against its parent into a sparse override (or null). */
 function diffBreakpoint(
   parent: ResolvedCarouselBreakpoint,
   child: ResolvedCarouselBreakpoint,
@@ -162,7 +155,6 @@ function diffBreakpoint(
   return Object.keys(out).length ? out : null;
 }
 
-/** Compress a resolved draft back into the content JSON shape. */
 export function serializeCarouselSettings(
   orientation: CarouselOrientation,
   byViewport: Record<ImageViewport, ResolvedCarouselBreakpoint>,
@@ -173,7 +165,6 @@ export function serializeCarouselSettings(
     orientation: orientation === 'vertical' ? 'vertical' : 'horizontal',
   };
 
-  // Prefer quiet JSON: omit defaults.
   if (desktop.heightMode !== 'dynamic') out.heightMode = desktop.heightMode;
 
   if (desktop.maxHeightVh) out.maxHeightVh = desktop.maxHeightVh;

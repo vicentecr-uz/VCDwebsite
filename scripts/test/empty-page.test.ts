@@ -54,7 +54,7 @@ const helperSource = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.s
 test('empty state follows actual roots and targets only the trailing sentinel per zone', () => {
   const filled = new FakeZone('home');
   const text = node(filled, '["sections",0,"spacing"]');
-  node(filled, '["sections",1,"spacing"]', undefined, false); // project grid root
+  node(filled, '["sections",1,"spacing"]', undefined, false);
   const sentinel = node(filled, '["sections",2,"spacing"]', '["trailingSpacing"]', false);
   const hidden = new FakeZone('home-intro');
   node(hidden, '["sections",0,"spacing"]', undefined, false);

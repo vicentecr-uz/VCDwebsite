@@ -1,8 +1,4 @@
 // @ts-check
-/**
- * Colour-token publish to main (issue #109).
- * `bun scripts/test/publish-styles.test.mjs`
- */
 import { execFile as execFileCb } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm, chmod, readFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -12,7 +8,6 @@ import { promisify } from 'node:util';
 const execFile = promisify(execFileCb);
 
 const { publishStyles, stylesPublishStatus, commitStyleTokensOnBranch, STYLE_TOKEN_PATHS } = await import('../dev-commit-engine.mjs');
-/** These fixtures only touch the CSS half of STYLE_TOKEN_PATHS — the design-tokens.json half is exercised for real by tokens:check/build. */
 const STYLE_TOKEN_PATH = STYLE_TOKEN_PATHS[0];
 
 let failures = 0;

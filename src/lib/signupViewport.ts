@@ -16,7 +16,6 @@ const keyboardLikelyVisible = () => {
   return Boolean(viewport && document.documentElement.clientHeight - viewport.height > KEYBOARD_GAP_PX);
 };
 
-/** Wait for the mobile keyboard and scroll position to finish settling. */
 export function waitForSignupViewportSettlement(
   input: HTMLInputElement,
   lastBlurAt = Number.NEGATIVE_INFINITY,
@@ -72,7 +71,6 @@ export function waitForSignupViewportSettlement(
     viewport?.addEventListener('scroll', onViewportChange);
     minTimer = setTimeout(maybeFinish, MIN_SETTLE_MS);
     armQuietTimer();
-    // Bound the wait so a browser that never reports its final viewport cannot hold the form busy.
     deadlineTimer = setTimeout(finish, MAX_SETTLE_MS);
   });
 }

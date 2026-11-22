@@ -13,9 +13,6 @@ const SEEN_KEY = 'vcd:header-menu-demo-seen';
 const HINT_DELAY = 1200;
 const CURSOR_FADE_EASING = 'cubic-bezier(.215,.61,.355,1)';
 
-// Chosen from the spotlight prototype: proportional eased feather, opacity exit,
-// and asymmetric cursor travel. Fixed feather, expanding exit, and timed glyphs
-// were rejected; the approved values live in headerMenuDemoConfig.json.
 export function createHeaderMenuDemo({ trigger, template, open, close, isEditing }: HeaderMenuDemoOptions) {
   const mobileMq = window.matchMedia('(max-width: 40em)');
   const reducedMq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -83,7 +80,6 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     removeListeners();
     if (preserveMenu) menuOwned = false;
     else closeOwned();
-    // Freeze the scene where it is and fade it out, so every dismissal leaves the same way.
     const leaving = scene;
     const running = [...animations];
     scene = undefined;
@@ -107,11 +103,9 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
     cleanup(Boolean(event?.type === 'click' && event.target instanceof Node && trigger.contains(event.target)));
   }
   function cancelFromHover(event: Event) {
-    // The real pointer's mouseenter opens that menu; the demo's own menu stays only if it is the one entered.
     if (controller) cleanup(event.currentTarget === trigger);
   }
   function cancelFromScroll() {
-    // The intro's restoration reset lands at the top, where the header still sits.
     if (window.scrollY !== 0) cancelFromUser();
   }
   function cancelFromVisibility() {
@@ -254,7 +248,7 @@ export function createHeaderMenuDemo({ trigger, template, open, close, isEditing
         if (began) return true;
         if (!eligible() || hasSeen()) { cleanup(); return false; }
         began = true;
-        try { window.sessionStorage.setItem(SEEN_KEY, 'true'); } catch { /* Storage is optional. */ }
+        try { window.sessionStorage.setItem(SEEN_KEY, 'true'); } catch {}
         return true;
       };
       iris.style.transform = 'scale(' + (reduced ? 1 : fullScale) + ')';

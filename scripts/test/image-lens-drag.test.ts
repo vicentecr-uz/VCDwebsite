@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { imageLensBounds } from '../../src/lib/imageLensBounds';
 import * as inertia from '../../src/lib/imageLensInertia';
 
-// Exercise the real controller without a browser, rendering, or synthetic UI interaction.
 class CanvasContext {
   operations: string[] = [];
   private composite = 'source-over';

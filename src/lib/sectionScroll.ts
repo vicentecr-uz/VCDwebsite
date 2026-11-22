@@ -62,7 +62,6 @@ export const createBezierEaser = (flatControlPoints: number[]) => {
 
 export function sectionScrollTop({ top, height }: { top: number; height: number },
   start: number, viewport: number, pageHeight: number, offset = 152) {
-  // Centre a hero-sized block. Short blocks and long wrappers start under the header.
   const inset = height >= viewport * 0.65 && height <= viewport * 2 ? (viewport - height) / 2 : offset;
   return Math.min(Math.max(start + top - inset, 0),
     Math.max(pageHeight - viewport, 0));

@@ -1,10 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-/**
- * Load listmonk secrets for local astro-dev.
- * process.env wins; `.dev.vars` fills gaps (never commit that file).
- */
 export function loadSignupDevEnv(root = process.cwd()) {
   /** @type {Record<string, string | undefined>} */
   const env = { ...process.env };
@@ -35,10 +31,6 @@ const send = (res, status, body) => {
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 };
 
-/**
- * Vite plugin (`apply: 'serve'`) — mounts POST /api/signup for local astro-dev.
- * Shares `handleSignupRequest` with the Pages Function via ssrLoadModule.
- */
 export function signupDevApi() {
   return {
     name: 'signup-dev-api',

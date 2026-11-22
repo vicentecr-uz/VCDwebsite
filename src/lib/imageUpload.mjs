@@ -27,8 +27,6 @@ export function isAcceptedImageFile(file) {
   if (!file) return false;
   const mime = String(file.type || '').toLowerCase().split(';', 1)[0].trim();
   if (mime.startsWith('image/')) return true;
-  // Some browsers expose HEIC as an empty MIME type; only the known HEIC
-  // extensions are allowed through in that case.
   return !mime && HEIC_EXTENSIONS.has(imageExtension(file.name));
 }
 

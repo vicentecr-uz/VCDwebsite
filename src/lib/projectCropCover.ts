@@ -1,11 +1,9 @@
-/** Size cropped project images to cover their frame (shared by SSR and dev inserts). */
 
 import { bindImagePreviewUpgrade } from './imagePreviewUpgrade';
 
 let refreshQueued = false;
 let refreshing = false;
 
-/** Include `root` itself when it matches — querySelectorAll only finds descendants. */
 function queryAllIncludingRoot(
   root: ParentNode,
   selector: string,
@@ -62,17 +60,9 @@ function measureBelowCaptionHeight(item: HTMLElement): number {
   return caption.offsetHeight + marginTop + marginBottom;
 }
 
-/**
- * Scale each row so cells share one height while keeping their aspect ratios
- * (widths become proportional). Requires `data-match-height="true"`.
- * Also equalizes `.project-image-grid__below-slot` min-heights so overlay
- * siblings leave matching empty space under their frames.
- */
 export function layoutMatchHeightGrids(root: ParentNode = document): void {
   queryAllIncludingRoot(root, '.project-image-grid').forEach((grid) => {
     if (grid.dataset.matchHeight !== 'true') {
-      // Always clear — leftover flex/width from a prior match-height pass
-      // breaks equal-column CSS grid (tuner refresh often roots on the grid itself).
       clearMatchHeightItemSizing(grid);
       delete grid.dataset.matchHeightLaidOut;
       return;
@@ -114,7 +104,6 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
         item.style.width = `${width}px`;
       });
 
-      // Clear then measure natural below-caption heights so siblings can match.
       row.forEach((item) => {
         const slot = item.querySelector<HTMLElement>(':scope > .project-image-grid__below-slot');
         slot?.style.removeProperty('min-height');
@@ -138,8 +127,6 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
 function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
   if (image.dataset.imagePreviewRevealing === 'true') return;
   if (image.hasAttribute('data-preview-reveal')) return;
-  // Thumb (640) and preview (2560) round fit:inside differently. Rewriting the
-  // frame ratio on the preview load is a page-height jump on aspect:original.
   if (frame.dataset.originalRatioLocked === 'true') return;
   if (!image.naturalWidth || !image.naturalHeight) return;
   frame.style.setProperty(
@@ -153,13 +140,6 @@ function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
   frame.dataset.originalRatioLocked = 'true';
 }
 
-/**
- * Content placement is pure CSS now (see `.project-cropped > … > img` in
- * project.css) — nothing here sizes bitmaps. All that remains is publishing the
- * natural ratio for frames whose aspect is `"original"` but whose node has no
- * `srcWidth`/`srcHeight` yet, plus the match-height row solver, which genuinely
- * needs measurement.
- */
 export function refreshProjectCropCovers(root: ParentNode = document): void {
   if (refreshing) {
     refreshQueued = true;
@@ -174,7 +154,6 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
       if (image) applyOriginalRatio(outer, image);
     });
 
-    // Ratios first so match-height can read --project-image-original-ratio-num.
     queryAllIncludingRoot(root, '.project-image-grid__item').forEach((item) => {
       const frame = gridItemFrame(item);
       const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');

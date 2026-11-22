@@ -58,7 +58,6 @@ const fields = [
   import { bindHomeIntro } from '../../scripts/homeIntro';
   import { bindHomeReveal } from '../../lib/homeReveal';
   import revealConfig from '../../lib/homeRevealConfig.json';
-  // Same module instance headerMenuDemo.ts reads, so edits apply on the next replay.
   import menuDemoConfig from '../../lib/headerMenuDemoConfig.json';
   import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
   const draft = structuredClone(revealConfig) as typeof revealConfig & { intro: typeof revealConfig.intro & { translateYPx: number } };
@@ -97,7 +96,7 @@ const fields = [
       bindHomeReveal(draft, { reducedMotion: tuner?.querySelector('[data-reduced]')?.checked === true });
       const menuDemo = window.__vcdHeaderMenuDemo;
       menuDemo?.cancel();
-      try { window.sessionStorage.removeItem('vcd:header-menu-demo-seen'); } catch { /* Storage is optional. */ }
+      try { window.sessionStorage.removeItem('vcd:header-menu-demo-seen'); } catch {}
       menuDemo?.start();
       if (status) status.textContent = 'Holding intro…';
       replay.timeout = window.setTimeout(() => {

@@ -1,6 +1,5 @@
 ---
 import Analytics from '../components/Analytics.astro';
-/** Standalone Flat Iron London location ranker — lift-and-scroll reorder from sectionReorder.ts */
 ---
 <!DOCTYPE html>
 <html lang="en">
@@ -174,11 +173,6 @@ import Analytics from '../components/Analytics.astro';
       });
     };
 
-    // Renumber from the FULL list, not getItems() — getItems() filters out
-    // dragItem, which is still set when this runs (it's only cleared in
-    // finishPointerSession's `finally` block, after this call). Numbering
-    // off getItems() skipped the just-dropped card and off-by-one'd every
-    // card after its new position.
     const syncOrderFromDom = () => {
       const items = [...listEl.querySelectorAll('.rank-item[data-id]')];
       state.order = items.map((el) => el.dataset.id);
@@ -612,7 +606,6 @@ import Analytics from '../components/Analytics.astro';
     cursor: pointer;
     color: var(--muted);
     transition: background 0.15s, color 0.15s;
-    /* Meets the ~44px minimum touch target height on its own. */
     min-height: 2.75rem;
   }
 
@@ -642,7 +635,6 @@ import Analytics from '../components/Analytics.astro';
 
   .toolbar button { font-size: 0.875rem; font-weight: 600; cursor: pointer; }
   .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
-  /* 16px minimum — under that, iOS Safari zooms the whole page in on focus. */
   .toolbar input { flex: 1; min-width: 8rem; font-size: 1rem; }
   .toolbar input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
 
@@ -750,8 +742,6 @@ import Analytics from '../components/Analytics.astro';
     background: var(--bg);
     border-radius: calc(0.4rem * var(--continuous-corner-scale, 1));
     corner-shape: var(--squircle-shape);
-    /* 38px — up from the original 32px, closer to the ~44px touch-target
-       guideline while staying visually in scale with the card. */
     width: 2.375rem;
     height: 2.375rem;
     display: inline-flex;
@@ -806,7 +796,6 @@ corner-shape: var(--squircle-shape);
   .summary ol { margin: 0; padding-left: 1.2rem; }
   .summary li { margin: 0.2rem 0; }
 
-  /* Lift + drop — same model as DevSectionReorderEditor */
   .is-rank-lifted {
     position: relative;
     isolation: isolate;

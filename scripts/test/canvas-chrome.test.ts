@@ -25,8 +25,6 @@ function fixture(cookies = 'default', editing = true, configure?: (frame: Window
   shell.document.documentElement.className = 'shell';
   shell.document.head.innerHTML = '<style id="original">body { margin: 0 }</style>';
   shell.document.body.innerHTML = '<div data-canvas-chrome></div>';
-  // Browsers route dispatch from the dispatch target internally. Happy DOM instead
-  // calls the public composedPath(), which this bridge deliberately overrides.
   const dispatch = document.body.dispatchEvent.bind(document.body);
   document.body.dispatchEvent = (event) => {
     if (event.eventPhase === 0 && Object.hasOwn(event, 'composedPath')) {

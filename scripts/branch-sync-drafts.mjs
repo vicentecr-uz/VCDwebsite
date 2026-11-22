@@ -68,14 +68,12 @@ export function updateWithDrafts(cwd, upstream) {
   } catch (error) {
     try {
       for (const { git, head, stash } of repositories) {
-        // Before replay, an unsuccessful backup may have left its files untouched.
         if (!replaying && !stash) continue;
         if (['rebase-merge', 'rebase-apply'].some((name) => existsSync(path.resolve(cwd, git('rev-parse', '--git-path', name))))) git('rebase', '--abort');
         git('reset', '--hard', head);
       }
       for (const { git, stash, untracked } of repositories) {
         if (!stash) continue;
-        // Only remove paths this backup owns, including partially restored new media.
         for (const file of untracked) rmSync(path.join(cwd, file), { force: true });
         git('stash', 'apply', '--index', stash);
       }

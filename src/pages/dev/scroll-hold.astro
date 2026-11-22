@@ -1,8 +1,4 @@
 ---
-/**
- * Dev-only probe: click-hold on the handle, move pointer → page scrolls.
- * Isolates the scroll interaction from section reorder.
- */
 import Layout from '../../layouts/Layout.astro';
 
 if (!import.meta.env.DEV) {
@@ -103,7 +99,6 @@ if (!import.meta.env.DEV) {
 
     const beyond = distance - DEAD_ZONE_PX;
     const t = Math.min(1, beyond / RAMP_PX);
-    // Cubic: target speed has G² continuity at the dead-zone edge.
     const eased = t * t * t;
     return (delta < 0 ? -1 : 1) * eased * MAX_SPEED;
   };
@@ -177,7 +172,6 @@ if (!import.meta.env.DEV) {
       try {
         handle?.releasePointerCapture(id);
       } catch {
-        // Already released.
       }
     }
     unpinStage();
@@ -219,7 +213,6 @@ if (!import.meta.env.DEV) {
     try {
       handle.setPointerCapture(event.pointerId);
     } catch {
-      // Document listeners still track position.
     }
     startTick();
   });

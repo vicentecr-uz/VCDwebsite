@@ -23,7 +23,6 @@ for (const toolbarHeight of [44, 56]) for (let frameWidth = 280; frameWidth <= 1
     assert.ok(bounds.x + radius + bounds.reach + reach <= width + gap - 4 + 1e-9, 'far edge is clear even at asymptotic stretch');
     assert.ok(bounds.y + radius + bounds.reach + reach <= height + gap - 4 + 1e-9, 'toolbar and bottom frame remain clear');
   }
-  // Conservative sampler coverage includes both refracted rays and nearby rim-colour samples.
   assert.ok(bounds.padding >= depth * 2 * 0.5 * Math.sqrt(1.25) + 10);
   const oldWidth = Math.min(2048, (width + diameter * 2) * 4);
   const oldPixels = oldWidth * Math.round((height + diameter * 2) * oldWidth / (width + diameter * 2));

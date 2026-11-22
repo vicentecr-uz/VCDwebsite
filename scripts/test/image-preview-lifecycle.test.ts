@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { createImagePreviewUpgrade } from '../../src/lib/imagePreviewUpgrade';
 
-// Exercise cancellation and instance ownership without simulating browser interaction.
 const frames = new Map<number, FrameRequestCallback>();
 const timers = new Map<number, () => void>();
 const timerDelays = new Map<number, number>();

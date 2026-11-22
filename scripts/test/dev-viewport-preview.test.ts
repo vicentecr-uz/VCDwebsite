@@ -89,7 +89,6 @@ test('canvas routes presets, leaves Escape to Edit, and removes frame state on c
     f.parentMessage('vcd-canvas-preset', { preset: 'tablet' });
     expect(changes).toEqual(['tablet']);
     expect(f.document.documentElement.hasAttribute('data-edit-viewport-frame')).toBe(true);
-    // Escape is DevModeController's: it asks for Desktop through this event once inner layers are closed.
     const count = f.posts.length;
     f.document.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'Escape', cancelable: true }));
     expect(f.posts.length).toBe(count);

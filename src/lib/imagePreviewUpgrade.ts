@@ -1,4 +1,3 @@
-/** Preload preview URLs and swap thumb → preview once ready. */
 export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImageElement) => void } = {}) {
   const controller = new AbortController();
   const { signal } = controller;
@@ -276,7 +275,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       try {
         await img.decode();
       } catch {
-        /* broken / unsupported */
       }
     }
   }
@@ -287,9 +285,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     const width = img.offsetWidth;
     const height = img.offsetHeight;
     if (!width || !height) return;
-    // WebKit zeros intrinsic size on `src` change. The wipe clone is position:absolute
-    // so it cannot hold document flow — without this, in-flow thumbs collapse and
-    // the page jumps until the preview decodes (random: cache vs decode timing).
     img.style.aspectRatio = `${width} / ${height}`;
     if (!img.getAttribute('width') || !img.getAttribute('height')) {
       img.setAttribute('width', String(Math.round(width)));
@@ -316,7 +311,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     const pair = revealPairs.get(img);
     if (pair) {
-      // WebKit can blank the original on src changes; retain the pair until it paints.
       await Promise.race([
         decodeImage(img, preview),
         new Promise<void>((resolve) => later(resolve, 2000)),
@@ -463,7 +457,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
         attemptState.exhausted = true;
         return;
       }
-      // Three attempts cap background traffic; persistent failures need an explicit retry UI.
+      // known limit: issue #279
       const delay = attemptState.attempts === 1 ? 1000 : 2000;
       attemptState.retryTimer = later(() => {
         attemptState.retryTimer = undefined;
@@ -592,8 +586,6 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       done();
     };
 
-    // The preload and the visible clone have separate decode lifetimes.
-    // Keep the thumbnail until the actual reveal layer has pixels.
     const failedDecode = later(() => {
       if (!current(img, preview) || revealPairs.get(img)?.high !== high) return;
       cancel(img);

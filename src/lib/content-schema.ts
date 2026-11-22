@@ -165,7 +165,7 @@ export function validateHeaderSettings(input: unknown, file = 'header settings')
 }
 
 export function validateContentVersion(input: unknown, file = 'content schema') {
-  // Missing marker is legacy v1 during expand/migrate; require it after the content migration and cutover.
+  // known limit: issue #275
   if (input === undefined) return { schemaVersion: CONTENT_SCHEMA_VERSION };
   return validate(object.extend({ schemaVersion: z.literal(CONTENT_SCHEMA_VERSION) }), input, file);
 }

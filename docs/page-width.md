@@ -110,7 +110,8 @@ Percentages measure against `--page-media-max-width`, a fixed baseline. If they
 measured against the column, shrinking the column would shrink the very block
 that determined it, and the two would chase each other. Do not "simplify"
 `imageGridConstrainedStyle` back to a plain percentage without also deleting
-this.
+this. Every non-100 width stays wrapped in `min(100%, …)`: `calc(50em * 0.8)` is
+an absolute length that would overflow a narrow phone, where a plain `80%` never did.
 
 Only the widest block matters, so a single full-width image keeps the whole page
 wide — that is intended. Unknown section types are treated as **text**, on

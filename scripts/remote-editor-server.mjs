@@ -68,7 +68,7 @@ export function createRemoteEditorServer(options = {}) {
     const now = Date.now();
     for (const [key, value] of attempts) if (value.until <= now) attempts.delete(key);
     const key = String(req.headers['cf-connecting-ip'] || req.socket.remoteAddress);
-    // At most 1,000 client buckets and 8 password checks; use shared limits if scaled beyond one process.
+    // known limit: issue #279
     if ((!attempts.has(key) && attempts.size >= 1000) || passwordChecks >= 8) return null;
     const entry = attempts.get(key) || { count: 0, until: now + 60_000 };
     if (entry.count >= 5) return null;
@@ -158,7 +158,6 @@ export function createRemoteEditorServer(options = {}) {
       if (pathname === '/api/remote-editor/login' && req.method === 'POST') return await login(req, res);
       if (pathname === '/api/remote-editor/logout' && req.method === 'POST') return json(res, 200, { ok: true }, { 'set-cookie': `${COOKIE}=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Strict` });
       if (pathname.startsWith('/api/remote-editor/')) return json(res, 404, { error: 'Not found' });
-      // Public pages can finish loading their build assets after the login cookie changes.
       if (pathname.startsWith('/_astro/') && ['GET', 'HEAD'].includes(req.method)) {
         if (!(await serveStatic(req, res, pathname))) json(res, 404, { error: 'Not found' });
         return;

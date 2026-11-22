@@ -8,11 +8,6 @@ const sectionIdentity = (section) => new Set(
 
 const receiptError = (message) => new Error(`Could not restore that section: ${message}`);
 
-/**
- * Keeps delete receipts in memory for the lifetime of one dev server. The
- * receipt contains the server-owned section and outline data; clients only
- * receive an opaque token.
- */
 export function createSectionRestoreStore() {
   const receipts = new Map();
 

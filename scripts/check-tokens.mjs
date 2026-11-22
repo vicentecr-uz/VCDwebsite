@@ -1,16 +1,4 @@
 // @ts-check
-/**
- * Fails (exit 1) on token drift:
- *  - a `var(--ref-*|--sys-*|--comp-*)` used in src/ that isn't defined in
- *    tokens/design-tokens.json
- *  - any leftover `--color-*` reference anywhere in src/
- *  - src/styles/global.css not matching what the generator would produce
- *  - src/styles/dev-token-alarms.css not matching the alarm generator
- *  - the token name set drifting from the Figma snapshot in
- *    tokens/figma-tokens.json (refresh that file when Figma variables change)
- *
- * `bun run tokens:check`
- */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -109,8 +97,6 @@ try {
   problems.push(`${ALARMS_CSS_RELATIVE_PATH} is missing — run \`bun run tokens:build\` and commit the result.`);
 }
 
-// Figma is the design side of the same contract. Names are derived from it by a
-// pure string rule, so any divergence means one side moved without the other.
 try {
   const figma = JSON.parse(readFileSync(figmaPath, 'utf8'));
   const figmaNames = new Set(figma.names);

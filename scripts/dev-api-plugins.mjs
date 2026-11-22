@@ -152,7 +152,6 @@ function validateStatus(status, fallback = 'draft') {
   return VALID_STATUSES.has(value) ? value : fallback;
 }
 
-/** Bust Astro's getStaticPaths RouteCache so a newly written slug is routable in `astro dev`. Static output ignores `prerender = false`; this is the real DEV hook. */
 function invalidateAstroRouteCache(server) {
   for (const name of ['ssr', 'astro']) {
     const env = server.environments?.[name];
@@ -161,8 +160,6 @@ function invalidateAstroRouteCache(server) {
 }
 
 export function listingCardForGrid(grid, listing, previous = {}) {
-  // Normalize here rather than trust the client: the settings panel sends a
-  // ready-to-use URL (for live preview), but storage wants the bare token.
   const hoverImage = normalizeAssetSrc(String(listing.hoverImage ?? previous.hoverImage ?? ''));
   const base = {
     order: previous.order ?? 999,
@@ -173,17 +170,14 @@ export function listingCardForGrid(grid, listing, previous = {}) {
   };
   if (hoverImage) {
     base.hoverImage = hoverImage;
-    // #182 — listingCardForGrid rebuilds from a fixed key set rather than
-    // merging, so a settings-only save (which doesn't send hoverDark) needs
-    // this fallback or it silently drops on the second save. Same pattern as
-    // hoverImage/variants above.
+    // known limit: issue #276
     const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : previous.hoverDark;
     if (typeof hoverDark === 'boolean') base.hoverDark = hoverDark;
   }
   const href = String(listing.href ?? previous.href ?? '').trim();
   if (href) base.href = href;
   if ((listing.mobileInset ?? previous.mobileInset) === true) base.mobileInset = true;
-  // Crop data lives on the listing card; settings saves omit it — keep prior.
+  // known limit: issue #276
   const variants = listing.variants ?? previous.variants;
   if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
     base.variants = structuredClone(variants);
@@ -267,7 +261,6 @@ export function resolveEditableDocument(documentKey) {
       map.set(key, `src/content/projects/${file}`);
     }
   } catch {
-    // projects dir may not exist yet during first scaffold
   }
   const pagesDir = path.join(process.cwd(), 'src/content/pages');
   try {
@@ -277,7 +270,6 @@ export function resolveEditableDocument(documentKey) {
       map.set(key, `src/content/pages/${file}`);
     }
   } catch {
-    // pages dir may not exist yet during first scaffold
   }
   return map.get(documentKey);
 }
@@ -333,17 +325,9 @@ export function sanitizeUploadFilename(filename) {
 }
 
 /**
- * Pick the name an upload should be written under.
- *
- * Pass `contents` and a name collision whose bytes match is reused instead of
- * allocating `-2`. Dropping a file, undoing, and dropping it again is ordinary
- * authoring, and without the byte check each repeat committed another full copy
- * of the same asset — `media/` had accumulated 121 MB of exact duplicates that
- * way, all of them carrying `-2` / `-3` / `-4` / `-5` suffixes.
- *
  * @param {string} directory
  * @param {string} filename
- * @param {Buffer} [contents] Bytes about to be written, when the caller has them.
+ * @param {Buffer} [contents]
  */
 export async function uniqueUploadFilename(directory, filename, contents) {
   const safe = sanitizeUploadFilename(filename);
@@ -381,7 +365,7 @@ export async function convertHeicUpload(data, options = {}) {
   const output = path.join(temporaryDirectory, 'output.jpg');
   try {
     await writeFile(input, data);
-    // Deliberate limit: local editor conversion currently relies on macOS sips; a cross-platform/online editor needs a portable HEIC decoder.
+    // known limit: issue #278
     await run('/usr/bin/sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '90', input, '--out', output]);
     return await readFile(output);
   } catch {
@@ -404,7 +388,6 @@ export async function buildImageSection(documentKey, filenames) {
   });
 }
 
-/** Build an image section from an existing canonical src token. */
 export async function buildImageSectionFromSrcs(srcs) {
   const src = normalizeAssetSrc(srcs[0]);
   if (!src) throw new Error('An image file is required.');
@@ -472,9 +455,6 @@ export function markAutomaticImageAltIntent(section) {
   return section;
 }
 
-/** Replace a placeholder image section's src/dims with an uploaded draft file.
- *  Crop variants stay as authored on the placeholder (frame size / position).
- *  Pass `variants` to stamp the frame the editor was previewing (e.g. from DOM). */
 export async function fillPlaceholderImageSection(section, documentKey, filename, variants, existingSrc) {
   if (!section || typeof section !== 'object' || Array.isArray(section)) {
     throw new Error('That section cannot be filled.');
@@ -546,7 +526,6 @@ export async function buildImageGridSection(documentKey, filenames) {
   });
 }
 
-/** Build an image grid from existing canonical src tokens. */
 export async function buildImageGridSectionFromSrcs(srcs) {
   const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
   if (!tokens.length) throw new Error('At least one image file is required.');
@@ -595,7 +574,6 @@ export async function buildImageCarouselSection(documentKey, filenames) {
   });
 }
 
-/** Build an image carousel from existing canonical src tokens. */
 export async function buildImageCarouselSectionFromSrcs(srcs) {
   const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
   if (!tokens.length) throw new Error('At least one image file is required.');
@@ -698,7 +676,6 @@ export function mediaDevServer() {
               await stat(filePath);
               derivativeOnDisk = true;
             } catch {
-              // generate on the fly below
             }
 
             if (!derivativeOnDisk) {
@@ -755,7 +732,7 @@ export function mediaDevServer() {
                 res.end();
                 return;
               }
-              try { await pipeline(createReadStream(filePath, { start, end }), res); } catch { /* client disconnected */ }
+              try { await pipeline(createReadStream(filePath, { start, end }), res); } catch {}
               return;
             }
             res.statusCode = 200;
@@ -766,7 +743,7 @@ export function mediaDevServer() {
               res.end();
               return;
             }
-            try { await pipeline(createReadStream(filePath), res); } catch { /* client disconnected */ }
+            try { await pipeline(createReadStream(filePath), res); } catch {}
             return;
           }
           const widthParam = url.searchParams.get('w');
@@ -855,8 +832,7 @@ export function uploadDevWriter() {
             return;
           }
           const directory = path.join(process.cwd(), 'media');
-          // media/ is watch-ignored + skipped in contentHmrGate; keep the
-          // suppress call as belt-and-suspenders for any residual CSS/module path.
+          // known limit: issue #279
           suppressContentHmr();
           await mkdir(directory, { recursive: true });
           const filenames = [];
@@ -920,7 +896,6 @@ export function videoPosterDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const filename = String(body.filename || '');
           const file = path.join(process.cwd(), 'media', filename);
-          // Replaces an existing JPEG poster only, so this route can never create a file.
           const existing = filename === path.basename(filename) && /\.jpe?g$/i.test(filename)
             ? await stat(file).catch(() => null)
             : null;
@@ -928,9 +903,7 @@ export function videoPosterDevWriter() {
             send(400, { error: 'That thumbnail cannot be replaced.' });
             return;
           }
-          // Re-encoding rejects anything that is not an image.
           const poster = await sharp(Buffer.from(String(body.data || ''), 'base64')).jpeg({ quality: 90 }).toBuffer();
-          // Max heights ride along with the thumbnail; validate before anything is written.
           const maxHeightFile = path.join(process.cwd(), 'src/content/settings/video-page.json');
           let maxHeights = null;
           if (body.maxHeights !== undefined) {
@@ -945,7 +918,6 @@ export function videoPosterDevWriter() {
           }
           suppressContentHmr();
           await writeFile(file, poster);
-          // Unchanged heights leave the file alone, so a thumbnail-only save stays out of the publish list.
           const savedHeights = await readFile(maxHeightFile, 'utf8').then((text) => JSON.parse(text).maxHeights, () => null);
           if (maxHeights && JSON.stringify(maxHeights) !== JSON.stringify(savedHeights)) {
             await writeAtomicJson(maxHeightFile, { maxHeights });
@@ -997,7 +969,6 @@ export function projectCreateDevWriter() {
             send(400, { error: 'A project with that slug already exists.' });
             return;
           } catch {
-            // available
           }
           const pageFile = path.join(process.cwd(), `src/pages/${slug}.astro`);
           try {
@@ -1005,7 +976,6 @@ export function projectCreateDevWriter() {
             send(400, { error: 'A page with that slug already exists.' });
             return;
           } catch {
-            // available
           }
           const project = emptyModernProject(slug, title, grid, status);
           await writeProjectJson(file, project);
@@ -1043,8 +1013,6 @@ export function projectSettingsDevWriter() {
             const data = JSON.parse(await readFile(path.join(process.cwd(), relativeFile), 'utf8'));
             const grid = LISTING_GRIDS.find((key) => data.listings?.[key]) ?? 'home';
             const listing = data.listings?.[grid] ?? {};
-            // Storage holds bare tokens; the client wants ready-to-use URLs for
-            // live preview (it assigns these straight to <img src>).
             const resolvedListings = {};
             for (const [key, value] of Object.entries(data.listings ?? {})) {
               resolvedListings[key] = {
@@ -1059,7 +1027,7 @@ export function projectSettingsDevWriter() {
               description: data.description ?? '',
               status: data.status ?? 'draft',
               stack: data.stack === 'legacy' ? 'legacy' : 'modern',
-              // Effective type, mirroring isWriteupProject (old Play listings default to write-up).
+              // known limit: issue #277
               layout: data.stack !== 'legacy' && (data.layout === 'writeup' || (data.layout !== 'case-study' && Boolean(data.listings?.play)))
                 ? 'writeup'
                 : 'case-study',
@@ -1116,12 +1084,9 @@ export function projectSettingsDevWriter() {
           data.slug = slug;
           if (body.layout === 'case-study' || body.layout === 'writeup') data.layout = body.layout;
           const previousListings = data.listings ?? {};
-          // Merge — one-grid saves must not wipe Home/Play siblings.
           data.listings = { ...previousListings };
           for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
-            // Cards are added only through gallery membership, which saves first;
-            // a settings save must not resurrect a card hidden in the same save.
             if (!listing || !previousListings[grid]) continue;
             data.listings[grid] = listingCardForGrid(grid, listing, previousListings[grid] ?? {});
           }
@@ -1198,7 +1163,6 @@ export function sectionOrderDevWriter() {
             reordered.push(sections[index]);
           }
           data.sections = reordered;
-          // Persist the outline from the same draft as the reordered page blocks.
           if (Object.prototype.hasOwnProperty.call(body, 'outline')) {
             if (!validateProjectOutline(body.outline)) {
               send(400, { error: 'The section outline is invalid.' });
@@ -1303,7 +1267,6 @@ function coverForGalleryPage(data, grid) {
   return cover;
 }
 
-/** Toggle which projects appear on Home / Play (`listings[grid]` presence). */
 export function galleryMembershipDevWriter() {
   return {
     name: 'gallery-membership-dev-writer',
@@ -1404,11 +1367,9 @@ export function galleryMembershipDevWriter() {
               const order = Number(data.listings?.[grid]?.order);
               if (Number.isFinite(order) && order > maxOrder) maxOrder = order;
             } catch {
-              // Skip unreadable project files when scanning max order.
             }
           }
 
-          // Play-link orders share the Play sort key — keep project appends above them.
           if (grid === 'play') {
             try {
               const playDir = path.join(process.cwd(), 'src/content/play');
@@ -1418,7 +1379,6 @@ export function galleryMembershipDevWriter() {
                 if (Number.isFinite(order) && order > maxOrder) maxOrder = order;
               }
             } catch {
-              // Play folder may be empty.
             }
           }
 
@@ -1446,7 +1406,6 @@ export function galleryMembershipDevWriter() {
             if (changed) await writeProjectJson(filePath, data);
           }
 
-          // Optional DOM order from the panel — covers remove→re-add landing at the end.
           const items = Array.isArray(body.items) ? body.items : [];
           for (const entry of items) {
             const order = Number(entry.order);
@@ -1553,7 +1512,6 @@ export function projectDeleteDevWriter() {
           }
           const { file } = await assertModernProject(slug);
           await rm(file, { force: true });
-          // Draft media is site-wide; unreferenced files surface as Unassigned in the asset manager.
           invalidateAstroRouteCache(server);
           send(200, { ok: true });
         } catch (error) {
@@ -1595,7 +1553,6 @@ export function projectRenameDevWriter() {
             send(400, { error: 'A project with that slug already exists.' });
             return;
           } catch {
-            // available
           }
           const pageFile = path.join(process.cwd(), `src/pages/${newSlug}.astro`);
           try {
@@ -1603,7 +1560,6 @@ export function projectRenameDevWriter() {
             send(400, { error: 'A page with that slug already exists.' });
             return;
           } catch {
-            // available
           }
 
           const { file, data } = await assertModernProject(slug);
@@ -1620,13 +1576,6 @@ export function projectRenameDevWriter() {
   };
 }
 
-/**
- * A project document that appears or disappears without the create/rename/delete APIs (an agent
- * writing the file, a pull, a content Update) is not in Astro's getStaticPaths route cache, so its
- * /slug 404s until something busts the cache. Vite's watcher deliberately ignores src/content (see
- * server.watch.ignored in astro.config.mjs), so this watches the projects folder itself; renames
- * (adds and removals) bust the cache without touching Vite's reload path.
- */
 export function projectRouteWatcher() {
   return {
     name: 'project-route-watcher',
@@ -1639,7 +1588,7 @@ export function projectRouteWatcher() {
           if (event === 'rename' && file?.endsWith('.json')) invalidateAstroRouteCache(server);
         });
       } catch {
-        return; // no content checkout (fresh engine clone): nothing to route
+        return;
       }
       server.httpServer?.once('close', () => watcher.close());
     },

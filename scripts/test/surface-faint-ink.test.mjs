@@ -1,7 +1,4 @@
-// Faint ink must follow the surface behind it (see src/styles/global.css,
-// "Faint ink follows the fill behind it"). Ceiling: checks rest-state fills
-// painted with the container tokens below, rule by rule in source text; a fill
-// set from JS or through another alias is not seen.
+// known limit: issue #279
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';

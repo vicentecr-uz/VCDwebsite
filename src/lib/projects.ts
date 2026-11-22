@@ -13,18 +13,13 @@ export type ProjectListingCard = {
   year?: string;
   meta?: string;
   image: string;
-  /** In-context shot shown on card hover (desktop). */
   hoverImage?: string;
-  /** Title-region light/dark for `hoverImage`, measured at drop time (#182). Absent falls back to `dark`. */
   hoverDark?: boolean;
   bg: string;
   dark: boolean;
   full?: boolean;
-  /** Override card link (e.g. Design System → /styles). */
   href?: string;
-  /** Per-viewport cover crop (same shape as project image variants). */
   variants?: ImageVariants;
-  /** Per-viewport hover composition — aspect linked to cover; pan/zoom independent. */
   hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
@@ -71,11 +66,9 @@ export type ProjectGridListing = {
   srcWidth?: number;
   srcHeight?: number;
   mobileInset?: boolean;
-  /** Destination renders with WriteupLayout (no site header). */
   writeup?: boolean;
 };
 
-/** Modern projects may explicitly choose a write-up or case-study layout; legacy defaults and old play listings retain their existing behavior. */
 export const isWriteupProject = (project: ProjectDocument) =>
   project.stack !== 'legacy' && (project.layout === 'writeup' || (project.layout !== 'case-study' && Boolean(project.listings?.play)));
 
@@ -151,7 +144,6 @@ function normalizeProject(slug: string, doc: ProjectDocument): ProjectDocument {
   };
 }
 
-/** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
 function loadProjectFromDisk(slug: string): ProjectDocument | undefined {
   if (!import.meta.env.DEV) return undefined;
   validateVersion();
@@ -159,7 +151,6 @@ function loadProjectFromDisk(slug: string): ProjectDocument | undefined {
   return doc === undefined ? undefined : normalizeProject(slug, doc as ProjectDocument);
 }
 
-/** Dev must read JSON from disk — the eager glob stays stale after writes / stack changes. */
 function loadAllProjectsFromDisk(): ProjectDocument[] {
   validateVersion();
   const dir = path.join(process.cwd(), 'src/content/projects');
@@ -185,7 +176,6 @@ export function loadProjectBySlug(slug: string): ProjectDocument | undefined {
   return loadProjectFromDisk(slug) ?? loadAllProjects().find((project) => project.slug === slug);
 }
 
-/** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
 function loadPageFromDisk(key: PageDocumentKey): PageDocument | undefined {
   if (!import.meta.env.DEV) return undefined;
   validateVersion();
@@ -206,11 +196,7 @@ export function shouldIncludeProjectInBuild(
 ): boolean {
   const dev = options.dev ?? import.meta.env.DEV;
   const status = project.status ?? 'published';
-  // Image is gallery-only — no `/slug` route even in dev (#287).
   if (status === 'image') return false;
-  // Dev: every other modern project is routable so authors can open teasers/drafts.
-  // Production: only Public (`published`). Teaser cards still appear on galleries
-  // (unclickable); their `/slug` must not exist — same non-discovery as draft (#192).
   if (dev) return true;
   return status === 'published';
 }

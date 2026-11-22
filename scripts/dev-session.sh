@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Start/stop Astro + branch sync for a local editing session.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -77,7 +76,6 @@ port_in_use() {
 }
 
 lan_ip() {
-  # Prefer the active Wi‑Fi / Ethernet interface so phone URLs match the LAN.
   ipconfig getifaddr en0 2>/dev/null \
     || ipconfig getifaddr en1 2>/dev/null \
     || true
@@ -196,7 +194,7 @@ stop_pid_file() {
 cmd_stop() {
   echo "Stopping dev session..."
   stop_pid_file "Astro" "$ASTRO_LABEL" "$ASTRO_PID"
-  # Legacy Decap pid from older sessions — stop if still tracked.
+  # known limit: issue #275
   stop_pid_file "Decap" "" "$SESSION_DIR/decap.pid"
   stop_pid_file "Sync" "$SYNC_LABEL" "$SYNC_PID"
   echo "Done."
@@ -304,7 +302,6 @@ start_process() {
     done
     pid="$stable_pid"
   else
-    # Non-macOS fallback for environments without a per-user launchd session.
     : >"$log_file"
     nohup bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$@" >>"$log_file" 2>&1 &
     pid=$!
@@ -356,8 +353,6 @@ cmd_start() {
   fi
 
   echo "Starting dev session..."
-  # --host is also set in astro.config.mjs (server.host); keep the flag so a
-  # bare restart still binds even if config is temporarily wrong.
   cmd_start_astro
   bash "$ROOT/scripts/branch-sync.sh" start
 

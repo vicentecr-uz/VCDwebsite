@@ -14,10 +14,9 @@ const findUniqueId = (list, id, label) => {
   return matches[0];
 };
 
-/** Resolve a save path by stable section/item IDs when supplied. */
 export function resolveContentTarget(data, path, target) {
   if (!isSafeContentPath(path) || (path.length === 0 && target !== undefined)) throw new Error('Invalid content path.');
-  // Compatibility ceiling: retain positional paths until legacy renderers migrate.
+  // known limit: issue #275
   if (target === undefined) return [...path];
   if (!target || typeof target !== 'object' || Array.isArray(target)) throw new Error('Invalid content target.');
   if (Object.keys(target).some((key) => !['sectionId', 'itemId', 'itemIds'].includes(key))) throw new Error('Invalid content target.');

@@ -3,7 +3,6 @@ export function copyAttributes(current: Element, incoming: Element) {
   for (const { name, value } of [...incoming.attributes]) current.setAttribute(name, value);
 }
 
-/** Retain the shell and every ancestor in place: moving them restarts CSS animations in Safari. */
 function replaceAround(current: Element, incoming: Element, retained: Map<Element, Element>) {
   for (const child of [...current.childNodes]) {
     if (!(child instanceof Element) || !retained.has(child)) child.remove();

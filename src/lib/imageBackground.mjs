@@ -1,8 +1,3 @@
-/**
- * Normalize the solid image-frame fill used by project media.
- * Alpha-bearing picker values are intentionally reduced to opaque RGB; alpha
- * 00 is the canonical transparent/no-fill value.
- */
 export function normalizeImageBackground(value) {
   if (value === undefined || value === null || value === '' || value === 'transparent') return 'transparent';
   if (typeof value !== 'string') return null;

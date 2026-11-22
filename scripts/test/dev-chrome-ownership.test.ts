@@ -3,18 +3,12 @@ import {
   childrenOf, classTokens, cssRules, hasClass, inlineStyle, read, rel, sourceFiles, subjects, tagAt,
 } from './lib/devChromeSource';
 
-// Components in src/components/ui/ own their spacing, gap and radius, as Menu
-// does: a call site composes them and never re-sets those values. Change the
-// component (dev-chrome.css and friends) so every instance moves together.
-// See docs/interface/spacing.md.
-
 const OWNER_FILES = [/^src\/components\/ui\//, /^src\/components\/base-ui\//, /^src\/styles\/(dev-chrome|devOverlayFrame|saveBar|global)\.css$/];
 const isOwner = (file: string) => OWNER_FILES.some((pattern) => pattern.test(file));
 
 const SPACING = /^(padding|gap|row-gap|column-gap|border(-(top|bottom|start|end)-(left|right|start|end))?-radius)(-|$)/;
 const SPACING_AND_MARGIN = /^(padding|margin|gap|row-gap|column-gap|border(-(top|bottom|start|end)-(left|right|start|end))?-radius)(-|$)/;
 
-// Root classes each component renders; the component owns these properties on them.
 const OWNED: Array<{ component: string; classes: string[]; props: RegExp }> = [
   { component: 'Menu', classes: ['dev-menu', 'dev-menu__item'], props: SPACING },
   { component: 'DevOverlay', classes: ['dev-overlay', 'dev-overlay__head', 'dev-overlay__body'], props: SPACING },
@@ -30,7 +24,6 @@ const OWNED: Array<{ component: string; classes: string[]; props: RegExp }> = [
   { component: 'Keycap', classes: ['dev-keycap'], props: SPACING },
 ];
 
-// Component tags whose call-site class names become aliases for the owned root.
 const TAG_OWNER: Record<string, string> = {
   Menu: 'Menu', DevOverlay: 'DevOverlay', DevOverlayFrame: 'DevOverlay', DevPanel: 'DevPanel',
   Field: 'Field', RangeField: 'Field', TextField: 'Field', TextArea: 'Field', EditorSelectField: 'Field', SelectField: 'Field',
@@ -38,12 +31,8 @@ const TAG_OWNER: Record<string, string> = {
   Hairline: 'Hairline', ToggleRow: 'ToggleRow', SaveBar: 'SaveBar', Button: 'Button', Badge: 'Badge', Keycap: 'Keycap',
 };
 
-// Spacing tokens the components read. Re-pointing one locally is the same override.
 const OWNED_TOKEN = /^--dev-(menu-|panel-pad$|panel-gap$|panel-spacing$|panel-content-gap$|panel-label-gap$|field-padding$|radius-|control-padding$|control-height$)/;
 
-// Overrides that predate this test. The list may only shrink: fix one by
-// changing the component (or adding a variant to it), then delete its entry.
-// Never add an entry for new code.
 const BASELINE: string[] = [
   'src/components/DevVideoEditor.astro .dev-field__value padding',
   'src/components/project/ProjectImageCaptionTuner.astro .dev-field__value padding',
@@ -78,7 +67,6 @@ const ownershipOffences = (astro = astroFiles(), styles = styleFiles()): Offence
   OWNED.forEach(({ component, classes, props }) => classes.forEach((name) => owned.set(name, { component, props })));
 
   const offences: Offence[] = [];
-  // Call-site classes on a component tag style that component's root.
   for (const absolute of astro) {
     const file = rel(absolute);
     if (isOwner(file)) continue;
@@ -128,18 +116,13 @@ test('every baseline entry still matches an override', () => {
   expect(BASELINE.filter((entry) => !keys.has(entry))).toEqual([]);
 });
 
-// A DevOverlay panel owns its inset: --dev-panel-pad on all four sides. The
-// content it wraps starts at that edge, so a root that adds its own padding or
-// margin (bottom room for an animation, say) makes the bottom inset differ
-// from the sides. Room an animation needs belongs inside the animated element
-// or in the panel component, never as content padding.
 const INSET = /^(padding|margin)(-|$)/;
 const BOTTOM = /^(padding|margin)(-bottom|-block(-end)?)?$/;
 const isZero = (value: string) => /^0(px|em|rem)?$/.test(value.trim());
 
 const panelRootOffences = (astro = astroFiles(), styles = styleFiles()) => {
   const offences: string[] = [];
-  const roots = new Map<string, string>(); // selector token → where it is used
+  const roots = new Map<string, string>();
   for (const absolute of astro) {
     for (const child of [...childrenOf(absolute, 'DevOverlay'), ...childrenOf(absolute, 'DevOverlayFrame')]) {
       if (/\bslot=/.test(child.text) || !/^[a-z]/.test(child.name)) continue;

@@ -51,6 +51,10 @@ jobs:
           CONTENT_REPO="$RUNNER_TEMP/content" bash scripts/fetch-content.sh --replace
       - name: Install dependencies without credentials
         run: bun install --frozen-lockfile
+      - name: Ban new code comments
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          bun run lint:comments --against FETCH_HEAD
       - name: Build and verify production output
         run: |
           bun run build

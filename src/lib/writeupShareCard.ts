@@ -9,10 +9,8 @@ const INSET = 72;
 const TEXT_WIDTH = WRITEUP_CARD_WIDTH - INSET * 2;
 const TEXT_BLOCK_HEIGHT = 298;
 const NAME_BASELINE = 507;
-// Fontconfig loads the bundled font from disk. On macOS, Pango defaults to Core Text.
 if (process.platform === 'darwin') process.env.PANGOCAIRO_BACKEND ??= 'fontconfig';
 
-// TrueType copy of the site's Latin WOFF2, covered by public/fonts/hanken-grotesk/OFL.txt.
 const FONT_FILE = path.resolve('src/assets/fonts/hanken-grotesk-latin.ttf');
 
 function lightColor(role: 'srf' | 'on-srf' | 'on-srf-subtle') {
@@ -88,8 +86,6 @@ async function balancedTextLayer(markup: string) {
     return textLayer(markup, TEXT_WIDTH, 'word-char', TEXT_BLOCK_HEIGHT);
   }
 
-  // Narrow the measure without adding a line or splitting a word. The height
-  // tolerance allows different letters on the last line, but less than one line.
   let minWidth = Math.ceil(TEXT_WIDTH / 2);
   let maxWidth = TEXT_WIDTH;
   let balanced = natural;

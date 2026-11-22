@@ -46,7 +46,6 @@ export function createHomeRevealConfigHandler({ write = writeAtomicJson, configP
   };
 }
 
-// Only the tuner's dialled fields are writable; the rest of the demo config stays as approved.
 export function validateHeaderMenuDemoTuning(value) {
   if (!hasExactKeys(value, ['cursorOffset']) || !bounded(value.cursorOffset, -800, 800)) throw new Error('Invalid menu demo configuration.');
   return { cursorOffset: value.cursorOffset };

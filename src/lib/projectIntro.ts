@@ -29,7 +29,6 @@ export function resolveIntroHeight(
   return normalizeIntroHeight(documentHeight, normalizeIntroHeight(legacy));
 }
 
-/** Height available for flexible air after authored content and stack spacing. */
 export function introLayout(
   targetVh: number,
   safeVhPx: number,

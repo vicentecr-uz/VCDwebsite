@@ -1,8 +1,3 @@
-/**
- * Last-known pointer position, tracked once at module scope so any dev
- * panel can open centered under the cursor (e.g. the Alt+I log-issue
- * shortcut) without each caller wiring its own listener.
- */
 
 let lastX = 0;
 let lastY = 0;

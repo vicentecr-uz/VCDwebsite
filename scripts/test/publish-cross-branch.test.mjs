@@ -1,16 +1,4 @@
 // @ts-check
-/**
- * Runs the real publish module against throwaway repos.
- *
- * `bun scripts/test/publish-cross-branch.test.mjs`
- *
- * The off-branch publish path builds commits with git plumbing against a scratch
- * index, which is not something you want to find out is subtly wrong by watching
- * it land on the live site. Every case below sets up an origin + clone, dirties
- * the content surface, and calls the exported functions with `cwd` pointed at
- * the clone — the same pattern that caught the porcelain-trim and empty-pathspec
- * bugs in the original boundary work.
- */
 import { execFile as execFileCb } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
@@ -34,7 +22,6 @@ const check = (label, condition, detail = '') => {
   }
 };
 
-/** A bare origin plus a clone of it, with one content file and one engine file. */
 async function makeRepo() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-publish-test-'));
   const origin = path.join(root, 'origin.git');
@@ -63,7 +50,6 @@ async function makeRepo() {
   return { root, origin, work, git };
 }
 
-/** Run `fn` with the process cwd inside the throwaway clone. */
 async function inRepo(label, fn) {
   current = label;
   console.log(`\n${label}`);
@@ -212,9 +198,6 @@ await inRepo('header renderer change blocks publishing header settings', async (
 });
 
 await inRepo('publishing twice from the same branch keeps working', async (repo) => {
-  // The branch never rebases, so after the first publish main carries a commit
-  // to this file that the merge base predates. That is our own commit, and a
-  // guard that cannot tell it apart makes cross-branch publish a one-shot.
   await repo.git('switch', '-c', 'feat/copy-tweak');
 
   await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"First"}\n');
@@ -235,8 +218,6 @@ await inRepo('publishing twice from the same branch keeps working', async (repo)
 });
 
 await inRepo('a foreign edit still blocks after we have published', async (repo) => {
-  // Same shape as above, but someone else lands on top of our publish — the
-  // record must not wave that through.
   await repo.git('switch', '-c', 'feat/copy-tweak');
   await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Ours"}\n');
   check('our publish', (await publishContent({})).ok === true);
@@ -256,9 +237,6 @@ await inRepo('a foreign edit still blocks after we have published', async (repo)
 });
 
 await inRepo('branch behind main is reported as behind, not as unpublished', async (repo) => {
-  // Anto publishes from main while a feature branch sits untouched. The branch's
-  // copy is now the *older* one — nothing to publish, and offering to publish it
-  // would revert the edit that just went out.
   await repo.git('switch', '-c', 'feat/idle');
 
   const other = path.join(repo.root, 'other');
@@ -280,8 +258,6 @@ await inRepo('branch behind main is reported as behind, not as unpublished', asy
 });
 
 await inRepo('editing a file main moved is still publishable', async (repo) => {
-  // Same setup, but this time we do edit it — that is a real unpublished change,
-  // and the staleness guard is what decides whether it may land.
   await repo.git('switch', '-c', 'feat/idle');
 
   const other = path.join(repo.root, 'other');
@@ -306,7 +282,6 @@ await inRepo('main moved on the same file → refuses to clobber', async (repo) 
   await repo.git('switch', '-c', 'feat/copy-tweak');
   await writeFile(path.join(repo.work, 'src/content/projects/sample-modern.json'), '{"title":"Sample modern from branch"}\n');
 
-  // Someone else publishes to main in the meantime.
   const other = path.join(repo.root, 'other');
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
@@ -381,9 +356,6 @@ await inRepo('revert deletes untracked content that never existed on main', asyn
 });
 
 await inRepo('revert keeps content committed on the branch but absent from main', async (repo) => {
-  // The #211 shape: a whole content directory created and committed on a branch
-  // main has never seen. Every file in it is "absent from main", which the old
-  // revert read as untracked and deleted — 289 files on the real branch.
   await repo.git('switch', '-c', 'feat/media-store');
   const committed = path.join(repo.work, 'src/content/projects/branchnew.json');
   await writeFile(committed, '{"title":"Committed on branch"}\n');

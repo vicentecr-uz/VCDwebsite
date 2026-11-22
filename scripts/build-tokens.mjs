@@ -1,12 +1,4 @@
 // @ts-check
-/**
- * Generates the colour-token CSS block in src/styles/global.css from
- * tokens/design-tokens.json (DTCG format), and a DEV-only alarm file for
- * unfilled #ff00ff sys tokens. Idempotent — running it again with an
- * unchanged JSON produces no diff.
- *
- * `bun run tokens:build`
- */
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -46,12 +38,10 @@ const collectTokens = (node, pathParts, out) => {
 
 const cssVarName = (pathParts) => `--${pathParts.join('-')}`;
 
-/** Unfilled sys tokens ship as this hex in JSON — production CSS must omit them. */
 export const isAlarmValue = (compiled) => (
   typeof compiled === 'string' && ALARM_HEX_RE.test(compiled.trim())
 );
 
-/** DTCG alias `{a.b.c}` compiles to `var(--a-b-c)`; anything else passes through. */
 export const compileValue = (raw) => {
   if (typeof raw === 'string') {
     const match = /^\{([^}]+)\}$/.exec(raw.trim());
@@ -70,7 +60,6 @@ const isAlarmDecl = (line) => isAlarmValue(declValue(line));
 const withoutAlarms = (decls) => decls.filter((line) => !isAlarmDecl(line));
 const onlyAlarms = (decls) => decls.filter(isAlarmDecl);
 
-/** Every token name defined in the JSON, across all three tiers. */
 export function collectAllTokenNames(json) {
   const tokens = [];
   collectTokens(json, [], tokens);
@@ -105,12 +94,7 @@ function buildDeclarations(json) {
   return { refDecls, sysLightDecls, sysDarkDecls, compDecls };
 }
 
-/**
- * Assemble token CSS. Production omits the OS media query — dark is opt-in
- * via data-theme="dark" (DEV toggle) until #256 ships. DEV alarms still
- * include the media query so unfilled tokens scream under OS dark locally.
- * Empty selector groups are omitted.
- */
+// known limit: issue #68
 function assembleTokenCss(startMarker, endMarker, rootDecls, sysDarkDecls, { includeOsMedia = false } = {}) {
   const body = [];
   if (rootDecls.length) {
@@ -136,7 +120,6 @@ function assembleTokenCss(startMarker, endMarker, rootDecls, sysDarkDecls, { inc
   return [startMarker, ...interleaved, endMarker].join('\n');
 }
 
-/** Pure: DTCG JSON in, production CSS block (with markers) out. Omits #ff00ff. */
 export function generateTokenBlock(json) {
   const { refDecls, sysLightDecls, sysDarkDecls, compDecls } = buildDeclarations(json);
   return assembleTokenCss(
@@ -148,7 +131,6 @@ export function generateTokenBlock(json) {
   );
 }
 
-/** Pure: only #ff00ff declarations, same selector structure as the production block. */
 export function generateAlarmBlock(json) {
   const { refDecls, sysLightDecls, sysDarkDecls, compDecls } = buildDeclarations(json);
   return assembleTokenCss(
@@ -160,12 +142,7 @@ export function generateAlarmBlock(json) {
   );
 }
 
-/**
- * Splice the generated block into existing CSS source (replacing a prior
- * generated block if markers are present, else inserting after the Tailwind
- * import). Pure — returns the next source and whether it differs.
- * @returns {{ next: string, changed: boolean }}
- */
+/** @returns {{ next: string, changed: boolean }} */
 export function applyTokenBlock(cssSource, generatedBlock) {
   if (MARKER_RE.test(cssSource)) {
     const next = cssSource.replace(MARKER_RE, generatedBlock);

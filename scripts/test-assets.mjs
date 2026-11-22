@@ -1,17 +1,4 @@
 // @ts-check
-/**
- * Runs the real build-time asset collector against throwaway fixture dirs.
- *
- * `bun scripts/test-assets.mjs`
- *
- * The collector derives what ships from the emitted output, not from
- * document status — that's what makes it safe against draft/teaser leaks,
- * but it also means correctness lives entirely in how it scans HTML/CSS/JS
- * and resolves refs against `media/`. Each case below builds a tiny fake
- * `dist/` and `media/`, runs the real exported function, and checks what it
- * actually copied. No network, no dev server, in the style of
- * scripts/test/publish-cross-branch.test.mjs.
- */
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -30,7 +17,6 @@ const check = (label, condition, detail = '') => {
   }
 };
 
-/** A throwaway { root, dist, media } pair, cleaned up after `fn` runs. */
 async function withFixture(label, fn) {
   console.log(`\n${label}`);
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-assets-test-'));
@@ -59,7 +45,6 @@ const writeMedia = async (media, relative, contents = 'fake-bytes') => {
   await writeFile(full, contents, 'utf8');
 };
 
-// 1. A ref with %20 in JSON resolves to the space-named file on disk and is copied.
 await withFixture('%20-encoded ref resolves to the space-named file', async ({ dist, media }) => {
   await writeHtml(dist, 'about/index.html', '<img src="/images/1Q1A6418%20(Custom).jpg" alt="">');
   await writeMedia(media, '1Q1A6418 (Custom).jpg');
@@ -69,9 +54,7 @@ await withFixture('%20-encoded ref resolves to the space-named file', async ({ d
   check('reported one copy', result.copied === 1, String(result.copied));
 });
 
-// 2. A draft project's section image is not copied.
 await withFixture("a draft project's section image is not copied", async ({ dist, media }) => {
-  // A draft project emits no page at all — nothing in dist/ references it.
   await writeHtml(dist, 'index.html', '<html><body>Home</body></html>');
   await writeMedia(media, 'draft-hero.jpg');
 
@@ -80,10 +63,7 @@ await withFixture("a draft project's section image is not copied", async ({ dist
   check('reported zero copies', result.copied === 0, String(result.copied));
 });
 
-// 3. A teaser project's card cover is copied and its section image is not.
 await withFixture("a teaser's card cover ships, its section image does not", async ({ dist, media }) => {
-  // The gallery page renders the card cover; the teaser has no /slug route
-  // in production, so its case-study section image is never referenced.
   await writeHtml(dist, 'work/index.html', '<img src="/images/teaser-cover.jpg" alt="">');
   await writeMedia(media, 'teaser-cover.jpg');
   await writeMedia(media, 'teaser-section.jpg');
@@ -93,7 +73,6 @@ await withFixture("a teaser's card cover ships, its section image does not", asy
   check('section image not copied', !existsSync(path.join(dist, 'images', 'teaser-section.jpg')));
 });
 
-// 4. An orphan in media/ is not copied.
 await withFixture('an orphan in media/ is not copied', async ({ dist, media }) => {
   await writeHtml(dist, 'index.html', '<html><body>Home</body></html>');
   await writeMedia(media, 'orphan.jpg');
@@ -103,7 +82,6 @@ await withFixture('an orphan in media/ is not copied', async ({ dist, media }) =
   check('counted in total', result.total === 1, String(result.total));
 });
 
-// 5. A ref with no file in media/ fails the build.
 await withFixture('a ref with no file in media/ fails the build', async ({ dist, media }) => {
   await writeHtml(dist, 'index.html', '<img src="/images/missing.jpg" alt="">');
 
@@ -117,7 +95,6 @@ await withFixture('a ref with no file in media/ fails the build', async ({ dist,
   check('names the missing token', Boolean(threw) && /missing\.jpg/.test(String(threw?.message)), String(threw?.message));
 });
 
-// 6. A subdirectory ref lands at dist/images/press-logos/x.png.
 await withFixture('a subdirectory ref preserves its path', async ({ dist, media }) => {
   await writeHtml(dist, 'tapico/index.html', '<img src="/images/press-logos/x.png" alt="">');
   await writeMedia(media, 'press-logos/x.png');
@@ -126,16 +103,12 @@ await withFixture('a subdirectory ref preserves its path', async ({ dist, media 
   check('copied into the subdirectory', existsSync(path.join(dist, 'images', 'press-logos', 'x.png')));
 });
 
-// 7. An http(s) ref is ignored, not treated as a filename.
 await withFixture('an http(s) ref is ignored, not treated as a filename', async ({ dist, media }) => {
   await writeHtml(
     dist,
     'the-rams/index.html',
     [
       '<a href="https://www.youtube.com/watch?v=BpbAbOBEHDU&t=36s">watch</a>',
-      // A substring match on "/images/" inside a third-party host must not
-      // be mistaken for a local ref (it would otherwise fail the build over
-      // a file that was never ours to ship).
       '<img src="https://cdn.example.com/images/tracking.jpg" alt="">',
       '<img src="/images/real.jpg" alt="">',
     ].join('\n'),
@@ -148,7 +121,6 @@ await withFixture('an http(s) ref is ignored, not treated as a filename', async 
   check('still copied the real local ref', existsSync(path.join(dist, 'images', 'real.jpg')));
 });
 
-// CSS and JS are scanned too, not just HTML.
 await withFixture('scans .css and .js output, not just .html', async ({ dist, media }) => {
   await mkdir(path.join(dist, '_astro'), { recursive: true });
   await writeFile(path.join(dist, '_astro', 'style.css'), 'body{background:url("/images/bg.png")}', 'utf8');
@@ -182,7 +154,6 @@ async function writeTestJpeg(media, relative) {
   return buffer;
 }
 
-// 8. Derivative refs generate webp from the original in media/.
 await withFixture('derivative refs generate webp from the original', async ({ dist, media }) => {
   await writeHtml(
     dist,
@@ -209,7 +180,6 @@ await withFixture('derivative refs generate webp from the original', async ({ di
   check('thumb is not a jpeg copy', !thumbBytes.equals(jpegBytes));
 });
 
-// 9. A derivative ref with no original fails the build.
 await withFixture('a derivative ref with no original fails the build', async ({ dist, media }) => {
   await writeHtml(dist, 'index.html', '<img src="/images/missing.preview.webp" alt="">');
 
@@ -223,7 +193,6 @@ await withFixture('a derivative ref with no original fails the build', async ({ 
   check('names the missing token', Boolean(threw) && /missing\.preview\.webp/.test(String(threw?.message)), String(threw?.message));
 });
 
-// 10. SVG refs copy through unchanged — no derivative required.
 await withFixture('svg refs copy through unchanged', async ({ dist, media }) => {
   await writeHtml(dist, 'index.html', '<img src="/images/icon.svg" alt="">');
   await writeMedia(media, 'icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');

@@ -9,7 +9,6 @@ export function createDemoAssetPicker(panel: HTMLElement, projects: DemoAssetPro
   const sourceWindow = panel.ownerDocument.defaultView!;
   const sourceParent = panel.parentNode!;
   const sourceNext = panel.nextSibling;
-  // Same-origin project demos share the page viewport; standalone previews keep their own.
   if (sourceWindow.frameElement?.closest('.project-interactive-demo')) {
     sourceWindow.parent.document.body.append(panel);
   }

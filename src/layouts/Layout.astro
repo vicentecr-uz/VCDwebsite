@@ -5,11 +5,6 @@ import { devTabState } from '../../scripts/dev-tab-state.mjs';
 import designTokens from '../../tokens/design-tokens.json';
 import { ClientRouter } from 'astro:transitions';
 import Analytics from '../components/Analytics.astro';
-// The dev-chrome atoms (.dev-btn, .dev-field, .dev-panel, …) are consumed by
-// every Dev*.astro panel below, but none of them import this stylesheet
-// themselves — only the ui/*.astro primitives on /styles do. Without a
-// site-wide import, every real page (dev tools included) rendered those
-// classes with no CSS at all.
 import '../styles/dev-chrome.css';
 import loadingSpinnerStyles from '../styles/loading-spinner.css?raw';
 import spinnerMarkup from '../components/ui/LoadingSpinner.svg?raw';
@@ -46,9 +41,6 @@ if (import.meta.env.DEV) {
   await import('../styles/dev-token-alarms.css');
 }
 
-/**
- * Site-wide share card used when a page does not provide its own image.
- */
 const DEFAULT_OG_IMAGE = '/images/vicente-cruz-social.jpg';
 
 interface Props {
@@ -57,22 +49,12 @@ interface Props {
   socialTitle?: string;
   socialDescription?: string;
   description?: string;
-  /**
-   * Share-card image, root-relative (e.g. `/images/foo.preview.webp`).
-   * Project pages pass their own cover; everything else gets the site default.
-   */
   ogImage?: string;
   favicon?: string;
   ogType?: 'website' | 'article';
   ogImageDetails?: { alt: string; width: number; height: number };
-  /** Absolute canonical URL, when the page is served somewhere other than its path on `site`. */
   canonicalUrl?: string;
-  /** Unlisted page: keep it out of search indexes. */
   noindex?: boolean;
-  /**
-   * Candidate inline style for #site-wrapper. ADAPTIVE_PAGE_COLUMNS_ENABLED
-   * controls whether Layout applies it and mounts the dev/HMR synchronizer.
-   */
   columnStyle?: string;
 }
 
@@ -91,8 +73,6 @@ const {
   columnStyle,
 } = Astro.props;
 
-// Astro.site comes from `site` in astro.config.mjs. Absolute URLs are required:
-// og:image and canonical are both ignored by scrapers when relative.
 const canonical = canonicalUrl ? new URL(canonicalUrl) : new URL(Astro.url.pathname, Astro.site);
 const ogImageUrl = new URL(ogImage, Astro.site);
 const showDevTools = import.meta.env.DEV;
@@ -115,9 +95,7 @@ const resolveToken = (path: string, seen = new Set<string>()): string => {
   return alias ? resolveToken(alias, seen) : value;
 };
 const initialThemeColor = resolveToken('sys.color.srf');
-// Production is light until dark mode ships (#256): pin data-theme="light" and
-// omit the OS media query from the generated production sheet. Local DEV omits
-// the attribute so the theme toggle can still set Dark.
+// known limit: issue #68
 ---
 
 <!doctype html>
@@ -129,15 +107,9 @@ const initialThemeColor = resolveToken('sys.color.srf');
   <head>
     {showDevTools && (
       <script is:inline data-canvas-resize-observer>
-        // Canvas only: while a viewport preview morphs, hold back the page's resize listeners (about 120ms
-        // of editor work per step) and deliver one resize at the end. ResizeObservers still run, so
-        // content that sizes itself in script (carousels) keeps up.
         if (window.name === 'vcd-canvas') {
-          // Registered before any page script, so it also precedes capture-phase resize listeners.
           window.addEventListener('resize', (event) => {
             if (!document.documentElement.hasAttribute('data-viewport-flux')) return;
-            // Layout the page cannot do without (the fixed header) listens for `vcd:viewport-flux-frame`,
-            // which the shell dispatches in the same frame as each width change.
             event.stopImmediatePropagation();
           }, true);
         }
@@ -150,7 +122,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
         installDevTabRecovery();
       }
     </script>
-    <!-- Keep layout readiness independent from the heavier transition and editor graph. -->
     <script>
       import { define } from 'sabi-input/core';
       import { bindSafeVh } from '../lib/safeVh';
@@ -159,7 +130,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
       if (!import.meta.env.DEV) {
         initializeLayout();
       } else {
-        // DEV styles arrive as module scripts; production links are render-blocking.
         const styleModules = Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')).filter((script) => {
           try {
             const url = new URL(script.src, location.href);
@@ -177,8 +147,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
     <meta name="theme-color" content={initialThemeColor} />
     <meta name="description" content={description} />
     <style is:inline>
-      /* Cover the first paint. Bundled global.css (and Vite's JS-injected sheet
-         in DEV) can arrive after the page is already visible. */
       html, body { background: #ffffff; }
       #transition-overlay {
         position: fixed;
@@ -221,7 +189,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             document.documentElement.setAttribute('data-theme', storedMode);
           }
         } catch (e) {
-          /* private mode / storage disabled — falls back to OS theme */
         }
       </script>
     )}
@@ -233,7 +200,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             document.documentElement.setAttribute('data-dev-transition', transitionMode);
           }
         } catch (e) {
-          /* malformed or unavailable URL APIs leave the normal transition intact */
         }
       </script>
     )}
@@ -246,7 +212,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             document.documentElement.setAttribute('data-dev-transition', transitionMode);
           }
         } catch (e) {
-          /* malformed or unavailable URL APIs leave the normal transition intact */
         }
       </script>
     )}
@@ -569,7 +534,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             }
           }
         } catch {
-          // Performance marks are diagnostic only and must never affect reveal.
         }
       };
       emitTransitionMilestone('transition-script-start');
@@ -798,7 +762,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
           revealAnnounced = true;
           document.dispatchEvent(new Event('header:navigation-reveal'));
           if (incomingAnimation) {
-            // Setting startTime cancels pending playback, so reset only after renderer readiness.
             delete overlay.dataset.loading;
             incomingAnimation.play();
             await incomingAnimation.ready;
@@ -925,7 +888,6 @@ const initialThemeColor = resolveToken('sys.color.srf');
             const navigate = () => {
               if (current !== generation || !destinationLocked) return;
               try {
-                // Recover a canceled or stalled navigation attempt after a bounded wait.
                 navigationWatchdog = setTimeout(() => {
                   if (current !== generation) return;
                   clearHeaderNavigationState();

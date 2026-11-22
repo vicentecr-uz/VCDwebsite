@@ -404,9 +404,6 @@ export function stylesComponents(examples: NonNullable<ReturnType<typeof loadPag
   ];
 }
 
-
-/** Legacy Webflow-migration markup on other case studies — not signed off. Do not copy into new work. */
-
 export const foundationPages = [
   { id: 'styles-typography', slug: 'typography', label: 'Typography' },
   { id: 'styles-spacing', slug: 'spacing', label: 'Spacing' },

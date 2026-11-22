@@ -16,7 +16,7 @@ class FakeTarget {
   removeEventListener(type: string, listener: (event: any) => void) { this.listeners.get(type)?.delete(listener); }
   dispatchEvent(event: any) {
     if (!event.target) {
-      try { event.target = this; } catch { /* Native Event targets are readonly. */ }
+      try { event.target = this; } catch {}
     }
     for (const listener of this.listeners.get(event.type) || []) listener(event);
     return true;
@@ -431,7 +431,6 @@ describe('editor history', () => {
     pageHistory.push({ label: 'Text', undo: () => { text = 'original'; }, redo: () => { text = 'edited'; } });
     registerHistoryScope(panel as any, local, { signal });
     doc.dispatchEvent(makeEvent('pointerdown', thumbnail));
-    // renderBoard replaces the thumbnail after a native drop.
     thumbnail.parent = null;
     thumbnail.isConnected = false;
     const shortcut = async (redo = false) => {

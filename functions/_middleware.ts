@@ -1,7 +1,6 @@
 import { sabiDocsPages } from '../src/lib/sabi-docs-pages';
 
 const SABI_HOST = 'sabi.vicentecr.uz';
-// Renamed docs paths. The sabi-input 0.1.0 README on npm links /getting-started.
 const RENAMED: Record<string, string> = { '/getting-started': '/introduction' };
 
 type PagesContext = {
@@ -10,10 +9,6 @@ type PagesContext = {
   env: { ASSETS: { fetch: (input: URL | Request) => Promise<Response> } };
 };
 
-/**
- * Cloudflare Pages middleware: sabi.vicentecr.uz serves the /sabi page at its
- * root and documentation paths. Portfolio /sabi paths redirect to that host.
- */
 export async function onRequest({ request, next, env }: PagesContext): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname === '/sabi' || url.pathname.startsWith('/sabi/')) {

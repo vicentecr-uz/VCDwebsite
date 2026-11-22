@@ -3,7 +3,6 @@ type UmamiWindow = Window & {
   umami?: { track?: (name: string, data?: Record<string, string>) => void | Promise<unknown> };
 };
 
-/** Send a Umami custom event at most once per window; silently no-ops off production, on excluded paths, or when opted out. */
 export function trackEvent(name: string, data?: Record<string, string>) {
   const win = window as UmamiWindow;
   const script = document.querySelector<HTMLScriptElement>('script[data-website-id]');
@@ -17,7 +16,6 @@ export function trackEvent(name: string, data?: Record<string, string>) {
   } catch {
     return;
   }
-  // This Set deduplicates within one document; Umami Visits provide cross-reload aggregation.
   const tracked = win.__vcdTrackedEvents ??= new Set<string>();
   if (tracked.has(name)) return;
   tracked.add(name);
@@ -25,6 +23,5 @@ export function trackEvent(name: string, data?: Record<string, string>) {
     const result = track.call(win.umami, name, data);
     if (result && typeof result.then === 'function') result.catch(() => {});
   } catch {
-    // Analytics failures must not affect the page.
   }
 }

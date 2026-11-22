@@ -21,7 +21,6 @@ test('React selectors mount and release their bridge across persistent page swap
     const { renderToString } = await import('react-dom/server');
     const { default: hydrate } = await import('../../node_modules/@astrojs/react/dist/client.js');
     const { default: EditorSelect } = await import('../../src/components/base-ui/EditorSelect');
-    // Supply the modules directly; Astro's real island handles hydration and unmount.
     Object.defineProperty(globalThis, 'Astro', { configurable: true, value: {
       visible: async (_load: unknown, _options: unknown, island: any) => {
         island.Component = EditorSelect;

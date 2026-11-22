@@ -7,8 +7,6 @@ import { sabiDocsPages } from '../src/lib/sabi-docs-pages.ts';
 
 const GENERATED_EXTENSIONS = new Set(['.html', '.css', '.js']);
 const URL_ATTRIBUTES = new Set(['src', 'href', 'poster', 'data', 'action', 'srcset']);
-// Pages that ship without being linked; see docs/dev-authoring.md → Unlinked pages.
-// /analytics/ is owner-only. Sabi links are relative to its own subdomain.
 const UNLINKED_ROUTES = ['/analytics/', '/reports/design-futures-nov-11/', '/the-bridge-1min-video-nov2026-application/', '/sabi/', ...sabiDocsPages.map(({ slug }) => `/sabi/${slug}/`)];
 
 /** @param {string} dir @returns {Promise<string[]>} */
@@ -244,9 +242,6 @@ export async function prunePublicOutput(distDir, options = {}) {
     const targetFile = routeFiles.get(routeKey(redirect.destination.pathname));
     return Boolean(targetFile && reachable.has(targetFile));
   }));
-  // Public project pages always ship at their URL. One that navigation doesn't
-  // reach is kept but not traversed, so it never publishes what it links to,
-  // and is marked noindex.
   const linkOnlyHtml = [...new Set((options.publicRoutes || [])
     .map((route) => routeFiles.get(routeKey(route)))
     .filter((file) => file && !reachable.has(file)))];
@@ -262,7 +257,7 @@ export async function prunePublicOutput(distDir, options = {}) {
   }
 
   const retainedAssets = new Set();
-  // Ceiling: this traces emitted HTML/CSS/JS and generated assets; upgrade to a full module graph when runtime loading semantics require it.
+  // known limit: issue #279
   const assetRoot = path.resolve(distDir, assetsDir);
   const shareCardRoot = path.resolve(distDir, 'share-cards');
   const isGeneratedAsset = (file) => file.startsWith(assetRoot + path.sep)

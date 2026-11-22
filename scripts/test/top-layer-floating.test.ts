@@ -2,18 +2,10 @@ import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-// Every `.project-block` is a stacking context (`isolation: isolate`) and the
-// containing block for `position: fixed` (`container-type: inline-size`). A menu,
-// listbox or tooltip inside one block paints under the next block whatever its
-// z-index, so floating layers must open as native popovers (top layer).
-// See docs/interface/menus.md and src/lib/floatingLayer.ts.
-
 const root = path.resolve(import.meta.dir, '../..');
 const src = path.join(root, 'src');
 const FLOATING_ROLES = 'menu|listbox|tooltip';
 
-// Floating-role elements that never sit inside a page block. Each entry must
-// still match, so a removed or migrated layer also leaves this list.
 const EXEMPT: Array<{ file: string; marker: string; reason: string }> = [
   { file: 'src/components/reports/CommandMenu.astro', marker: 'command__list', reason: 'inline inside the command surface, which is a native popover in Edit and an embedded demonstration otherwise' },
   { file: 'src/components/DevTextEditor.astro', marker: 'dev-gap-toolbar__menu', reason: 'inline row inside the gap toolbar pill, not a popup' },
@@ -29,7 +21,6 @@ const sourceFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes:
   return /\.(astro|tsx?|jsx?|mjs)$/.test(entry.name) ? [file] : [];
 });
 
-// Opening tag around `index`, skipping `>` inside {expressions} and quotes.
 const tagAround = (source: string, index: number) => {
   const start = source.lastIndexOf('<', index);
   let depth = 0;
@@ -80,8 +71,6 @@ test('floating layers render in the top layer via the popover attribute', () => 
   expect(offenders).toEqual([]);
 });
 
-// Menus and listboxes are assembled from the Menu component, which owns their
-// padding, gap, radius and separators; a hand-styled surface is how they drift.
 test('top-layer menus and listboxes use .dev-menu', () => {
   const offenders = floatingLayers()
     .filter((layer) => layer.topLayer && /role=["'](?:menu|listbox)["']/.test(layer.text) && !/\bdev-menu\b/.test(layer.text) && !/^<Menu\b/.test(layer.text))

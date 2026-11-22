@@ -1,6 +1,5 @@
 type Cleanup = () => void;
 
-/** Own resources that otherwise outlive a replaced page. */
 export function createPageScope() {
   const controller = new AbortController();
   const cleanups: Cleanup[] = [];
@@ -37,7 +36,6 @@ export function createPageScope() {
   return scope;
 }
 
-/** Scripts load once; each new main element gets exactly one mounted controller. */
 export function onPageLoad(mount: () => void | Cleanup) {
   let main: Element | null | undefined;
   let cleanup: void | Cleanup;

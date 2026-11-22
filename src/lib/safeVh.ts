@@ -1,17 +1,3 @@
-/**
- * Stable `1vh` unit for height constraints that must not track iOS/Edge
- * toolbar show/hide (raw `svh`/`vh` drifts mid-scroll on those browsers).
- *
- * Sets `--vh-safe` on `:root` once on load; recomputes on desktop viewport
- * resizes while keeping mobile toolbar show/hide frozen. Keep `svh` as the CSS
- * fallback: `calc(var(--vh-safe, 1svh) * N)`.
- *
- * Bind from the site layout (or any early client script). Multiple callers are
- * safe — listeners bind once.
- *
- * @see https://github.com/vicentecr-uz/VCDwebsite/issues/96
- * @see https://github.com/vicentecr-uz/VCDwebsite/issues/97
- */
 
 export const SAFE_VH_PROP = '--vh-safe';
 import { introLayout } from './projectIntro';
@@ -51,13 +37,11 @@ const nextLogicalSibling = (element: Element): HTMLElement | null => {
   return sibling instanceof HTMLElement ? sibling : null;
 };
 
-/** Write `--vh-safe` = 1% of the current inner height, in px. */
 export function setSafeVh(root: HTMLElement = document.documentElement): void {
   safeViewportHeight = window.innerHeight;
   root.style.setProperty(SAFE_VH_PROP, `${safeViewportHeight * 0.01}px`);
 }
 
-/** Keep an Intro's percentage endpoint relative to the page fold, not its own top. */
 export function setIntroFoldOffsets(root: ParentNode = document): void {
   const allIntros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
   const intros = allIntros.filter((intro) => !intro.classList.contains('is-section-lifted'));
@@ -65,8 +49,6 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
   const usedSpacers = new Set<HTMLElement>();
 
   spacers.forEach((spacer) => { spacer.style.height = '0px'; });
-  // Commit the collapsed gaps before reading scrollY: near the page bottom the
-  // browser clamps it to the new maximum, so the pre-collapse value is stale.
   void document.documentElement.offsetHeight;
   const scrollTop = window.scrollY;
   root.querySelectorAll<HTMLElement>(`[${INTRO_RUN_START_ATTR}], [${INTRO_AFTER_RUN_ATTR}]`).forEach((element) => {
@@ -140,10 +122,6 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
   });
 }
 
-/**
- * Capture safe vh and bind resize / orientation listeners once.
- * Idempotent — later calls are no-ops after the first bind.
- */
 export function bindSafeVh(): void {
   const w = window as SafeVhWindow;
   if (w[BOUND_FLAG]) return;
@@ -160,17 +138,11 @@ export function bindSafeVh(): void {
   const scheduleIntroSync = () => {
     cancelAnimationFrame(introSyncFrame);
     introSyncFrame = requestAnimationFrame(() => {
-      // The reorder host synchronizes Intro air in the same layout write as
-      // its slot. Measuring again while FLIP transforms are running would read
-      // visual rather than layout positions and pull the group off-centre.
       if (document.documentElement.classList.contains('is-section-reorder-dragging')) return;
       setIntroFoldOffsets();
     });
   };
 
-  // Intro editors dispatch vcd:intro-layout-sync themselves. Do not observe the
-  // whole body: preview clones and DEV readouts mutate during scroll but cannot
-  // change intro geometry, and recalculating here disrupts native momentum.
   document.fonts.ready.then(scheduleIntroSync);
   document.fonts.addEventListener?.('loadingdone', scheduleIntroSync);
   window.addEventListener('vcd:intro-layout-sync', scheduleIntroSync);

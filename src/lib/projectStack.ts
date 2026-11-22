@@ -7,7 +7,6 @@ import {
   setProjectStackSpacingAtViewport,
 } from './projectStackSpacing.js';
 
-/** Vertical rhythm between project page sections (parent-owned stack). */
 export type ProjectStackSpacingValue = (typeof PROJECT_STACK_SPACING_VALUES)[number];
 export type ProjectStackSpacingViewport = 'desktop' | 'tablet' | 'mobile';
 export type ProjectStackSpacing =
@@ -47,13 +46,11 @@ export const shouldKeepLeadingSpacingSeam = (
 
 export type ProjectStackSpacingReorder = {
   values: ProjectStackSpacingValue[];
-  /** Original seam index supplying each value; null means a generated default seam. */
   origins: Array<number | null>;
 };
 
 export type ProjectStackInsertionSide = 'before' | 'after';
 
-/** Values stay with block identities; `destinationSide` chooses which side keeps the authored seam. */
 export function reorderProjectStackSpacingSeams(
   spacings: ProjectStackSpacingValue[],
   sourceIndex: number,
@@ -144,7 +141,7 @@ export function projectStackClass(
   return classes.join(' ');
 }
 
-/** Prefer explicit `spacing`; else map legacy `tightTop` → related. */
+// known limit: issue #275
 export function resolveProjectSpacing(
   spacing?: ProjectStackSpacing,
   tightTop?: boolean,
@@ -154,11 +151,6 @@ export function resolveProjectSpacing(
   return 'group';
 }
 
-/**
- * Page-top (index 0) default is flush (none). Missing/`section` default was the
- * between-sibling gap token — on the first block that rendered as 0 via `* + *`.
- * Explicit related/group/major/none are kept; explicit section means page-top 8em.
- */
 export function resolveStackSpacingForIndex(
   index: number,
   spacing?: ProjectStackSpacing,
@@ -171,11 +163,6 @@ export function resolveStackSpacingForIndex(
   return resolveProjectSpacing(spacing, tightTop);
 }
 
-/**
- * DEV-only data attrs for on-page spacing edits. `sectionPath` points at the
- * section object in the project JSON (e.g. `['sections', 2]`); we append
- * `'spacing'` when writing.
- */
 export function spacingDevAttrs(
   documentKey: string | undefined,
   sectionPath: Array<string | number> | undefined,

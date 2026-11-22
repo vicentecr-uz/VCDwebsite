@@ -15,7 +15,6 @@ Object.assign(globalThis, {
   requestAnimationFrame: window.requestAnimationFrame.bind(window),
   cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
 });
-// Happy DOM cannot parse ::slotted here; playback tests do not depend on CSS matching.
 const insertRule = window.CSSStyleSheet.prototype.insertRule;
 window.CSSStyleSheet.prototype.insertRule = function(rule: string, index?: number) {
   return insertRule.call(this, rule.replace(/, ::slotted\([^)]*\)/g, '').replace(/\{\s*\}$/, '{ color: white; }'), index);
@@ -349,7 +348,6 @@ for (const existing of [false, true]) {
       : '<video controls data-project-inline-video></video>';
     const video = root.querySelector('video')!;
     video.remote.cancelWatchAvailability = async () => {};
-    // Happy DOM does not emit the browser's volumechange events from these setters.
     for (const property of ['volume', 'muted']) {
       const descriptor = Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype, property)!;
       Object.defineProperty(video, property, {

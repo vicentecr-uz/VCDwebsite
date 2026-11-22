@@ -1,8 +1,4 @@
 // @ts-check
-/**
- * Magenta-alarm split for the token generator.
- * `bun scripts/test/build-tokens.test.mjs`
- */
 import { generateAlarmBlock, generateTokenBlock } from '../build-tokens.mjs';
 
 let failures = 0;

@@ -24,13 +24,8 @@ async function writeProjectJson(relativeFile, data) {
   );
 }
 
-/**
- * Collapse every legacy ref form onto one: decoded, relative to `media/`, no
- * prefix, no leading slash. Legacy input branches (`draft:`, `/draft-media/`)
- * are kept so a stale client (or old JSON that hasn't gone through the
- * one-shot migration) still resolves.
- * @param {string} value
- */
+/** @param {string} value */
+// known limit: issue #275
 export function normalizeAssetSrc(value) {
   const raw = String(value || '').trim();
   if (!raw || raw === 'placeholder.svg' || raw.endsWith('/placeholder.svg')) return '';
@@ -60,7 +55,6 @@ export function resolveAssetFilePath(src) {
 }
 
 /**
- * Collect image-like src tokens from a project document.
  * @param {unknown} node
  * @param {Set<string>} out
  */
@@ -173,8 +167,7 @@ export async function listDevAssets(filterProject = '') {
     });
   };
 
-  // Flat, site-wide media library — one file per token (top level only; the
-  // asset manager UI does not surface subdirectory files — see #204).
+  // known limit: issue #279
   try {
     for (const filename of readdirSync(mediaDir)) {
       if (!isImageFilename(filename)) continue;
@@ -188,15 +181,12 @@ export async function listDevAssets(filterProject = '') {
       addAsset(filename);
     }
   } catch {
-    // media/ missing
   }
 
-  // Referenced files — including missing ones, so editors can see the gap.
   for (const refs of refsByProject.values()) {
     for (const src of refs) addAsset(src);
   }
 
-  // usedBy — every project that references each token.
   for (const [slug, refs] of refsByProject) {
     for (const src of refs) {
       const token = normalizeAssetSrc(src);
@@ -231,10 +221,9 @@ export async function listDevAssets(filterProject = '') {
 }
 
 /**
- * Strip JSON references to an asset src. Mutates `data`.
  * @param {Record<string, unknown>} data
  * @param {string} targetSrc
- * @returns {number} number of removals
+ * @returns {number}
  */
 export function stripAssetRefsFromDocument(data, targetSrc) {
   const target = normalizeAssetSrc(targetSrc);
@@ -294,8 +283,6 @@ export function stripAssetRefsFromDocument(data, targetSrc) {
         card.image = DEFAULT_COVER;
         removed += 1;
       }
-      // Hover covers are a second image slot on the same card; clear rather than
-      // default, since an empty hover slot is a valid state and a default is not.
       if (matches(card.hoverImage)) {
         delete card.hoverImage;
         removed += 1;
@@ -315,11 +302,6 @@ export function stripAssetRefsFromDocument(data, targetSrc) {
 }
 
 /**
- * Remove media from a section by capability, not by type allowlist.
- * New media shapes inherit this without registering.
- * - Multi-item blocks (`items[]`): drop the matching item (refuse if last).
- * - Single-src blocks (`src`): drop the whole section from `sections[]`.
- *
  * @param {Record<string, unknown>} data
  * @param {Array<string | number>} fieldPath
  * @param {string} itemId
@@ -343,7 +325,6 @@ export function removeMediaItemFromDocument(data, fieldPath, itemId) {
 
   const node = /** @type {Record<string, unknown>} */ (cursor);
 
-  // Multi-item media (grid, carousel, future): remove one item by id.
   if (Array.isArray(node.items)) {
     if (!id) throw new Error('An item id is required.');
     const index = node.items.findIndex((item) => {
@@ -385,7 +366,6 @@ export function removeMediaItemFromDocument(data, fieldPath, itemId) {
     return node;
   }
 
-  // Single-src media (image, future video, …): remove the whole section.
   if (
     fieldPath[0] === 'sections'
     && typeof fieldPath[1] === 'number'
@@ -442,10 +422,7 @@ export async function deleteDevAsset(src) {
   return { ok: true, src: token, stripped };
 }
 
-/**
- * Natural dimensions for any canonical src token (draft or public).
- * @param {string} src
- */
+/** @param {string} src */
 export async function readImageDimsFromSrc(src) {
   try {
     const filePath = resolveAssetFilePath(src);
@@ -459,12 +436,7 @@ export async function readImageDimsFromSrc(src) {
   }
 }
 
-/**
- * Natural dimensions for a canonical image or video src. Video metadata is
- * read only here, during an authoring save; the image consumers keep their
- * existing Sharp-only behavior.
- * @param {string} src
- */
+/** @param {string} src */
 export async function readMediaDimsFromSrc(src) {
   const value = String(src || '').trim();
   if (value === 'placeholder.svg') {

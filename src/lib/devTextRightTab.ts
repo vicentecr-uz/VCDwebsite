@@ -119,7 +119,7 @@ const normalizedPoint = (node: Node, offset: number): [Node, number] => {
   return [current, position];
 };
 
-/** One right run per explicit source line; visual-line tab stops need a separate model. */
+// known limit: issue #279
 export const insertRightIndentTab = (root: HTMLElement): boolean => {
   const state = selectionInRoot(root);
   if (!state) return false;

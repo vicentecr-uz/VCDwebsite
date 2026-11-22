@@ -1,10 +1,4 @@
 import { createPageScope } from './pageLifecycle';
-/**
- * Image carousel behaviour: active-slide tracking, the 5-slot dot window, and
- * height easing. Scrolling itself is native (`overflow` + `scroll-snap`) so a
- * trackpad swipe only moves the carousel while the pointer is over it, and the
- * page keeps its own scroll on the cross axis.
- */
 
 import {
   matchCarouselViewport,
@@ -44,9 +38,7 @@ interface Carousel {
   axis: Axis;
   heightMode: string;
   active: number;
-  /** Fractional slide position — drives the dots between snap points. */
   progress: number;
-  /** Last viewport whose breakpoint settings were applied. */
   viewport: ImageViewport;
   frameHeights: number[];
   captionHeights: number[];
@@ -65,13 +57,11 @@ const slideOffset = (carousel: Carousel, slide: HTMLElement) => (
   carousel.axis === 'vertical' ? slide.offsetTop : slide.offsetLeft
 );
 
-/** Nearest slide to the current scroll offset — works with or without gaps. */
 function activeIndexFor(carousel: Carousel): number {
   const position = scrollPos(carousel);
   let best = 0;
   let bestDistance = Infinity;
   carousel.slides.forEach((slide, index) => {
-    // Dev cropping isolates one slide; hidden ones all report offset 0.
     if (!slide.offsetWidth && !slide.offsetHeight) return;
     const distance = Math.abs(slideOffset(carousel, slide) - position);
     if (distance < bestDistance) {
@@ -82,7 +72,6 @@ function activeIndexFor(carousel: Carousel): number {
   return best;
 }
 
-/** Fractional position between slide offsets, for continuous dot tracking. */
 function progressFor(carousel: Carousel): number {
   if (document.documentElement.classList.contains('is-dev-mode')) {
     const isolated = carousel.slides.findIndex((slide) => slide.classList.contains('dev-crop-stage-host'));
@@ -99,12 +88,6 @@ function progressFor(carousel: Carousel): number {
   return offsets.length - 1;
 }
 
-/**
- * Five slots at most: three full-size dots centred on the active one, plus a
- * shrunken preview dot at each end while there are more images that way.
- * `progress` is fractional, so the window slides with the images rather than
- * jumping when one snaps into place. Shared with SSR so the first paint matches.
- */
 export function carouselDotGeometry(progress: number, count: number) {
   const centre = Math.min(Math.max(progress, 1), Math.max(count - 2, 1));
   const first = Math.max(0, centre - 2);
@@ -112,7 +95,6 @@ export function carouselDotGeometry(progress: number, count: number) {
   return { centre, first, span: last - first + 1 };
 }
 
-/** `activeness` 0–1 mixes the fill; `scale` shrinks toward the window edges. */
 export function carouselDotAppearance(index: number, progress: number, centre: number) {
   const fromCentre = Math.abs(index - centre);
   return {
@@ -123,11 +105,6 @@ export function carouselDotAppearance(index: number, progress: number, centre: n
   };
 }
 
-/**
- * Scroll-linked below-caption opacity. Fully gone by `fadeEnd` of the way to
- * the neighbour, so mid-swipe has a gap where neither caption is visible
- * (unlike dots, which crossfade through the midpoint).
- */
 export function carouselCaptionOpacity(slideIndex: number, progress: number, fadeEnd = 0.35): number {
   if (fadeEnd <= 0) return Math.abs(progress - slideIndex) < 0.5 ? 1 : 0;
   return Math.max(0, 1 - Math.abs(progress - slideIndex) / fadeEnd);
@@ -257,10 +234,6 @@ const capMeasureCanvas = typeof document !== 'undefined'
   ? document.createElement('canvas')
   : null;
 
-/**
- * Space from the line-box top down to the capital-letter cap line — used when
- * `text-box-trim` isn't available so dots↔caption padding can still land on caps.
- */
 function measureCapTrimPx(el: HTMLElement): number {
   const ctx = capMeasureCanvas?.getContext('2d');
   if (!ctx) return 0;
@@ -283,7 +256,6 @@ function captionHeightForSlide(carousel: Carousel, slideIndex: number): number {
   return carousel.captionHeights[slideIndex] || 0;
 }
 
-/** Lerp a per-slide value across fractional scroll progress (same basis as dots). */
 function lerpByProgress(carousel: Carousel, valueAt: (index: number) => number): number {
   const count = carousel.slides.length;
   if (count <= 0) return 0;
@@ -297,16 +269,6 @@ function lerpByProgress(carousel: Carousel, valueAt: (index: number) => number):
   return valueAt(left) * (1 - t) + valueAt(right) * t;
 }
 
-/**
- * Scroll-linked caption opacity (with a mid-swipe gap), per-image caption
- * widths so fading copy doesn't jump, and caption-slot height lerped with
- * scroll — same continuous progress as the track / dots.
- *
- * Dev mode may leave `data-caption-editing` on after Save so the caption stays
- * contenteditable. Only pin opacity/slot height while that slide is still the
- * nearest one — otherwise a staged caption stays stuck at full opacity and
- * stacks on its neighbour until a full reload.
- */
 function syncCaptions(carousel: Carousel): void {
   const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
   if (!slot) return;
@@ -341,7 +303,6 @@ function syncCaptions(carousel: Carousel): void {
   if (slot.style.height !== nextHeight) slot.style.height = nextHeight;
 }
 
-/** Read intrinsic frame/caption geometry once per invalidation, outside scroll frames. */
 function refreshGeometry(carousel: Carousel): void {
   carousel.frameHeights = carousel.slides.map((slide) => {
     const frame = slide.querySelector<HTMLElement>('[data-carousel-frame]') ?? slide;
@@ -363,7 +324,6 @@ function refreshGeometry(carousel: Carousel): void {
     caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
     const width = widths[index];
     if (width > 0 && carousel.captionWidths.get(caption) !== width) {
-      // Own image width — never retarget to the neighbour mid-fade.
       caption.style.width = `${width}px`;
       caption.style.maxWidth = `${width}px`;
       carousel.captionWidths.set(caption, width);
@@ -408,12 +368,6 @@ function scheduleGeometryRefresh(carousel: Carousel): void {
   });
 }
 
-/**
- * Dynamic height: lerp the visible clip (`--project-carousel-track-size` on
- * `[data-carousel-clip]`) while the scrollport stays at the tallest slide
- * (`--project-carousel-track-port-size`). The clip must not wrap the dots —
- * putting the height on `__media` flex-shrunk the track and broke iOS snap.
- */
 function applyHeight(carousel: Carousel): void {
   const { track, clip, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
@@ -438,7 +392,6 @@ function applyHeight(carousel: Carousel): void {
     track.style.setProperty('--project-carousel-track-size', nextSize);
   }
   if (axis === 'horizontal') {
-    // Stable scrollport so mandatory snap can finish without a JS re-scroll.
     const nextPortSize = `${Math.round(tallest || size)}px`;
     if (track.style.getPropertyValue('--project-carousel-track-port-size') !== nextPortSize) {
       track.style.setProperty('--project-carousel-track-port-size', nextPortSize);
@@ -474,7 +427,6 @@ function scrollToIndex(carousel: Carousel, index: number, smooth = true): void {
   });
 }
 
-/** Restore a remounted carousel to the same visible item without replaying slide-one motion. */
 export function restoreCarouselActiveItem(block: HTMLElement, itemId: string): boolean {
   const carousel = registry.get(block);
   if (!carousel || !itemId) return false;
@@ -493,7 +445,6 @@ export function restoreCarouselActiveItem(block: HTMLElement, itemId: string): b
 const touchesVideoControl = (event: Event) => event.composedPath().some((node) =>
   node instanceof HTMLElement && node.matches('video, media-controller'));
 
-/** Mouse users get click-drag; touch and trackpad already work natively. */
 function bindDrag(carousel: Carousel): void {
   const { track } = carousel;
   let dragging = false;
@@ -653,7 +604,6 @@ function bindDrag(carousel: Carousel): void {
       cancelMomentum();
       return;
     }
-    // Crop stage owns the pointer — don't steal capture mid-pan.
     if (target.closest('.dev-crop-stage, .dev-crop-stage-host')) {
       cancelMomentum();
       return;
@@ -729,10 +679,6 @@ function bindDrag(carousel: Carousel): void {
   carousel.scope.add(() => { cancelMomentum(); clearRubberband(false); });
 }
 
-/**
- * Last-resort correction if native snap leaves us in the inter-slide gap.
- * Instant only — a second smooth scrollTo is what felt like slow-then-speed-up.
- */
 function bindTouchSnap(carousel: Carousel): void {
   const { track } = carousel;
   let touching = false;
@@ -794,10 +740,6 @@ function itemIdsForBlock(block: HTMLElement): string[] {
     .filter(Boolean);
 }
 
-/**
- * Apply the resolved settings for one viewport onto live data-attrs / parking.
- * Used on resize and when the tuner previews a breakpoint.
- */
 export function applyCarouselViewportSettings(
   block: HTMLElement,
   viewport: ImageViewport = matchCarouselViewport(),
@@ -862,7 +804,6 @@ export function applyCarouselViewportSettings(
   });
 }
 
-/** Visible slides/dots/captions only — parked ones stay in the DOM for the tuner. */
 function collectVisible(carousel: Carousel): void {
   carousel.slides = [...carousel.block.querySelectorAll<HTMLElement>('[data-carousel-slide]')]
     .filter((slide) => !isParked(slide));
@@ -878,7 +819,6 @@ function collectVisible(carousel: Carousel): void {
     dot.dataset.carouselIndex = String(index);
     dot.setAttribute('aria-label', `Go to image ${index + 1}`);
   });
-  // Captions are sparse (only below-caption slides) — index them by their slide.
   const slideIndexById = new Map(
     carousel.slides.map((slide, index) => [slide.dataset.gridItemId || '', index]),
   );
@@ -891,11 +831,6 @@ function collectVisible(carousel: Carousel): void {
   if (dotsRoot) dotsRoot.hidden = carousel.slides.length < 2;
 }
 
-/**
- * Re-read the settings the tuner writes onto the block, then re-measure. The
- * axis can flip under us, so the track's own height override is cleared first.
- * Also re-collects slides after a live reorder/park.
- */
 function refreshSettings(carousel: Carousel): void {
   carousel.axis = carousel.block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
   carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
@@ -924,7 +859,6 @@ function refreshSettings(carousel: Carousel): void {
 }
 
 function syncViewportSettings(carousel: Carousel, force = false): void {
-  // Tuner preview owns the attrs while open — don't fight it on resize.
   if (carousel.block.dataset.carouselTunerPreview === 'true' && !force) return;
   const viewport = matchCarouselViewport();
   if (!force && viewport === carousel.viewport) return;
@@ -978,9 +912,7 @@ function initCarousel(block: HTMLElement): void {
   renderDots(carousel);
   syncCaptions(carousel);
   applyHeight(carousel);
-  // Mark ready after the first measurement so consumers can gate on it.
   carousel.scope.frame(() => block.classList.add('is-carousel-ready'));
-  // Cap metrics can shift once webfonts settle — remeasure trim + slot height.
   if (document.fonts?.ready) {
     document.fonts.ready.then(() => {
       if (!registry.has(block)) return;
@@ -1033,7 +965,6 @@ function initCarousel(block: HTMLElement): void {
   carousel.scope.listen(track, 'scrollend', () => {
     if (!carousel.block.dataset.carouselReleaseSmoothing) return;
     if (carousel.releaseSmoothingTimer) window.clearTimeout(carousel.releaseSmoothingTimer);
-    // Bridge native whole-pixel release offsets with a short CSS catch-up; drag remains native.
     carousel.releaseSmoothingTimer = carousel.scope.timeout(() => {
       carousel.releaseSmoothingTimer = 0;
       clearReleaseSmoothing(carousel);
@@ -1099,7 +1030,6 @@ function initCarousel(block: HTMLElement): void {
 
 let refreshBound = false;
 
-/** Include `root` itself when it matches — querySelectorAll only finds descendants. */
 function queryCarouselsIn(root: ParentNode): HTMLElement[] {
   const matches: HTMLElement[] = [];
   if (root instanceof HTMLElement && root.matches('[data-project-image-carousel]')) {
@@ -1120,7 +1050,6 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     registry.forEach((carousel, block) => { carousel.scope.destroy(); delete block.dataset.carouselInitialized; });
     registry.clear();
   });
-  // Dev tuner writes orientation/height mode onto the block, then fires this.
   window.addEventListener('vcd:carousel-refresh', ((event: CustomEvent) => {
     const only = event.detail?.block as HTMLElement | undefined;
     registry.forEach((carousel, block) => {
@@ -1136,7 +1065,6 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
       void refreshCarouselMediaInk(carousel);
     });
   }) as EventListener);
-  // Caption edits — recollect + resync without resetting scroll position.
   window.addEventListener('vcd:carousel-sync-captions', ((event: CustomEvent) => {
     const only = event.detail?.block as HTMLElement | undefined;
     registry.forEach((carousel, block) => {
