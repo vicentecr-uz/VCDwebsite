@@ -249,6 +249,7 @@ const STATIC_EDITABLE_DOCUMENTS = new Map([
   ['conic-collection', 'src/content/projects/conic-collection.json'],
   ['styles', 'src/content/pages/styles.json'],
   ['header-settings', 'src/content/settings/header.json'],
+  ['video-page', 'src/content/settings/video-page.json'],
 ]);
 
 export function resolveEditableDocument(documentKey) {
@@ -918,9 +919,9 @@ export function videoPosterDevWriter() {
           }
           suppressContentHmr();
           await writeFile(file, poster);
-          const savedHeights = await readFile(maxHeightFile, 'utf8').then((text) => JSON.parse(text).maxHeights, () => null);
-          if (maxHeights && JSON.stringify(maxHeights) !== JSON.stringify(savedHeights)) {
-            await writeAtomicJson(maxHeightFile, { maxHeights });
+          const saved = await readFile(maxHeightFile, 'utf8').then((text) => JSON.parse(text), () => ({}));
+          if (maxHeights && JSON.stringify(maxHeights) !== JSON.stringify(saved.maxHeights)) {
+            await writeAtomicJson(maxHeightFile, { ...saved, maxHeights });
           }
           send(200, { ok: true });
         } catch {
