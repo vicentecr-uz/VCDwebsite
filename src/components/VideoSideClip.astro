@@ -157,7 +157,7 @@ const { youtube, label, art } = Astro.props;
 
   const YOUTUBE = 'https://www.youtube-nocookie.com';
   // YouTube flashes its own pause button for a few seconds whenever playback starts; the card waits that out.
-  const CHROME_MS = 3500;
+  const CHROME_MS = 5000;
 
   const dispose = onPageLoad(() => {
     const root = document.querySelector<HTMLElement>('[data-side-clip]');
@@ -180,7 +180,7 @@ const { youtube, label, art } = Astro.props;
       if (!card || !wanted) return;
       // Not playing yet: try again shortly, and give up waiting after a few seconds rather than never showing.
       const wait = clearAt ? clearAt - performance.now() : 400;
-      if (wait > 0 && performance.now() - askedAt < 8000) { timer = window.setTimeout(show, wait); return; }
+      if (wait > 0 && performance.now() - askedAt < 10000) { timer = window.setTimeout(show, wait); return; }
       card.inert = false;
       card.setAttribute('data-open', '');
     };
