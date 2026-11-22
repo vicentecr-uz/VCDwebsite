@@ -22,6 +22,8 @@ Any interactive element built from Button Base or its variants needs a hit area 
 
 When creating a page, compose its headings, text, and media from the existing content-backed page blocks wherever they fit, so Anto can edit them through in-page Edit. Use the disk-backed page loader and verify Save survives a reload; styled hardcoded text is not equivalent to an editable block.
 
+Any new kind of block Anto asks for (a footnote, a label, a toggle line) ships editable without being asked: its words and settings live in content, carry in-page Edit wiring, and get whatever Edit-mode control the block needs to change them. Hardcoding the first version and waiting to be asked for controls is not done.
+
 Treat difficulty expressing a page through blocks as evidence of an editor capability gap. Identify the missing capability and address it within the agreed task scope, or explicitly report the remaining gap. Do not silently bypass the editor with page-specific markup. Functional controls may still need engine code; keep that boundary explicit.
 
 Signed-off Tapico/future case-study primitives:
