@@ -42,6 +42,7 @@ if (import.meta.env.DEV) {
 }
 
 const DEFAULT_OG_IMAGE = '/images/vicente-cruz-social.jpg';
+const DIRECTORY_PROFILE_URL = 'https://portfolios.here/vicente-cruz';
 
 interface Props {
   title: string;
@@ -255,16 +256,37 @@ const initialThemeColor = resolveToken('sys.color.srf');
     {noindex && <meta name="robots" content="noindex" />}
     <title>{title}</title>
     {canonical.pathname === '/' && (
-      <script
-        type="application/ld+json"
-        set:html={JSON.stringify({
-          '@context': 'https://schema.org',
-          '@type': 'WebSite',
-          name: 'Vicente Cruz',
-          alternateName: 'vicentecr.uz',
-          url: canonical.origin + '/',
-        })}
-      />
+      <>
+        <link rel="me" href={DIRECTORY_PROFILE_URL} />
+        <script
+          type="application/ld+json"
+          set:html={JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebSite',
+            name: 'Vicente Cruz',
+            alternateName: 'vicentecr.uz',
+            url: canonical.origin + '/',
+          })}
+        />
+        <script
+          type="application/ld+json"
+          set:html={JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Person',
+            name: 'Vicente Cruz',
+            url: canonical.origin + '/',
+            description:
+              'Product designer, born in Rome and living in London. I care about how things look and feel, how they work and how to make them real.',
+            sameAs: [
+              'https://x.com/vicentecr_uz',
+              'https://instagram.com/vicentecr.uz',
+              'https://github.com/vicentecr-uz',
+              'https://linkedin.com/in/vicentecr-uz',
+              DIRECTORY_PROFILE_URL,
+            ],
+          })}
+        />
+      </>
     )}
 
     <meta property="og:type" content={ogType} />
