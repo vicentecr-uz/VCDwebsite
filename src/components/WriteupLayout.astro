@@ -19,9 +19,10 @@ interface Props {
   backlinkLabel?: string;
   /** Section anchors for an On this page rail beside the column. */
   contents?: Array<{ id: string; label: string }>;
+  noindex?: boolean;
 }
 
-const { title, description, ogImage, indexHref = '/digital', backlinkLabel = 'Index', contents = [] } = Astro.props;
+const { title, description, ogImage, indexHref = '/digital', backlinkLabel = 'Index', contents = [], noindex = false } = Astro.props;
 const showDevTools = import.meta.env.DEV;
 const pathname = Astro.url.pathname.replace(/\/$/, '');
 const isTapicoResearch = pathname === '/tapico-research-paper';
@@ -40,6 +41,7 @@ const backHref = isTapicoResearch ? '/' : indexHref;
   ogImage={ogImage}
   ogType="article"
   ogImageDetails={ogImage ? { alt: `${title} — Vicente Cruz`, width: WRITEUP_CARD_WIDTH, height: WRITEUP_CARD_HEIGHT } : undefined}
+  noindex={noindex}
 >
   <div data-page-shell data-writeup-page class="writeup-page flex flex-col min-h-dvh">
     <header class="writeup-masthead">
