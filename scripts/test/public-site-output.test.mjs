@@ -170,3 +170,21 @@ test('ships Public pages at their URL, noindexed unless navigation reaches them'
   assert.match(await readFile(path.join(root, 'write-up/index.html'), 'utf8'), /^<html><head lang="en"><meta name="robots" content="noindex"><title>/);
   assert.doesNotMatch(await readFile(path.join(root, 'listed/index.html'), 'utf8'), /noindex/);
 });
+
+test('writes robots.txt that keeps noindexed pages from crawlers that ignore the meta tag', async () => {
+  const { root, put } = await fixture();
+  await put('index.html', '<a href="/listed/">Listed</a><a href="/yc/">YC</a><a href="/demo/">Demo</a>');
+  await put('listed/index.html', '<html><head></head><body>listed</body></html>');
+  await put('yc/index.html', '<html><head><meta name="robots" content="noindex"></head><a href="/yc/deck/">Deck</a></html>');
+  await put('yc/deck/index.html', '<html><head></head><body>deck</body></html>');
+  await put('demo/index.html', '<html><head><meta name="ROBOTS" content="noindex,nofollow"></head></html>');
+  await put('write-up/index.html', '<html><head></head><body>write-up</body></html>');
+
+  const result = await prunePublicOutput(root, { site, publicRoutes: ['/write-up/'] });
+
+  assert.deepEqual(result.noindexRoutes, ['/demo/', '/write-up/', '/yc/']);
+  assert.equal(await readFile(path.join(root, 'robots.txt'), 'utf8'), [
+    'User-agent: Googlebot', 'User-agent: Bingbot', 'Allow: /', '',
+    'User-agent: *', 'Disallow: /demo/$', 'Disallow: /demo$', 'Disallow: /write-up/$', 'Disallow: /write-up$', 'Disallow: /yc/$', 'Disallow: /yc$', '',
+  ].join('\n'));
+});
