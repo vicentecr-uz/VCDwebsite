@@ -51,7 +51,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         hideLabel
         pattern={String.raw`[^@\s]+@[^@\s]+\.[^@\s]+`}
         required
-        native
         autocomplete="email"
         inputmode="email"
         autocapitalize="none"
@@ -162,7 +161,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       const fieldRect = textField.getBoundingClientRect();
       next.style.font = style.font;
       next.style.letterSpacing = style.letterSpacing;
-      next.style.left = `${inputRect.left - fieldRect.left + parseFloat(style.paddingLeft) - input.scrollLeft}px`;
+      next.style.left = `${inputRect.left - fieldRect.left}px`;
       next.style.top = `${inputRect.top - fieldRect.top}px`;
       next.style.height = `${inputRect.height}px`;
       next.textContent = text;
@@ -385,18 +384,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         ));
       }
     };
-    const shortcutMeasure = document.createElement('canvas').getContext('2d');
-    const positionShortcut = () => {
-      if (!input || !shortcut || shortcut.hidden || !shortcutMeasure) return;
-      const style = getComputedStyle(input);
-      shortcutMeasure.font = style.font;
-      const textEnd = parseFloat(style.paddingLeft)
-        + shortcutMeasure.measureText(input.value).width - input.scrollLeft;
-      const left = textEnd + 6;
-      shortcut.style.left = `${left}px`;
-      // Leave room for extension buttons at the trailing edge of the native input.
-      shortcut.classList.toggle('is-clipped', left < 12 || left + shortcut.offsetWidth > input.clientWidth - 60);
-    };
     const emailChecker = document.createElement('input');
     emailChecker.type = 'email';
     const updateShortcut = () => {
@@ -406,7 +393,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       if (emailChecker.validity.typeMismatch) {
         input.setCustomValidity('Enter a valid email address.');
       }
-      if (input.validity.valid && !validTlds.has(emailChecker.value.split('.').at(-1)!.toLowerCase())) {
+      if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
       shortcut.classList.toggle('is-valid', input.validity.valid);
@@ -416,15 +403,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
       shortcut.classList.remove('is-inert');
       shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
-      positionShortcut();
     };
     scope.listen(input, 'input', () => {
       updateShortcut();
       dismissStatus();
       input.removeAttribute('aria-invalid');
     });
-    scope.listen(input, 'scroll', positionShortcut);
-    scope.listen(window, 'resize', positionShortcut);
     scope.listen(input, 'change', updateShortcut);
     scope.listen(input, 'focus', updateShortcut);
     updateShortcut();
@@ -725,9 +709,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__shortcut {
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
+    padding-inline-start: 0.4em;
+    opacity: 1;
     color: var(--sys-color-on-srf-subtle);
     font-size: 0.8125rem;
     line-height: 1;
@@ -761,8 +744,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     to { opacity: 1; }
   }
 
-  .project-signup__shortcut.is-inert,
-  .project-signup__shortcut.is-clipped {
+  .project-signup__shortcut.is-inert {
     visibility: hidden;
     animation: none;
   }
@@ -815,12 +797,16 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     box-shadow: none;
   }
 
+  :global(.project-signup__field .dev-text-field) {
+    --sabi-edge-gutter: 12px;
+    padding-block: 0;
+  }
+
   :global(.project-signup__field .dev-field__input) {
     appearance: none;
-    width: 100%;
     height: 2.625rem;
     margin: 0;
-    padding: 0 8px 0 12px;
+    padding: 0;
     outline: 0;
     -webkit-tap-highlight-color: transparent;
     color: var(--sys-color-on-srf);

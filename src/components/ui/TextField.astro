@@ -9,16 +9,15 @@ interface Props {
   disabled?: boolean;
   hideLabel?: boolean;
   prefix?: string;
-  native?: boolean;
   [key: string]: any;
 }
 
-const { label, value, placeholder, disabled = false, hideLabel = false, prefix, native = false, type = 'text', class: className, id, ...rest } = Astro.props;
+const { label, value, placeholder, disabled = false, hideLabel = false, prefix, type = 'text', class: className, id, ...rest } = Astro.props;
 const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.random().toString(36).slice(2, 8)}`;
-const enhanced = !native && ['text', 'search', 'url', 'tel', 'password'].includes(type);
+const enhanced = ['text', 'search', 'url', 'tel', 'password'].includes(type);
 const inputProps = {
   id: inputId, type, value, placeholder, disabled,
-  class: 'dev-field__input', 'data-native-text-field': native || undefined, 'aria-label': hideLabel ? label : undefined, ...rest,
+  class: 'dev-field__input', 'aria-label': hideLabel ? label : undefined, ...rest,
 };
 ---
 
@@ -30,9 +29,6 @@ const inputProps = {
       <slot name="trail" />
     </sabi-input>
   ) : (
-    <>
-      <input {...inputProps} />
-      <slot name="trail" />
-    </>
+    <input {...inputProps} />
   )}
 </Field>
