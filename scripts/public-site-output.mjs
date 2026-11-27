@@ -68,6 +68,21 @@ function routeForFile(file, distDir) {
   return null;
 }
 
+/** @param {any} document */
+function isNoindex(document) {
+  let found = false;
+  walk(document, (node) => {
+    if (node.tagName === 'meta' && attr(node, 'name')?.toLowerCase() === 'robots' && /\b(?:noindex|none)\b/i.test(attr(node, 'content') || '')) found = true;
+  });
+  return found;
+}
+
+/** @param {string[]} routes */
+export function robotsTxt(routes) {
+  const disallow = routes.flatMap((route) => route === '/' ? ['/$'] : [`${route}$`, `${route.replace(/\/$/, '')}$`]);
+  return ['User-agent: Googlebot', 'User-agent: Bingbot', 'Allow: /', '', 'User-agent: *', ...disallow.map((route) => `Disallow: ${route}`), ''].join('\n');
+}
+
 /** @param {string} route */
 function routeKey(route) {
   const url = new URL(route, 'https://output.invalid');
@@ -251,6 +266,12 @@ export async function prunePublicOutput(distDir, options = {}) {
     await writeFile(file, /<head(?:\s[^>]*)?>/i.test(html) ? html.replace(/<head(?:\s[^>]*)?>/i, (head) => head + meta) : meta + html);
   }
   const retainedHtml = new Set([...reachable, ...technical, ...linkOnlyHtml]);
+  const noindexRoutes = [...retainedHtml]
+    .filter((file) => linkOnlyHtml.includes(file) || isNoindex(documents.get(file)))
+    .map((file) => routeForFile(file, distDir))
+    .filter((route) => route !== null)
+    .sort();
+  await writeFile(path.join(distDir, 'robots.txt'), robotsTxt(noindexRoutes));
   const removedHtml = [];
   for (const file of htmlFiles) {
     if (!retainedHtml.has(file)) { await unlink(file); removedHtml.push(path.relative(distDir, file)); }
@@ -286,5 +307,5 @@ export async function prunePublicOutput(distDir, options = {}) {
   for (const file of assetFiles) {
     if (!retainedAssets.has(file)) { await unlink(file); removedAssets.push(path.relative(distDir, file)); }
   }
-  return { retainedHtml: [...retainedHtml].map((file) => path.relative(distDir, file)), linkOnlyHtml: linkOnlyHtml.map((file) => path.relative(distDir, file)), removedHtml, retainedAssets: [...retainedAssets].map((file) => path.relative(distDir, file)), removedAssets };
+  return { retainedHtml: [...retainedHtml].map((file) => path.relative(distDir, file)), linkOnlyHtml: linkOnlyHtml.map((file) => path.relative(distDir, file)), removedHtml, noindexRoutes, retainedAssets: [...retainedAssets].map((file) => path.relative(distDir, file)), removedAssets };
 }
