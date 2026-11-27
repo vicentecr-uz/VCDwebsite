@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { commentsIn } from '../check-comments.mjs';
 
-const apply = path.resolve(import.meta.dir, '../../.claude/skills/delete-comment/scripts/apply.mjs');
+const apply = path.resolve(import.meta.dir, '../../.agents/skills/delete-comment/scripts/apply.mjs');
 
 const deleteAll = async (name, source) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'delete-comment-'));
@@ -59,7 +59,7 @@ test('a file changed since listing is refused', async () => {
   expect(readFileSync(path.join(dir, 'a.mjs'), 'utf8')).toBe('// gone\nconst a = 1;\n');
 });
 
-const list = path.resolve(import.meta.dir, '../../.claude/skills/delete-comment/scripts/list.mjs');
+const list = path.resolve(import.meta.dir, '../../.agents/skills/delete-comment/scripts/list.mjs');
 const checker = path.resolve(import.meta.dir, '../check-comments.mjs');
 const repo = (files) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'delete-comment-repo-'));

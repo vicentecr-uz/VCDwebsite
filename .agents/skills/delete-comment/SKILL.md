@@ -16,7 +16,7 @@ The argument is a path regex (`^src/lib/`, `^src/components/project/`). With non
 ## 2. List
 
 ```sh
-bun .claude/skills/delete-comment/scripts/list.mjs '<path-regex>' <scratch>/blocks.json
+bun .agents/skills/delete-comment/scripts/list.mjs '<path-regex>' <scratch>/blocks.json
 ```
 
 Adjacent full-line comments merge into one block. Each block prints as `[id] Lline: text` with the next line of code. Directives are already excluded (`@ts-*`, JSDoc type tags in JS, pragmas, licence banners, `good-enough: #N`).
@@ -54,7 +54,7 @@ Check that each `E` comment annotated real code: an orphan with nothing under it
 Apply first: `apply.mjs` works from saved offsets and refuses any file that changed since `list.mjs` ran.
 
 ```sh
-bun .claude/skills/delete-comment/scripts/apply.mjs <scratch>/blocks.json <scratch>/decisions.txt
+bun .agents/skills/delete-comment/scripts/apply.mjs <scratch>/blocks.json <scratch>/decisions.txt
 ```
 
 Then put exactly `known limit: issue #N` (in the file's comment syntax) on the line directly above each shortcut. In Astro markup, put it in the frontmatter or a script, never inside a tag. Then tighten and check:
