@@ -16,6 +16,8 @@ The rule is in the [index](../interface-conventions.md#when-the-component-does-n
 
 Raised buttons (`raised` on `Button`, `.dev-btn--raised`) are opt-in for a filled or soft button that should stand out a little more, such as the Sabi hero CTAs or a Save bar. They do not replace the flat default. A dark fill gets a semi-transparent top highlight only; a light fill gets a bottom shade only, from `--sys-color-surface-shadow`; `light-dark()` swaps them by theme. Pressing flattens the bevel. Do not hand-roll a bevel or drop shadow on a button.
 
+Control text is never selectable: a base rule in `global.css` sets `user-select: none` on buttons, selects, summaries, button-like roles and labels that wrap a checkbox or radio, so a double-click never highlights a label. Build controls from those elements or roles rather than re-declaring it per component.
+
 Any interactive element built from Button Base or its variants needs a hit area beyond every visual edge. Figma models it as `space/hit-inset` (8px in Primitives) but deliberately not as geometry. In code, `Button` and `Field` already draw it from `--dev-hit-inset` (4px: halved, so buttons 8px apart meet in the gap; a packed `SegmentedControl` zeroes `--dev-btn-hit-inset`). A new interactive element uses the same token on an interactive wrapper or a pseudo-element; never hardcode the value.
 
 ## Page blocks
