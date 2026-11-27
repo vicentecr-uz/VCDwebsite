@@ -1,0 +1,68 @@
+name: Directory profile check
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: directory-profile-check
+  cancel-in-progress: false
+
+jobs:
+  portfolios-here:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: portfolios.here claim
+    steps:
+      - name: Check out layout and script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            src/layouts
+            scripts/check-directory-profile.mjs
+          sparse-checkout-cone-mode: false
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Restore listing history
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow directory-profile-check.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$run_id" ]; then gh run download "$run_id" --repo "$GITHUB_REPOSITORY" --name directory-history --dir . || true; fi
+      - name: Assess listing and directory
+        id: check
+        env:
+          UMAMI_URL: ${{ secrets.UMAMI_URL }}
+          UMAMI_USERNAME: ${{ secrets.UMAMI_USERNAME }}
+          UMAMI_PASSWORD: ${{ secrets.UMAMI_PASSWORD }}
+          UMAMI_WEBSITE_ID: ${{ vars.UMAMI_WEBSITE_ID }}
+        run: |
+          node scripts/check-directory-profile.mjs history.json report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep listing history
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: directory-history
+          path: history.json
+          retention-days: 90
+      - name: Raise or clear the issue
+        env:
+          VERDICT: ${{ steps.check.outputs.verdict }}
+        run: |
+          issue=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number // empty')
+          if [ "$VERDICT" = keep ]; then
+            if [ -n "$issue" ]; then gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "$(cat report.md)"; fi
+          elif [ -n "$issue" ]; then
+            gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --body-file report.md
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$ISSUE_TITLE" --body-file report.md --label "home page" --milestone v2
+          fi
