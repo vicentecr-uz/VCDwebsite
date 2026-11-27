@@ -18,7 +18,7 @@ An audit of the engine found 2,844 comments (4,817 lines) across 285 files. They
 - Machine-read directives are not comments and stay: `@ts-check`/`@ts-expect-error`, JSDoc type tags that type plain JavaScript (`@type`, `@param {…}`, `@returns {…}`, `@typedef`), `/// <reference>`, lint/format pragmas, `/*! license */` banners, shebangs, `@template`, and a bare `@deprecated` (editors strike through deprecated names). The two markers `known limit: issue #N` and `good-enough: #N` (see `docs/interface/components.md`) are allowed only in exactly that form; any extra word makes them ordinary comments.
 - Vendored code (`src/vendor/`, `src/lib/stageshow/`), patches and the private content surface are out of scope.
 - `bun run lint:comments` enforces this as a ratchet. `scripts/comment-baseline.json` records how many comments each file had when the rule landed. A file may not exceed its baseline and a new file starts at zero. When a file drops below its baseline the check fails until `bun run lint:comments --update` locks the lower number in, so the ratchet only turns one way. CI runs it in *Engine validation* with `--against` the target branch, so a PR cannot raise a file's count by regenerating the baseline. `bun run lint:comments --issues` fails when a marker points at an issue that is not open: fix the shortcut, or re-file it and update the marker. It needs `gh`, so it runs in `/delete-comment` and on demand rather than in CI.
-- The `/delete-comment` skill (`.claude/skills/delete-comment/`) repeats the audit on a slice of the codebase.
+- The `/delete-comment` skill (`.agents/skills/delete-comment/`) repeats the audit on a slice of the codebase.
 
 ## Consequences
 
